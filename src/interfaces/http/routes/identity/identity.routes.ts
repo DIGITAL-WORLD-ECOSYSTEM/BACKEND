@@ -25,6 +25,7 @@ import { IdentityController } from '../../controllers/identity/IdentityControlle
 import { ExternalIdentityController } from '../../controllers/identity/ExternalIdentityController';
 import { AuthAuxiliaryController } from '../../controllers/identity/AuthAuxiliaryController';
 import { rateLimit } from '../../middlewares/rate_limit';
+import { sessionGuard } from '../../middlewares/session_guard';
 
 type AppType = {
   Bindings: Bindings;
@@ -34,8 +35,24 @@ type AppType = {
 const identityRouter = new Hono<AppType>();
 
 // ----------------------------------------------------------------------------
-// 1. CANONICAL REGISTER & LOGIN (LOCAL, WEB3 SIWE, PASSKEY)
+// 1. CANONICAL REGISTER & LOGIN (LOCAL, WEB3 SIWE, PASSKEY, LOGOUT)
 // ----------------------------------------------------------------------------
+identityRouter.post('/logout', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const jwtService = new JwtService();
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.logout(c);
+});
+
+identityRouter.post('/logout-all', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const jwtService = new JwtService();
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.logoutAll(c);
+});
+
 identityRouter.post(
   '/register',
   rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }),

@@ -6,8 +6,49 @@ import { ConfirmPasswordResetUseCase } from './ConfirmPasswordResetUseCase';
 import { RefreshTokenUseCase } from './RefreshTokenUseCase';
 import { authenticator } from 'otplib';
 
+import { AuthenticateAccountUseCase } from './AuthenticateAccountUseCase';
+
 describe('Auxiliary Authentication Use Cases Suite', () => {
+  describe('AuthenticateAccountUseCase Lockout Protection', () => {
+    it('should lock account after 5 consecutive invalid password attempts', async () => {
+      const mockUserRepo = {
+        findByEmail: vi.fn().mockResolvedValue({ id: 99, email: 'brute@asppibra.com', status: 'active' }),
+        updateStatus: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockAuthRepo = {
+        findPasswordCredentialByUserId: vi.fn().mockResolvedValue({ userId: 99, passwordHash: 'hash' }),
+      };
+      const mockHasher = {
+        verify: vi.fn().mockResolvedValue(false), // Always invalid
+      };
+      const mockUow = {
+        execute: vi.fn().mockImplementation(async (cb) =>
+          cb({
+            getUserRepository: () => mockUserRepo,
+            getAuthenticationRepository: () => mockAuthRepo,
+          })
+        ),
+      };
+
+      const useCase = new AuthenticateAccountUseCase(mockUow as any, mockHasher as any);
+
+      // Attempt 1 to 4
+      for (let i = 0; i < 4; i++) {
+        const res = await useCase.execute({ email: 'brute@asppibra.com', password: 'wrong' });
+        expect(res.isFailure).toBe(true);
+        expect(res.error).toContain('Credenciais inválidas');
+      }
+
+      // Attempt 5 should trigger lockout!
+      const res5 = await useCase.execute({ email: 'brute@asppibra.com', password: 'wrong' });
+      expect(res5.isFailure).toBe(true);
+      expect(res5.error).toContain('Conta bloqueada devido a 5 tentativas incorretas');
+      expect(mockUserRepo.updateStatus).toHaveBeenCalledWith(99, 'locked');
+    });
+  });
+
   describe('SetupTotpUseCase', () => {
+
     it('should generate valid secret and otpauthUrl for existing user', async () => {
       const mockUserRepo = {
         findById: vi.fn().mockResolvedValue({ id: 1, email: 'user@asppibra.com' }),

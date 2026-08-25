@@ -12,6 +12,8 @@ export interface ISessionRepository {
     expiresAt: Date;
   }): Promise<void>;
 
+  revokeSession(sessionId: string): Promise<void>;
+
   revokeAllUserSessions(userId: number): Promise<void>;
 
   getSessionById(sessionId: string): Promise<any | null>;

@@ -1,6 +1,7 @@
 import { Context, Next } from 'hono';
 import { JwtService } from '../../../infrastructure/security/jwt/JwtService';
 import { DrizzleSessionRepository } from '../../../infrastructure/repositories/DrizzleSessionRepository';
+import { DrizzleUserRepositoryAdapter } from '../../../infrastructure/repositories/DrizzleUserRepositoryAdapter';
 
 const jwtService = new JwtService();
 
@@ -49,12 +50,39 @@ export const sessionGuard = async (c: Context, next: Next) => {
       return c.json({ success: false, message: 'Session has expired.' }, 401);
     }
 
+    const userRepo = new DrizzleUserRepositoryAdapter(db);
+    const user = await userRepo.findById(session.userId);
+
+    if (!user) {
+      return c.json({ success: false, message: 'User account not found.' }, 401);
+    }
+
+    if (user.status === 'suspended' || user.status === 'locked' || user.status === 'disabled') {
+      return c.json({ success: false, message: `User account is ${user.status}.` }, 403);
+    }
+
+    // AF-008: Validar authEpoch do token JWT contra o authEpoch atual do usuário no D1
+    const tokenEpoch = typeof payload.authEpoch === 'number' ? payload.authEpoch : 1;
+    const currentEpoch = user.authEpoch || 1;
+    if (tokenEpoch < currentEpoch) {
+      return c.json(
+        {
+          success: false,
+          message: 'Session invalidated due to password reset or security revocation (authEpoch mismatch).',
+        },
+        401
+      );
+    }
+
     c.set('user', {
       userId: session.userId,
       sessionId: session.id,
       sessionAal: session.aal,
       role: payload.role || 'citizen',
     });
+    c.set('userId', session.userId);
+    c.set('sessionId', session.id);
+    c.set('sessionAal', session.aal);
 
     await next();
   } catch (err: unknown) {

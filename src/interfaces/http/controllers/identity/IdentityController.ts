@@ -187,4 +187,35 @@ export class IdentityController {
       },
     });
   }
+
+  async logout(c: Context): Promise<Response> {
+    try {
+      const sessionId = c.get('sessionId') || c.get('user')?.sessionId;
+      if (!sessionId) {
+        return error(c, 'Sessão ativa não encontrada', null, 400);
+      }
+
+      await this.sessionRepo.revokeSession(sessionId);
+      return success(c, 'Sessão encerrada com sucesso');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao realizar logout', message, 500);
+    }
+  }
+
+  async logoutAll(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      await this.sessionRepo.revokeAllUserSessions(userId);
+      return success(c, 'Todas as sessões ativas foram encerradas com sucesso.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao realizar logout global', message, 500);
+    }
+  }
 }
+

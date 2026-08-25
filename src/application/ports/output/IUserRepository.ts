@@ -21,7 +21,7 @@ export interface IUserRepository {
   findById(id: number): Promise<UserRecord | null>;
   findByEmail(email: string): Promise<UserRecord | null>;
   create(data: CreateUserData): Promise<UserRecord>;
-  updateStatus(id: number, status: 'active' | 'suspended' | 'pending'): Promise<void>;
+  updateStatus(id: number, status: 'active' | 'suspended' | 'pending' | 'locked'): Promise<void>;
   incrementAuthEpoch?(userId: number): Promise<number>;
 }
 

@@ -20,6 +20,13 @@ export class DrizzleSessionRepository implements ISessionRepository {
     await this.db.insert(userSessions).values(sessionData);
   }
 
+  async revokeSession(sessionId: string): Promise<void> {
+    await this.db
+      .update(userSessions)
+      .set({ revokedAt: new Date(), revocationReason: 'User logout' })
+      .where(eq(userSessions.id, sessionId));
+  }
+
   async revokeAllUserSessions(userId: number): Promise<void> {
     await this.db.update(userSessions)
       .set({ revokedAt: new Date(), revocationReason: 'Revoked all user sessions' })
