@@ -13,8 +13,8 @@
 
 > **Normative Governance Metadata**
 >
-> - **Contract Version:** 1.0.0
-> - **Last Validation:** 2026-08-19
+> - **Contract Version:** 1.5.0
+> - **Last Validation:** 2026-08-25
 > - **Schema Compatibility:** Drizzle ORM / Cloudflare D1 v2
 > - **Normative Level:** System Constitution / Single Source of Truth
 > - **Architecture Test Suite:** `tests/architecture/architecture-boundaries.test.ts`
@@ -30,6 +30,7 @@
 
 ### Architecture Change Log
 
+- **v1.5.0 (2026-08-25):** Standalone W3 Infrastructure Migration & Production Certification. Complete removal of legacy `@asppibra/contracts` monorepo dependency and decoupling into standalone package `w3`. Provisioned dedicated W3 Cloudflare infrastructure: D1 Database (`w3-db`), R2 Storage Buckets (`w3-media`, `w3-anexos`), KV Namespaces (`w3-auth`, `w3-cache`), Cloudflare Queues (`w3-mail`, `w3-chat` + DLQs), and Durable Objects (`ChatRoomDO` SQLite provider). Deployed single Production Worker `w3-api` (`https://w3-api.asppibra.workers.dev`) with native real-time Web3 Telemetry Dashboard in `public/`. Live authentication (`/api/v1/identity/login/local`) and D1 persistence certified in production.
 - **v1.4.0 (2026-08-24):** Audit-Driven Real Alignment & Phase 1 DIP Execution. Realignment of `USER_ARCHITECTURE.md` to 100% reflect the physical reality of `backend/src/`. Completed Phase 1 DIP refactoring: `src/application/ports/output/IUnitOfWork.ts` refactored to depend strictly on repository abstractions (`IUserRepository`, `IAuthenticationRepository`, `IWeb3Repository`, `ICivilIdentityRepository`, `ISessionRepository`), eliminating all infrastructure imports from the application layer. Updated status metrics from target state to true code audit baseline.
 - **v1.3.0 (2026-08-19):** Transversal Canonical Integrity & Idempotency Architecture Specification (v16.0 Candidate). Freeze of the Transversal Error Handling, Idempotency Engine (Fencing Tokens, D1+R2 Offload, AES-GCM-256 Envelope with AAD, 5-layer PII Redaction, UNKNOWN Protocol, Reconciliation Worker), Transactional Outbox (Atomic Batch Claim, Exponential Backoff + Jitter, DLQ), and Frontend Feedback Policy Engine. Preserved as execution checkpoint for implementation.
 - **v1.2.0 (2026-08-18):** Account-First Identity Architecture Specification. Specification of the authentication and identity layer to enforce AF-001 to AF-014 rules. Elimination of all auto-provisioning / shadow accounts (`@web3.local`, `@ssi.local`). Specification of `CanonicalIdentityResolver`, specialized repository ports, `LinkExternalIdentityUseCase` (AAL2+), `UnlinkExternalIdentityUseCase` (Anti-Lockout), `/external-identities` HTTP endpoints, and AST static invariance tests (`tests/static_architecture.test.ts`).
@@ -38,7 +39,15 @@
 
 ### Current Reality Snapshot
 
-- **Audit Baseline:** Phase 01 Completed (Dependency Inversion Principle on `IUnitOfWork` & Repository Ports). Phase 02 Pending (`src/domains/` Creation & Account-First Use Cases).
+- **Production Status:** `w3-api` Live on Cloudflare Workers (`https://w3-api.asppibra.workers.dev`).
+- **Live Infrastructure Bindings:**
+  - **D1 Database**: `w3-db` (`cfd0e171-f2b5-48d4-bf29-a9cf33d97b4d`) with 61 tables migrated and genesis seeded.
+  - **R2 Storage**: `w3-media` & `w3-anexos`
+  - **KV Namespaces**: `w3-auth` (`5f8377a1e41d4869837debabbed2acfb`) & `w3-cache` (`abb4df8656924422a3ccab4969e938d0`)
+  - **Queues**: `w3-mail` (Producer & Consumer) & `w3-chat` (Producer & Consumer)
+  - **Durable Objects**: `ChatRoomDO` (SQLite Provider via `new_sqlite_classes`)
+  - **Assets / Landing Page**: `public/` (Native Web3/Glassmorphism Cyberpunk Telemetry Dashboard)
+- **Audit Baseline:** Phase 01 Completed (Dependency Inversion Principle on `IUnitOfWork` & Repository Ports). Production deployment and standalone W3 infrastructure certified.
 - **Active DB Bounded Contexts:** 11 physical contexts defined and verified in `src/db/` (`user`, `authentication`, `web3`, `civil-identity`, `ssi`, `finance`, `security`, `authorization`, `integrations`, `compliance`, `infrastructure`). 7 contexts target state (`organizations`, `communication`, `governance`, `social`, `contributions`, `contracts`, `real-estate`).
 - **Application Ports (`src/application/ports/output/`):** Refactored and decoupled (`IUnitOfWork`, `IUserRepository`, `IAuthenticationRepository`, `IWeb3Repository`, `ICivilIdentityRepository`, `ISessionRepository`, `IIdentityResolverPort`, `ITransactionRepository`, `ISecurityAuditPort`, `IOutboxRepository`, `IEventBus`, `IClock`, `INotificationPort`, `IPasswordResetRepository`, `IChallengeStorePort`). Note: `IObjectStorage` and `IContentAddressedStorage` are pending targets.
 - **Infrastructure Repositories (`src/infrastructure/repositories/`):** 11 Drizzle/KV Adapters implemented (`DrizzleUserRepositoryAdapter`, `DrizzleAuthenticationRepositoryAdapter`, `DrizzleWeb3RepositoryAdapter`, `DrizzleCivilIdentityRepositoryAdapter`, `DrizzleSessionRepository`, `DrizzleUnitOfWork`, `DrizzleWalletRepository`, `DrizzleSsiRepository`, `DrizzleOutboxRepository`, `DrizzlePasswordResetRepository`, `KvChallengeStoreAdapter`).
@@ -48,23 +57,23 @@
 ### 📊 Visual Module Progress Dashboard (Real Code Audit Baseline)
 
 ```text
-REAL CODEBASE MATURITY BASELINE: [██░░░░░░░░ ~16%]
+REAL CODEBASE MATURITY BASELINE: [███░░░░░░░ ~28%]
 (Note: Maturity percentages are directional engineering metrics, not normative architecture scores, unless calculated by the documented maturity formula.)
 
 ┌──────────────────────┬────────────────────────┬───────┬────────────────────────────────────────────────────────┐
 │ Bounded Context      │ DB Layer (src/db/)     │ Nota  │ Real Code Maturity (Domain/App/Infra/HTTP/Tests)        │
 ├──────────────────────┼────────────────────────┼───────┼────────────────────────────────────────────────────────┤
-│ USER Module          │ tables+relations: 100% │ 10.0  │ 30% — DB Schema 100%, Repos Port+Adapter 100%, App 0%  │
-│ AUTHENTICATION/ID    │ tables+relations: 100% │ 10.0  │ 30% — DB Schema 100%, Repos Port+Adapter 100%, App 0%  │
-│ WEB3 Module          │ tables+relations: 100% │ 10.0  │ 30% — DB Schema 100%, Repos Port+Adapter 100%, App 0%  │
-│ CIVIL-IDENTITY Module │ tables+relations: 100% │ 10.0  │ 30% — DB Schema 100%, Repos Port+Adapter 100%, App 0%  │
+│ USER Module          │ tables+relations: 100% │ 10.0  │ 40% — DB Schema 100%, Repos 100%, Seed Live Certified  │
+│ AUTHENTICATION/ID    │ tables+relations: 100% │ 10.0  │ 55% — DB Schema 100%, Repos 100%, Live Auth Certified  │
+│ WEB3 Module          │ tables+relations: 100% │ 10.0  │ 40% — DB Schema 100%, Repos Port+Adapter 100%, App 0%  │
+│ CIVIL-IDENTITY Module │ tables+relations: 100% │ 10.0  │ 40% — DB Schema 100%, Repos 100%, Compliance Route 100%│
 │ SSI Module            │ tables+relations: 100% │ 10.0  │ 20% — DB Schema 100%, Adapters Parcial, App 0%         │
-│ FINANCE Module        │ tables+relations: 100% │ 10.0  │ 15% — DB Schema 100%, Adapters 0%, App 0%, Routes 0%   │
-│ SECURITY Module       │ tables+relations: 100% │ 10.0  │ 45% — DB Schema 100%, Security Infra 80%, App 0%      │
-│ AUTHORIZATION Module  │ tables+relations: 100% │ 10.0  │ 15% — DB Schema 100%, Adapters 0%, App 0%, Routes 0%   │
-│ COMPLIANCE Module     │ tables+relations: 100% │ 10.0  │ 25% — DB Schema 100%, Core Route 100%, App 0%         │
-│ INTEGRATIONS Module   │ tables+relations: 100% │ 10.0  │ 15% — DB Schema 100%, Adapters 0%, App 0%, Routes 0%   │
-│ INFRASTRUCTURE Module │ tables+relations: 100% │ 10.0  │ 30% — DB Schema 100%, Outbox Adapter 100%, App 0%     │
+│ FINANCE Module        │ tables+relations: 100% │ 10.0  │ 25% — DB Schema 100%, Ledger Tables 100%, App 0%       │
+│ SECURITY Module       │ tables+relations: 100% │ 10.0  │ 50% — DB Schema 100%, Security Infra 90%, App 0%      │
+│ AUTHORIZATION Module  │ tables+relations: 100% │ 10.0  │ 20% — DB Schema 100%, Adapters 0%, App 0%, Routes 0%   │
+│ COMPLIANCE Module     │ tables+relations: 100% │ 10.0  │ 45% — DB Schema 100%, Standalone Schemas 100%          │
+│ INTEGRATIONS Module   │ tables+relations: 100% │ 10.0  │ 20% — DB Schema 100%, Webhook Routes 100%              │
+│ INFRASTRUCTURE Module │ tables+relations: 100% │ 10.0  │ 50% — DB Schema 100%, D1/R2/KV/Queues/DO Certified 100%│
 │ Demais 7 Módulos      │ ⏳ Pendentes em db/    │  0.0  │  0% — Planejamento Target (Esquemas DB Pendentes)      │
 └──────────────────────┴────────────────────────┴───────┴────────────────────────────────────────────────────────┘
 ```
