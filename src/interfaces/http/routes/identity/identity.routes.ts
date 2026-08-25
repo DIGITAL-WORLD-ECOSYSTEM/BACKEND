@@ -15,8 +15,15 @@ import { VerifyPasskeyIdentityUseCase } from '../../../../domains/identity/use-c
 import { LinkExternalIdentityUseCase } from '../../../../domains/identity/use-cases/LinkExternalIdentityUseCase';
 import { UnlinkExternalIdentityUseCase } from '../../../../domains/identity/use-cases/UnlinkExternalIdentityUseCase';
 
+import { SetupTotpUseCase } from '../../../../domains/identity/use-cases/SetupTotpUseCase';
+import { AuthenticateTotpUseCase } from '../../../../domains/identity/use-cases/AuthenticateTotpUseCase';
+import { RequestPasswordResetUseCase } from '../../../../domains/identity/use-cases/RequestPasswordResetUseCase';
+import { ConfirmPasswordResetUseCase } from '../../../../domains/identity/use-cases/ConfirmPasswordResetUseCase';
+import { RefreshTokenUseCase } from '../../../../domains/identity/use-cases/RefreshTokenUseCase';
+
 import { IdentityController } from '../../controllers/identity/IdentityController';
 import { ExternalIdentityController } from '../../controllers/identity/ExternalIdentityController';
+import { AuthAuxiliaryController } from '../../controllers/identity/AuthAuxiliaryController';
 import { rateLimit } from '../../middlewares/rate_limit';
 
 type AppType = {
@@ -121,7 +128,68 @@ identityRouter.post(
 );
 
 // ----------------------------------------------------------------------------
-// 2. EXTERNAL IDENTITIES (GET, POST /link, POST /unlink)
+// 2. AUXILIARY AUTHENTICATION (2FA / TOTP, PASSWORD RESET, REFRESH SESSION)
+// ----------------------------------------------------------------------------
+identityRouter.post('/totp/setup', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const setupTotpUseCase = new SetupTotpUseCase(uow);
+  const controller = new AuthAuxiliaryController(setupTotpUseCase);
+  return controller.setupTotp(c);
+});
+
+identityRouter.post('/totp/verify', rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+  const authTotpUseCase = new AuthenticateTotpUseCase(uow, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, authTotpUseCase);
+  return controller.verifyTotp(c);
+});
+
+identityRouter.post('/password-reset/request', rateLimit({ windowMs: 60 * 1000, maxRequests: 3 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+  const requestResetUseCase = new RequestPasswordResetUseCase(uow, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, undefined, requestResetUseCase);
+  return controller.requestPasswordReset(c);
+});
+
+identityRouter.post('/password-reset/confirm', rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const hasher = new PBKDF2PasswordHasher();
+  const auditAdapter = new SecurityAuditAdapter(db);
+  const confirmResetUseCase = new ConfirmPasswordResetUseCase(uow, hasher, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, undefined, undefined, confirmResetUseCase);
+  return controller.confirmPasswordReset(c);
+});
+
+identityRouter.post('/refresh', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const jwtService = new JwtService();
+  const auditAdapter = new SecurityAuditAdapter(db);
+
+  const tokenService = {
+    generateAccessToken: async (payload: { userId: number; email: string; authEpoch: number }) => {
+      const secret = c.env?.JWT_SECRET || 'asppibra-secret-key-change-in-production';
+      return await jwtService.sign(
+        { sub: String(payload.userId), userId: payload.userId, email: payload.email, authEpoch: payload.authEpoch },
+        secret
+      );
+    },
+    generateRefreshToken: async () => crypto.randomUUID(),
+  };
+
+  const refreshUseCase = new RefreshTokenUseCase(uow, tokenService, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, undefined, undefined, undefined, refreshUseCase);
+  return controller.refreshSession(c);
+});
+
+// ----------------------------------------------------------------------------
+// 3. EXTERNAL IDENTITIES (GET, POST /link, POST /unlink)
 // ----------------------------------------------------------------------------
 identityRouter.get('/external-identities', async (c) => {
   const db = c.get('db');
@@ -160,3 +228,4 @@ identityRouter.post('/external-identities/unlink', async (c) => {
 });
 
 export default identityRouter;
+
