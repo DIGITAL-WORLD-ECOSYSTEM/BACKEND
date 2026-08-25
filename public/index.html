@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FFC API - System Telemetry & Dashboard</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="theme-dark">
+  <div class="bg-grid"></div>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-container">
+      <div class="header-brand">
+        <div class="logo-wrapper">
+          <div class="logo-glow"></div>
+          <img src="/logo.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
+        </div>
+        <div class="header-text-col">
+          <h1 class="header-title">FFC API</h1>
+        </div>
+      </div>
+
+      <div class="header-tools">
+        <div class="network-pill">
+          <span class="pulse-dot"></span>
+          <span>API Stats</span>
+        </div>
+        <div class="divider"></div>
+        <div class="wallet-btn">
+          <span class="identicon"></span>
+          <span class="wallet-addr">0x71...F4</span>
+        </div>
+        <button id="theme-toggle" class="btn-theme" title="Alternar Tema">☀️</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main>
+    <div class="main-container">
+
+      <!-- WELCOME / MARKET BANNER -->
+      <section class="welcome-card glass-panel">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 20px;">
+          <div>
+            <div class="live-indicator" style="margin-bottom: 8px;">
+              <span class="live-dot"></span> LIVE MARKET
+            </div>
+            <h2>FFC Sandbox $ASPBR</h2>
+            <p>Official Incubator Sandbox Token.</p>
+            <a href="#" class="label-badge" style="text-decoration: none; margin-top: 16px; padding: 10px 20px; font-weight: 700;">BUY TOKEN ↗</a>
+          </div>
+
+          <div style="text-align: right;">
+            <div id="price-display" class="value" style="margin: 0; font-size: 2.5rem;">$0.0000</div>
+            <div id="price-change" style="color: var(--success-color); font-family: 'JetBrains Mono'; font-size: 0.9rem; margin-top: 4px;">+0.05% (24h)</div>
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px; font-size: 0.8rem; color: var(--text-muted);">
+              <span id="liquidity-display">Liq: <strong style="color: #fff">$0</strong></span>
+              <span id="mcap-display">MCap: <strong style="color: #fff">$0</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- SVG Sparkline background -->
+        <div class="sparkline-container" style="position: absolute; bottom: 0; left: 0; right: 0; height: 60px; pointer-events: none; opacity: 0.4;">
+          <svg viewBox="0 0 100 120" preserveAspectRatio="none" style="width: 100%; height: 100%;">
+            <defs>
+              <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#00ff9d" stop-opacity="0.3"/>
+                <stop offset="100%" stop-color="#00ff9d" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path id="sparkline-fill" fill="url(#chartFill)"></path>
+            <path id="sparkline-path" fill="none" stroke="#00ff9d" stroke-width="2"></path>
+          </svg>
+        </div>
+      </section>
+
+      <!-- 3 TOP SUMMARY CARDS -->
+      <section class="summary-grid">
+        <div class="summary-card glass-panel">
+          <h3>NETWORK REQUESTS</h3>
+          <div id="lbl-total-requests" class="value">0</div>
+          <span class="label-badge">24h Activity</span>
+        </div>
+
+        <div class="summary-card glass-panel">
+          <h3>PROCESSED DATA</h3>
+          <div id="lbl-total-bytes" class="value">0 B</div>
+          <span class="label-badge">Throughput</span>
+        </div>
+
+        <div class="summary-card glass-panel">
+          <h3>GLOBAL USERS</h3>
+          <div id="lbl-uniques" class="value">0</div>
+          <span class="label-badge">Active Nodes</span>
+        </div>
+      </section>
+
+      <!-- TECH DASHBOARD (TWO COLUMNS) -->
+      <section class="tech-dashboard">
+        
+        <!-- LEFT COLUMN: GOVERNANCE CARD -->
+        <div class="col-system">
+          <div class="governance-card glass-panel">
+            <div class="logo-container">
+              <div class="logo-ring"></div>
+              <div style="font-size: 2rem;">⚡</div>
+            </div>
+
+            <h3 style="margin: 0; font-size: 1.3rem; font-weight: 700; color: var(--text-highlight);">FFC API System</h3>
+            <p style="margin: 4px 0 0; font-size: 0.85rem; color: var(--text-muted);">API Backend & Core Services</p>
+
+            <div class="status-badge">
+              <span class="dot"></span> Operational
+            </div>
+
+            <div class="sys-details">
+              <div class="sys-row">
+                <span>Version</span>
+                <span class="sys-val" style="color: #fff;">1.1.0</span>
+              </div>
+              <div class="sys-row">
+                <span>Service</span>
+                <span class="sys-val" style="color: #fff;">Central System API</span>
+              </div>
+              <div class="sys-row">
+                <span>Region</span>
+                <span class="sys-val" style="color: #fff;">Global</span>
+              </div>
+              <div class="sys-row">
+                <span>Cache Ratio</span>
+                <span id="lbl-cache-ratio" class="sys-val" style="color: var(--primary-glow);">0%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: INFRA & TRAFFIC -->
+        <div class="col-infra">
+          
+          <!-- TOP ROW: 3 METRIC CARDS -->
+          <div class="db-metrics-row">
+            <div class="metric-card glass-panel">
+              <div class="metric-title">STATE CHANGES (24H)</div>
+              <div id="lbl-reads" class="metric-value">0</div>
+              <div class="metric-bar">
+                <div id="bar-reads" class="bar-fill cyan" style="width: 15%;"></div>
+              </div>
+            </div>
+
+            <div class="metric-card glass-panel">
+              <div class="metric-title">LEDGER MUTATIONS</div>
+              <div id="lbl-writes" class="metric-value">0</div>
+              <div class="metric-bar">
+                <div id="bar-writes" class="bar-fill purple" style="width: 10%;"></div>
+              </div>
+            </div>
+
+            <div class="metric-card glass-panel">
+              <div class="metric-title">NODE OPERATIONS</div>
+              <div id="lbl-workload" class="metric-value">0</div>
+              <div class="metric-bar">
+                <div id="bar-workload" class="bar-fill cyan" style="width: 25%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- BOTTOM CARD: TRAFFIC ORIGIN -->
+          <div class="countries-card glass-panel">
+            <div class="card-header">
+              <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.9rem;">
+                <span>🌎</span> Traffic Origin
+              </div>
+              <div class="live-indicator">
+                <span class="live-dot"></span> LIVE
+              </div>
+            </div>
+
+            <div class="country-list-container">
+              <ul id="list-countries" class="countries-list" style="list-style: none; padding: 0; margin: 0;">
+                <li class="country-item"><span class="loading">Waiting for nodes...</span></li>
+              </ul>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-container" style="max-width: 1200px; margin: 0 auto; padding: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; font-size: 0.8rem; color: var(--text-muted); border-top: 1px solid var(--header-border);">
+      <div>
+        <strong>Final Fight Combat (FFC)</strong> &copy; 2026 Incubated by ASPPIBRA. All rights reserved.
+      </div>
+      <div style="display: flex; gap: 16px;">
+        <a href="#" style="color: var(--text-muted); text-decoration: none;">Docs</a>
+        <a href="#" style="color: var(--text-muted); text-decoration: none;">Suporte</a>
+      </div>
+      <div>
+        <span style="color: var(--success-color); font-weight: 600;">SYSTEM ONLINE 🟢</span> &bull; v 1.1.0 - GLOBAL_NODE &bull; Latency: <strong id="footer-latency">0ms</strong>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>

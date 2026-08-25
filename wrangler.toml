@@ -1,12 +1,12 @@
-name = "asppibra-api"
+name = "w3-api"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
 compatibility_flags = [ "nodejs_compat" ]
 
 [vars]
-FRONTEND_URL = "https://app.asppibra.com"
+FRONTEND_URL = "https://app.w3.com"
 JWT_EXPIRE_IN = "24h"
-SENDER_EMAIL = "suporte@asppibra.com"
+SENDER_EMAIL = "suporte@w3.com"
 
 [observability]
 enabled = true
@@ -23,7 +23,7 @@ enabled = true
 persist = true
 head_sampling_rate = 1
 
-# Servir arquivos estáticos do Dashboard Frontend nativo (CSS, JS, Imagens, Mocks)
+# Servir arquivos estáticos do Dashboard Frontend nativo
 [assets]
 directory = "public"
 
@@ -34,59 +34,59 @@ directory = "public"
 # Database
 [[d1_databases]]
 binding = "DB"
-database_name = "gov-db"
-database_id = "3640ec92-fb3c-4676-b9bc-174735fa3389"
+database_name = "w3-db"
+database_id = "cfd0e171-f2b5-48d4-bf29-a9cf33d97b4d"
 migrations_dir = "migrations"
 
 # Storage
 [[r2_buckets]]
 binding = "STORAGE"
-bucket_name = "socialfi"
+bucket_name = "w3-media"
 
 # Caching and Auth Speed (Nonces, Metrics)
 [[kv_namespaces]]
 binding = "KV_AUTH"
-id = "48d7f62733794b62b0a2c0f9049984e1"
+id = "5f8377a1e41d4869837debabbed2acfb"
 
 [[kv_namespaces]]
 binding = "KV_CACHE"
-id = "8a05d6f497e64e628fa34bde0622ffd4"
+id = "abb4df8656924422a3ccab4969e938d0"
 
 [ai]
 binding = "AI"
 
-# --- EMAIL INFRASTRUCTURE (FASE A) ---
+# --- EMAIL INFRASTRUCTURE ---
 
 # R2 - Armazenamento Seguro de Anexos
 [[r2_buckets]]
 binding = "R2_EMAIL_ATTACHMENTS"
-bucket_name = "asppibra-email-attachments"
+bucket_name = "w3-anexos"
 
-# Queues - Producer (Permite ao worker disparar eventos)
+# Queues - Producer
 [[queues.producers]]
 binding = "EMAIL_PIPELINE_QUEUE"
-queue = "email-pipeline-queue"
+queue = "w3-mail"
 
-# Queues - Consumer (Escuta os eventos do producer)
+# Queues - Consumer
 [[queues.consumers]]
-queue = "email-pipeline-queue"
+queue = "w3-mail"
 max_batch_size = 10
 max_batch_timeout = 5
 max_retries = 3
-dead_letter_queue = "email-pipeline-dlq"
+dead_letter_queue = "w3-mail-dlq"
 
-# --- CHAT INFRASTRUCTURE (FASE P1) ---
+# --- CHAT INFRASTRUCTURE ---
 
 [[queues.producers]]
 binding = "CHAT_PIPELINE_QUEUE"
-queue = "chat-pipeline-queue"
+queue = "w3-chat"
 
 [[queues.consumers]]
-queue = "chat-pipeline-queue"
+queue = "w3-chat"
 max_batch_size = 50
 max_batch_timeout = 2
 max_retries = 3
-dead_letter_queue = "chat-pipeline-dlq"
+dead_letter_queue = "w3-chat-dlq"
 
 [[durable_objects.bindings]]
 name = "CHAT_ROOM"
@@ -94,88 +94,4 @@ class_name = "ChatRoomDO"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["ChatRoomDO"]
-
-# ==============================================================
-# ENVIRONMENTS
-# ==============================================================
-
-[env.production]
-name = "asppibra-api"
-routes = [
-  { pattern = "api.asppibra.com", custom_domain = true }
-]
-
-[env.production.vars]
-FRONTEND_URL = "https://app.asppibra.com"
-JWT_EXPIRE_IN = "15m"
-SENDER_EMAIL = "suporte@asppibra.com"
-
-[[env.production.d1_databases]]
-binding = "DB"
-database_name = "gov-db"
-database_id = "3640ec92-fb3c-4676-b9bc-174735fa3389"
-migrations_dir = "migrations"
-
-[[env.production.r2_buckets]]
-binding = "STORAGE"
-bucket_name = "socialfi"
-
-[[env.production.r2_buckets]]
-binding = "R2_EMAIL_ATTACHMENTS"
-bucket_name = "asppibra-email-attachments"
-
-[[env.production.kv_namespaces]]
-binding = "KV_AUTH"
-id = "48d7f62733794b62b0a2c0f9049984e1"
-
-[[env.production.kv_namespaces]]
-binding = "KV_CACHE"
-id = "8a05d6f497e64e628fa34bde0622ffd4"
-
-[env.production.ai]
-binding = "AI"
-
-[[env.production.queues.producers]]
-binding = "EMAIL_PIPELINE_QUEUE"
-queue = "email-pipeline-queue"
-
-[[env.production.queues.consumers]]
-queue = "email-pipeline-queue"
-max_batch_size = 10
-max_batch_timeout = 5
-max_retries = 3
-dead_letter_queue = "email-pipeline-dlq"
-
-[[env.production.queues.producers]]
-binding = "CHAT_PIPELINE_QUEUE"
-queue = "chat-pipeline-queue"
-
-[[env.production.queues.consumers]]
-queue = "chat-pipeline-queue"
-max_batch_size = 50
-max_batch_timeout = 2
-max_retries = 3
-dead_letter_queue = "chat-pipeline-dlq"
-
-[[env.production.durable_objects.bindings]]
-name = "CHAT_ROOM"
-class_name = "ChatRoomDO"
-
-[env.staging]
-name = "asppibra-api-staging"
-[env.staging.vars]
-FRONTEND_URL = "https://staging.app.asppibra.com"
-JWT_EXPIRE_IN = "24h"
-SENDER_EMAIL = "suporte@asppibra.com"
-
-[[env.staging.kv_namespaces]]
-binding = "KV_AUTH"
-id = "mock-kv-auth-staging"
-
-[[env.staging.d1_databases]]
-binding = "DB"
-database_name = "gov-db"
-database_id = "3640ec92-fb3c-4676-b9bc-174735fa3389"
-migrations_dir = "migrations"
-
+new_sqlite_classes = ["ChatRoomDO"]

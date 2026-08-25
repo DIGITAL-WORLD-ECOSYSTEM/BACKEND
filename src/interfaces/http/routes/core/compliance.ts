@@ -1,11 +1,28 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { users, auditLogs } from '../../../../db/schema';
 import { authSignature } from '../../middlewares/auth_signature';
 import { timingSafeEqual } from '../../../../infrastructure/security/crypto/timing_safe';
-import { KycSubmit, KycReview } from '@asppibra/contracts/http';
 import { Bindings } from '../../../../types/bindings';
+
+const KycSubmit = {
+  Schema: z.object({
+    userId: z.number().int().positive('userId deve ser um número inteiro positivo'),
+    documentType: z.enum(['RG', 'CPF', 'CNH', 'PASSAPORTE', 'OUTROS'], {
+      message: 'Tipo de documento inválido',
+    }),
+  }),
+};
+
+const KycReview = {
+  Schema: z.object({
+    userId: z.number().int().positive('userId deve ser um número inteiro positivo'),
+    status: z.enum(['approved', 'rejected', 'pending'], { message: 'Status inválido' }),
+    reason: z.string().max(500).optional(),
+  }),
+};
 
 type AppType = { Bindings: Bindings; Variables: { db: any } };
 

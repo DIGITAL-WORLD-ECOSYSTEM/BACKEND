@@ -26,7 +26,7 @@ credentials.json
 service-account.json
 
 # ------------------------------------------------------
-# ⚡ Cloudflare Workers & Drizzle Meta
+# ⚡ Cloudflare Workers, Wrangler & Miniflare
 # ------------------------------------------------------
 .wrangler/
 .mf/
@@ -45,11 +45,14 @@ pnpm-debug.log*
 *.tsbuildinfo
 
 # ------------------------------------------------------
-# 💾 Banco de Dados Local & Logs
+# 💾 Banco de Dados Local, Temporários & Logs
 # ------------------------------------------------------
 *.sqlite
 *.sqlite3
 *.db
+*.db-journal
+*.db-shm
+*.db-wal
 
 logs/
 *.log
@@ -73,15 +76,16 @@ coverage/
 .vite/
 
 # ------------------------------------------------------
-# 🧪 Testes
+# 🧪 Testes & Coverage
 # ------------------------------------------------------
 jest-cache/
 vitest-cache/
 playwright-report/
 test-results/
+.vitest/
 
 # ------------------------------------------------------
-# 🖥️ OS & IDEs
+# 🖥️ OS, IDEs & Agent Temp Files
 # ------------------------------------------------------
 .DS_Store
 Thumbs.db
@@ -95,3 +99,5 @@ Thumbs.db
 *.swp
 *.swo
 *~
+.antigravity/
+.gemini/

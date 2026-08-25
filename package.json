@@ -1,5 +1,5 @@
 {
-  "name": "gov-system-backend",
+  "name": "w3",
   "version": "0.0.0",
   "private": true,
   "scripts": {
@@ -29,7 +29,6 @@
     "ws": "^8.21.1"
   },
   "dependencies": {
-    "@asppibra/contracts": "workspace:*",
     "@aws-sdk/client-s3": "^3.1036.0",
     "@aws-sdk/s3-request-presigner": "^3.1036.0",
     "@hono/zod-validator": "^0.7.5",

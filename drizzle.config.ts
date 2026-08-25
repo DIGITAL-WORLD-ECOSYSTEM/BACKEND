@@ -16,7 +16,7 @@ export default defineConfig({
   // Credenciais para conectar ao D1 (lê do wrangler.jsonc)
   dbCredentials: {
     accountId: '5d91807e648c183cb7833caa06dbcbdb', // Seu Account ID real
-    databaseId: '3640ec92-fb3c-4676-b9bc-174735fa3389', // Sincronizado com wrangler.toml
+    databaseId: 'cfd0e171-f2b5-48d4-bf29-a9cf33d97b4d', // Sincronizado com w3-db no wrangler.toml
     token: '', // Deixe vazio para rodar localmente com npx wrangler
   },
 
