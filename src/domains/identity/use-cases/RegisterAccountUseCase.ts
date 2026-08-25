@@ -35,7 +35,7 @@ export class RegisterAccountUseCase {
       const newUser = await userRepo.create({
         email: input.email.trim(),
         emailNormalized,
-        subjectType: 'human',
+        subjectType: 'citizen',
         status: 'active',
       });
 

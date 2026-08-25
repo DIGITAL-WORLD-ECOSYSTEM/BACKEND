@@ -88,7 +88,7 @@ export class IdentityController {
       });
 
       if (result.isFailure) {
-        return error(c, result.error, null, 401);
+        return error(c, result.error || 'Falha na autenticação Web3', null, 401);
       }
 
       const walletAuth = result.getValue();
@@ -120,7 +120,7 @@ export class IdentityController {
       });
 
       if (result.isFailure) {
-        return error(c, result.error, null, 401);
+        return error(c, result.error || 'Falha na autenticação Passkey', null, 401);
       }
 
       const passkeyAuth = result.getValue();

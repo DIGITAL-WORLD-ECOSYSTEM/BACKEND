@@ -27,7 +27,7 @@ export class AuthAuxiliaryController {
 
       const result = await this.setupTotpUseCase.execute({ userId: Number(userId) });
       if (result.isFailure) {
-        return error(c, result.error, null, 400);
+        return error(c, result.error || 'Erro ao configurar 2FA', null, 400);
       }
 
       return success(c, 'Configuração 2FA gerada com sucesso', result.getValue());
@@ -52,7 +52,7 @@ export class AuthAuxiliaryController {
 
       const result = await this.authenticateTotpUseCase.execute({ userId: Number(userId), code });
       if (result.isFailure) {
-        return error(c, result.error, null, 400);
+        return error(c, result.error || 'Código 2FA inválido', null, 400);
       }
 
       return success(c, 'Autenticação 2FA validada com sucesso', result.getValue());
@@ -76,7 +76,7 @@ export class AuthAuxiliaryController {
 
       const result = await this.requestPasswordResetUseCase.execute({ email });
       if (result.isFailure) {
-        return error(c, result.error, null, 400);
+        return error(c, result.error || 'Erro ao solicitar redefinição de senha', null, 400);
       }
 
       return success(c, 'Se o e-mail estiver cadastrado, as instruções de redefinição foram enviadas com sucesso.');
@@ -100,7 +100,7 @@ export class AuthAuxiliaryController {
 
       const result = await this.confirmPasswordResetUseCase.execute({ token, newPassword });
       if (result.isFailure) {
-        return error(c, result.error, null, 400);
+        return error(c, result.error || 'Erro ao confirmar redefinição de senha', null, 400);
       }
 
       return success(c, 'Senha redefinida com sucesso. Todas as sessões anteriores foram encerradas.');
@@ -124,7 +124,7 @@ export class AuthAuxiliaryController {
 
       const result = await this.refreshTokenUseCase.execute({ refreshToken });
       if (result.isFailure) {
-        return error(c, result.error, null, 401);
+        return error(c, result.error || 'Sessão ou refresh token inválido', null, 401);
       }
 
       return success(c, 'Sessão renovada com sucesso', result.getValue());

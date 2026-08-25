@@ -12,7 +12,8 @@ import { DrizzleAuthenticationRepositoryAdapter } from '../repositories/DrizzleA
 import { DrizzleWeb3RepositoryAdapter } from '../repositories/DrizzleWeb3RepositoryAdapter';
 import { DrizzleCivilIdentityRepositoryAdapter } from '../repositories/DrizzleCivilIdentityRepositoryAdapter';
 import { DrizzleSessionRepository } from './DrizzleSessionRepository';
-import { DrizzleSsiRepository, ISsiRepository } from './DrizzleSsiRepository';
+import { ISsiRepository } from '../../application/ports/output/ISsiRepository';
+import { DrizzleSsiRepository } from './DrizzleSsiRepository';
 import { DrizzleOutboxRepository } from './DrizzleOutboxRepository';
 import { DrizzlePasswordResetRepository } from './DrizzlePasswordResetRepository';
 import { Result } from '../../shared/kernel/Result';

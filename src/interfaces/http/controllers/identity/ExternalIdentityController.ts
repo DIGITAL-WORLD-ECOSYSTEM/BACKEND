@@ -57,7 +57,7 @@ export class ExternalIdentityController {
       });
 
       if (result.isFailure) {
-        return error(c, result.error, null, 400);
+        return error(c, result.error || 'Erro ao vincular identidade', null, 400);
       }
 
       return success(c, 'Identidade vinculada com sucesso', result.getValue());
@@ -91,8 +91,9 @@ export class ExternalIdentityController {
       });
 
       if (result.isFailure) {
-        const statusCode = result.error.includes('última credencial') ? 409 : 400;
-        return error(c, result.error, null, statusCode);
+        const errStr = result.error || 'Erro ao desvincular identidade';
+        const statusCode = errStr.includes('última credencial') ? 409 : 400;
+        return error(c, errStr, null, statusCode);
       }
 
       return success(c, 'Identidade desvinculada com sucesso', result.getValue());

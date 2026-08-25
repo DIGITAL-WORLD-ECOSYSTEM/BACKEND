@@ -7,8 +7,14 @@ export interface SecurityAuditEvent {
     | 'identity_login_failed'
     | 'identity_resolution_failed'
     | 'authentication_succeeded'
-    | 'authentication_failed';
-  readonly userId: number;
+    | 'authentication_failed'
+    | 'account_created'
+    | 'totp_verification_failed'
+    | 'totp_verification_succeeded'
+    | 'password_reset_requested'
+    | 'password_reset_confirmed'
+    | 'refresh_token_reuse_detected';
+  readonly userId?: number;
   readonly metadata: Record<string, unknown>;
   readonly timestamp?: Date;
 }
