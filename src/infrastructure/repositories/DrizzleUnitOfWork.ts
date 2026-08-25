@@ -4,12 +4,17 @@ import { IAuthenticationRepository } from '../../application/ports/output/IAuthe
 import { IWeb3Repository } from '../../application/ports/output/IWeb3Repository';
 import { ICivilIdentityRepository } from '../../application/ports/output/ICivilIdentityRepository';
 import { ISessionRepository } from '../../application/ports/output/ISessionRepository';
+import { IOutboxRepository } from '../../application/ports/output/IOutboxRepository';
+import { IPasswordResetRepository } from '../../application/ports/output/IPasswordResetRepository';
 
 import { DrizzleUserRepositoryAdapter } from '../repositories/DrizzleUserRepositoryAdapter';
 import { DrizzleAuthenticationRepositoryAdapter } from '../repositories/DrizzleAuthenticationRepositoryAdapter';
 import { DrizzleWeb3RepositoryAdapter } from '../repositories/DrizzleWeb3RepositoryAdapter';
 import { DrizzleCivilIdentityRepositoryAdapter } from '../repositories/DrizzleCivilIdentityRepositoryAdapter';
 import { DrizzleSessionRepository } from './DrizzleSessionRepository';
+import { DrizzleSsiRepository, ISsiRepository } from './DrizzleSsiRepository';
+import { DrizzleOutboxRepository } from './DrizzleOutboxRepository';
+import { DrizzlePasswordResetRepository } from './DrizzlePasswordResetRepository';
 import { Result } from '../../shared/kernel/Result';
 
 class DrizzleRepositoryFactory implements IRepositoryFactory {
@@ -33,6 +38,18 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
 
   getCivilIdentityRepository(): ICivilIdentityRepository {
     return new DrizzleCivilIdentityRepositoryAdapter(this.tx);
+  }
+
+  getSsiRepository(): ISsiRepository {
+    return new DrizzleSsiRepository(this.tx);
+  }
+
+  getOutboxRepository(): IOutboxRepository {
+    return new DrizzleOutboxRepository(this.tx);
+  }
+
+  getPasswordResetRepository(): IPasswordResetRepository {
+    return new DrizzlePasswordResetRepository(this.tx);
   }
 }
 
@@ -72,3 +89,4 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
     return await work(factory);
   }
 }
+

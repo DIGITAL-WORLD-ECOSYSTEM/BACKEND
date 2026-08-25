@@ -2,8 +2,7 @@ import { IDomainEvent } from '../../shared/kernel/DomainEvent';
 import { Result } from '../../shared/kernel/Result';
 import { IOutboxRepository, OutboxEventRecord } from '../../application/ports/output/IOutboxRepository';
 import { outboxEvents } from '../../db/infrastructure/tables';
-import { eq, asc, and } from 'drizzle-orm';
-import crypto from 'crypto';
+import { eq, asc, sql } from 'drizzle-orm';
 
 export class DrizzleOutboxRepository implements IOutboxRepository {
   // Recebe a instância do banco OU da transação (tx) ativa no UnitOfWork
@@ -11,8 +10,9 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
 
   async saveEvent(event: IDomainEvent, aggregateId: number, aggregateType: string, aggregateVersion: number): Promise<Result<void>> {
     try {
+      const eventId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
       await this.db.insert(outboxEvents).values({
-        id: crypto.randomUUID(),
+        id: eventId,
         aggregateId,
         aggregateType,
         aggregateVersion,
@@ -61,17 +61,19 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
 
   async markAsFailed(eventId: string, error: string): Promise<Result<void>> {
     try {
-      const event = await this.db.select().from(outboxEvents).where(eq(outboxEvents.id, eventId)).limit(1);
-      if (!event || event.length === 0) return Result.fail('Event not found');
-
-      await this.db
+      const result = await this.db
         .update(outboxEvents)
         .set({
-          attempts: event[0].attempts + 1,
+          attempts: sql`${outboxEvents.attempts} + 1`,
           error: error.substring(0, 500)
         })
-        .where(eq(outboxEvents.id, eventId));
+        .where(eq(outboxEvents.id, eventId))
+        .returning();
         
+      if (!result || result.length === 0) {
+        return Result.fail('Event not found');
+      }
+
       return Result.ok();
     } catch (err: any) {
       return Result.fail(`Failed to mark outbox event as failed: ${err.message}`);
@@ -79,7 +81,3 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
   }
 }
 
-export class EventRepository {
-  constructor(private db: any) {}
-  async append(event: any): Promise<void> {}
-}

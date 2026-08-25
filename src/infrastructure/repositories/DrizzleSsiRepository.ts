@@ -1,17 +1,15 @@
-import { eq, and } from 'drizzle-orm';
-import { didIdentities, secureVaults, verifiableCredentials } from '../../db/ssi/tables';
+import { eq, and, sql } from 'drizzle-orm';
+import { didIdentities } from '../../db/ssi/tables';
 import { Result } from '../../shared/kernel/Result';
+import {
+  ISsiRepository,
+  DidIdentityRecord,
+} from '../../application/ports/output/ISsiRepository';
 
-export interface DidIdentityRecord {
-  id: string; // UUID v4
-  userId: number;
-  did: string;
-  method: 'key' | 'ion' | 'polygonid' | 'web' | 'cheqd' | 'pkh';
-  controller: string;
-  status?: 'active' | 'suspended' | 'revoked';
-}
+export type { DidIdentityRecord };
 
-export class DrizzleSsiRepository {
+
+export class DrizzleSsiRepository implements ISsiRepository {
   constructor(private db: any) {}
 
   async findDidByUserId(userId: number): Promise<Result<DidIdentityRecord>> {
@@ -26,7 +24,15 @@ export class DrizzleSsiRepository {
         return Result.fail('DID identity not found');
       }
 
-      return Result.ok(result[0]);
+      return Result.ok({
+        id: result[0].id,
+        userId: result[0].userId,
+        did: result[0].did,
+        method: result[0].method,
+        controller: result[0].controller,
+        status: result[0].status,
+        version: result[0].version || 1,
+      });
     } catch (error: any) {
       return Result.fail(error.message);
     }
@@ -52,14 +58,30 @@ export class DrizzleSsiRepository {
           createdAt: new Date(),
           updatedAt: new Date(),
         });
+        record.version = 1;
       } else {
-        await this.db
+        const currentVersion = record.version ?? existing[0].version ?? 1;
+
+        const updated = await this.db
           .update(didIdentities)
           .set({
             status: record.status || 'active',
             updatedAt: new Date(),
+            version: sql`${didIdentities.version} + 1`,
           })
-          .where(eq(didIdentities.id, record.id));
+          .where(
+            and(
+              eq(didIdentities.id, record.id),
+              eq(didIdentities.version, currentVersion)
+            )
+          )
+          .returning();
+
+        if (!updated || updated.length === 0) {
+          return Result.fail('CONCURRENT_MODIFICATION_ERROR: DID identity was modified by another process');
+        }
+
+        record.version = currentVersion + 1;
       }
       return Result.ok(record);
     } catch (error: any) {
@@ -67,3 +89,4 @@ export class DrizzleSsiRepository {
     }
   }
 }
+

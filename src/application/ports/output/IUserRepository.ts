@@ -5,6 +5,7 @@ export interface UserRecord {
   emailNormalized: string | null;
   status: string;
   subjectType: string;
+  authEpoch?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,4 +22,6 @@ export interface IUserRepository {
   findByEmail(email: string): Promise<UserRecord | null>;
   create(data: CreateUserData): Promise<UserRecord>;
   updateStatus(id: number, status: 'active' | 'suspended' | 'pending'): Promise<void>;
+  incrementAuthEpoch?(userId: number): Promise<number>;
 }
+

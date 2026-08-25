@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { wallets } from '../../db/web3/tables';
 import {
   IWeb3Repository,
@@ -62,10 +62,39 @@ export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
         status: 'active',
         verificationStatus: 'verified',
         isPrimary: false,
+        version: 1,
       })
       .returning();
 
     return this.mapToRecord(newWallet);
+  }
+
+  async updateWallet(wallet: WalletRecord): Promise<WalletRecord> {
+    const currentVersion = wallet.version ?? 1;
+
+    const result = await this.db
+      .update(wallets)
+      .set({
+        isPrimary: wallet.isPrimary,
+        status: wallet.status,
+        verificationStatus: wallet.verificationStatus,
+        label: wallet.label,
+        updatedAt: new Date(),
+        version: sql`${wallets.version} + 1`,
+      })
+      .where(
+        and(
+          eq(wallets.id, wallet.id),
+          eq(wallets.version, currentVersion)
+        )
+      )
+      .returning();
+
+    if (!result || result.length === 0) {
+      throw new Error('CONCURRENT_MODIFICATION_ERROR: Wallet was updated by another process');
+    }
+
+    return this.mapToRecord(result[0]);
   }
 
   private mapToRecord(raw: any): WalletRecord {
@@ -83,6 +112,8 @@ export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
       verificationStatus: raw.verificationStatus,
       isPrimary: Boolean(raw.isPrimary),
       linkedAt: raw.linkedAt instanceof Date ? raw.linkedAt : new Date(raw.linkedAt || Date.now()),
+      version: raw.version || 1,
     };
   }
 }
+

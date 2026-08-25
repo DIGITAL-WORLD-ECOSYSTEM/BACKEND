@@ -12,6 +12,7 @@ export interface WalletRecord {
   verificationStatus: 'pending' | 'verified' | 'rejected';
   isPrimary: boolean;
   linkedAt: Date;
+  version?: number;
 }
 
 export interface LinkWalletData {
@@ -29,4 +30,6 @@ export interface IWeb3Repository {
   findByUserId(userId: number): Promise<WalletRecord[]>;
   findActiveByUserId(userId: number): Promise<WalletRecord | null>;
   linkExternalWallet(data: LinkWalletData): Promise<WalletRecord>;
+  updateWallet(wallet: WalletRecord): Promise<WalletRecord>;
 }
+

@@ -40,4 +40,31 @@ describe('DrizzleSsiRepository', () => {
     expect(result.isSuccess).toBe(true);
     expect(mockDb.insert).toHaveBeenCalled();
   });
+
+  it('should return failure on concurrent modification error during saveDid update', async () => {
+    const mockDb = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([{ id: '550e8400-e29b-41d4-a716-446655440000', version: 2 }]),
+      update: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([]), // 0 rows affected due to version conflict
+    };
+
+    const repo = new DrizzleSsiRepository(mockDb);
+    const record = {
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      userId: 1,
+      did: 'did:key:z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH',
+      method: 'key' as const,
+      controller: 'did:key:z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH',
+      version: 1, // Sending stale version 1 when DB is at version 2
+    };
+
+    const result = await repo.saveDid(record);
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('CONCURRENT_MODIFICATION_ERROR');
+  });
 });
+

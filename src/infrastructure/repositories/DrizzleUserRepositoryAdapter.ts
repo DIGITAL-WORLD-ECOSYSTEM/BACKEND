@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { users } from '../../db/user/tables';
 import {
   IUserRepository,
@@ -38,7 +38,7 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
     const normalized = (data.emailNormalized || data.email).toLowerCase().trim();
     const subjectType = data.subjectType === 'citizen' || !data.subjectType ? 'human' : data.subjectType;
 
-    await this.db
+    const [created] = await this.db
       .insert(users)
       .values({
         email: data.email.trim(),
@@ -46,13 +46,13 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
         subjectType,
         status: data.status || 'active',
         authEpoch: 1,
-      });
+      })
+      .returning();
 
-    const created = await this.findByEmail(normalized);
     if (!created) {
-      throw new Error('Falha ao recuperar usuário recém-criado no D1.');
+      throw new Error('Falha ao criar usuário no D1.');
     }
-    return created;
+    return this.mapToRecord(created);
   }
 
   async updateStatus(id: number, status: 'active' | 'suspended' | 'pending'): Promise<void> {
@@ -60,6 +60,22 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
       .update(users)
       .set({ status })
       .where(eq(users.id, id));
+  }
+
+  async incrementAuthEpoch(userId: number): Promise<number> {
+    const [updated] = await this.db
+      .update(users)
+      .set({
+        authEpoch: sql`${users.authEpoch} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!updated) {
+      throw new Error('User not found to increment authEpoch');
+    }
+    return updated.authEpoch;
   }
 
   private mapToRecord(raw: any): UserRecord {
@@ -70,8 +86,10 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
       emailNormalized: raw.emailNormalized || raw.email,
       status: raw.status || 'active',
       subjectType: raw.subjectType || 'human',
+      authEpoch: raw.authEpoch || 1,
       createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt ? raw.createdAt * 1000 : Date.now()),
       updatedAt: raw.updatedAt instanceof Date ? raw.updatedAt : new Date(raw.updatedAt ? raw.updatedAt * 1000 : Date.now()),
     };
   }
 }
+
