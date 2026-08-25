@@ -27,7 +27,7 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
     const [user] = await this.db
       .select()
       .from(users)
-      .where(eq(users.email, normalized))
+      .where(eq(users.emailNormalized, normalized))
       .limit(1);
 
     if (!user) return null;
@@ -36,17 +36,23 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
 
   async create(data: CreateUserData): Promise<UserRecord> {
     const normalized = (data.emailNormalized || data.email).toLowerCase().trim();
-    const [newUser] = await this.db
+    const subjectType = data.subjectType === 'citizen' || !data.subjectType ? 'human' : data.subjectType;
+
+    await this.db
       .insert(users)
       .values({
-        email: data.email,
+        email: data.email.trim(),
         emailNormalized: normalized,
-        subjectType: data.subjectType || 'citizen',
+        subjectType,
         status: data.status || 'active',
-      })
-      .returning();
+        authEpoch: 1,
+      });
 
-    return this.mapToRecord(newUser);
+    const created = await this.findByEmail(normalized);
+    if (!created) {
+      throw new Error('Falha ao recuperar usuário recém-criado no D1.');
+    }
+    return created;
   }
 
   async updateStatus(id: number, status: 'active' | 'suspended' | 'pending'): Promise<void> {
@@ -63,9 +69,9 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
       email: raw.email,
       emailNormalized: raw.emailNormalized || raw.email,
       status: raw.status || 'active',
-      subjectType: raw.subjectType || 'citizen',
-      createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt || Date.now()),
-      updatedAt: raw.updatedAt instanceof Date ? raw.updatedAt : new Date(raw.updatedAt || Date.now()),
+      subjectType: raw.subjectType || 'human',
+      createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt ? raw.createdAt * 1000 : Date.now()),
+      updatedAt: raw.updatedAt instanceof Date ? raw.updatedAt : new Date(raw.updatedAt ? raw.updatedAt * 1000 : Date.now()),
     };
   }
 }
