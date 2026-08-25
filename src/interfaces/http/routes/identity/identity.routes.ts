@@ -5,10 +5,16 @@ import { PBKDF2PasswordHasher } from '../../../../infrastructure/security/crypto
 import { JwtService } from '../../../../infrastructure/security/jwt/JwtService';
 import { SecurityAuditAdapter } from '../../../../infrastructure/security/SecurityAuditAdapter';
 import { DrizzleSessionRepository } from '../../../../infrastructure/repositories/DrizzleSessionRepository';
+import { DrizzleIdentityResolverAdapter } from '../../../../infrastructure/repositories/DrizzleIdentityResolverAdapter';
+import { Eip4361Verifier } from '../../../../infrastructure/security/crypto/Eip4361Verifier';
+
 import { AuthenticateAccountUseCase } from '../../../../domains/identity/use-cases/AuthenticateAccountUseCase';
 import { RegisterAccountUseCase } from '../../../../domains/identity/use-cases/RegisterAccountUseCase';
+import { VerifyWalletIdentityUseCase } from '../../../../domains/identity/use-cases/VerifyWalletIdentityUseCase';
+import { VerifyPasskeyIdentityUseCase } from '../../../../domains/identity/use-cases/VerifyPasskeyIdentityUseCase';
 import { LinkExternalIdentityUseCase } from '../../../../domains/identity/use-cases/LinkExternalIdentityUseCase';
 import { UnlinkExternalIdentityUseCase } from '../../../../domains/identity/use-cases/UnlinkExternalIdentityUseCase';
+
 import { IdentityController } from '../../controllers/identity/IdentityController';
 import { ExternalIdentityController } from '../../controllers/identity/ExternalIdentityController';
 import { rateLimit } from '../../middlewares/rate_limit';
@@ -21,7 +27,7 @@ type AppType = {
 const identityRouter = new Hono<AppType>();
 
 // ----------------------------------------------------------------------------
-// 1. CANONICAL REGISTER & LOGIN
+// 1. CANONICAL REGISTER & LOGIN (LOCAL, WEB3 SIWE, PASSKEY)
 // ----------------------------------------------------------------------------
 identityRouter.post(
   '/register',
@@ -57,6 +63,60 @@ identityRouter.post(
     const controller = new IdentityController(authenticateUseCase, jwtService, sessionRepo);
 
     return controller.loginLocal(c);
+  }
+);
+
+identityRouter.post(
+  '/login/web3',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const hasher = new PBKDF2PasswordHasher();
+    const jwtService = new JwtService();
+    const auditAdapter = new SecurityAuditAdapter(db);
+    const sessionRepo = new DrizzleSessionRepository(db);
+    const resolverAdapter = new DrizzleIdentityResolverAdapter(db);
+    const siweVerifier = new Eip4361Verifier();
+
+    const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
+    const verifyWalletUseCase = new VerifyWalletIdentityUseCase(siweVerifier, resolverAdapter, auditAdapter);
+    const controller = new IdentityController(
+      authenticateUseCase,
+      jwtService,
+      sessionRepo,
+      undefined,
+      verifyWalletUseCase
+    );
+
+    return controller.loginWeb3(c);
+  }
+);
+
+identityRouter.post(
+  '/login/passkey',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const hasher = new PBKDF2PasswordHasher();
+    const jwtService = new JwtService();
+    const auditAdapter = new SecurityAuditAdapter(db);
+    const sessionRepo = new DrizzleSessionRepository(db);
+    const resolverAdapter = new DrizzleIdentityResolverAdapter(db);
+
+    const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
+    const verifyPasskeyUseCase = new VerifyPasskeyIdentityUseCase(resolverAdapter, auditAdapter);
+    const controller = new IdentityController(
+      authenticateUseCase,
+      jwtService,
+      sessionRepo,
+      undefined,
+      undefined,
+      verifyPasskeyUseCase
+    );
+
+    return controller.loginPasskey(c);
   }
 );
 

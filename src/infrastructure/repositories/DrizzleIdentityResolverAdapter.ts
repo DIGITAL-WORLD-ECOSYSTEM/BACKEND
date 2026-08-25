@@ -1,8 +1,7 @@
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { IIdentityResolverPort } from '../../application/ports/output/IIdentityResolverPort';
 import { IdentityAssertion } from '../../application/dto/IdentityAssertion';
 import { IdentityResolutionResult } from '../../application/dto/IdentityResolutionResult';
-import { userExternalIdentities } from '../../db/authentication/tables';
 import { wallets } from '../../db/web3/tables';
 import { webauthnCredentials, userAuthenticators } from '../../db/authentication/tables';
 import { didIdentities } from '../../db/ssi/tables';
@@ -13,21 +12,16 @@ export class DrizzleIdentityResolverAdapter implements IIdentityResolverPort {
   async resolve(assertion: IdentityAssertion): Promise<IdentityResolutionResult> {
     switch (assertion.type) {
       case 'oauth': {
-        const [identity] = await this.db
-          .select({ userId: userExternalIdentities.userId })
-          .from(userExternalIdentities)
-          .where(
-            and(
-              eq(userExternalIdentities.provider, assertion.provider),
-              eq(userExternalIdentities.providerSubjectId, assertion.subjectId)
-            )
-          )
+        const [authenticator] = await this.db
+          .select({ userId: userAuthenticators.userId })
+          .from(userAuthenticators)
+          .where(eq(userAuthenticators.id, assertion.subjectId))
           .limit(1);
 
-        if (identity) {
+        if (authenticator) {
           return {
             status: 'resolved',
-            userId: identity.userId,
+            userId: authenticator.userId,
             bindingType: 'oauth',
             provider: assertion.provider,
           };
