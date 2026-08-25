@@ -1,13 +1,13 @@
 import { eq, and, sql } from 'drizzle-orm';
-import { didIdentities } from '../../db/ssi/tables';
+import { didIdentities, verifiableCredentials } from '../../db/ssi/tables';
 import { Result } from '../../shared/kernel/Result';
 import {
   ISsiRepository,
   DidIdentityRecord,
+  VerifiableCredentialRecord,
 } from '../../application/ports/output/ISsiRepository';
 
-export type { DidIdentityRecord };
-
+export type { DidIdentityRecord, VerifiableCredentialRecord };
 
 export class DrizzleSsiRepository implements ISsiRepository {
   constructor(private db: any) {}
@@ -88,5 +88,106 @@ export class DrizzleSsiRepository implements ISsiRepository {
       return Result.fail(error.message);
     }
   }
-}
 
+  async saveVerifiableCredential(
+    record: VerifiableCredentialRecord
+  ): Promise<Result<VerifiableCredentialRecord>> {
+    try {
+      await this.db.insert(verifiableCredentials).values({
+        id: record.id,
+        holderUserId: record.holderUserId,
+        issuerDid: record.issuerDid,
+        subjectDid: record.subjectDid,
+        credentialType: record.credentialType,
+        credentialHash: record.credentialHash,
+        encryptedClaims: record.encryptedClaims,
+        proofType: record.proofType,
+        status: record.status || 'active',
+        issuanceDate: record.issuanceDate,
+        expirationDate: record.expirationDate || null,
+        version: 1,
+      });
+
+      return Result.ok(record);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async findVerifiableCredentialById(id: string): Promise<Result<VerifiableCredentialRecord>> {
+    try {
+      const [row] = await this.db
+        .select()
+        .from(verifiableCredentials)
+        .where(eq(verifiableCredentials.id, id))
+        .limit(1);
+
+      if (!row) return Result.fail('Verifiable Credential not found');
+
+      return Result.ok({
+        id: row.id,
+        holderUserId: row.holderUserId,
+        issuerDid: row.issuerDid,
+        subjectDid: row.subjectDid,
+        credentialType: row.credentialType as any,
+        credentialHash: row.credentialHash,
+        encryptedClaims: row.encryptedClaims,
+        proofType: row.proofType as any,
+        status: row.status as any,
+        issuanceDate: new Date(row.issuanceDate),
+        expirationDate: row.expirationDate ? new Date(row.expirationDate) : null,
+        revokedAt: row.revokedAt ? new Date(row.revokedAt) : null,
+        version: row.version,
+      });
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async listVerifiableCredentialsByUserId(
+    userId: number
+  ): Promise<Result<VerifiableCredentialRecord[]>> {
+    try {
+      const rows = await this.db
+        .select()
+        .from(verifiableCredentials)
+        .where(eq(verifiableCredentials.holderUserId, userId));
+
+      const credentials: VerifiableCredentialRecord[] = rows.map((row: any) => ({
+        id: row.id,
+        holderUserId: row.holderUserId,
+        issuerDid: row.issuerDid,
+        subjectDid: row.subjectDid,
+        credentialType: row.credentialType,
+        credentialHash: row.credentialHash,
+        encryptedClaims: row.encryptedClaims,
+        proofType: row.proofType,
+        status: row.status,
+        issuanceDate: new Date(row.issuanceDate),
+        expirationDate: row.expirationDate ? new Date(row.expirationDate) : null,
+        revokedAt: row.revokedAt ? new Date(row.revokedAt) : null,
+        version: row.version,
+      }));
+
+      return Result.ok(credentials);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async revokeVerifiableCredential(id: string): Promise<Result<void>> {
+    try {
+      await this.db
+        .update(verifiableCredentials)
+        .set({
+          status: 'revoked',
+          revokedAt: new Date(),
+        })
+        .where(eq(verifiableCredentials.id, id));
+
+      return Result.ok(undefined);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+}

@@ -7,6 +7,7 @@ import { ISessionRepository } from './ISessionRepository';
 import { IOutboxRepository } from './IOutboxRepository';
 import { IPasswordResetRepository } from './IPasswordResetRepository';
 import { ISsiRepository } from './ISsiRepository';
+import { IFinanceRepository } from './IFinanceRepository';
 
 export interface IRepositoryFactory {
   getUserRepository(): IUserRepository;
@@ -17,7 +18,9 @@ export interface IRepositoryFactory {
   getSsiRepository(): ISsiRepository;
   getOutboxRepository(): IOutboxRepository;
   getPasswordResetRepository(): IPasswordResetRepository;
+  getFinanceRepository(): IFinanceRepository;
 }
+
 
 export interface IUnitOfWork {
   execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>>;

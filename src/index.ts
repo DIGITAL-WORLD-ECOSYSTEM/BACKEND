@@ -19,6 +19,10 @@ import healthRouter from './interfaces/http/routes/core/health';
 import webhooksRouter from './interfaces/http/routes/core/webhooks';
 import complianceRouter from './interfaces/http/routes/core/compliance';
 import identityRouter from './interfaces/http/routes/identity/identity.routes';
+import { civilIdentityRouter } from './interfaces/http/routes/civil-identity/civil_identity.routes';
+import { ssiRouter } from './interfaces/http/routes/ssi/ssi.routes';
+import { financeRouter } from './interfaces/http/routes/finance/finance.routes';
+
 
 // Configuração de Tipagem do Hono
 type AppType = {
@@ -192,6 +196,9 @@ app.route('/api/core/compliance', complianceRouter);
 app.route('/api/core/health', healthRouter);
 app.route('/api/core/webhooks', webhooksRouter);
 app.route('/api/v1/identity', identityRouter);
+app.route('/api/v1/civil', civilIdentityRouter);
+app.route('/api/v1/ssi', ssiRouter);
+app.route('/api/v1/finance', financeRouter);
 
 // =================================================================
 // 4. TRATAMENTO DE ERROS & EXPORT

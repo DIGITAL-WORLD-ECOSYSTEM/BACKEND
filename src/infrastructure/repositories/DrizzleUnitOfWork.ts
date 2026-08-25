@@ -16,6 +16,8 @@ import { ISsiRepository } from '../../application/ports/output/ISsiRepository';
 import { DrizzleSsiRepository } from './DrizzleSsiRepository';
 import { DrizzleOutboxRepository } from './DrizzleOutboxRepository';
 import { DrizzlePasswordResetRepository } from './DrizzlePasswordResetRepository';
+import { IFinanceRepository } from '../../application/ports/output/IFinanceRepository';
+import { DrizzleFinanceRepository } from './DrizzleFinanceRepository';
 import { Result } from '../../shared/kernel/Result';
 
 class DrizzleRepositoryFactory implements IRepositoryFactory {
@@ -52,7 +54,12 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
   getPasswordResetRepository(): IPasswordResetRepository {
     return new DrizzlePasswordResetRepository(this.tx);
   }
+
+  getFinanceRepository(): IFinanceRepository {
+    return new DrizzleFinanceRepository(this.tx);
+  }
 }
+
 
 export class DrizzleUnitOfWork implements IUnitOfWork {
   constructor(private db: any) {}
