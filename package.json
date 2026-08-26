@@ -7,7 +7,11 @@
     "dev:remote": "wrangler dev --remote",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply w3-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply w3-db --remote",
     "lint": "tsc --noEmit",
+
     "format:check": "prettier --check .",
     "cf-typegen": "wrangler types"
   },
