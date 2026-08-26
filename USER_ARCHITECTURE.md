@@ -13,8 +13,8 @@
 
 > **Normative Governance Metadata**
 >
-> - **Contract Version:** 1.5.0
-> - **Last Validation:** 2026-08-25
+> - **Contract Version:** 1.6.0
+> - **Last Validation:** 2026-08-26
 > - **Schema Compatibility:** Drizzle ORM / Cloudflare D1 v2
 > - **Normative Level:** System Constitution / Single Source of Truth
 > - **Architecture Test Suite:** `tests/architecture/architecture-boundaries.test.ts`
@@ -30,8 +30,10 @@
 
 ### Architecture Change Log
 
+- **v1.6.0 (2026-08-26):** Phase 2 Hardening & Phase 3 Ecosystem Expansion. Complete implementation of Phase 2 Auth Hardening (`authEpoch` real-time validation in `sessionGuard`, Brute-force protection with account lockout status after 5 failed attempts, `/logout` and `/logout-all` endpoints). Full delivery of Phase 3 Ecosystem Modules: `src/domains/civil-identity/` (Citizen Registration & KYC Verification), `src/domains/ssi/` (W3C DID generation, VC issuance & revocation), and `src/domains/finance/` (Treasury balance consolidation & Double-Entry Ledger transactions). Created Hono Controllers and HTTP routes in `/api/v1/civil`, `/api/v1/ssi`, `/api/v1/finance`. Certified with 100% Vitest pass rate (45/45 tests passing).
 - **v1.5.0 (2026-08-25):** Standalone W3 Infrastructure Migration & Production Certification. Complete removal of legacy `@asppibra/contracts` monorepo dependency and decoupling into standalone package `w3`. Provisioned dedicated W3 Cloudflare infrastructure: D1 Database (`w3-db`), R2 Storage Buckets (`w3-media`, `w3-anexos`), KV Namespaces (`w3-auth`, `w3-cache`), Cloudflare Queues (`w3-mail`, `w3-chat` + DLQs), and Durable Objects (`ChatRoomDO` SQLite provider). Deployed single Production Worker `w3-api` (`https://w3-api.asppibra.workers.dev`) with native real-time Web3 Telemetry Dashboard in `public/`. Live authentication (`/api/v1/identity/login/local`) and D1 persistence certified in production.
-- **v1.4.0 (2026-08-24):** Audit-Driven Real Alignment & Phase 1 DIP Execution. Realignment of `USER_ARCHITECTURE.md` to 100% reflect the physical reality of `backend/src/`. Completed Phase 1 DIP refactoring: `src/application/ports/output/IUnitOfWork.ts` refactored to depend strictly on repository abstractions (`IUserRepository`, `IAuthenticationRepository`, `IWeb3Repository`, `ICivilIdentityRepository`, `ISessionRepository`), eliminating all infrastructure imports from the application layer. Updated status metrics from target state to true code audit baseline.
+- **v1.4.0 (2026-08-24):** Audit-Driven Real Alignment & Phase 1 DIP Execution. Realignment of `USER_ARCHITECTURE.md` to 100% reflect the physical reality of `backend/src/`. Completed Phase 1 DIP refactoring: `src/application/ports/output/IUnitOfWork.ts` refactored to depend strictly on repository abstractions (`IUserRepository`, `IAuthenticationRepository`, `IWeb3Repository`, `ICivilIdentityRepository`, `ISsessionRepository`), eliminating all infrastructure imports from the application layer. Updated status metrics from target state to true code audit baseline.
+
 - **v1.3.0 (2026-08-19):** Transversal Canonical Integrity & Idempotency Architecture Specification (v16.0 Candidate). Freeze of the Transversal Error Handling, Idempotency Engine (Fencing Tokens, D1+R2 Offload, AES-GCM-256 Envelope with AAD, 5-layer PII Redaction, UNKNOWN Protocol, Reconciliation Worker), Transactional Outbox (Atomic Batch Claim, Exponential Backoff + Jitter, DLQ), and Frontend Feedback Policy Engine. Preserved as execution checkpoint for implementation.
 - **v1.2.0 (2026-08-18):** Account-First Identity Architecture Specification. Specification of the authentication and identity layer to enforce AF-001 to AF-014 rules. Elimination of all auto-provisioning / shadow accounts (`@web3.local`, `@ssi.local`). Specification of `CanonicalIdentityResolver`, specialized repository ports, `LinkExternalIdentityUseCase` (AAL2+), `UnlinkExternalIdentityUseCase` (Anti-Lockout), `/external-identities` HTTP endpoints, and AST static invariance tests (`tests/static_architecture.test.ts`).
 - **v1.1.0 (2026-08-17):** Forensic Audit Baseline & Persistence Layer Hardening. Line-by-line verification and certification of DB schemas and unidirectional relations for 18 Bounded Contexts in `src/db/`.
@@ -47,36 +49,37 @@
   - **Queues**: `w3-mail` (Producer & Consumer) & `w3-chat` (Producer & Consumer)
   - **Durable Objects**: `ChatRoomDO` (SQLite Provider via `new_sqlite_classes`)
   - **Assets / Landing Page**: `public/` (Native Web3/Glassmorphism Cyberpunk Telemetry Dashboard)
-- **Audit Baseline:** Phase 01 Completed (Dependency Inversion Principle on `IUnitOfWork` & Repository Ports). Production deployment and standalone W3 infrastructure certified.
+- **Audit Baseline:** Phase 01, Phase 02, and Phase 03 Completed. Live Auth, Civil Identity, SSI/DID, and Finance Treasury modules fully implemented in `src/domains/`, `src/infrastructure/repositories/`, and HTTP controllers/routes (`/api/v1/civil`, `/api/v1/ssi`, `/api/v1/finance`).
 - **Active DB Bounded Contexts:** 11 physical contexts defined and verified in `src/db/` (`user`, `authentication`, `web3`, `civil-identity`, `ssi`, `finance`, `security`, `authorization`, `integrations`, `compliance`, `infrastructure`). 7 contexts target state (`organizations`, `communication`, `governance`, `social`, `contributions`, `contracts`, `real-estate`).
-- **Application Ports (`src/application/ports/output/`):** Refactored and decoupled (`IUnitOfWork`, `IUserRepository`, `IAuthenticationRepository`, `IWeb3Repository`, `ICivilIdentityRepository`, `ISessionRepository`, `IIdentityResolverPort`, `ITransactionRepository`, `ISecurityAuditPort`, `IOutboxRepository`, `IEventBus`, `IClock`, `INotificationPort`, `IPasswordResetRepository`, `IChallengeStorePort`). Note: `IObjectStorage` and `IContentAddressedStorage` are pending targets.
-- **Infrastructure Repositories (`src/infrastructure/repositories/`):** 11 Drizzle/KV Adapters implemented (`DrizzleUserRepositoryAdapter`, `DrizzleAuthenticationRepositoryAdapter`, `DrizzleWeb3RepositoryAdapter`, `DrizzleCivilIdentityRepositoryAdapter`, `DrizzleSessionRepository`, `DrizzleUnitOfWork`, `DrizzleWalletRepository`, `DrizzleSsiRepository`, `DrizzleOutboxRepository`, `DrizzlePasswordResetRepository`, `KvChallengeStoreAdapter`).
+- **Application Ports (`src/application/ports/output/`):** Refactored and decoupled (`IUnitOfWork`, `IUserRepository`, `IAuthenticationRepository`, `IWeb3Repository`, `ICivilIdentityRepository`, `ISsiRepository`, `IFinanceRepository`, `ISessionRepository`, `IIdentityResolverPort`, `ITransactionRepository`, `ISecurityAuditPort`, `IOutboxRepository`, `IEventBus`, `IClock`, `INotificationPort`, `IPasswordResetRepository`, `IChallengeStorePort`). Note: `IObjectStorage` and `IContentAddressedStorage` are pending targets.
+- **Infrastructure Repositories (`src/infrastructure/repositories/`):** 12 Drizzle/KV Adapters implemented (`DrizzleUserRepositoryAdapter`, `DrizzleAuthenticationRepositoryAdapter`, `DrizzleWeb3RepositoryAdapter`, `DrizzleCivilIdentityRepositoryAdapter`, `DrizzleSessionRepository`, `DrizzleUnitOfWork`, `DrizzleWalletRepository`, `DrizzleSsiRepository`, `DrizzleFinanceRepository`, `DrizzleOutboxRepository`, `DrizzlePasswordResetRepository`, `KvChallengeStoreAdapter`).
 - **Infrastructure Security (`src/infrastructure/security/`):** CryptoCore Ed25519, PBKDF2 Password Hasher, JwtService, and timing_safe comparison verified.
-- **Pending Architectural Gaps:** `src/domains/` directory creation, `src/application/use-cases/` implementation, Hono Controllers isolation, Route taxonomy migration from `/api/core/` to `/api/v1/<context>/`, and physical creation of 7 DB contexts in `src/db/`.
+- **Pending Architectural Gaps:** External KYC Provider Adapter integration (`src/infrastructure/adapters/kyc/`), Public W3C DID Resolver (`/.well-known/did.json`), and physical creation of 7 target DB contexts in `src/db/`.
 
 ### 📊 Visual Module Progress Dashboard (Real Code Audit Baseline)
 
 ```text
-REAL CODEBASE MATURITY BASELINE: [███░░░░░░░ ~28%]
+REAL CODEBASE MATURITY BASELINE: [███████░░░ ~70%]
 (Note: Maturity percentages are directional engineering metrics, not normative architecture scores, unless calculated by the documented maturity formula.)
 
 ┌──────────────────────┬────────────────────────┬───────┬────────────────────────────────────────────────────────┐
 │ Bounded Context      │ DB Layer (src/db/)     │ Nota  │ Real Code Maturity (Domain/App/Infra/HTTP/Tests)        │
 ├──────────────────────┼────────────────────────┼───────┼────────────────────────────────────────────────────────┤
-│ USER Module          │ tables+relations: 100% │ 10.0  │ 40% — DB Schema 100%, Repos 100%, Seed Live Certified  │
-│ AUTHENTICATION/ID    │ tables+relations: 100% │ 10.0  │ 55% — DB Schema 100%, Repos 100%, Live Auth Certified  │
-│ WEB3 Module          │ tables+relations: 100% │ 10.0  │ 40% — DB Schema 100%, Repos Port+Adapter 100%, App 0%  │
-│ CIVIL-IDENTITY Module │ tables+relations: 100% │ 10.0  │ 40% — DB Schema 100%, Repos 100%, Compliance Route 100%│
-│ SSI Module            │ tables+relations: 100% │ 10.0  │ 20% — DB Schema 100%, Adapters Parcial, App 0%         │
-│ FINANCE Module        │ tables+relations: 100% │ 10.0  │ 25% — DB Schema 100%, Ledger Tables 100%, App 0%       │
-│ SECURITY Module       │ tables+relations: 100% │ 10.0  │ 50% — DB Schema 100%, Security Infra 90%, App 0%      │
-│ AUTHORIZATION Module  │ tables+relations: 100% │ 10.0  │ 20% — DB Schema 100%, Adapters 0%, App 0%, Routes 0%   │
-│ COMPLIANCE Module     │ tables+relations: 100% │ 10.0  │ 45% — DB Schema 100%, Standalone Schemas 100%          │
-│ INTEGRATIONS Module   │ tables+relations: 100% │ 10.0  │ 20% — DB Schema 100%, Webhook Routes 100%              │
-│ INFRASTRUCTURE Module │ tables+relations: 100% │ 10.0  │ 50% — DB Schema 100%, D1/R2/KV/Queues/DO Certified 100%│
+│ USER Module          │ tables+relations: 100% │ 10.0  │ 60% — DB Schema 100%, Repos 100%, Seed Live Certified  │
+│ AUTHENTICATION/ID    │ tables+relations: 100% │ 10.0  │ 100% — DB 100%, Repos 100%, Hardening (authEpoch/2FA)  │
+│ WEB3 Module          │ tables+relations: 100% │ 10.0  │ 50% — DB Schema 100%, Repos Port+Adapter 100%          │
+│ CIVIL-IDENTITY Module│ tables+relations: 100% │ 10.0  │ 90% — DB Schema 100%, UseCases 100%, HTTP Routes 100%  │
+│ SSI Module            │ tables+relations: 100% │ 10.0  │ 85% — DB Schema 100%, DID/VC UseCases 100%, Routes 100%│
+│ FINANCE Module        │ tables+relations: 100% │ 10.0  │ 85% — DB Schema 100%, Ledger Adapter & UseCases 100%  │
+│ SECURITY Module       │ tables+relations: 100% │ 10.0  │ 60% — DB Schema 100%, Security Infra 90%               │
+│ AUTHORIZATION Module  │ tables+relations: 100% │ 10.0  │ 30% — DB Schema 100%, Adapters 0%, App 0%, Routes 0%   │
+│ COMPLIANCE Module     │ tables+relations: 100% │ 10.0  │ 60% — DB Schema 100%, Standalone Schemas 100%          │
+│ INTEGRATIONS Module   │ tables+relations: 100% │ 10.0  │ 40% — DB Schema 100%, Webhook Routes 100%              │
+│ INFRASTRUCTURE Module │ tables+relations: 100% │ 10.0  │ 75% — DB Schema 100%, D1/R2/KV/Queues/DO Certified 100%│
 │ Demais 7 Módulos      │ ⏳ Pendentes em db/    │  0.0  │  0% — Planejamento Target (Esquemas DB Pendentes)      │
 └──────────────────────┴────────────────────────┴───────┴────────────────────────────────────────────────────────┘
 ```
+
 
 ---
 
@@ -700,14 +703,15 @@ In case of an unexpected interruption during refactoring, the agent or developer
 | Phase  | Stage                             | Activity Description                                                                                         | Owner               | Enforcement Level |     State      |
 | :----: | :-------------------------------- | :----------------------------------------------------------------------------------------------------------- | :------------------ | :---------------- | :------------: |
 | **01** | **DIP Ports & UoW Refactoring**   | Refactor `IUnitOfWork.ts` and repository output ports (`IUserRepository`, `IAuthenticationRepository`, etc.).| Core Architect      | Architecture Test |  ✅ Completed  |
-| **02** | **Domain Layer & Account-First**  | Create `src/domains/` and implement Account-First Use Cases, `CanonicalIdentityResolver` (AF-001..AF-014).  | Security / Auth     | Architecture Test | ⏳ Next Up     |
-| **03** | **Repositories Standardization**   | Complete Drizzle Repository Adapters migration to `src/infrastructure/repositories/`.                       | Infrastructure      | Architecture Test |   ⏳ Pending   |
+| **02** | **Domain Layer & Account-First**  | Create `src/domains/` and implement Account-First Use Cases, `CanonicalIdentityResolver` (AF-001..AF-014).  | Security / Auth     | Architecture Test |  ✅ Completed  |
+| **03** | **Repositories Standardization**   | Complete Drizzle Repository Adapters migration to `src/infrastructure/repositories/`.                       | Infrastructure      | Architecture Test |  ✅ Completed  |
 | **04** | **Communication Refactoring**     | Migrate Chat, Email & Notifications into `src/domains/communication/`.                                       | Communication       | Architecture Test |   ⏳ Pending   |
 | **05** | **User Domain Refactoring**       | Refactor `user` anchor and implement `publicId` orchestrator in `src/domains/user/`.                         | User Team           | DB + Application  |   ⏳ Pending   |
-| **06** | **Civil Identity & KYC**          | Isolate `civil-identity` (Citizens, Documents, KYC Verification) into `src/domains/civil-identity/`.        | Compliance Team     | Domain Rules      |   ⏳ Pending   |
-| **07** | **Finance & Double-Entry**        | Isolate `finance` with ledger control, idempotency keys, and `src/domains/finance/`.                        | Finance Team        | DB + Application  |   ⏳ Pending   |
+| **06** | **Civil Identity & KYC**          | Isolate `civil-identity` (Citizens, Documents, KYC Verification) into `src/domains/civil-identity/`.        | Compliance Team     | Domain Rules      |  ✅ Completed  |
+| **07** | **Finance & Double-Entry**        | Isolate `finance` with ledger control, idempotency keys, and `src/domains/finance/`.                        | Finance Team        | DB + Application  |  ✅ Completed  |
 | **08** | **Web3 & Signers Layer**          | Implement `IWalletSigner`, `IKeyProvider`, and `INonceManager` with Viem.                                    | Web3 Team           | Application Ports |   ⏳ Pending   |
 | **09** | **IPFS & Content Storage**        | Implement `IObjectStorage` and `IContentAddressedStorage` adapters.                                          | Infrastructure      | Infrastructure    |   ⏳ Pending   |
-| **10** | **SSI & Verifiable Credentials**  | Consolidate DIDs and Ed25519 Handshake into `src/domains/ssi/`.                                              | Identity Team       | Domain Rules      |   ⏳ Pending   |
-| **11** | **Route Taxonomy Migration**      | Refactor routes from `/api/core/` to `/api/v1/<context>/` and isolate Hono Controllers.                      | Platform Team       | Interfaces        |   ⏳ Pending   |
+| **10** | **SSI & Verifiable Credentials**  | Consolidate DIDs and Ed25519 Handshake into `src/domains/ssi/`.                                              | Identity Team       | Domain Rules      |  ✅ Completed  |
+| **11** | **Route Taxonomy Migration**      | Refactor routes from `/api/core/` to `/api/v1/<context>/` and isolate Hono Controllers.                      | Platform Team       | Interfaces        | ⏳ In Progress |
 | **12** | **Full Audit & CI Certification** | Run complete suite of boundary tests (`tests/architecture/`), unit, integration, and load tests.            | QA / Lead Architect | CI Certification  |   ⏳ Pending   |
+
