@@ -35,14 +35,15 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
   }
 
   async create(data: CreateUserData): Promise<UserRecord> {
-    const normalized = (data.emailNormalized || data.email).toLowerCase().trim();
+    const email = data.email || '';
+    const normalized = (data.emailNormalized || email).toLowerCase().trim();
     const subjectType = data.subjectType === 'citizen' || !data.subjectType ? 'human' : data.subjectType;
 
     const [created] = await this.db
       .insert(users)
       .values({
-        email: data.email.trim(),
-        emailNormalized: normalized,
+        email: email ? email.trim() : null,
+        emailNormalized: normalized || null,
         subjectType,
         status: data.status || 'active',
         authEpoch: 1,
@@ -55,7 +56,7 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
     return this.mapToRecord(created);
   }
 
-  async updateStatus(id: number, status: 'active' | 'suspended' | 'pending'): Promise<void> {
+  async updateStatus(id: number, status: 'active' | 'suspended' | 'pending' | 'locked'): Promise<void> {
     await this.db
       .update(users)
       .set({ status })
@@ -78,18 +79,41 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
     return updated.authEpoch;
   }
 
+  async incrementFailedLoginAttempts(userId: number, maxAttempts: number): Promise<void> {
+    const now = new Date();
+    await this.db
+      .update(users)
+      .set({
+        failedLoginAttempts: sql`${users.failedLoginAttempts} + 1`,
+        lastFailedLoginAt: now,
+        status: sql`CASE WHEN ${users.failedLoginAttempts} + 1 >= ${maxAttempts} THEN 'locked' ELSE ${users.status} END`,
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async resetFailedLoginAttempts(userId: number): Promise<void> {
+    await this.db
+      .update(users)
+      .set({
+        failedLoginAttempts: 0,
+        lastFailedLoginAt: null,
+      })
+      .where(eq(users.id, userId));
+  }
+
   private mapToRecord(raw: any): UserRecord {
     return {
       id: raw.id,
       publicId: raw.publicId || null,
-      email: raw.email,
-      emailNormalized: raw.emailNormalized || raw.email,
+      email: raw.email || null,
+      emailNormalized: raw.emailNormalized || raw.email || null,
       status: raw.status || 'active',
       subjectType: raw.subjectType || 'human',
+      failedLoginAttempts: raw.failedLoginAttempts || 0,
+      lastFailedLoginAt: raw.lastFailedLoginAt instanceof Date ? raw.lastFailedLoginAt : (raw.lastFailedLoginAt ? new Date(raw.lastFailedLoginAt * 1000) : null),
       authEpoch: raw.authEpoch || 1,
       createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt ? raw.createdAt * 1000 : Date.now()),
       updatedAt: raw.updatedAt instanceof Date ? raw.updatedAt : new Date(raw.updatedAt ? raw.updatedAt * 1000 : Date.now()),
     };
   }
 }
-

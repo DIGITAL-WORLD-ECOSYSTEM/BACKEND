@@ -8,18 +8,18 @@ import { DrizzleSessionRepository } from '../../../../infrastructure/repositorie
 import { DrizzleIdentityResolverAdapter } from '../../../../infrastructure/repositories/DrizzleIdentityResolverAdapter';
 import { Eip4361Verifier } from '../../../../infrastructure/security/crypto/Eip4361Verifier';
 
-import { AuthenticateAccountUseCase } from '../../../../domains/identity/use-cases/AuthenticateAccountUseCase';
-import { RegisterAccountUseCase } from '../../../../domains/identity/use-cases/RegisterAccountUseCase';
-import { VerifyWalletIdentityUseCase } from '../../../../domains/identity/use-cases/VerifyWalletIdentityUseCase';
-import { VerifyPasskeyIdentityUseCase } from '../../../../domains/identity/use-cases/VerifyPasskeyIdentityUseCase';
-import { LinkExternalIdentityUseCase } from '../../../../domains/identity/use-cases/LinkExternalIdentityUseCase';
-import { UnlinkExternalIdentityUseCase } from '../../../../domains/identity/use-cases/UnlinkExternalIdentityUseCase';
+import { AuthenticateAccountUseCase } from '../../../../application/use-cases/identity/AuthenticateAccountUseCase';
+import { RegisterAccountUseCase } from '../../../../application/use-cases/identity/RegisterAccountUseCase';
+import { VerifyWalletIdentityUseCase } from '../../../../application/use-cases/identity/VerifyWalletIdentityUseCase';
+import { VerifyPasskeyIdentityUseCase } from '../../../../application/use-cases/identity/VerifyPasskeyIdentityUseCase';
+import { LinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/LinkExternalIdentityUseCase';
+import { UnlinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/UnlinkExternalIdentityUseCase';
 
-import { SetupTotpUseCase } from '../../../../domains/identity/use-cases/SetupTotpUseCase';
-import { AuthenticateTotpUseCase } from '../../../../domains/identity/use-cases/AuthenticateTotpUseCase';
-import { RequestPasswordResetUseCase } from '../../../../domains/identity/use-cases/RequestPasswordResetUseCase';
-import { ConfirmPasswordResetUseCase } from '../../../../domains/identity/use-cases/ConfirmPasswordResetUseCase';
-import { RefreshTokenUseCase } from '../../../../domains/identity/use-cases/RefreshTokenUseCase';
+import { SetupTotpUseCase } from '../../../../application/use-cases/identity/SetupTotpUseCase';
+import { AuthenticateTotpUseCase } from '../../../../application/use-cases/identity/AuthenticateTotpUseCase';
+import { RequestPasswordResetUseCase } from '../../../../application/use-cases/identity/RequestPasswordResetUseCase';
+import { ConfirmPasswordResetUseCase } from '../../../../application/use-cases/identity/ConfirmPasswordResetUseCase';
+import { RefreshTokenUseCase } from '../../../../application/use-cases/identity/RefreshTokenUseCase';
 
 import { IdentityController } from '../../controllers/identity/IdentityController';
 import { ExternalIdentityController } from '../../controllers/identity/ExternalIdentityController';

@@ -21,7 +21,7 @@ export class SetupTotpUseCase {
       }
 
       const secret = authenticator.generateSecret();
-      const otpauthUrl = authenticator.keyuri(user.email, 'ASPPIBRA DAO', secret);
+      const otpauthUrl = authenticator.keyuri(user.email || 'unknown', 'ASPPIBRA DAO', secret);
 
       await authRepo.saveTotpSecret(user.id, secret);
 

@@ -1,9 +1,9 @@
 import { Context } from 'hono';
-import { SetupTotpUseCase } from '../../../../domains/identity/use-cases/SetupTotpUseCase';
-import { AuthenticateTotpUseCase } from '../../../../domains/identity/use-cases/AuthenticateTotpUseCase';
-import { RequestPasswordResetUseCase } from '../../../../domains/identity/use-cases/RequestPasswordResetUseCase';
-import { ConfirmPasswordResetUseCase } from '../../../../domains/identity/use-cases/ConfirmPasswordResetUseCase';
-import { RefreshTokenUseCase } from '../../../../domains/identity/use-cases/RefreshTokenUseCase';
+import { SetupTotpUseCase } from '../../../../application/use-cases/identity/SetupTotpUseCase';
+import { AuthenticateTotpUseCase } from '../../../../application/use-cases/identity/AuthenticateTotpUseCase';
+import { RequestPasswordResetUseCase } from '../../../../application/use-cases/identity/RequestPasswordResetUseCase';
+import { ConfirmPasswordResetUseCase } from '../../../../application/use-cases/identity/ConfirmPasswordResetUseCase';
+import { RefreshTokenUseCase } from '../../../../application/use-cases/identity/RefreshTokenUseCase';
 import { error, success } from '../../helpers/response';
 
 export class AuthAuxiliaryController {

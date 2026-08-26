@@ -5,6 +5,8 @@ export interface SecurityAuditEvent {
     | 'identity_linked'
     | 'identity_unlinked'
     | 'identity_login_failed'
+    | 'identity_login_blocked'
+    | 'identity_account_locked'
     | 'identity_resolution_failed'
     | 'authentication_succeeded'
     | 'authentication_failed'

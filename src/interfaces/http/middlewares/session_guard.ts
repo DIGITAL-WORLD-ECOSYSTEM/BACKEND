@@ -54,35 +54,35 @@ export const sessionGuard = async (c: Context, next: Next) => {
     }
 
     const sessionRepo = new DrizzleSessionRepository(db);
-    const session = await sessionRepo.getSessionById(payload.sid);
+    const sessionRecord = await sessionRepo.getSessionById(payload.sid);
 
-    if (!session) {
+    if (!sessionRecord) {
       return c.json({ success: false, message: 'Session not found.' }, 401);
     }
 
-    if (session.revokedAt) {
-      return c.json({ success: false, message: 'Session has been revoked.' }, 401);
-    }
+    const { Session } = await import('../../../domains/identity/entities/Session');
+    const session = Session.fromPersistence(sessionRecord as any);
 
-    if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
-      return c.json({ success: false, message: 'Session has expired.' }, 401);
+    if (!session.isValid()) {
+      return c.json({ success: false, message: session.isRevoked ? 'Session has been revoked.' : 'Session has expired.' }, 401);
     }
 
     const userRepo = new DrizzleUserRepositoryAdapter(db);
-    const user = await userRepo.findById(session.userId);
+    const userRecord = await userRepo.findById(session.userId);
 
-    if (!user) {
+    if (!userRecord) {
       return c.json({ success: false, message: 'User account not found.' }, 401);
     }
 
-    if (user.status === 'suspended' || user.status === 'locked' || user.status === 'disabled') {
-      return c.json({ success: false, message: `User account is ${user.status}.` }, 403);
+    const { User } = await import('../../../domains/identity/entities/User');
+    const user = new User(userRecord as any);
+
+    if (!user.canAuthenticate()) {
+      return c.json({ success: false, message: `User account is not eligible for authentication.` }, 403);
     }
 
-    // AF-008: Validar authEpoch do token JWT contra o authEpoch atual do usuário no D1
-    const tokenEpoch = typeof payload.authEpoch === 'number' ? payload.authEpoch : 1;
-    const currentEpoch = user.authEpoch || 1;
-    if (tokenEpoch < currentEpoch) {
+    // AF-008: Validar authEpoch da entidade Session contra o authEpoch atual do usuário (D1 -> D1)
+    if (!session.matchesUserEpoch(user.authEpoch)) {
       return c.json(
         {
           success: false,

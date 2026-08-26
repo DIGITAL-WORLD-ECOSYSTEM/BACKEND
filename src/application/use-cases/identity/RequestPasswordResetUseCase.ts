@@ -62,7 +62,7 @@ export class RequestPasswordResetUseCase {
         expiresAt,
       });
 
-      const event = new PasswordResetRequestedEvent(user.id, user.email, rawToken);
+      const event = new PasswordResetRequestedEvent(user.id, user.email || '', rawToken);
       await outboxRepo.saveEvent(event, user.id, 'User', 1);
 
       if (this.auditPort) {

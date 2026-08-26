@@ -367,6 +367,9 @@ export const users = sqliteTable(
       .default('pending_setup')
       .notNull(),
 
+    failedLoginAttempts: integer('failed_login_attempts').default(0).notNull(),
+    lastFailedLoginAt: integer('last_failed_login_at', { mode: 'timestamp' }),
+
     /**
      * Timestamp when account status last changed.
      *

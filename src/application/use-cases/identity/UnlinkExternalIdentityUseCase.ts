@@ -1,7 +1,7 @@
 import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
 import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
 import { UnlinkExternalIdentityInputDTO, UnlinkExternalIdentityOutputDTO } from '../../../application/dto/identity/UnlinkExternalIdentityDTO';
-import { AntiLockoutViolationError } from '../errors/AntiLockoutViolationError';
+import { AntiLockoutViolationError } from '../../../domains/identity/errors/AntiLockoutViolationError';
 import { Result } from '../../../shared/kernel/Result';
 
 export class UnlinkExternalIdentityUseCase {

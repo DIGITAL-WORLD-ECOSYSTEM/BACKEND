@@ -1,6 +1,6 @@
 import { Context } from 'hono';
-import { LinkExternalIdentityUseCase } from '../../../../domains/identity/use-cases/LinkExternalIdentityUseCase';
-import { UnlinkExternalIdentityUseCase } from '../../../../domains/identity/use-cases/UnlinkExternalIdentityUseCase';
+import { LinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/LinkExternalIdentityUseCase';
+import { UnlinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/UnlinkExternalIdentityUseCase';
 import { error, success } from '../../helpers/response';
 
 export interface IExternalIdentityQueryPort {

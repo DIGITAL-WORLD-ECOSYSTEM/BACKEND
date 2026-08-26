@@ -1,8 +1,8 @@
 import { Context } from 'hono';
-import { AuthenticateAccountUseCase } from '../../../../domains/identity/use-cases/AuthenticateAccountUseCase';
-import { RegisterAccountUseCase } from '../../../../domains/identity/use-cases/RegisterAccountUseCase';
-import { VerifyWalletIdentityUseCase } from '../../../../domains/identity/use-cases/VerifyWalletIdentityUseCase';
-import { VerifyPasskeyIdentityUseCase } from '../../../../domains/identity/use-cases/VerifyPasskeyIdentityUseCase';
+import { AuthenticateAccountUseCase } from '../../../../application/use-cases/identity/AuthenticateAccountUseCase';
+import { RegisterAccountUseCase } from '../../../../application/use-cases/identity/RegisterAccountUseCase';
+import { VerifyWalletIdentityUseCase } from '../../../../application/use-cases/identity/VerifyWalletIdentityUseCase';
+import { VerifyPasskeyIdentityUseCase } from '../../../../application/use-cases/identity/VerifyPasskeyIdentityUseCase';
 import { IJwtService } from '../../../../application/ports/security/IJwtService';
 import { ISessionRepository } from '../../../../application/ports/output/ISessionRepository';
 import { error, success } from '../../helpers/response';

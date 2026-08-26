@@ -61,7 +61,7 @@ export class RefreshTokenUseCase {
 
       const newAccessToken = await this.tokenService.generateAccessToken({
         userId: user.id,
-        email: user.email,
+        email: user.email || '',
         authEpoch: user.authEpoch || 1,
       });
 

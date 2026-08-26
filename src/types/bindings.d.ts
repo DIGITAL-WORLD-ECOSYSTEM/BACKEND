@@ -36,8 +36,6 @@ export type Bindings = {
   FRONTEND_URL: string;
   DEVELOPER_SSH_KEY?: string;
   JWT_KEY_VERSION?: string;
-  KMS_KEY?: string;
-
 
   // 6. Analytics e Gestão Cloudflare
   CLOUDFLARE_ACCOUNT_ID: string;

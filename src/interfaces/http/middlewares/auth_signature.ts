@@ -68,9 +68,12 @@ export const authSignature = async (c: Context, next: Next) => {
 
         const { DrizzleSessionRepository } = await import('../../../infrastructure/repositories/DrizzleSessionRepository');
         const sessionRepo = new DrizzleSessionRepository(db);
-        const session = await sessionRepo.getSessionById(payload.sid);
+        const sessionRecord = await sessionRepo.getSessionById(payload.sid);
 
-        if (!session || session.revokedAt || (session.expiresAt && new Date(session.expiresAt) < new Date())) {
+        const { Session } = await import('../../../domains/identity/entities/Session');
+        const session = sessionRecord ? Session.fromPersistence(sessionRecord as any) : null;
+
+        if (!session || !session.isValid()) {
           return c.json({ success: false, message: 'Session revoked, inactive or expired.' }, 401);
         }
 

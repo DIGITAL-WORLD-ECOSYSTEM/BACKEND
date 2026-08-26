@@ -56,9 +56,9 @@ export class AuthenticateAccountUseCase {
       const userRepo = factory.getUserRepository();
       const authRepo = factory.getAuthenticationRepository();
 
-      const user = await userRepo.findByEmail(emailNormalized);
+      const userRecord = await userRepo.findByEmail(emailNormalized);
 
-      if (!user) {
+      if (!userRecord) {
         // Achado adicional (B): equaliza o tempo de resposta executando um
         // hash "isca" com o mesmo custo computacional do hasher real, para
         // que "usuário inexistente" e "senha incorreta" fiquem indistinguíveis
@@ -67,17 +67,16 @@ export class AuthenticateAccountUseCase {
         return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
       }
 
+      const { User } = await import('../../../domains/identity/entities/User');
+      const user = new User(userRecord as any);
+
       // 1. Conta bloqueada ou suspensa — mesma mensagem genérica (item 3.1).
-      // Antes, esta branch dizia explicitamente "Conta bloqueada...", o que
-      // permitia a um atacante confirmar a existência da conta ao bombardear
-      // e-mails e observar qual resposta difere. Agora é idêntica à de
-      // credenciais inválidas.
-      if (user.status === 'locked' || user.status === 'suspended') {
+      if (!user.canAuthenticate()) {
         if (this.auditPort) {
           await this.auditPort.logEvent({
             event: 'identity_login_blocked',
             userId: user.id,
-            metadata: { email: emailNormalized, reason: `Account status: ${user.status}` },
+            metadata: { email: emailNormalized, reason: `Account status: ${user.status}, subject: ${user.subjectType}` },
           });
         }
         return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
@@ -86,7 +85,7 @@ export class AuthenticateAccountUseCase {
       // 2. Buscar credencial de senha
       const credential = await authRepo.findPasswordCredentialByUserId(user.id);
       if (!credential) {
-        // Equaliza tempo de resposta com hash isca (mesmo motivo do caso B acima).
+        // Equaliza tempo de resposta com hash isca
         await this.hasher.verify(dto.password, DUMMY_PASSWORD_HASH).catch(() => undefined);
         if (this.auditPort) {
           await this.auditPort.logEvent({
@@ -101,25 +100,19 @@ export class AuthenticateAccountUseCase {
       // 3. Verificar senha
       const isPasswordValid = await this.hasher.verify(dto.password, credential.passwordHash);
       if (!isPasswordValid) {
-        const attempt = failedAttemptsMap.get(user.id) || { count: 0, lastAttempt: new Date() };
-        attempt.count += 1;
-        attempt.lastAttempt = new Date();
-        failedAttemptsMap.set(user.id, attempt);
+        // Rate-Limit Persistente no D1
+        user.registerFailedLogin();
+        await userRepo.incrementFailedLoginAttempts(user.id, User.MAX_FAILED_ATTEMPTS);
 
         if (this.auditPort) {
           await this.auditPort.logEvent({
             event: 'identity_login_failed',
             userId: user.id,
-            metadata: { email: emailNormalized, reason: 'Invalid password', attemptCount: attempt.count },
+            metadata: { email: emailNormalized, reason: 'Invalid password', attemptCount: user.failedLoginAttempts },
           });
         }
 
-        // Se exceder o limite de 5 tentativas incorretas, bloqueia a conta,
-        // mas a resposta HTTP continua sendo a mesma mensagem genérica
-        // (item 3.1) — o bloqueio é registrado internamente e comunicado
-        // apenas via fluxo de "esqueci minha senha", nunca no corpo do 401.
-        if (attempt.count >= MAX_FAILED_ATTEMPTS) {
-          await userRepo.updateStatus(user.id, 'locked');
+        if (user.status === 'locked') {
           if (this.auditPort) {
             await this.auditPort.logEvent({
               event: 'identity_account_locked',
@@ -132,21 +125,21 @@ export class AuthenticateAccountUseCase {
         return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
       }
 
-      // Sucesso: resetar tentativas
-      failedAttemptsMap.delete(user.id);
+      // Sucesso: resetar tentativas no banco
+      await userRepo.resetFailedLoginAttempts(user.id);
 
       if (this.auditPort) {
         await this.auditPort.logEvent({
           event: 'authentication_succeeded',
           userId: user.id,
-          metadata: { email: user.email },
+          metadata: { email: user.email || '' },
         });
       }
 
       return Result.ok<AuthenticateAccountResult>({
         userId: user.id,
-        email: user.email,
-        publicId: user.publicId,
+        email: user.email || '',
+        publicId: userRecord.publicId,
         status: user.status,
       });
     });

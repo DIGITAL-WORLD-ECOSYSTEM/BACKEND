@@ -53,7 +53,7 @@ export class RegisterAccountUseCase {
 
       return Result.ok<RegisterAccountOutputDTO>({
         userId: newUser.id,
-        email: newUser.email,
+        email: newUser.email || '',
         status: newUser.status,
         createdAt: newUser.createdAt,
       });
