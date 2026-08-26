@@ -7,6 +7,14 @@ import { Result } from '../../../shared/kernel/Result';
 
 const jwtService = new JwtService();
 
+function requireJwtSecret(c: Context): string {
+  const secret = c.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET não configurado no ambiente.');
+  }
+  return secret;
+}
+
 /**
  * Zero-Trust Signature Middleware
  * Requer o header X-Identity-Signature: Base64(Ed25519_Sign(Timestamp + Body))
@@ -36,34 +44,40 @@ export const authSignature = async (c: Context, next: Next) => {
     const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
 
     if (token) {
+      let secret: string;
       try {
-        const secret = c.env.JWT_SECRET || 'asppibra-secret-key-change-in-production';
+        secret = requireJwtSecret(c);
+      } catch (err) {
+        console.error('[SECURITY] JWT_SECRET ausente — recusando autenticação.', err);
+        return c.json({ success: false, message: 'Erro de configuração do servidor.' }, 500);
+      }
+
+      try {
         const payload = await jwtService.verify(token, secret);
 
-        if (payload.sid) {
-          const db = c.get('db');
-          if (db) {
-            const { DrizzleSessionRepository } = await import('../../../infrastructure/repositories/DrizzleSessionRepository');
-            const sessionRepo = new DrizzleSessionRepository(db);
-            const session = await sessionRepo.getSessionById(payload.sid);
+        // Correção 1.2: sid é OBRIGATÓRIO. Sem sid, não há como validar a sessão
+        // no D1 (revogação/expiração), então o token NUNCA é aceito silenciosamente.
+        if (!payload.sid) {
+          return c.json({ success: false, message: 'Invalid session payload (sid missing).' }, 401);
+        }
 
-            if (!session || session.revokedAt || (session.expiresAt && new Date(session.expiresAt) < new Date())) {
-              return c.json({ success: false, message: 'Session revoked, inactive or expired.' }, 401);
-            }
+        const db = c.get('db');
+        if (!db) {
+          return c.json({ success: false, message: 'Database context unavailable.' }, 500);
+        }
 
-            c.set('user', {
-              userId: session.userId,
-              sessionId: session.id,
-              sessionAal: session.aal,
-              role: payload.role || 'citizen',
-            });
+        const { DrizzleSessionRepository } = await import('../../../infrastructure/repositories/DrizzleSessionRepository');
+        const sessionRepo = new DrizzleSessionRepository(db);
+        const session = await sessionRepo.getSessionById(payload.sid);
 
-            return await next();
-          }
+        if (!session || session.revokedAt || (session.expiresAt && new Date(session.expiresAt) < new Date())) {
+          return c.json({ success: false, message: 'Session revoked, inactive or expired.' }, 401);
         }
 
         c.set('user', {
-          userId: payload.userId || payload.sub,
+          userId: session.userId,
+          sessionId: session.id,
+          sessionAal: session.aal,
           role: payload.role || 'citizen',
         });
 

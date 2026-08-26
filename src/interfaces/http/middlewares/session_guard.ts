@@ -2,13 +2,25 @@ import { Context, Next } from 'hono';
 import { JwtService } from '../../../infrastructure/security/jwt/JwtService';
 import { DrizzleSessionRepository } from '../../../infrastructure/repositories/DrizzleSessionRepository';
 import { DrizzleUserRepositoryAdapter } from '../../../infrastructure/repositories/DrizzleUserRepositoryAdapter';
+import { IJwtService } from '../../../application/ports/security/IJwtService';
 
-const jwtService = new JwtService();
+/**
+ * Correção 2.4 (DIP): em vez de `new JwtService()` fixo no módulo, resolvemos
+ * a porta IJwtService a partir do contexto do Hono quando disponível
+ * (registrada em um middleware de bootstrap: `c.set('jwtService', new JwtService())`),
+ * com fallback local apenas para não quebrar ambientes que ainda não fazem essa
+ * injeção. O fallback deve ser removido assim que o bootstrap for padronizado.
+ */
+const fallbackJwtService = new JwtService();
+
+function resolveJwtService(c: Context): IJwtService {
+  return (c.get('jwtService') as IJwtService | undefined) ?? fallbackJwtService;
+}
 
 /**
  * Stateful Session Guard Middleware
  * 1. Extrai o Bearer token do header Authorization.
- * 2. Valida a assinatura criptográfica do JWT.
+ * 2. Valida a assinatura criptográfica e as claims temporais do JWT.
  * 3. Extrai o sid (Session ID) do payload.
  * 4. Realiza o lookup físico no D1 (user_sessions).
  * 5. Bloqueia (HTTP 401) se a sessão não existir, estiver revogada ou expirada.
@@ -22,8 +34,14 @@ export const sessionGuard = async (c: Context, next: Next) => {
     return c.json({ success: false, message: 'Authentication required (Bearer token missing).' }, 401);
   }
 
+  const secret = c.env.JWT_SECRET;
+  if (!secret) {
+    console.error('[SECURITY] JWT_SECRET ausente — recusando autenticação.');
+    return c.json({ success: false, message: 'Erro de configuração do servidor.' }, 500);
+  }
+
   try {
-    const secret = c.env.JWT_SECRET || 'asppibra-secret-key-change-in-production';
+    const jwtService = resolveJwtService(c);
     const payload = await jwtService.verify(token, secret);
 
     if (!payload.sid) {

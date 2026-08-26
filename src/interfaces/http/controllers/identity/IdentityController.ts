@@ -138,7 +138,11 @@ export class IdentityController {
     publicId: string | null,
     status: string
   ): Promise<Response> {
-    const jwtSecret = c.env?.JWT_SECRET || 'asppibra-secret-key-change-in-production';
+    const jwtSecret = c.env?.JWT_SECRET;
+    if (!jwtSecret) {
+      return error(c, 'Erro de configuração do servidor (JWT_SECRET ausente).', null, 500);
+    }
+
     const sessionId = crypto.randomUUID();
     const jti = crypto.randomUUID();
     const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
@@ -168,6 +172,7 @@ export class IdentityController {
         sid: sessionId,
         jti,
         aal: 1,
+        exp: Math.floor(expiresAt.getTime() / 1000), // alinha o exp do JWT com a expiração da sessão no D1
       },
       jwtSecret
     );

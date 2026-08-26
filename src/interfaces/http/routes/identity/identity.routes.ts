@@ -189,9 +189,13 @@ identityRouter.post('/refresh', rateLimit({ windowMs: 60 * 1000, maxRequests: 20
   const jwtService = new JwtService();
   const auditAdapter = new SecurityAuditAdapter(db);
 
+  const secret = c.env?.JWT_SECRET;
+  if (!secret) {
+    return c.json({ success: false, message: 'Erro de configuração do servidor (JWT_SECRET ausente).' }, 500);
+  }
+
   const tokenService = {
     generateAccessToken: async (payload: { userId: number; email: string; authEpoch: number }) => {
-      const secret = c.env?.JWT_SECRET || 'asppibra-secret-key-change-in-production';
       return await jwtService.sign(
         { sub: String(payload.userId), userId: payload.userId, email: payload.email, authEpoch: payload.authEpoch },
         secret
