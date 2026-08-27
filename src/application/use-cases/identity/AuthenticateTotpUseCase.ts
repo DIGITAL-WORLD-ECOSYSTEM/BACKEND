@@ -48,8 +48,10 @@ export class AuthenticateTotpUseCase {
       });
 
       if (!isValid) {
-        transaction.recordFailure();
-        await authTxRepo.updateTransaction(transaction);
+        const recorded = await authTxRepo.recordFailedAttemptAtomically(transaction.id, 5);
+        if (!recorded) {
+          return Result.fail<{ verified: boolean; aal: number }>('Falha ao registrar tentativa (transação expirada ou finalizada).');
+        }
 
         if (this.auditPort) {
           await this.auditPort.logEvent({
@@ -58,15 +60,17 @@ export class AuthenticateTotpUseCase {
             metadata: { reason: 'Invalid OTP token', transactionId: transaction.id },
           });
         }
-        return Result.fail<{ verified: boolean; aal: number }>(transaction.status === 'locked' ? 'Transação bloqueada por excesso de tentativas.' : 'Código 2FA inválido.');
+        return Result.fail<{ verified: boolean; aal: number }>('Código 2FA inválido.');
       }
 
       if (!totpRecord.verified) {
         await authRepo.verifyTotpAuthenticator(totpRecord.authenticatorId);
       }
 
-      transaction.verifyFactor('totp', 2);
-      await authTxRepo.updateTransaction(transaction);
+      const completed = await authTxRepo.completeFactorAtomically(transaction.id, 2, transaction.authEpochAtStart, 'totp');
+      if (!completed) {
+        return Result.fail<{ verified: boolean; aal: number }>('Falha de concorrência ou transação inválida no D1.');
+      }
 
       if (this.auditPort) {
         await this.auditPort.logEvent({

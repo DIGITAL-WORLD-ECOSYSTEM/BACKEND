@@ -77,17 +77,15 @@ export class AuthenticationTransaction {
     return true;
   }
 
-  public recordFailure(): void {
+  public recordFailedAttempt(maxAttempts: number = 5): void {
     this.props.failureCount += 1;
-    if (this.props.failureCount >= 5) { // Hardcoded max attempts for now
+    if (this.props.failureCount >= maxAttempts) {
       this.props.status = 'locked';
-    } else {
-      this.props.status = 'failed';
     }
   }
 
   public verifyFactor(method: string, newAal: number): void {
-    if (this.props.status !== 'created' && this.props.status !== 'awaiting_factor' && this.props.status !== 'failed') {
+    if (this.props.status !== 'created' && this.props.status !== 'awaiting_factor') {
       throw new Error(`Cannot verify factor in status ${this.props.status}`);
     }
     this.props.method = method;

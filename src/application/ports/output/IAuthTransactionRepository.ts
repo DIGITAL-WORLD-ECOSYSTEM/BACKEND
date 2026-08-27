@@ -10,4 +10,9 @@ export interface IAuthTransactionRepository {
   getChallengeById(id: string): Promise<AuthenticationChallenge | null>;
   getChallengeByHash(hash: string): Promise<AuthenticationChallenge | null>;
   updateChallenge(challenge: AuthenticationChallenge): Promise<void>;
+  
+  // Atomic Operations
+  completeFactorAtomically(txId: string, aal: number, authEpochAtStart: number, method: string): Promise<boolean>;
+  recordFailedAttemptAtomically(txId: string, maxAttempts: number): Promise<boolean>;
+  consumeChallengeAtomically(challengeId: string): Promise<boolean>;
 }
