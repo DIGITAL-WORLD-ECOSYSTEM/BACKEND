@@ -208,6 +208,31 @@ export const passwordResets = sqliteTable(
 );
 
 // ----------------------------------------------------------------------
+// Entity: refreshTokenFamilies
+// ----------------------------------------------------------------------
+export const refreshTokenFamilies = sqliteTable(
+  'refresh_token_families',
+  {
+    id: text('id').primaryKey(), // UUID da família de tokens
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+    revocationReason: text('revocation_reason'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('idx_refresh_families_user').on(table.userId),
+    revokedStateCheck: check(
+      'refresh_families_revoked_state_check',
+      sql`${table.revokedAt} IS NOT NULL OR ${table.revocationReason} IS NULL`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
 // Entity: userSessions
 // ----------------------------------------------------------------------
 export const userSessions = sqliteTable(
@@ -220,6 +245,8 @@ export const userSessions = sqliteTable(
     jti: text('jti').notNull().unique(),
     ip: text('ip'),
     userAgent: text('user_agent'),
+    familyId: text('family_id') // Adicionado relacionamento com a família
+      .references(() => refreshTokenFamilies.id, { onDelete: 'cascade' }),
     refreshTokenHash: text('refresh_token_hash').notNull(),
     aal: integer('aal').notNull().default(1),
     authEpoch: integer('auth_epoch').notNull().default(1),
@@ -233,6 +260,7 @@ export const userSessions = sqliteTable(
   },
   (table) => ({
     userIdIdx: index('idx_sessions_user').on(table.userId),
+    familyIdIdx: index('idx_sessions_family').on(table.familyId),
     expiresAtIdx: index('idx_sessions_expires').on(table.expiresAt),
     aalCheck: check('user_sessions_aal_check', sql`${table.aal} IN (1, 2, 3)`),
     expirationCheck: check(
@@ -253,9 +281,11 @@ export const authChallenges = sqliteTable(
   'auth_challenges',
   {
     id: text('id').primaryKey(), // UUID do desafio
+    transactionId: text('transaction_id').references(() => authTransactions.id, { onDelete: 'cascade' }),
     userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
     challengeHash: text('challenge_hash').notNull(),
     challengeType: text('challenge_type').notNull(), // 'ssh', 'totp', 'webauthn', 'siwe'
+    context: text('context').notNull(), // 'login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery'
     usedAt: integer('used_at', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .default(sql`(unixepoch())`)
@@ -263,10 +293,15 @@ export const authChallenges = sqliteTable(
     expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
   },
   (table) => ({
+    transactionIdIdx: index('idx_auth_challenges_transaction').on(table.transactionId),
     expiresAtIdx: index('idx_auth_challenges_expires').on(table.expiresAt),
     typeCheck: check(
       'auth_challenges_type_check',
       sql`${table.challengeType} IN ('ssh', 'totp', 'webauthn', 'siwe')`
+    ),
+    contextCheck: check(
+      'auth_challenges_context_check',
+      sql`${table.context} IN ('login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery')`
     ),
     expirationCheck: check(
       'auth_challenges_expiration_check',
@@ -275,6 +310,57 @@ export const authChallenges = sqliteTable(
     usedStateCheck: check(
       'auth_challenges_used_state_check',
       sql`${table.usedAt} IS NULL OR ${table.usedAt} >= ${table.createdAt}`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: authTransactions
+// ----------------------------------------------------------------------
+export const authTransactions = sqliteTable(
+  'auth_transactions',
+  {
+    id: text('id').primaryKey(), // UUID v4
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: ['created', 'awaiting_factor', 'verified', 'completed', 'expired', 'cancelled', 'failed', 'replayed', 'locked'] })
+      .notNull()
+      .default('created'),
+    initialAal: integer('initial_aal').notNull().default(1),
+    currentAal: integer('current_aal').notNull().default(1),
+    targetAal: integer('target_aal').notNull().default(2),
+    method: text('method').notNull(), // ex: 'password', 'totp', 'webauthn', 'siwe'
+    challengeHash: text('challenge_hash'),
+    context: text('context').notNull(), // 'login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery'
+    ip: text('ip'),
+    userAgent: text('user_agent'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
+    consumedAt: integer('consumed_at', { mode: 'timestamp' }),
+    failureCount: integer('failure_count').notNull().default(0),
+    authEpochAtStart: integer('auth_epoch_at_start').notNull(),
+    lastAuthenticatedAt: integer('last_authenticated_at', { mode: 'timestamp' }),
+    assuranceMethod: text('assurance_method'),
+    riskLevel: text('risk_level', { enum: ['low', 'medium', 'high', 'critical'] }).notNull().default('low'),
+  },
+  (table) => ({
+    userIdIdx: index('idx_auth_transactions_user').on(table.userId),
+    expiresAtIdx: index('idx_auth_transactions_expires').on(table.expiresAt),
+    statusCheck: check(
+      'auth_transactions_status_check',
+      sql`${table.status} IN ('created', 'awaiting_factor', 'verified', 'completed', 'expired', 'cancelled', 'failed', 'replayed', 'locked')`
+    ),
+    contextCheck: check(
+      'auth_transactions_context_check',
+      sql`${table.context} IN ('login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery')`
+    ),
+    expirationCheck: check(
+      'auth_transactions_expiration_check',
+      sql`${table.createdAt} < ${table.expiresAt}`
     ),
   })
 );

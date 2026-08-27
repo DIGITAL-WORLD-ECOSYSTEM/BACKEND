@@ -41,6 +41,14 @@ export class Session {
     return this.props.aal;
   }
 
+  get createdAt(): Date {
+    return this.props.createdAt;
+  }
+
+  get lastActivityAt(): Date | null {
+    return this.props.lastActivityAt;
+  }
+
   get isRevoked(): boolean {
     return this.props.revokedAt !== null;
   }
