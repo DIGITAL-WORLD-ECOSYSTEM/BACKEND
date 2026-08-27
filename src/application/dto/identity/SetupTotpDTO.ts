@@ -1,5 +1,6 @@
 export interface SetupTotpDTO {
-  userId: number;
+  transactionId: string;
+  encryptionKey: string;
 }
 
 export interface SetupTotpResult {

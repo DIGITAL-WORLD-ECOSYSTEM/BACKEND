@@ -1,5 +1,6 @@
 export interface AuthenticateTotpDTO {
-  userId: number;
+  transactionId: string;
   code: string;
+  encryptionKey: string;
   sessionId?: string;
 }

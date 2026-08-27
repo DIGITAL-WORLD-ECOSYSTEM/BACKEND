@@ -34,6 +34,23 @@ export class CryptoVault {
     return btoa(String.fromCharCode(...buffer));
   }
 
+  static async decrypt(encryptedBase64: string, secret: string): Promise<string> {
+    const binaryString = atob(encryptedBase64);
+    const buffer = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      buffer[i] = binaryString.charCodeAt(i);
+    }
+    const iv = buffer.slice(0, 12);
+    const data = buffer.slice(12);
+    
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secret.padEnd(32, '0').slice(0, 32));
+    const key = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['decrypt']);
+    
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+    return new TextDecoder().decode(decrypted);
+  }
+
   static async generateEventHash(payload: any, prevHash = 'GENESIS'): Promise<string> {
     const encoder = new TextEncoder();
     const data = encoder.encode(JSON.stringify(payload) + prevHash);

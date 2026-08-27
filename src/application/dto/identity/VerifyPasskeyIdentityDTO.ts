@@ -1,8 +1,10 @@
+import type { AuthenticationResponseJSON } from '@simplewebauthn/types';
+
 export interface VerifyPasskeyIdentityInputDTO {
-  readonly credentialId: string;
-  readonly clientDataJSON: string;
-  readonly authenticatorData: string;
-  readonly signature: string;
+  readonly challengeId: string;
+  readonly responseJSON: AuthenticationResponseJSON;
+  readonly expectedOrigin: string;
+  readonly expectedRPID: string;
 }
 
 export interface VerifyPasskeyIdentityOutputDTO {
