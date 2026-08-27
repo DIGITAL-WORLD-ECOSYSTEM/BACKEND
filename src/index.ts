@@ -42,19 +42,19 @@ app.use(
   '*',
   secureHeaders({
     contentSecurityPolicy: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      defaultSrc: ["'none'"],
+      scriptSrc: ["'none'"], // API não executa scripts client-side
+      styleSrc: ["'self'"],
+      fontSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'https:', 'http:'],
-      connectSrc: ["'self'", 'https://api.asppibra.com', 'https://app.asppibra.com'],
+      connectSrc: ["'self'"],
     },
     referrerPolicy: 'no-referrer',
     xFrameOptions: 'DENY',
     xContentTypeOptions: 'nosniff',
     strictTransportSecurity: 'max-age=63072000; includeSubDomains; preload',
     permissionsPolicy: {
-      geolocation: ['self'],
+      geolocation: ['none'],
       camera: ['none'],
       microphone: ['none'],
     },
@@ -66,30 +66,24 @@ app.use('/*', async (c: Context<AppType>, next: Next) => {
   const corsMiddleware = cors({
     origin: (origin) => {
       const allowedOrigins = [
-        'https://app.w3.com',
-        'https://www.app.w3.com',
-        'https://w3.com',
-        'https://www.w3.com',
-        'https://api.w3.com',
         'https://app.asppibra.com',
         'https://api.asppibra.com',
       ];
+
+      // Se for ambiente de desenvolvimento, permitimos localhost
+      if (c.env?.ENVIRONMENT !== 'production') {
+        allowedOrigins.push('http://localhost:3000', 'http://localhost:8787');
+      }
 
       if (!origin) return allowedOrigins[0];
 
       const cleanOrigin = origin.replace(/\/$/, '');
 
-      const isExactMatch = allowedOrigins.some((allowed) => allowed === cleanOrigin);
-      const allowedRegexes = [
-        /^http:\/\/localhost:[0-9]+$/,
-        /^https:\/\/[a-zA-Z0-9-]+\.cloudworkstations\.dev$/,
-        /^https:\/\/[a-zA-Z0-9-]+\.pages\.dev$/,
-      ];
-      const isRegexMatch = allowedRegexes.some((regex) => regex.test(cleanOrigin));
-
-      if (isExactMatch || isRegexMatch) {
-        return origin;
+      if (allowedOrigins.includes(cleanOrigin)) {
+        return cleanOrigin;
       }
+      
+      // Default fallback (block via CORS mismatch)
       return allowedOrigins[0];
     },
     allowHeaders: [
@@ -130,8 +124,16 @@ app.use('*', async (c: Context<AppType>, next: Next) => {
 // 1.3 Database Injection (Scoped)
 app.use(async (c: Context<AppType>, next: Next) => {
   if (!c.env.DB) {
-    return error(c, 'Binding DB não configurado no wrangler.toml', null, 500);
+    // Secret Management: Fail Closed
+    console.error('CRITICAL: DB Binding is missing.');
+    return error(c, 'Database configuration error.', null, 500);
   }
+  
+  if (!c.env.JWT_SECRET || !c.env.TOTP_ENCRYPTION_KEY) {
+    console.error('CRITICAL: Essential security secrets are missing.');
+    return error(c, 'Security configuration error.', null, 500);
+  }
+
   const db = createDb(c.env.DB);
   c.set('db', db);
   await next();
@@ -150,42 +152,8 @@ app.get('/', async (c) => {
 });
 
 app.get('/api/stats', async (c) => {
-  const now = Date.now();
-  return c.json({
-    status: 'healthy',
-    version: '1.1.0',
-    uptime: now,
-    networkRequests: 142850,
-    processedData: 1048576 * 450,
-    globalUsers: 1240,
-    cacheRatio: '98.5%',
-    dbStats: {
-      queries: 89400,
-      mutations: 12500,
-    },
-    market: {
-      price: 1.245,
-      change24h: 3.45,
-      liquidity: 500000,
-      marketCap: 12500000,
-      history: [
-        { p: 1.18 },
-        { p: 1.20 },
-        { p: 1.19 },
-        { p: 1.22 },
-        { p: 1.21 },
-        { p: 1.25 },
-        { p: 1.245 },
-      ],
-    },
-    countries: [
-      { code: 'BR', country: 'Brasil', count: 98450 },
-      { code: 'US', country: 'United States', count: 24100 },
-      { code: 'DE', country: 'Germany', count: 11200 },
-      { code: 'PT', country: 'Portugal', count: 5400 },
-      { code: 'ES', country: 'Spain', count: 3700 },
-    ],
-  });
+  // FASE 6: Ocultar dados sensíveis e métricas não autorizadas
+  return error(c, 'Endpoint desativado por política de segurança.', null, 403);
 });
 
 // =================================================================
@@ -207,8 +175,15 @@ app.route('/api/v1/finance', financeRouter);
 app.notFound((c) => c.json({ success: false, message: 'Rota não encontrada (404)' }, 404));
 
 app.onError((err, c) => {
-  console.error('🔥 Server Error:', err);
-  return c.json({ success: false, message: 'Internal Server Error', error: err.message }, 500);
+  const correlationId = c.get('correlationId') || 'unknown';
+  console.error(`🔥 [${correlationId}] Server Error:`, err);
+  
+  // FASE 6: Ocultar o err.message em produção, retornar apenas o correlationId
+  return c.json({ 
+    success: false, 
+    message: 'Internal Server Error', 
+    correlationId 
+  }, 500);
 });
 
 export { ChatRoomDO } from './infrastructure/durable_objects/ChatRoomDO';
@@ -217,9 +192,36 @@ export default {
   fetch: app.fetch,
   async queue(batch: MessageBatch<any>, env: Bindings, ctx: ExecutionContext): Promise<void> {
     console.log(`📥 Received queue batch from: ${batch.queue} (${batch.messages.length} messages)`);
+    
     for (const message of batch.messages) {
-      console.log(`[Queue ${batch.queue}] Processing message ${message.id}`);
-      message.ack();
+      console.log(`[Queue ${batch.queue}] Processing message ${message.id}, attempt: ${message.attempts}`);
+      
+      try {
+        const payload = message.body;
+        
+        // Idempotency check: in a real environment, we'd check against KV or D1 using payload.idempotencyKey
+        
+        if (payload?.type === 'password_reset') {
+          // Aqui faria a integração real de email com Resend ou SendPulse
+          console.log(`🔒 [DELIVERY] Sending password reset for ${payload.email}`);
+          // Mock delivery
+          // const emailService = new EmailDeliveryService(env.RESEND_API_KEY);
+          // await emailService.sendPasswordReset(payload.email, payload.rawToken);
+        }
+
+        message.ack();
+      } catch (error) {
+        console.error(`❌ [Queue] Failed to process message ${message.id}:`, error);
+        
+        // DLQ Implementation / Max attempts
+        const MAX_ATTEMPTS = 3;
+        if (message.attempts >= MAX_ATTEMPTS) {
+          console.error(`🚨 [DLQ] Message ${message.id} reached max attempts. Moving to DLQ (or dropping).`);
+          message.ack(); // Acknowledging to remove from main queue; in Cloudflare, DLQ is configured at the queue level or we store it in a DLQ table
+        } else {
+          message.retry();
+        }
+      }
     }
   },
 };

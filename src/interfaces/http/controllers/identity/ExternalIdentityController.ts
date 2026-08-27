@@ -44,10 +44,87 @@ export class ExternalIdentityController {
       }
 
       const body = await c.req.json().catch(() => ({}));
-      const { assertion } = body || {};
+      const { type, challengeId, signature, message } = body || {};
 
-      if (!assertion || !assertion.type || !assertion.subjectId) {
-        return error(c, 'Dados de afirmação de identidade (assertion) inválidos.', null, 400);
+      if (!type) {
+        return error(c, 'Tipo de identidade não especificado.', null, 400);
+      }
+
+      let assertion: any = null;
+
+      if (type === 'web3_wallet') {
+        if (!challengeId || !signature || !message) {
+          return error(c, 'Challenge ID, Mensagem e Assinatura são obrigatórios para vincular carteira.', null, 400);
+        }
+
+        // 1. Instanciar VerifyWalletIdentityUseCase para validar a assinatura e o challenge
+        const db = c.get('db');
+        const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+        const { Eip4361Verifier } = await import('../../../../infrastructure/security/crypto/Eip4361Verifier');
+        const { DrizzleIdentityResolverAdapter } = await import('../../../../infrastructure/repositories/DrizzleIdentityResolverAdapter');
+        const { VerifyWalletIdentityUseCase } = await import('../../../../application/use-cases/identity/VerifyWalletIdentityUseCase');
+
+        const uow = new DrizzleUnitOfWork(db);
+        const siweVerifier = new Eip4361Verifier();
+        const resolver = new DrizzleIdentityResolverAdapter(db);
+        const verifyWallet = new VerifyWalletIdentityUseCase(uow, siweVerifier, resolver);
+
+        const domain = c.req.header('host') || 'w3.app';
+
+        const verifyResult = await verifyWallet.execute({
+          challengeId,
+          message,
+          signature,
+          expectedDomain: domain,
+        });
+
+        if (verifyResult.isFailure) {
+          return error(c, verifyResult.error || 'Falha ao verificar assinatura da carteira.', null, 400);
+        }
+
+        assertion = {
+          type: 'web3_wallet',
+          provider: 'evm',
+          subjectId: verifyResult.getValue().address,
+          networkId: verifyResult.getValue().chainId,
+          verifiedAt: new Date()
+        };
+      } else if (type === 'passkey') {
+        const { responseJSON } = body || {};
+
+        if (!challengeId || !responseJSON) {
+          return error(c, 'Challenge ID e resposta WebAuthn são obrigatórios para vincular passkey.', null, 400);
+        }
+
+        const db = c.get('db');
+        const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+        const { VerifyPasskeyRegistrationUseCase } = await import('../../../../application/use-cases/identity/VerifyPasskeyRegistrationUseCase');
+
+        const uow = new DrizzleUnitOfWork(db);
+        const verifyRegistration = new VerifyPasskeyRegistrationUseCase(uow);
+
+        const origin = c.req.header('origin') || `https://${c.req.header('host')}`;
+        const rpID = c.req.header('host') || 'w3.app';
+
+        const verifyResult = await verifyRegistration.execute({
+          challengeId,
+          responseJSON,
+          expectedOrigin: origin,
+          expectedRPID: rpID,
+        });
+
+        if (verifyResult.isFailure) {
+          return error(c, verifyResult.error || 'Falha ao verificar registro da Passkey.', null, 400);
+        }
+
+        assertion = {
+          type: 'passkey',
+          provider: 'webauthn',
+          subjectId: verifyResult.getValue().authenticatorId,
+          verifiedAt: new Date()
+        };
+      } else {
+        return error(c, 'Tipo de identidade não suportado para vinculação no momento.', null, 400);
       }
 
       const result = await this.linkUseCase.execute({

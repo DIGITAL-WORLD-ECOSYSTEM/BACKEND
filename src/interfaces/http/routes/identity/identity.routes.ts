@@ -90,6 +90,14 @@ identityRouter.post(
   }
 );
 
+identityRouter.post('/web3/challenge', async (c) => {
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.generateWeb3Challenge(c);
+});
+
 identityRouter.post(
   '/login/web3',
   rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
@@ -117,22 +125,28 @@ identityRouter.post(
   }
 );
 
+identityRouter.post('/passkey/challenge', async (c) => {
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.generatePasskeyChallenge(c);
+});
+
 identityRouter.post(
   '/login/passkey',
   rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
   async (c) => {
     const db = c.get('db');
     const uow = new DrizzleUnitOfWork(db);
-    const hasher = new PBKDF2PasswordHasher();
     const jwtService = new JwtService();
-    const auditAdapter = new SecurityAuditAdapter(db);
     const sessionRepo = new DrizzleSessionRepository(db);
     const resolverAdapter = new DrizzleIdentityResolverAdapter(db);
+    const auditAdapter = new SecurityAuditAdapter(db);
 
-    const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
-    const verifyPasskeyUseCase = new VerifyPasskeyIdentityUseCase(resolverAdapter, auditAdapter);
+    const verifyPasskeyUseCase = new VerifyPasskeyIdentityUseCase(uow, resolverAdapter, auditAdapter);
     const controller = new IdentityController(
-      authenticateUseCase,
+      undefined as any,
       jwtService,
       sessionRepo,
       undefined,

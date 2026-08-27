@@ -67,6 +67,37 @@ export class IdentityController {
     }
   }
 
+  async generateWeb3Challenge(c: Context): Promise<Response> {
+    try {
+      const db = c.get('db');
+      const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+      const { GenerateWeb3ChallengeUseCase } = await import('../../../../application/use-cases/identity/GenerateWeb3ChallengeUseCase');
+      
+      const uow = new DrizzleUnitOfWork(db);
+      const generateWeb3ChallengeUseCase = new GenerateWeb3ChallengeUseCase(uow);
+
+      const body = await c.req.json().catch(() => ({}));
+      const { transactionId, context } = body || {};
+
+      const domain = c.req.header('host') || 'w3.app'; // Em prod, pegar env.EXPECTED_DOMAIN
+
+      const result = await generateWeb3ChallengeUseCase.execute({
+        context: context || 'login',
+        transactionId,
+        domain,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha ao gerar challenge Web3', null, 400);
+      }
+
+      return success(c, 'Challenge gerado com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao gerar challenge Web3', message, 500);
+    }
+  }
+
   async loginWeb3(c: Context): Promise<Response> {
     try {
       if (!this.verifyWalletUseCase) {
@@ -74,16 +105,18 @@ export class IdentityController {
       }
 
       const body = await c.req.json().catch(() => ({}));
-      const { message, signature, nonce, domain } = body || {};
+      const { challengeId, message, signature } = body || {};
 
-      if (!message || !signature) {
-        return error(c, 'Mensagem SIWE EIP-4361 e assinatura são obrigatórias.', null, 400);
+      if (!challengeId || !message || !signature) {
+        return error(c, 'Challenge ID, Mensagem SIWE e assinatura são obrigatórios.', null, 400);
       }
 
+      const domain = c.req.header('host') || 'w3.app'; // Controlado pelo server
+
       const result = await this.verifyWalletUseCase.execute({
+        challengeId,
         message,
         signature,
-        expectedNonce: nonce,
         expectedDomain: domain,
       });
 
@@ -99,6 +132,41 @@ export class IdentityController {
     }
   }
 
+  async generatePasskeyChallenge(c: Context): Promise<Response> {
+    try {
+      const db = c.get('db');
+      const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+      const { GeneratePasskeyChallengeUseCase } = await import('../../../../application/use-cases/identity/GeneratePasskeyChallengeUseCase');
+      
+      const uow = new DrizzleUnitOfWork(db);
+      const generatePasskeyChallengeUseCase = new GeneratePasskeyChallengeUseCase(uow);
+
+      const body = await c.req.json().catch(() => ({}));
+      const { transactionId, context, userId, userName } = body || {};
+
+      const rpID = c.req.header('host') || 'w3.app';
+      const rpName = 'ASPPIBRA W3';
+
+      const result = await generatePasskeyChallengeUseCase.execute({
+        context: context || 'login',
+        transactionId,
+        userId,
+        userName,
+        rpID,
+        rpName,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha ao gerar challenge Passkey', null, 400);
+      }
+
+      return success(c, 'Challenge gerado com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao gerar challenge Passkey', message, 500);
+    }
+  }
+
   async loginPasskey(c: Context): Promise<Response> {
     try {
       if (!this.verifyPasskeyUseCase) {
@@ -106,17 +174,20 @@ export class IdentityController {
       }
 
       const body = await c.req.json().catch(() => ({}));
-      const { credentialId, clientDataJSON, authenticatorData, signature } = body || {};
+      const { challengeId, responseJSON } = body || {};
 
-      if (!credentialId) {
-        return error(c, 'ID de credencial Passkey obrigatório.', null, 400);
+      if (!challengeId || !responseJSON) {
+        return error(c, 'Challenge ID e resposta WebAuthn são obrigatórios.', null, 400);
       }
 
+      const origin = c.req.header('origin') || `https://${c.req.header('host')}`;
+      const rpID = c.req.header('host') || 'w3.app';
+
       const result = await this.verifyPasskeyUseCase.execute({
-        credentialId,
-        clientDataJSON: clientDataJSON || '',
-        authenticatorData: authenticatorData || '',
-        signature: signature || '',
+        challengeId,
+        responseJSON,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
       });
 
       if (result.isFailure) {
@@ -124,7 +195,7 @@ export class IdentityController {
       }
 
       const passkeyAuth = result.getValue();
-      return this.issueSessionResponse(c, passkeyAuth.userId, `passkey_${credentialId}@w3.app`, null, 'active');
+      return this.issueSessionResponse(c, passkeyAuth.userId, `passkey_${passkeyAuth.credentialId}@w3.app`, null, 'active');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       return error(c, 'Erro interno ao processar autenticação Passkey', message, 500);
@@ -144,11 +215,29 @@ export class IdentityController {
     }
 
     const sessionId = crypto.randomUUID();
+    const familyId = crypto.randomUUID();
     const jti = crypto.randomUUID();
+    
+    // Generate secure refresh token
+    const rawRefreshToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+    const refreshTokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawRefreshToken));
+    const refreshTokenHash = Array.from(new Uint8Array(refreshTokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
     const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
     const userAgent = c.req.header('user-agent') || 'unknown';
-    const createdAt = new Date();
-    const expiresAt = new Date(Date.now() + 86400 * 1000);
+    
+    const now = new Date();
+    const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 3600 * 1000); // 30 days for refresh session
+    const jwtExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 mins for access token
+
+    // Create the token family first
+    if (this.sessionRepo.createRefreshTokenFamily) {
+      await this.sessionRepo.createRefreshTokenFamily({
+        id: familyId,
+        userId,
+        createdAt: now,
+      });
+    }
 
     await this.sessionRepo.createSession({
       id: sessionId,
@@ -156,11 +245,12 @@ export class IdentityController {
       jti,
       ip,
       userAgent,
-      refreshTokenHash: crypto.randomUUID(),
+      familyId,
+      refreshTokenHash,
       aal: 1,
       authEpoch: 1,
-      createdAt,
-      expiresAt,
+      createdAt: now,
+      expiresAt: sessionExpiresAt,
     });
 
     const token = await this.jwtService.sign(
@@ -172,13 +262,15 @@ export class IdentityController {
         sid: sessionId,
         jti,
         aal: 1,
-        exp: Math.floor(expiresAt.getTime() / 1000), // alinha o exp do JWT com a expiração da sessão no D1
+        exp: Math.floor(jwtExpiresAt.getTime() / 1000), 
       },
       jwtSecret
     );
 
     return success(c, 'Autenticação realizada com sucesso', {
-      token,
+      token, // Access Token
+      refreshToken: rawRefreshToken, // Send back for the client to store securely
+      expiresIn: 15 * 60, // 15 minutes
       user: {
         id: userId,
         email,
@@ -188,7 +280,7 @@ export class IdentityController {
       session: {
         id: sessionId,
         aal: 1,
-        expiresAt,
+        expiresAt: sessionExpiresAt,
       },
     });
   }

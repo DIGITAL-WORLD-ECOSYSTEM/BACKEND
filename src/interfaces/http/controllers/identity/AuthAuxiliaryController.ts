@@ -20,12 +20,19 @@ export class AuthAuxiliaryController {
       if (!this.setupTotpUseCase) {
         return error(c, 'Caso de uso SetupTotp não configurado', null, 500);
       }
-      const userId = c.get('userId') || c.req.header('x-user-id');
-      if (!userId) {
-        return error(c, 'Usuário não autenticado', null, 401);
+      const body = await c.req.json().catch(() => ({}));
+      const transactionId = body?.transactionId;
+
+      const encryptionKey = c.env.TOTP_ENCRYPTION_KEY;
+      if (!encryptionKey) {
+        return error(c, 'Configuração do servidor incorreta (TOTP_ENCRYPTION_KEY ausente)', null, 500);
       }
 
-      const result = await this.setupTotpUseCase.execute({ userId: Number(userId) });
+      if (!transactionId) {
+        return error(c, 'ID da transação é obrigatório', null, 400);
+      }
+
+      const result = await this.setupTotpUseCase.execute({ transactionId, encryptionKey });
       if (result.isFailure) {
         return error(c, result.error || 'Erro ao configurar 2FA', null, 400);
       }
@@ -43,14 +50,18 @@ export class AuthAuxiliaryController {
         return error(c, 'Caso de uso AuthenticateTotp não configurado', null, 500);
       }
       const body = await c.req.json().catch(() => ({}));
-      const { code, userId: bodyUserId } = body || {};
-      const userId = c.get('userId') || bodyUserId;
+      const { code, transactionId } = body || {};
 
-      if (!userId || !code) {
-        return error(c, 'ID do usuário e código 2FA são obrigatórios', null, 400);
+      const encryptionKey = c.env.TOTP_ENCRYPTION_KEY;
+      if (!encryptionKey) {
+        return error(c, 'Configuração do servidor incorreta (TOTP_ENCRYPTION_KEY ausente)', null, 500);
       }
 
-      const result = await this.authenticateTotpUseCase.execute({ userId: Number(userId), code });
+      if (!transactionId || !code) {
+        return error(c, 'ID da transação e código 2FA são obrigatórios', null, 400);
+      }
+
+      const result = await this.authenticateTotpUseCase.execute({ transactionId, code, encryptionKey });
       if (result.isFailure) {
         return error(c, result.error || 'Código 2FA inválido', null, 400);
       }
@@ -77,6 +88,17 @@ export class AuthAuxiliaryController {
       const result = await this.requestPasswordResetUseCase.execute({ email });
       if (result.isFailure) {
         return error(c, result.error || 'Erro ao solicitar redefinição de senha', null, 400);
+      }
+
+      // Canal protegido: Envia direto para a fila usando Cloudflare Queues
+      // Garantindo que o rawToken NUNCA vá para o banco (Outbox) em texto plano.
+      const payload = result.getValue();
+      if (payload?.rawToken && c.env.EMAIL_PIPELINE_QUEUE) {
+        await c.env.EMAIL_PIPELINE_QUEUE.send({
+          type: 'password_reset',
+          email,
+          rawToken: payload.rawToken
+        });
       }
 
       return success(c, 'Se o e-mail estiver cadastrado, as instruções de redefinição foram enviadas com sucesso.');
