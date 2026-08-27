@@ -76,4 +76,39 @@ export const userRoles = sqliteTable(
     grantSourceCheck: check('user_roles_grant_source_check', sql`${table.grantSource} IN ('admin', 'system', 'migration', 'policy')`),
   })
 );
+// ----------------------------------------------------------------------
+// Entity: permissions
+// ----------------------------------------------------------------------
+export const permissions = sqliteTable(
+  'permissions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    key: text('key').notNull().unique(), // ex: 'user.read', 'finance.write', 'admin.all'
+    displayName: text('display_name').notNull(),
+    description: text('description'),
+    module: text('module').notNull(), // ex: 'identity', 'finance', 'system'
+    createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`).notNull(),
+  },
+  (table) => ({
+    moduleIdx: index('idx_permissions_module').on(table.module),
+  })
+);
 
+// ----------------------------------------------------------------------
+// Entity: rolePermissions
+// ----------------------------------------------------------------------
+export const rolePermissions = sqliteTable(
+  'role_permissions',
+  {
+    roleId: integer('role_id')
+      .notNull()
+      .references(() => roles.id, { onDelete: 'cascade' }),
+    permissionId: integer('permission_id')
+      .notNull()
+      .references(() => permissions.id, { onDelete: 'cascade' }),
+    createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.roleId, table.permissionId] }),
+  })
+);

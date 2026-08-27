@@ -101,10 +101,53 @@ export const sessionGuard = async (c: Context, next: Next) => {
     c.set('userId', session.userId);
     c.set('sessionId', session.id);
     c.set('sessionAal', session.aal);
+    c.set('sessionCreatedAt', session.createdAt);
 
     await next();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Token inválido';
     return c.json({ success: false, message: 'Invalid or expired session token.', error: message }, 401);
   }
+};
+
+/**
+ * Middleware para impor Nível de Garantia de Autenticação (AAL) e Recent Auth.
+ * Deve ser usado APÓS o sessionGuard na cadeia de middlewares da rota.
+ * 
+ * @param minAal O AAL mínimo necessário (1, 2, ou 3).
+ * @param maxAgeMinutes O tempo máximo permitido desde a autenticação (opcional).
+ */
+export const requireAal = (minAal: number, maxAgeMinutes?: number) => {
+  return async (c: Context, next: Next) => {
+    const sessionAal = c.get('sessionAal') as number | undefined;
+    const sessionCreatedAt = c.get('sessionCreatedAt') as Date | undefined;
+
+    if (!sessionAal) {
+      return c.json({ success: false, message: 'Authentication level not found in context. sessionGuard is required.' }, 500);
+    }
+
+    if (sessionAal < minAal) {
+      return c.json({ 
+        success: false, 
+        message: 'Insufficient authentication level.', 
+        code: 'AAL_INSUFFICIENT',
+        requiredAal: minAal 
+      }, 403);
+    }
+
+    if (maxAgeMinutes && sessionCreatedAt) {
+      const now = new Date();
+      const diffMinutes = (now.getTime() - sessionCreatedAt.getTime()) / (1000 * 60);
+      if (diffMinutes > maxAgeMinutes) {
+        return c.json({ 
+          success: false, 
+          message: 'Recent authentication required.', 
+          code: 'RECENT_AUTH_REQUIRED',
+          maxAgeMinutes 
+        }, 403);
+      }
+    }
+
+    await next();
+  };
 };
