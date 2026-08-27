@@ -1,6 +1,6 @@
 import { Context, Next } from 'hono';
 import { error } from '../helpers/response';
-import { eq, and, isNull, gt } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 
 /**
  * verifyRole - Middleware para Role-Based Access Control (RBAC)
@@ -32,18 +32,14 @@ export const verifyRole = (allowedRoles: string[]) => {
           and(
             eq(userRoles.userId, sessionUserId),
             isNull(userRoles.revokedAt), // A role não deve estar revogada
+            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${new Date().getTime()}`,
             eq(roles.status, 'active') // A role deve estar ativa no sistema
           )
         );
 
       const userRoleKeys = userRolesData.map((r: any) => r.roleKey);
       
-      // Default to citizen if no roles found, assuming citizen is implicit for all authenticated users?
-      // Actually, if they don't have explicit roles, we might reject unless 'citizen' is allowed and we treat everyone as citizen.
-      // For now, let's strictly check DB roles. If the system treats 'citizen' as a base role, they should have it in userRoles.
-      if (userRoleKeys.length === 0 && allowedRoles.includes('citizen')) {
-        userRoleKeys.push('citizen'); // Implicit citizen role
-      }
+      // The system should not grant implicit roles. All roles must be recorded in the DB.
 
       const hasRole = userRoleKeys.some((role: string) => allowedRoles.includes(role));
 
@@ -90,6 +86,7 @@ export const verifyPermission = (requiredPermission: string) => {
           and(
             eq(userRoles.userId, sessionUserId),
             isNull(userRoles.revokedAt),
+            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${new Date().getTime()}`,
             eq(roles.status, 'active'),
             eq(permissions.key, requiredPermission)
           )

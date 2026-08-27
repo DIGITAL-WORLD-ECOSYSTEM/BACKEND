@@ -22,6 +22,7 @@ import identityRouter from './interfaces/http/routes/identity/identity.routes';
 import { civilIdentityRouter } from './interfaces/http/routes/civil-identity/civil_identity.routes';
 import { ssiRouter } from './interfaces/http/routes/ssi/ssi.routes';
 import { financeRouter } from './interfaces/http/routes/finance/finance.routes';
+import { JwtService } from './infrastructure/security/jwt/JwtService';
 
 
 // Configuração de Tipagem do Hono
@@ -136,6 +137,10 @@ app.use(async (c: Context<AppType>, next: Next) => {
 
   const db = createDb(c.env.DB);
   c.set('db', db);
+  
+  // Dependency Injection for JwtService
+  c.set('jwtService', new JwtService());
+  
   await next();
 });
 

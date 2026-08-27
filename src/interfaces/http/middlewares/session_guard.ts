@@ -4,17 +4,12 @@ import { DrizzleSessionRepository } from '../../../infrastructure/repositories/D
 import { DrizzleUserRepositoryAdapter } from '../../../infrastructure/repositories/DrizzleUserRepositoryAdapter';
 import { IJwtService } from '../../../application/ports/security/IJwtService';
 
-/**
- * Correção 2.4 (DIP): em vez de `new JwtService()` fixo no módulo, resolvemos
- * a porta IJwtService a partir do contexto do Hono quando disponível
- * (registrada em um middleware de bootstrap: `c.set('jwtService', new JwtService())`),
- * com fallback local apenas para não quebrar ambientes que ainda não fazem essa
- * injeção. O fallback deve ser removido assim que o bootstrap for padronizado.
- */
-const fallbackJwtService = new JwtService();
-
 function resolveJwtService(c: Context): IJwtService {
-  return (c.get('jwtService') as IJwtService | undefined) ?? fallbackJwtService;
+  const service = c.get('jwtService') as IJwtService | undefined;
+  if (!service) {
+    throw new Error('IJwtService was not provided in the Hono context (Dependency Injection missing).');
+  }
+  return service;
 }
 
 /**

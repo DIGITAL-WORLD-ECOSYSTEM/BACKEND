@@ -125,7 +125,15 @@ identityRouter.post(
   }
 );
 
-identityRouter.post('/passkey/challenge', async (c) => {
+identityRouter.post('/login/passkey/challenge', async (c) => {
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.generatePasskeyChallenge(c);
+});
+
+identityRouter.post('/registration/passkey/challenge', sessionGuard, async (c) => {
   const db = c.get('db');
   const jwtService = new JwtService();
   const sessionRepo = new DrizzleSessionRepository(db);
@@ -161,7 +169,7 @@ identityRouter.post(
 // ----------------------------------------------------------------------------
 // 2. AUXILIARY AUTHENTICATION (2FA / TOTP, PASSWORD RESET, REFRESH SESSION)
 // ----------------------------------------------------------------------------
-identityRouter.post('/totp/setup', async (c) => {
+identityRouter.post('/totp/setup', sessionGuard, async (c) => {
   const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const setupTotpUseCase = new SetupTotpUseCase(uow);
