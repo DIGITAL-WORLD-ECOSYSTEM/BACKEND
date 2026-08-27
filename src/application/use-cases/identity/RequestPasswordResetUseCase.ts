@@ -3,6 +3,7 @@ import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityA
 import { Result } from '../../../shared/kernel/Result';
 import { RequestPasswordResetDTO } from '../../../application/dto/identity/RequestPasswordResetDTO';
 import { IDomainEvent } from '../../../shared/kernel/DomainEvent';
+import { IQueuePort } from '../../../application/ports/output/IQueuePort';
 
 export class PasswordResetRequestedEvent implements IDomainEvent {
   dateTimeOccurred: Date = new Date();
@@ -20,12 +21,13 @@ export class PasswordResetRequestedEvent implements IDomainEvent {
 export class RequestPasswordResetUseCase {
   constructor(
     private readonly uow: IUnitOfWork,
+    private readonly queuePort: IQueuePort,
     private readonly auditPort?: ISecurityAuditPort
   ) {}
 
-  async execute(dto: RequestPasswordResetDTO): Promise<Result<{ rawToken: string | null }>> {
+  async execute(dto: RequestPasswordResetDTO): Promise<Result<void>> {
     if (!dto.email) {
-      return Result.fail<{ rawToken: string | null }>('E-mail é obrigatório.');
+      return Result.fail<void>('E-mail é obrigatório.');
     }
 
     const normalizedEmail = dto.email.trim().toLowerCase();
@@ -82,7 +84,12 @@ export class RequestPasswordResetUseCase {
       return Result.ok();
     });
 
-    return Result.ok({ rawToken: generatedRawToken });
+    if (generatedRawToken) {
+      await this.queuePort.dispatchPasswordReset(normalizedEmail, generatedRawToken);
+    }
+
+    // Retorna void em vez de vazar o rawToken!
+    return Result.ok();
   }
 }
 

@@ -4,21 +4,11 @@ const DEFAULT_EXPIRES_IN_SECONDS = 86400; // 24h
 
 export class JwtService implements IJwtService {
   private base64UrlEncode(arr: Uint8Array): string {
-    const binString = String.fromCharCode(...arr);
-    return btoa(binString).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    return Buffer.from(arr).toString('base64url');
   }
 
   private base64UrlDecode(str: string): Uint8Array {
-    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-    while (base64.length % 4) {
-      base64 += '=';
-    }
-    const binString = atob(base64);
-    const bytes = new Uint8Array(binString.length);
-    for (let i = 0; i < binString.length; i++) {
-      bytes[i] = binString.charCodeAt(i);
-    }
-    return bytes;
+    return new Uint8Array(Buffer.from(str, 'base64url'));
   }
 
   private async getSigningKey(secretKey: string): Promise<CryptoKey> {

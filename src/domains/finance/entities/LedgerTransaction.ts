@@ -1,4 +1,5 @@
 import { Money } from './Money';
+import { LedgerImbalanceError } from '../errors/LedgerImbalanceError';
 
 export interface LedgerEntryProps {
   id?: string;
@@ -80,7 +81,7 @@ export class LedgerTransaction {
 
     for (const [assetId, balance] of balances.entries()) {
       if (balance !== 0n) {
-        throw new Error(`Double-entry validation failed for asset ${assetId}: Debits and Credits do not balance (Diff: ${balance.toString()})`);
+        throw new LedgerImbalanceError(`Double-entry validation failed for asset ${assetId}: Debits and Credits do not balance (Diff: ${balance.toString()})`);
       }
     }
   }

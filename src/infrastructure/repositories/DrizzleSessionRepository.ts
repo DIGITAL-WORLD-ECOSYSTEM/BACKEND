@@ -1,5 +1,5 @@
 import { ISessionRepository } from '../../application/ports/output/ISessionRepository';
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { userSessions } from '../../db/authentication/tables';
 
 export class DrizzleSessionRepository implements ISessionRepository {
@@ -23,11 +23,16 @@ export class DrizzleSessionRepository implements ISessionRepository {
   }
 
   async rotateRefreshTokenAtomically(sessionId: string, oldRefreshTokenHash: string): Promise<boolean> {
-    const { sql } = await import('drizzle-orm');
     const result = await this.db
       .update(userSessions)
       .set({ revokedAt: new Date(), revocationReason: 'Rotated' })
-      .where(sql`${userSessions.id} = ${sessionId} AND ${userSessions.revokedAt} IS NULL AND ${userSessions.refreshTokenHash} = ${oldRefreshTokenHash}`);
+      .where(
+        and(
+          eq(userSessions.id, sessionId),
+          isNull(userSessions.revokedAt),
+          eq(userSessions.refreshTokenHash, oldRefreshTokenHash)
+        )
+      );
     
     return result.meta.changes > 0;
   }
