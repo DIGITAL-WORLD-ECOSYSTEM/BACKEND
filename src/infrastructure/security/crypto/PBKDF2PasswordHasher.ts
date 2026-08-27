@@ -1,4 +1,5 @@
 import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
+import { timingSafeEqual } from './timing_safe';
 
 export class PBKDF2PasswordHasher implements IPasswordHasher {
   async hash(password: string, existingSaltB64?: string): Promise<string> {
@@ -36,26 +37,13 @@ export class PBKDF2PasswordHasher implements IPasswordHasher {
     return `${finalSaltB64}:${hashHex}`;
   }
 
-  private timingSafeEqual(a: string, b: string): boolean {
-    if (a.length !== b.length) {
-      let result = 0;
-      for (let i = 0; i < a.length; i++) {
-        result |= a.charCodeAt(i) ^ a.charCodeAt(i);
-      }
-      return false;
-    }
-    let result = 0;
-    for (let i = 0; i < a.length; i++) {
-      result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-    }
-    return result === 0;
-  }
+
 
   async verify(password: string, storedHashText: string): Promise<boolean> {
     const [saltB64, originalHex] = storedHashText.split(':');
     if (!saltB64 || !originalHex) return false;
 
     const newDigest = await this.hash(password, saltB64);
-    return this.timingSafeEqual(newDigest, storedHashText);
+    return timingSafeEqual(newDigest, storedHashText);
   }
 }

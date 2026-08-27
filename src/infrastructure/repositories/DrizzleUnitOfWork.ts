@@ -87,15 +87,13 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
         if (result) return result;
       } catch (err: any) {
         const errorMsg = err?.message || err?.toString() || '';
-        if (!workStarted || errorMsg.toLowerCase().includes('begin') || errorMsg.includes('not supported by D1 driver')) {
-          const factory = new DrizzleRepositoryFactory(this.db);
-          return await work(factory);
-        }
+        
+        // FAIL-CLOSED: No fallback to non-transactional execution for SECURITY_CRITICAL operations.
         const failureResult = result as Result<T> | null;
         if (failureResult && failureResult.isFailure) {
           return failureResult;
         }
-        return Result.fail(errorMsg || 'Transaction aborted');
+        return Result.fail(errorMsg || 'Transaction aborted or driver error');
       }
     }
 

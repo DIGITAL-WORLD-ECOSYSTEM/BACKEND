@@ -111,7 +111,8 @@ export class IdentityController {
         return error(c, 'Challenge ID, Mensagem SIWE e assinatura são obrigatórios.', null, 400);
       }
 
-      const domain = c.req.header('host') || 'w3.app'; // Controlado pelo server
+      // SECURITY ENFORCEMENT: Domain must come from strict server environment, not client headers.
+      const domain = c.env.SIWE_ALLOWED_DOMAIN || 'w3.app';
 
       const result = await this.verifyWalletUseCase.execute({
         challengeId,
@@ -152,7 +153,7 @@ export class IdentityController {
         userId = sessionUser.userId;
       }
 
-      const rpID = c.req.header('host') || 'w3.app';
+      const rpID = c.env.WEBAUTHN_RP_ID || 'w3.app';
       const rpName = 'ASPPIBRA W3';
 
       const result = await generatePasskeyChallengeUseCase.execute({
@@ -188,8 +189,9 @@ export class IdentityController {
         return error(c, 'Challenge ID e resposta WebAuthn são obrigatórios.', null, 400);
       }
 
-      const origin = c.req.header('origin') || `https://${c.req.header('host')}`;
-      const rpID = c.req.header('host') || 'w3.app';
+      // SECURITY ENFORCEMENT: Origin and RP_ID must come from strict server environment, not client headers.
+      const origin = c.env.WEBAUTHN_ALLOWED_ORIGINS || 'https://w3.app';
+      const rpID = c.env.WEBAUTHN_RP_ID || 'w3.app';
 
       const result = await this.verifyPasskeyUseCase.execute({
         challengeId,
@@ -250,6 +252,12 @@ export class IdentityController {
       });
     }
 
+    // Get actual user authEpoch instead of hardcoding 1
+    const db = c.get('db');
+    const userRepo = new (await import('../../../../infrastructure/repositories/DrizzleUserRepositoryAdapter')).DrizzleUserRepositoryAdapter(db);
+    const user = await userRepo.findById(userId);
+    const userAuthEpoch = user?.authEpoch || 1;
+
     await this.sessionRepo.createSession({
       id: sessionId,
       userId,
@@ -259,7 +267,7 @@ export class IdentityController {
       familyId,
       refreshTokenHash,
       aal: effectiveAal,
-      authEpoch: 1,
+      authEpoch: userAuthEpoch,
       createdAt: now,
       expiresAt: sessionExpiresAt,
       lastAuthenticatedAt: authTime,

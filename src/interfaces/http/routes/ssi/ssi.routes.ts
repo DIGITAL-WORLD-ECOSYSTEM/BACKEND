@@ -6,7 +6,8 @@ import { CreateDidUseCase } from '../../../../domains/ssi/use-cases/CreateDidUse
 import { IssueVerifiableCredentialUseCase } from '../../../../domains/ssi/use-cases/IssueVerifiableCredentialUseCase';
 import { RevokeCredentialUseCase } from '../../../../domains/ssi/use-cases/RevokeCredentialUseCase';
 import { SsiController } from '../../controllers/ssi/SsiController';
-import { sessionGuard } from '../../middlewares/session_guard';
+import { sessionGuard, requireAal } from '../../middlewares/session_guard';
+import { verifyPermission } from '../../middlewares/rbac';
 
 type AppType = {
   Bindings: Bindings;
@@ -17,8 +18,12 @@ export const ssiRouter = new Hono<AppType>();
 
 ssiRouter.use('*', sessionGuard);
 
-ssiRouter.post('/did', async (c) => {
-  const db = c.get('db');
+ssiRouter.post(
+  '/did',
+  requireAal(2),
+  verifyPermission('ssi.did.create'),
+  async (c) => {
+    const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const ssiRepo = new DrizzleSsiRepository(db);
   const createDidUseCase = new CreateDidUseCase(uow);
@@ -29,8 +34,12 @@ ssiRouter.post('/did', async (c) => {
   return controller.createDid(c);
 });
 
-ssiRouter.post('/credentials/issue', async (c) => {
-  const db = c.get('db');
+ssiRouter.post(
+  '/credentials/issue',
+  requireAal(2, 15),
+  verifyPermission('ssi.credential.issue'),
+  async (c) => {
+    const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const ssiRepo = new DrizzleSsiRepository(db);
   const createDidUseCase = new CreateDidUseCase(uow);
@@ -41,8 +50,12 @@ ssiRouter.post('/credentials/issue', async (c) => {
   return controller.issueCredential(c);
 });
 
-ssiRouter.post('/credentials/revoke', async (c) => {
-  const db = c.get('db');
+ssiRouter.post(
+  '/credentials/revoke',
+  requireAal(2, 15),
+  verifyPermission('ssi.credential.revoke'),
+  async (c) => {
+    const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const ssiRepo = new DrizzleSsiRepository(db);
   const createDidUseCase = new CreateDidUseCase(uow);
@@ -53,8 +66,12 @@ ssiRouter.post('/credentials/revoke', async (c) => {
   return controller.revokeCredential(c);
 });
 
-ssiRouter.get('/credentials', async (c) => {
-  const db = c.get('db');
+ssiRouter.get(
+  '/credentials',
+  requireAal(1),
+  verifyPermission('ssi.credential.read'),
+  async (c) => {
+    const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const ssiRepo = new DrizzleSsiRepository(db);
   const createDidUseCase = new CreateDidUseCase(uow);

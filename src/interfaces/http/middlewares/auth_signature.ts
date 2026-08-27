@@ -4,6 +4,7 @@ import { JwtService } from '../../../infrastructure/security/jwt/JwtService';
 import { DrizzleUnitOfWork } from '../../../infrastructure/repositories/DrizzleUnitOfWork';
 import { CitizenRecord } from '../../../application/ports/output/ICivilIdentityRepository';
 import { Result } from '../../../shared/kernel/Result';
+import { SessionValidationService } from '../../../application/services/SessionValidationService';
 
 const jwtService = new JwtService();
 
@@ -15,27 +16,42 @@ function requireJwtSecret(c: Context): string {
   return secret;
 }
 
+// In-memory nonce store (For production, use Cloudflare KV or Durable Objects)
+const consumedNonces = new Map<string, number>();
+
+/**
+ * Limpa nonces expirados do mapa em memória para evitar memory leak.
+ */
+function cleanupNonces() {
+  const now = Date.now();
+  for (const [key, timestamp] of consumedNonces.entries()) {
+    if (Math.abs(now - timestamp) > 300000) {
+      consumedNonces.delete(key);
+    }
+  }
+}
+
 /**
  * Zero-Trust Signature Middleware
- * Requer o header X-Identity-Signature: Base64(Ed25519_Sign(Timestamp + Body))
- * E o header X-Identity-DID: did:dao:asppibra:<username>
+ * Requer os headers:
+ * - X-Identity-Signature
+ * - X-Identity-DID
+ * - X-Identity-Timestamp
+ * - X-Identity-Nonce
  *
  * FALLBACK: Aceita JWT Bearer token se os headers de Zero-Trust estiverem ausentes.
  */
 export const authSignature = async (c: Context, next: Next) => {
-  const path = c.req.path;
-  if (path.includes('/webhook')) {
-    return next();
-  }
 
   const signature = c.req.header('X-Identity-Signature');
   const did = c.req.header('X-Identity-DID');
-  const timestamp = c.req.header('X-Identity-Timestamp');
+  const timestampStr = c.req.header('X-Identity-Timestamp');
+  const nonce = c.req.header('X-Identity-Nonce');
 
-  const hasAnyZeroTrustHeader = signature || did || timestamp;
+  const hasAnyZeroTrustHeader = signature || did || timestampStr || nonce;
 
-  // --- FALLBACK JWT (Para sessões padrão de Cidadão via Web2/Social) ---
-  if (!signature || !did || !timestamp) {
+  // --- FALLBACK JWT ---
+  if (!signature || !did || !timestampStr || !nonce) {
     if (hasAnyZeroTrustHeader) {
       return c.json({ success: false, message: 'Missing Zero-Trust credentials.' }, 401);
     }
@@ -53,52 +69,59 @@ export const authSignature = async (c: Context, next: Next) => {
       }
 
       try {
-        const payload = await jwtService.verify(token, secret);
-
-        // Correção 1.2: sid é OBRIGATÓRIO. Sem sid, não há como validar a sessão
-        // no D1 (revogação/expiração), então o token NUNCA é aceito silenciosamente.
-        if (!payload.sid) {
-          return c.json({ success: false, message: 'Invalid session payload (sid missing).' }, 401);
-        }
-
         const db = c.get('db');
         if (!db) {
           return c.json({ success: false, message: 'Database context unavailable.' }, 500);
         }
 
-        const { DrizzleSessionRepository } = await import('../../../infrastructure/repositories/DrizzleSessionRepository');
-        const sessionRepo = new DrizzleSessionRepository(db);
-        const sessionRecord = await sessionRepo.getSessionById(payload.sid);
-
-        const { Session } = await import('../../../domains/identity/entities/Session');
-        const session = sessionRecord ? Session.fromPersistence(sessionRecord as any) : null;
-
-        if (!session || !session.isValid()) {
-          return c.json({ success: false, message: 'Session revoked, inactive or expired.' }, 401);
-        }
-
-        c.set('user', {
-          userId: session.userId,
-          sessionId: session.id,
-          sessionAal: session.aal,
-          role: payload.role || 'citizen',
+        const validationService = new SessionValidationService(jwtService);
+        const validationResult = await validationService.validate({
+          token,
+          secret,
+          db,
         });
 
+        c.set('user', {
+          userId: validationResult.userId,
+          sessionId: validationResult.sessionId,
+          sessionAal: validationResult.sessionAal,
+          // Role is NOT extracted from JWT. Authorization is deferred to RBAC.
+        });
+
+        c.set('userId', validationResult.userId);
+        c.set('sessionId', validationResult.sessionId);
+        c.set('sessionAal', validationResult.sessionAal);
+        c.set('lastAuthenticatedAt', validationResult.lastAuthenticatedAt);
+
         return await next();
-      } catch (err) {
-        return c.json({ success: false, message: 'Invalid or expired session token.' }, 401);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Token inválido';
+        return c.json({ success: false, message, error: message }, 401);
       }
     }
     return c.json({ success: false, message: 'Authentication required (Zero-Trust or JWT).' }, 401);
   }
 
-  // 1. Verificar expiração do Timestamp (máximo 5 min)
+  // 1. Verificar expiração do Timestamp e formato
+  const timestamp = Number(timestampStr);
+  if (isNaN(timestamp)) {
+    return c.json({ success: false, message: 'Invalid timestamp format.' }, 401);
+  }
+
   const now = Date.now();
-  if (Math.abs(now - parseInt(timestamp)) > 300000) {
+  if (Math.abs(now - timestamp) > 300000) {
     return c.json({ success: false, message: 'Request signature expired.' }, 401);
   }
 
-  // 2. Buscar Cidadão via UnitOfWork & Repositório Canônico
+  // 2. Anti-Replay: Validar Nonce
+  const nonceKey = `identity:${did}:nonce:${nonce}`;
+  if (consumedNonces.has(nonceKey)) {
+    return c.json({ success: false, message: 'Nonce already consumed (Replay detected).' }, 401);
+  }
+  consumedNonces.set(nonceKey, timestamp);
+  cleanupNonces(); // Chance to GC
+
+  // 3. Buscar Cidadão via UnitOfWork & Repositório Canônico
   const username = did.split(':').pop();
   if (!username) {
     return c.json({ success: false, message: 'Invalid DID format.' }, 401);
@@ -119,14 +142,20 @@ export const authSignature = async (c: Context, next: Next) => {
     return c.json({ success: false, message: 'Citizen not found or revoked.' }, 401);
   }
 
-  // 3. Verificar Assinatura
+  // 4. Verificar Assinatura (Ed25519(timestamp + nonce + method + path + sha256(body)))
   if (!activeCitizen.publicKey) {
     return c.json({ success: false, message: 'Public key missing for citizen.' }, 401);
   }
 
   const publicKey = Uint8Array.from(JSON.parse(activeCitizen.publicKey));
   const bodyText = await c.req.raw.clone().text();
-  const msg = new TextEncoder().encode(timestamp + bodyText);
+
+  // Generate SHA-256 hash of the body
+  const bodyHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(bodyText));
+  const bodyHashHex = Array.from(new Uint8Array(bodyHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  const msgPayload = `${timestampStr}${nonce}${c.req.method}${c.req.path}${bodyHashHex}`;
+  const msg = new TextEncoder().encode(msgPayload);
 
   try {
     const isValid = await CryptoCore.verify(
@@ -147,7 +176,9 @@ export const authSignature = async (c: Context, next: Next) => {
       return c.json({ success: false, message: 'Citizen is not linked to a User account.' }, 403);
     }
 
-    c.set('user', { userId: activeCitizen.userId, role: 'citizen' });
+    // Role is NOT injected. Defer to RBAC.
+    c.set('user', { userId: activeCitizen.userId });
+    c.set('userId', activeCitizen.userId);
   } catch (e) {
     return c.json({ success: false, message: 'Signature verification failed.' }, 401);
   }

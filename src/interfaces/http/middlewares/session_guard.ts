@@ -1,8 +1,7 @@
 import { Context, Next } from 'hono';
 import { JwtService } from '../../../infrastructure/security/jwt/JwtService';
-import { DrizzleSessionRepository } from '../../../infrastructure/repositories/DrizzleSessionRepository';
-import { DrizzleUserRepositoryAdapter } from '../../../infrastructure/repositories/DrizzleUserRepositoryAdapter';
 import { IJwtService } from '../../../application/ports/security/IJwtService';
+import { SessionValidationService } from '../../../application/services/SessionValidationService';
 
 function resolveJwtService(c: Context): IJwtService {
   const service = c.get('jwtService') as IJwtService | undefined;
@@ -37,71 +36,32 @@ export const sessionGuard = async (c: Context, next: Next) => {
 
   try {
     const jwtService = resolveJwtService(c);
-    const payload = await jwtService.verify(token, secret);
-
-    if (!payload.sid) {
-      return c.json({ success: false, message: 'Invalid session payload (sid missing).' }, 401);
-    }
-
     const db = c.get('db');
     if (!db) {
       return c.json({ success: false, message: 'Database context unavailable.' }, 500);
     }
 
-    const sessionRepo = new DrizzleSessionRepository(db);
-    const sessionRecord = await sessionRepo.getSessionById(payload.sid);
-
-    if (!sessionRecord) {
-      return c.json({ success: false, message: 'Session not found.' }, 401);
-    }
-
-    const { Session } = await import('../../../domains/identity/entities/Session');
-    const session = Session.fromPersistence(sessionRecord as any);
-
-    if (!session.isValid()) {
-      return c.json({ success: false, message: session.isRevoked ? 'Session has been revoked.' : 'Session has expired.' }, 401);
-    }
-
-    const userRepo = new DrizzleUserRepositoryAdapter(db);
-    const userRecord = await userRepo.findById(session.userId);
-
-    if (!userRecord) {
-      return c.json({ success: false, message: 'User account not found.' }, 401);
-    }
-
-    const { User } = await import('../../../domains/identity/entities/User');
-    const user = new User(userRecord as any);
-
-    if (!user.canAuthenticate()) {
-      return c.json({ success: false, message: `User account is not eligible for authentication.` }, 403);
-    }
-
-    // AF-008: Validar authEpoch da entidade Session contra o authEpoch atual do usuário (D1 -> D1)
-    if (!session.matchesUserEpoch(user.authEpoch)) {
-      return c.json(
-        {
-          success: false,
-          message: 'Session invalidated due to password reset or security revocation (authEpoch mismatch).',
-        },
-        401
-      );
-    }
+    const validationService = new SessionValidationService(jwtService);
+    const validationResult = await validationService.validate({
+      token,
+      secret,
+      db,
+    });
 
     c.set('user', {
-      userId: session.userId,
-      sessionId: session.id,
-      sessionAal: session.aal,
-      role: payload.role || 'citizen',
+      userId: validationResult.userId,
+      sessionId: validationResult.sessionId,
+      sessionAal: validationResult.sessionAal,
     });
-    c.set('userId', session.userId);
-    c.set('sessionId', session.id);
-    c.set('sessionAal', session.aal);
-    c.set('sessionCreatedAt', session.createdAt);
+    c.set('userId', validationResult.userId);
+    c.set('sessionId', validationResult.sessionId);
+    c.set('sessionAal', validationResult.sessionAal);
+    c.set('lastAuthenticatedAt', validationResult.lastAuthenticatedAt);
 
     await next();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Token inválido';
-    return c.json({ success: false, message: 'Invalid or expired session token.', error: message }, 401);
+    return c.json({ success: false, message, error: message }, 401);
   }
 };
 
@@ -115,7 +75,7 @@ export const sessionGuard = async (c: Context, next: Next) => {
 export const requireAal = (minAal: number, maxAgeMinutes?: number) => {
   return async (c: Context, next: Next) => {
     const sessionAal = c.get('sessionAal') as number | undefined;
-    const sessionCreatedAt = c.get('sessionCreatedAt') as Date | undefined;
+    const lastAuthenticatedAt = c.get('lastAuthenticatedAt') as Date | undefined;
 
     if (!sessionAal) {
       return c.json({ success: false, message: 'Authentication level not found in context. sessionGuard is required.' }, 500);
@@ -130,9 +90,16 @@ export const requireAal = (minAal: number, maxAgeMinutes?: number) => {
       }, 403);
     }
 
-    if (maxAgeMinutes && sessionCreatedAt) {
+    if (maxAgeMinutes) {
+      if (!lastAuthenticatedAt) {
+        return c.json({ 
+          success: false, 
+          message: 'Recent authentication required but no authentication timestamp found.', 
+          code: 'RECENT_AUTH_REQUIRED',
+        }, 403);
+      }
       const now = new Date();
-      const diffMinutes = (now.getTime() - sessionCreatedAt.getTime()) / (1000 * 60);
+      const diffMinutes = (now.getTime() - lastAuthenticatedAt.getTime()) / (1000 * 60);
       if (diffMinutes > maxAgeMinutes) {
         return c.json({ 
           success: false, 

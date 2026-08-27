@@ -185,7 +185,13 @@ export class DrizzleAuthenticationRepositoryAdapter implements IAuthenticationRe
     userId: number,
     credentialId: string,
     publicKeyCose: string,
-    rpId: string = 'asppibra.com'
+    rpId: string,
+    backupEligible: boolean,
+    backupState: boolean,
+    uvInitialized: boolean,
+    aaguid?: string,
+    attestationFormat?: string,
+    attestationObject?: string
   ): Promise<string> {
     const authenticatorId = crypto.randomUUID();
     await this.db.insert(userAuthenticators).values({
@@ -200,9 +206,12 @@ export class DrizzleAuthenticationRepositoryAdapter implements IAuthenticationRe
       credentialId,
       publicKeyCose,
       rpId,
-      backupEligible: false,
-      backupState: false,
-      uvInitialized: true,
+      backupEligible,
+      backupState,
+      uvInitialized,
+      aaguid,
+      attestationFormat,
+      attestationObject,
     });
 
     return authenticatorId;

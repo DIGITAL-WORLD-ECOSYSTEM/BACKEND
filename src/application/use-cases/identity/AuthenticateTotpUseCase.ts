@@ -19,9 +19,14 @@ export class AuthenticateTotpUseCase {
     return await this.uow.execute(async (factory) => {
       const authTxRepo = factory.getAuthTransactionRepository();
       const transaction = await authTxRepo.getTransactionById(dto.transactionId);
+      const userRepo = factory.getUserRepository();
+      const user = await userRepo.findById(transaction?.userId || 0);
+      if (!user) {
+        return Result.fail<{ verified: boolean; aal: number }>('Usuário não encontrado.');
+      }
       
-      if (!transaction || !transaction.isValid(transaction.authEpochAtStart)) {
-        return Result.fail<{ verified: boolean; aal: number }>('Transação inválida ou expirada.');
+      if (!transaction || !transaction.isValid(user.authEpoch || 1)) {
+        return Result.fail<{ verified: boolean; aal: number }>('Transação inválida ou expirada (Epoch revogado).');
       }
 
       if (transaction.context !== 'login' && transaction.context !== 'mfa_setup' && transaction.context !== 'sensitive_operation') {

@@ -1,4 +1,5 @@
 import { Result } from '../../../shared/kernel/Result';
+import { LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
 
 export interface FinancialAccountRecord {
   id: number;
@@ -41,4 +42,14 @@ export interface IFinanceRepository {
     assetId: number;
   }): Promise<Result<FinancialTransactionRecord>>;
   listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
+
+  claimIdempotency(idempotencyKey: string): Promise<boolean>;
+  insertLedgerEntries(entries: LedgerEntry[]): Promise<void>;
+  updateBalanceWithOCC(
+    accountId: string,
+    assetId: string,
+    amount: bigint,
+    type: 'debit' | 'credit'
+  ): Promise<boolean>;
+  persistOutboxEvent(eventType: string, payload: any): Promise<void>;
 }

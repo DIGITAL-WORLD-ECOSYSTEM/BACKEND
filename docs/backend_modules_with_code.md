@@ -16902,3 +16902,18376 @@ declare module '__STATIC_CONTENT_MANIFEST' {
 
 ---
 
+
+
+# Auditoria Estrutural e de Segurança (Identity, SSI e Finance)
+
+Conforme solicitado, atuei como Arquiteto Sênior e SecOps para realizar um levantamento exaustivo e rigoroso das camadas referentes aos módulos de **Credenciais** (Identity/Auth e SSI) e **Financeiro**. Abaixo, apresento a árvore de arquivos físicos (snapshot atual), a identificação dos gaps no DDD e a auditoria de segurança crítica com base nos princípios AF-001 a AF-014 e nas Golden Rules.
+
+---
+
+## 1. Árvore Completa de Arquivos Mapeados (Snapshot Real)
+
+Baseado nos diretórios exigidos, o projeto reflete exatamente a seguinte estrutura no sistema de arquivos:
+
+```text
+src/db/authentication
+├── relations.ts
+└── tables.ts
+src/db/ssi
+├── relations.ts
+└── tables.ts
+src/db/finance
+├── relations.ts
+└── tables.ts
+src/infrastructure/repositories
+├── DrizzleAuthenticationRepositoryAdapter.ts
+├── DrizzleAuthTransactionRepository.ts
+├── DrizzleCivilIdentityRepositoryAdapter.ts
+├── DrizzleFinanceRepository.ts
+├── DrizzleIdentityResolverAdapter.ts
+├── DrizzleOutboxRepository.ts
+├── DrizzlePasswordResetRepository.ts
+├── DrizzleSessionRepository.ts
+├── DrizzleSsiRepository.ts
+├── DrizzleUnitOfWork.ts
+├── DrizzleUserRepositoryAdapter.ts
+├── DrizzleWalletRepository.ts
+└── DrizzleWeb3RepositoryAdapter.ts
+src/infrastructure/security
+├── crypto
+│   ├── crypto.ts
+│   ├── Eip4361Verifier.ts
+│   ├── PBKDF2PasswordHasher.ts
+│   └── timing_safe.ts
+├── jwt
+│   └── JwtService.ts
+└── SecurityAuditAdapter.ts
+src/application/use-cases/identity
+├── AuthenticateAccountUseCase.ts
+├── AuthenticateTotpUseCase.ts
+├── ConfirmPasswordResetUseCase.ts
+├── GeneratePasskeyChallengeUseCase.ts
+├── GenerateWeb3ChallengeUseCase.ts
+├── LinkExternalIdentityUseCase.ts
+├── RefreshTokenUseCase.ts
+├── RegisterAccountUseCase.ts
+├── RequestPasswordResetUseCase.ts
+├── SetupTotpUseCase.ts
+├── UnlinkExternalIdentityUseCase.ts
+├── VerifyPasskeyIdentityUseCase.ts
+├── VerifyPasskeyRegistrationUseCase.ts
+└── VerifyWalletIdentityUseCase.ts
+src/application/ports/output
+├── IAuthenticationRepository.ts
+├── IAuthTransactionRepository.ts
+├── IChallengeStorePort.ts
+├── ICivilIdentityRepository.ts
+├── IFinanceRepository.ts
+├── IIdentityResolverPort.ts
+├── IOutboxRepository.ts
+├── IPasswordResetRepository.ts
+├── ISecurityAuditPort.ts
+├── ISessionRepository.ts
+├── ISsiRepository.ts
+├── IUnitOfWork.ts
+├── IUserRepository.ts
+└── IWeb3Repository.ts
+src/application/dto/identity
+├── AuthenticateAccountDTO.ts
+├── AuthenticateTotpDTO.ts
+├── ConfirmPasswordResetDTO.ts
+├── LinkExternalIdentityDTO.ts
+├── RefreshTokenDTO.ts
+├── RegisterAccountDTO.ts
+├── RequestPasswordResetDTO.ts
+├── SetupTotpDTO.ts
+├── UnlinkExternalIdentityDTO.ts
+├── VerifyPasskeyIdentityDTO.ts
+└── VerifyWalletIdentityDTO.ts
+src/application/dto/
+├── IdentityAssertion.ts
+└── IdentityResolutionResult.ts
+src/domains/identity
+├── entities
+│   ├── AuthenticationChallenge.ts
+│   ├── AuthenticationTransaction.ts
+│   ├── Session.ts
+│   └── User.ts
+├── errors
+│   ├── AntiLockoutViolationError.ts
+│   └── IdentityNotLinkedError.ts
+└── services
+    └── CanonicalIdentityResolver.ts
+src/domains/ssi
+└── use-cases
+    ├── CreateDidUseCase.ts
+    ├── IssueVerifiableCredentialUseCase.ts
+    └── RevokeCredentialUseCase.ts
+src/domains/finance
+└── use-cases
+    ├── GetTreasuryBalanceUseCase.ts
+    └── RecordTreasuryTransactionUseCase.ts
+src/interfaces/http/routes/identity
+└── identity.routes.ts
+src/interfaces/http/routes/ssi
+└── ssi.routes.ts
+src/interfaces/http/routes/finance
+└── finance.routes.ts
+src/interfaces/http/controllers/identity
+├── AuthAuxiliaryController.ts
+├── ExternalIdentityController.ts
+└── IdentityController.ts
+src/interfaces/http/controllers/ssi
+└── SsiController.ts
+src/interfaces/http/controllers/finance
+└── FinanceController.ts
+src/interfaces/http/middlewares
+├── auth_signature.ts
+├── correlation_id.ts
+├── rate_limit.ts
+├── rbac.ts
+└── session_guard.ts
+```
+
+
+---
+
+### `src/db/authentication/relations.ts`
+```typescript
+import { relations } from 'drizzle-orm';
+import {
+  userAuthenticators,
+  passwordCredentials,
+  webauthnCredentials,
+  totpCredentials,
+  walletAuthenticators,
+  recoverySets,
+  recoveryCredentials,
+  userSessions,
+  passwordResets,
+  authChallenges,
+} from './tables';
+import { users } from '../user/tables';
+import { securityEvents } from '../security/tables';
+
+/**
+ * ============================================================================
+ * AUTHENTICATION DOMAIN RELATIONS
+ * ============================================================================
+ * ARCHITECTURAL NOTE:
+ * Navigation from users to authentication entities is intentionally one-directional
+ * (child → parent only), per Section 05 boundary isolation matrix.
+ * Direct queries on authentication tables should be executed with { with: { user: true } }
+ * instead of querying bidirectionally from users.
+ * ============================================================================
+ */
+export const userAuthenticatorsRelations = relations(userAuthenticators, ({ one, many }) => ({
+  user: one(users, {
+    fields: [userAuthenticators.userId],
+    references: [users.id],
+    relationName: 'authenticatorOwner',
+  }),
+  revokedByUser: one(users, {
+    fields: [userAuthenticators.revokedBy],
+    references: [users.id],
+    relationName: 'revokedAuthenticators',
+  }),
+
+  passwordCredential: one(passwordCredentials),
+  webauthnCredential: one(webauthnCredentials),
+  totpCredential: one(totpCredentials),
+  walletAuthenticator: one(walletAuthenticators),
+
+  recoverySet: one(recoverySets),
+
+  securityEvents: many(securityEvents),
+}));
+
+/**
+ * ============================================================================
+ * CREDENTIALS
+ * ============================================================================
+ */
+export const passwordCredentialsRelations = relations(passwordCredentials, ({ one }) => ({
+  authenticator: one(userAuthenticators, {
+    fields: [passwordCredentials.authenticatorId],
+    references: [userAuthenticators.id],
+  }),
+}));
+
+export const webauthnCredentialsRelations = relations(webauthnCredentials, ({ one }) => ({
+  authenticator: one(userAuthenticators, {
+    fields: [webauthnCredentials.authenticatorId],
+    references: [userAuthenticators.id],
+  }),
+}));
+
+export const totpCredentialsRelations = relations(totpCredentials, ({ one }) => ({
+  authenticator: one(userAuthenticators, {
+    fields: [totpCredentials.authenticatorId],
+    references: [userAuthenticators.id],
+  }),
+}));
+
+/**
+ * ============================================================================
+ * RECOVERY
+ * ============================================================================
+ */
+export const recoverySetsRelations = relations(recoverySets, ({ one, many }) => ({
+  authenticator: one(userAuthenticators, {
+    fields: [recoverySets.authenticatorId],
+    references: [userAuthenticators.id],
+  }),
+  credentials: many(recoveryCredentials),
+}));
+
+export const recoveryCredentialsRelations = relations(recoveryCredentials, ({ one }) => ({
+  recoverySet: one(recoverySets, {
+    fields: [recoveryCredentials.recoverySetId],
+    references: [recoverySets.id],
+  }),
+}));
+
+/**
+ * ============================================================================
+ * WALLET
+ * ============================================================================
+ */
+export const walletAuthenticatorsRelations = relations(walletAuthenticators, ({ one }) => ({
+  authenticator: one(userAuthenticators, {
+    fields: [walletAuthenticators.authenticatorId],
+    references: [userAuthenticators.id],
+  }),
+  // Navigation to web3.wallets removed intentionally (Cross-Domain
+  // Dependency Matrix — authentication MUST NOT depend on web3).
+  // Resolve via application layer: IWeb3Repository.findById(walletId).
+}));
+
+/**
+ * ============================================================================
+ * SESSION
+ * ============================================================================
+ */
+export const userSessionsRelations = relations(userSessions, ({ one }) => ({
+  user: one(users, { fields: [userSessions.userId], references: [users.id] }),
+}));
+
+/**
+ * ============================================================================
+ * PASSWORD RESET
+ * ============================================================================
+ */
+export const passwordResetsRelations = relations(passwordResets, ({ one }) => ({
+  user: one(users, { fields: [passwordResets.userId], references: [users.id] }),
+}));
+
+/**
+ * ============================================================================
+ * AUTH CHALLENGE
+ * ============================================================================
+ */
+export const authChallengesRelations = relations(authChallenges, ({ one }) => ({
+  user: one(users, { fields: [authChallenges.userId], references: [users.id] }),
+}));
+
+```
+
+---
+
+### `src/db/authentication/tables.ts`
+```typescript
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  check,
+} from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import { users } from '../user/tables';
+import { AUTH_TYPES } from '../constants';
+
+/**
+ * ============================================================================
+ * AUTHENTICATION DOMAIN
+ * ============================================================================
+ *
+ * Bounded Context Boundaries:
+ * - User/actor identity is owned by user/
+ * - Web3 Evm Wallets are owned by web3/
+ * - Authentication domain owns authenticators, credentials, sessions, and auth challenges.
+ *
+ * Security & Persistence Standard:
+ * - Credentials and session storage rely on standard Unix Epoch timestamps.
+ * - Sensitive secrets (hashes, tokens) are NEVER logged or stored in unencrypted metadata.
+ * ============================================================================
+ */
+
+// ----------------------------------------------------------------------
+// Entity: userAuthenticators
+// ----------------------------------------------------------------------
+export const userAuthenticators = sqliteTable(
+  'user_authenticators',
+  {
+    id: text('id').primaryKey(), // UUID v4
+
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    type: text('type', { enum: AUTH_TYPES }).notNull(),
+    label: text('label'),
+
+    verifiedAt: integer('verified_at', { mode: 'timestamp' }),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
+
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+    revokedBy: integer('revoked_by').references(() => users.id, { onDelete: 'set null' }),
+    revocationReason: text('revocation_reason'),
+
+    // SECURITY:
+    // metadata is non-secret operational metadata only.
+    // NEVER store: password hashes, TOTP secrets, private keys,
+    // recovery codes, session tokens, or bearer credentials.
+    metadata: text('metadata', { mode: 'json' }),
+
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull()
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    userTypeRevokedIdx: index('idx_authenticators_user_type_revoked').on(
+      table.userId,
+      table.type,
+      table.revokedAt
+    ),
+    typeCheck: check(
+      'user_authenticators_type_check',
+      sql`${table.type} IN ('password', 'totp', 'webauthn', 'recovery_code', 'wallet')`
+    ),
+    revokedStateCheck: check(
+      'user_authenticators_revoked_state_check',
+      sql`${table.revokedAt} IS NOT NULL OR ${table.revocationReason} IS NULL`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: passwordCredentials
+// ----------------------------------------------------------------------
+export const passwordCredentials = sqliteTable('password_credentials', {
+  authenticatorId: text('authenticator_id')
+    .primaryKey()
+    .references(() => userAuthenticators.id, { onDelete: 'cascade' }),
+  passwordHash: text('password_hash').notNull(), // Argon2id hash com parâmetros embutidos
+});
+
+// ----------------------------------------------------------------------
+// Entity: webauthnCredentials
+// ----------------------------------------------------------------------
+export const webauthnCredentials = sqliteTable(
+  'webauthn_credentials',
+  {
+    authenticatorId: text('authenticator_id')
+      .primaryKey()
+      .references(() => userAuthenticators.id, { onDelete: 'cascade' }),
+    credentialId: text('credential_id').notNull().unique(),
+    publicKeyCose: text('public_key_cose').notNull(),
+    rpId: text('rp_id').notNull(),
+    userHandle: text('user_handle'), // nullable pois nem todo webauthn é discoverable/resident
+    signCount: integer('sign_count').notNull().default(0),
+    transports: text('transports', { mode: 'json' }),
+    backupEligible: integer('backup_eligible', { mode: 'boolean' }).notNull(),
+    backupState: integer('backup_state', { mode: 'boolean' }).notNull(),
+    uvInitialized: integer('uv_initialized', { mode: 'boolean' }).notNull(),
+    aaguid: text('aaguid'),
+    attestationFormat: text('attestation_format'),
+    attestationObject: text('attestation_object'),
+  },
+  (table) => ({
+    signCountCheck: check('webauthn_sign_count_check', sql`${table.signCount} >= 0`),
+    rpIdCheck: check('webauthn_rpid_check', sql`length(${table.rpId}) > 0`),
+    backupStateCheck: check(
+      'webauthn_backup_state_check',
+      sql`${table.backupState} = 0 OR ${table.backupEligible} = 1`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: totpCredentials
+// ----------------------------------------------------------------------
+export const totpCredentials = sqliteTable(
+  'totp_credentials',
+  {
+    authenticatorId: text('authenticator_id')
+      .primaryKey()
+      .references(() => userAuthenticators.id, { onDelete: 'cascade' }),
+    encryptedTotpSecret: text('encrypted_totp_secret').notNull(),
+    algorithm: text('algorithm').notNull().default('SHA1'),
+    digits: integer('digits').notNull().default(6),
+    period: integer('period').notNull().default(30),
+  },
+  (table) => ({
+    digitsCheck: check('totp_digits_check', sql`${table.digits} IN (6, 8)`),
+    periodCheck: check('totp_period_check', sql`${table.period} IN (30, 60)`),
+    algorithmCheck: check(
+      'totp_algorithm_check',
+      sql`${table.algorithm} IN ('SHA1', 'SHA256', 'SHA512')`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: recoverySets
+// ----------------------------------------------------------------------
+export const recoverySets = sqliteTable('recovery_sets', {
+  id: text('id').primaryKey(),
+  authenticatorId: text('authenticator_id')
+    .unique()
+    .references(() => userAuthenticators.id, { onDelete: 'cascade' })
+    .notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .default(sql`(unixepoch())`)
+    .notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+});
+
+// ----------------------------------------------------------------------
+// Entity: recoveryCredentials
+// ----------------------------------------------------------------------
+export const recoveryCredentials = sqliteTable(
+  'recovery_credentials',
+  {
+    id: text('id').primaryKey(),
+    recoverySetId: text('recovery_set_id')
+      .references(() => recoverySets.id, { onDelete: 'cascade' })
+      .notNull(),
+    codeHash: text('code_hash').notNull(), // Argon2id hash
+    consumedAt: integer('consumed_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+  },
+  (table) => ({
+    recoverySetIdx: index('idx_recovery_credentials_set').on(table.recoverySetId),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: passwordResets
+// ----------------------------------------------------------------------
+export const passwordResets = sqliteTable(
+  'password_resets',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    usedAt: integer('used_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+  },
+  (table) => ({
+    expiresAtIdx: index('idx_password_resets_expires').on(table.expiresAt),
+    usedStateCheck: check(
+      'password_resets_used_state_check',
+      sql`${table.usedAt} IS NULL OR ${table.usedAt} >= ${table.createdAt}`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: refreshTokenFamilies
+// ----------------------------------------------------------------------
+export const refreshTokenFamilies = sqliteTable(
+  'refresh_token_families',
+  {
+    id: text('id').primaryKey(), // UUID da família de tokens
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+    revocationReason: text('revocation_reason'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('idx_refresh_families_user').on(table.userId),
+    revokedStateCheck: check(
+      'refresh_families_revoked_state_check',
+      sql`${table.revokedAt} IS NOT NULL OR ${table.revocationReason} IS NULL`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: userSessions
+// ----------------------------------------------------------------------
+export const userSessions = sqliteTable(
+  'user_sessions',
+  {
+    id: text('id').primaryKey(), // UUID da sessão
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    jti: text('jti').notNull().unique(),
+    ip: text('ip'),
+    userAgent: text('user_agent'),
+    familyId: text('family_id') // Adicionado relacionamento com a família
+      .references(() => refreshTokenFamilies.id, { onDelete: 'cascade' }),
+    refreshTokenHash: text('refresh_token_hash').notNull(),
+    aal: integer('aal').notNull().default(1),
+    authEpoch: integer('auth_epoch').notNull().default(1),
+    lastActivityAt: integer('last_activity_at', { mode: 'timestamp' }),
+    lastAuthenticatedAt: integer('last_authenticated_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+    revocationReason: text('revocation_reason'),
+  },
+  (table) => ({
+    userIdIdx: index('idx_sessions_user').on(table.userId),
+    familyIdIdx: index('idx_sessions_family').on(table.familyId),
+    expiresAtIdx: index('idx_sessions_expires').on(table.expiresAt),
+    aalCheck: check('user_sessions_aal_check', sql`${table.aal} IN (1, 2, 3)`),
+    expirationCheck: check(
+      'user_sessions_expiration_check',
+      sql`${table.createdAt} < ${table.expiresAt}`
+    ),
+    revokedStateCheck: check(
+      'user_sessions_revoked_state_check',
+      sql`${table.revokedAt} IS NOT NULL OR ${table.revocationReason} IS NULL`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: authChallenges
+// ----------------------------------------------------------------------
+export const authChallenges = sqliteTable(
+  'auth_challenges',
+  {
+    id: text('id').primaryKey(), // UUID do desafio
+    transactionId: text('transaction_id').references(() => authTransactions.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    challengeHash: text('challenge_hash').notNull(),
+    challengeType: text('challenge_type').notNull(), // 'ssh', 'totp', 'webauthn', 'siwe'
+    context: text('context').notNull(), // 'login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery'
+    usedAt: integer('used_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => ({
+    transactionIdIdx: index('idx_auth_challenges_transaction').on(table.transactionId),
+    expiresAtIdx: index('idx_auth_challenges_expires').on(table.expiresAt),
+    typeCheck: check(
+      'auth_challenges_type_check',
+      sql`${table.challengeType} IN ('ssh', 'totp', 'webauthn', 'siwe')`
+    ),
+    contextCheck: check(
+      'auth_challenges_context_check',
+      sql`${table.context} IN ('login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery')`
+    ),
+    expirationCheck: check(
+      'auth_challenges_expiration_check',
+      sql`${table.createdAt} < ${table.expiresAt}`
+    ),
+    usedStateCheck: check(
+      'auth_challenges_used_state_check',
+      sql`${table.usedAt} IS NULL OR ${table.usedAt} >= ${table.createdAt}`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: authTransactions
+// ----------------------------------------------------------------------
+export const authTransactions = sqliteTable(
+  'auth_transactions',
+  {
+    id: text('id').primaryKey(), // UUID v4
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: ['created', 'awaiting_factor', 'verified', 'completed', 'expired', 'cancelled', 'failed', 'replayed', 'locked'] })
+      .notNull()
+      .default('created'),
+    initialAal: integer('initial_aal').notNull().default(1),
+    currentAal: integer('current_aal').notNull().default(1),
+    targetAal: integer('target_aal').notNull().default(2),
+    method: text('method').notNull(), // ex: 'password', 'totp', 'webauthn', 'siwe'
+    challengeHash: text('challenge_hash'),
+    context: text('context').notNull(), // 'login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery'
+    ip: text('ip'),
+    userAgent: text('user_agent'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
+    consumedAt: integer('consumed_at', { mode: 'timestamp' }),
+    failureCount: integer('failure_count').notNull().default(0),
+    authEpochAtStart: integer('auth_epoch_at_start').notNull(),
+    lastAuthenticatedAt: integer('last_authenticated_at', { mode: 'timestamp' }),
+    assuranceMethod: text('assurance_method'),
+    riskLevel: text('risk_level', { enum: ['low', 'medium', 'high', 'critical'] }).notNull().default('low'),
+  },
+  (table) => ({
+    userIdIdx: index('idx_auth_transactions_user').on(table.userId),
+    expiresAtIdx: index('idx_auth_transactions_expires').on(table.expiresAt),
+    statusCheck: check(
+      'auth_transactions_status_check',
+      sql`${table.status} IN ('created', 'awaiting_factor', 'verified', 'completed', 'expired', 'cancelled', 'failed', 'replayed', 'locked')`
+    ),
+    contextCheck: check(
+      'auth_transactions_context_check',
+      sql`${table.context} IN ('login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery')`
+    ),
+    expirationCheck: check(
+      'auth_transactions_expiration_check',
+      sql`${table.createdAt} < ${table.expiresAt}`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: walletAuthenticators
+// ----------------------------------------------------------------------
+export const walletAuthenticators = sqliteTable(
+  'wallet_authenticators',
+  {
+    authenticatorId: text('authenticator_id')
+      .primaryKey()
+      .references(() => userAuthenticators.id, { onDelete: 'cascade' }),
+    /**
+     * Opaque reference to web3.wallets.id.
+     * Intentionally NOT a physical FK — authentication MUST NOT depend on
+     * web3 (Cross-Domain Dependency Matrix). Integrity is enforced at the
+     * application layer via IWeb3Repository at link-time
+     * (LinkExternalIdentityUseCase / VerifyExternalIdentityUseCase).
+     */
+    walletId: integer('wallet_id').unique().notNull(),
+    protocol: text('protocol', { enum: ['siwe', 'eip191', 'eip712', 'eip1271'] })
+      .notNull()
+      .default('siwe'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull()
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    protocolCheck: check(
+      'wallet_authenticators_protocol_check',
+      sql`${table.protocol} IN ('siwe', 'eip191', 'eip712', 'eip1271')`
+    ),
+  })
+);
+
+```
+
+---
+
+### `src/db/ssi/relations.ts`
+```typescript
+import { relations } from 'drizzle-orm';
+import {
+  secureVaults,
+  didIdentities,
+  didVerificationMethods,
+  verifiableCredentials,
+  verifiablePresentations,
+} from './tables';
+import { users } from '../user/tables';
+
+/**
+ * ============================================================================
+ * SSI DOMAIN RELATIONS
+ * ============================================================================
+ * ARCHITECTURAL NOTE:
+ * Navigation from users to SSI entities is intentionally one-directional
+ * (child → parent only), per Section 05 boundary isolation matrix.
+ * Direct queries on SSI tables should be executed with { with: { user: true } }
+ * instead of querying bidirectionally from users.
+ * ============================================================================
+ */
+
+/**
+ * ============================================================================
+ * SECURE VAULTS RELATIONS
+ * ============================================================================
+ */
+export const secureVaultsRelations = relations(secureVaults, ({ one }) => ({
+  user: one(users, {
+    fields: [secureVaults.userId],
+    references: [users.id],
+    relationName: 'userSecureVaults',
+  }),
+}));
+
+/**
+ * ============================================================================
+ * DID IDENTITIES RELATIONS
+ * ============================================================================
+ */
+export const didIdentitiesRelations = relations(didIdentities, ({ one, many }) => ({
+  user: one(users, {
+    fields: [didIdentities.userId],
+    references: [users.id],
+    relationName: 'userDidIdentities',
+  }),
+  verificationMethods: many(didVerificationMethods),
+}));
+
+/**
+ * ============================================================================
+ * DID VERIFICATION METHODS RELATIONS
+ * ============================================================================
+ */
+export const didVerificationMethodsRelations = relations(didVerificationMethods, ({ one }) => ({
+  didIdentity: one(didIdentities, {
+    fields: [didVerificationMethods.didId],
+    references: [didIdentities.id],
+  }),
+}));
+
+/**
+ * ============================================================================
+ * VERIFIABLE CREDENTIALS RELATIONS
+ * ============================================================================
+ */
+export const verifiableCredentialsRelations = relations(verifiableCredentials, ({ one }) => ({
+  holderUser: one(users, {
+    fields: [verifiableCredentials.holderUserId],
+    references: [users.id],
+    relationName: 'userVerifiableCredentials',
+  }),
+}));
+
+/**
+ * ============================================================================
+ * VERIFIABLE PRESENTATIONS RELATIONS
+ * ============================================================================
+ */
+export const verifiablePresentationsRelations = relations(verifiablePresentations, ({ one }) => ({
+  user: one(users, {
+    fields: [verifiablePresentations.userId],
+    references: [users.id],
+    relationName: 'userVerifiablePresentations',
+  }),
+}));
+
+```
+
+---
+
+### `src/db/ssi/tables.ts`
+```typescript
+import { sqliteTable, text, integer, index, uniqueIndex, check } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import { users } from '../user/tables';
+
+/**
+ * ============================================================================
+ * SELF-SOVEREIGN IDENTITY (SSI) DOMAIN
+ * ============================================================================
+ *
+ * Specifications & Compliance:
+ * - W3C Decentralized Identifiers (DIDs) v1.0 Core Architecture
+ * - W3C Verifiable Credentials Data Model v1.1 / v2.0
+ * - Cryptographic Key Vaults (AES-256-GCM / XChaCha20-Poly1305 + External KMS)
+ *
+ * Bounded Context Boundaries:
+ * - Base account identity is owned by user/
+ * - Civil identity & government PII are owned by civil-identity/
+ * - Web3 EVM wallets & smart contracts are owned by web3/
+ * - SSI owns DIDs, Key Vaults, Verifiable Credentials & Presentations
+ *
+ * Retention & Compliance Policy:
+ * - Decentralized Identifiers (DIDs), verification methods, and verifiable credentials
+ *   are cryptographically immutable identity anchors.
+ * - All foreign keys referencing users.id use onDelete: 'restrict' to ensure
+ *   verifiable claims and key audit logs survive user soft-deletion.
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * 1. SECURE VAULTS
+ * ============================================================================
+ *
+ * Encrypted custody storage for sensitive key material, seeds, and mnemonics.
+ */
+export const secureVaults = sqliteTable(
+  'secure_vaults',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+
+    purpose: text('purpose', {
+      enum: ['wallet_mnemonic', 'recovery_material', 'private_key', 'identity_seed'],
+    }).notNull(),
+    ciphertext: text('ciphertext').notNull(),
+    nonce: text('nonce').notNull(),
+    authTag: text('auth_tag').notNull(),
+    encryptionAlgorithm: text('encryption_algorithm', {
+      enum: ['AES-256-GCM', 'XChaCha20-Poly1305'],
+    }).notNull(),
+    keyVersion: integer('key_version').notNull().default(1),
+    keyReference: text('key_reference').notNull(), // KMS / Key Management reference
+
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    rotatedAt: integer('rotated_at', { mode: 'timestamp' }),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_secure_vaults_user').on(table.userId),
+    userPurposeVersionUnq: uniqueIndex('uq_secure_vaults_user_purpose_version').on(
+      table.userId,
+      table.purpose,
+      table.keyVersion
+    ),
+    activePurposeUnq: uniqueIndex('uq_secure_vaults_active_purpose')
+      .on(table.userId, table.purpose)
+      .where(sql`${table.revokedAt} IS NULL`),
+    purposeCheck: check(
+      'ck_secure_vaults_purpose',
+      sql`${table.purpose} IN ('wallet_mnemonic', 'recovery_material', 'private_key', 'identity_seed')`
+    ),
+    algorithmCheck: check(
+      'ck_secure_vaults_algorithm',
+      sql`${table.encryptionAlgorithm} IN ('AES-256-GCM', 'XChaCha20-Poly1305')`
+    ),
+    rotatedAfterCreatedCheck: check(
+      'ck_secure_vaults_rotated_after_created',
+      sql`${table.rotatedAt} IS NULL OR ${table.rotatedAt} >= ${table.createdAt}`
+    ),
+    revokedAfterCreatedCheck: check(
+      'ck_secure_vaults_revoked_after_created',
+      sql`${table.revokedAt} IS NULL OR ${table.revokedAt} >= ${table.createdAt}`
+    ),
+    versionCheck: check(
+      'ck_secure_vaults_version',
+      sql`${table.version} > 0 AND ${table.keyVersion} > 0`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 2. DID IDENTITIES
+ * ============================================================================
+ *
+ * W3C Decentralized Identifier (DID) Documents.
+ */
+export const didIdentities = sqliteTable(
+  'did_identities',
+  {
+    id: text('id').primaryKey(), // UUID v4
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+
+    did: text('did').notNull().unique(),
+    method: text('method', {
+      enum: ['key', 'ion', 'polygonid', 'web', 'cheqd', 'pkh'],
+    }).notNull(),
+    controller: text('controller').notNull(),
+    status: text('status', {
+      enum: ['active', 'suspended', 'revoked'],
+    })
+      .notNull()
+      .default('active'),
+
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull()
+      .$onUpdateFn(() => new Date()),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_did_identities_user').on(table.userId),
+    didIdx: index('idx_did_identities_did').on(table.did),
+    statusIdx: index('idx_did_identities_status').on(table.status),
+    didFormatCheck: check('ck_did_identities_did_format', sql`${table.did} LIKE 'did:%'`),
+    statusCheck: check(
+      'ck_did_identities_status',
+      sql`${table.status} IN ('active', 'suspended', 'revoked')`
+    ),
+    methodCheck: check(
+      'ck_did_identities_method',
+      sql`${table.method} IN ('key', 'ion', 'polygonid', 'web', 'cheqd', 'pkh')`
+    ),
+    revokedStateCheck: check(
+      'ck_did_identities_revoked_state',
+      sql`${table.status} != 'revoked' OR ${table.revokedAt} IS NOT NULL`
+    ),
+    versionCheck: check('ck_did_identities_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 3. DID VERIFICATION METHODS
+ * ============================================================================
+ *
+ * Public cryptographic keys associated with a DID for authentication & assertion.
+ */
+export const didVerificationMethods = sqliteTable(
+  'did_verification_methods',
+  {
+    id: text('id').primaryKey(), // DID URL: did:example:123#key-1
+    didId: text('did_id')
+      .notNull()
+      .references(() => didIdentities.id, { onDelete: 'restrict' }),
+
+    type: text('type', {
+      enum: [
+        'Ed25519VerificationKey2020',
+        'EcdsaSecp256k1RecoveryMethod2020',
+        'X25519KeyAgreementKey2020',
+        'JsonWebKey2020',
+      ],
+    }).notNull(),
+    controllerDid: text('controller_did').notNull(),
+    publicKeyMultibase: text('public_key_multibase').notNull(),
+    purpose: text('purpose', {
+      enum: [
+        'authentication',
+        'assertionMethod',
+        'keyAgreement',
+        'capabilityInvocation',
+        'capabilityDelegation',
+      ],
+    }).notNull(),
+    status: text('status', {
+      enum: ['active', 'suspended', 'revoked'],
+    })
+      .notNull()
+      .default('active'),
+
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    didIdx: index('idx_did_verification_methods_did').on(table.didId),
+    purposeIdx: index('idx_did_verification_methods_purpose').on(table.purpose),
+    statusIdx: index('idx_did_verification_methods_status').on(table.status),
+    controllerDidFormatCheck: check(
+      'ck_did_vm_controller_did_format',
+      sql`${table.controllerDid} LIKE 'did:%'`
+    ),
+    statusCheck: check(
+      'ck_did_vm_status',
+      sql`${table.status} IN ('active', 'suspended', 'revoked')`
+    ),
+    purposeCheck: check(
+      'ck_did_vm_purpose',
+      sql`${table.purpose} IN ('authentication', 'assertionMethod', 'keyAgreement', 'capabilityInvocation', 'capabilityDelegation')`
+    ),
+    typeCheck: check(
+      'ck_did_vm_type',
+      sql`${table.type} IN ('Ed25519VerificationKey2020', 'EcdsaSecp256k1RecoveryMethod2020', 'X25519KeyAgreementKey2020', 'JsonWebKey2020')`
+    ),
+    revokedStateCheck: check(
+      'ck_did_vm_revoked_state',
+      sql`${table.status} != 'revoked' OR ${table.revokedAt} IS NOT NULL`
+    ),
+    versionCheck: check('ck_did_vm_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 4. VERIFIABLE CREDENTIALS
+ * ============================================================================
+ *
+ * W3C Verifiable Credentials issued to holders.
+ */
+export const verifiableCredentials = sqliteTable(
+  'verifiable_credentials',
+  {
+    id: text('id').primaryKey(), // UUID v4
+    holderUserId: integer('holder_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+
+    issuerDid: text('issuer_did').notNull(),
+    subjectDid: text('subject_did').notNull(),
+    credentialType: text('credential_type', {
+      enum: [
+        'CivicIdentityCredential',
+        'MembershipCredential',
+        'KycVerificationCredential',
+        'ReputationCredential',
+      ],
+    }).notNull(),
+    credentialHash: text('credential_hash').notNull().unique(),
+    encryptedClaims: text('encrypted_claims').notNull(),
+    proofType: text('proof_type', {
+      enum: ['Ed25519Signature2020', 'BbsBlsSignature2020', 'JsonWebSignature2020'],
+    }).notNull(),
+    status: text('status', {
+      enum: ['active', 'suspended', 'revoked', 'expired'],
+    })
+      .notNull()
+      .default('active'),
+
+    version: integer('version').notNull().default(1),
+    issuanceDate: integer('issuance_date', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    expirationDate: integer('expiration_date', { mode: 'timestamp' }),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    holderIdx: index('idx_vc_holder_user').on(table.holderUserId),
+    subjectIdx: index('idx_vc_subject_did').on(table.subjectDid),
+    issuerIdx: index('idx_vc_issuer_did').on(table.issuerDid),
+    statusIdx: index('idx_vc_status').on(table.status),
+    issuerDidFormatCheck: check('ck_vc_issuer_did_format', sql`${table.issuerDid} LIKE 'did:%'`),
+    subjectDidFormatCheck: check('ck_vc_subject_did_format', sql`${table.subjectDid} LIKE 'did:%'`),
+    statusCheck: check(
+      'ck_vc_status',
+      sql`${table.status} IN ('active', 'suspended', 'revoked', 'expired')`
+    ),
+    credentialTypeCheck: check(
+      'ck_vc_type',
+      sql`${table.credentialType} IN ('CivicIdentityCredential', 'MembershipCredential', 'KycVerificationCredential', 'ReputationCredential')`
+    ),
+    proofTypeCheck: check(
+      'ck_vc_proof_type',
+      sql`${table.proofType} IN ('Ed25519Signature2020', 'BbsBlsSignature2020', 'JsonWebSignature2020')`
+    ),
+    revokedStateCheck: check(
+      'ck_vc_revoked_state',
+      sql`${table.status} != 'revoked' OR ${table.revokedAt} IS NOT NULL`
+    ),
+    temporalOrderCheck: check(
+      'ck_vc_dates',
+      sql`${table.expirationDate} IS NULL OR ${table.expirationDate} > ${table.issuanceDate}`
+    ),
+    versionCheck: check('ck_vc_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 5. VERIFIABLE PRESENTATIONS
+ * ============================================================================
+ *
+ * Cryptographic proofs presented by users to verifiers.
+ */
+export const verifiablePresentations = sqliteTable(
+  'verifiable_presentations',
+  {
+    id: text('id').primaryKey(), // UUID v4
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+
+    verifierDid: text('verifier_did').notNull(),
+    presentationType: text('presentation_type').notNull(),
+    challenge: text('challenge').notNull(),
+    presentationHash: text('presentation_hash').notNull().unique(),
+    status: text('status', {
+      enum: ['verified', 'rejected', 'expired'],
+    }).notNull(),
+
+    version: integer('version').notNull().default(1),
+    submittedAt: integer('submitted_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    verifiedAt: integer('verified_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_vp_user').on(table.userId),
+    verifierIdx: index('idx_vp_verifier').on(table.verifierDid),
+    statusIdx: index('idx_vp_status').on(table.status),
+    verifierDidFormatCheck: check(
+      'ck_vp_verifier_did_format',
+      sql`${table.verifierDid} LIKE 'did:%'`
+    ),
+    statusCheck: check('ck_vp_status', sql`${table.status} IN ('verified', 'rejected', 'expired')`),
+    verifiedStateCheck: check(
+      'ck_vp_verified_state',
+      sql`${table.status} != 'verified' OR ${table.verifiedAt} IS NOT NULL`
+    ),
+    verifiedAfterSubmittedCheck: check(
+      'ck_vp_verified_after_submitted',
+      sql`${table.verifiedAt} IS NULL OR ${table.verifiedAt} >= ${table.submittedAt}`
+    ),
+    versionCheck: check('ck_vp_version', sql`${table.version} > 0`),
+  })
+);
+
+```
+
+---
+
+### `src/db/finance/relations.ts`
+```typescript
+import { relations } from 'drizzle-orm';
+import { users } from '../user/tables';
+import {
+  financialAssets,
+  financialAccounts,
+  financialTransactions,
+  financialLedgerEntries,
+  accountBalances,
+  balanceHolds,
+  fiatProviders,
+  fiatAccounts,
+  fiatPaymentMethods,
+  fiatTransactions,
+  cryptoTransactions,
+  exchangeRates,
+  assetConversions,
+  financialFees,
+  fiatExternalTransactions,
+  idempotencyKeys,
+  reconciliationRecords,
+} from './tables';
+
+/**
+ * ============================================================================
+ * FINANCE DOMAIN RELATIONS
+ * ============================================================================
+ * ARCHITECTURAL NOTE:
+ * Navigation from users to finance entities is intentionally one-directional
+ * (child → parent only), per Section 05 boundary isolation matrix.
+ * Direct queries on finance tables should be executed with { with: { user: true } }
+ * instead of querying bidirectionally from users.
+ * ============================================================================
+ */
+
+// financialAssets
+export const financialAssetsRelations = relations(financialAssets, ({ many }) => ({
+  financialLedgerEntries: many(financialLedgerEntries),
+  accountBalances: many(accountBalances),
+  balanceHolds: many(balanceHolds),
+  cryptoTransactionsAsAsset: many(cryptoTransactions, { relationName: 'cryptoTransactionAsset' }),
+  cryptoTransactionsAsFeeAsset: many(cryptoTransactions, {
+    relationName: 'cryptoTransactionFeeAsset',
+  }),
+  exchangeRatesAsBase: many(exchangeRates, { relationName: 'exchangeRateBaseAsset' }),
+  exchangeRatesAsQuote: many(exchangeRates, { relationName: 'exchangeRateQuoteAsset' }),
+  assetConversionsAsFrom: many(assetConversions, { relationName: 'assetConversionFromAsset' }),
+  assetConversionsAsTo: many(assetConversions, { relationName: 'assetConversionToAsset' }),
+  financialFees: many(financialFees),
+  reconciliationRecords: many(reconciliationRecords),
+}));
+
+// financialAccounts
+export const financialAccountsRelations = relations(financialAccounts, ({ one, many }) => ({
+  user: one(users, {
+    fields: [financialAccounts.userId],
+    references: [users.id],
+  }),
+  financialLedgerEntries: many(financialLedgerEntries),
+  accountBalances: many(accountBalances),
+  balanceHolds: many(balanceHolds),
+  financialFeesReceived: many(financialFees),
+  reconciliationRecords: many(reconciliationRecords),
+}));
+
+// financialTransactions
+export const financialTransactionsRelations = relations(financialTransactions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [financialTransactions.userId],
+    references: [users.id],
+  }),
+  ledgerEntries: many(financialLedgerEntries),
+  fiatTransaction: one(fiatTransactions),
+  cryptoTransaction: one(cryptoTransactions),
+  assetConversion: one(assetConversions),
+  fees: many(financialFees),
+  idempotencyKeys: many(idempotencyKeys),
+}));
+
+// financialLedgerEntries
+export const financialLedgerEntriesRelations = relations(financialLedgerEntries, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [financialLedgerEntries.transactionId],
+    references: [financialTransactions.id],
+  }),
+  account: one(financialAccounts, {
+    fields: [financialLedgerEntries.accountId],
+    references: [financialAccounts.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [financialLedgerEntries.assetId],
+    references: [financialAssets.id],
+  }),
+}));
+
+// accountBalances
+export const accountBalancesRelations = relations(accountBalances, ({ one }) => ({
+  account: one(financialAccounts, {
+    fields: [accountBalances.accountId],
+    references: [financialAccounts.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [accountBalances.assetId],
+    references: [financialAssets.id],
+  }),
+}));
+
+// balanceHolds
+export const balanceHoldsRelations = relations(balanceHolds, ({ one }) => ({
+  account: one(financialAccounts, {
+    fields: [balanceHolds.accountId],
+    references: [financialAccounts.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [balanceHolds.assetId],
+    references: [financialAssets.id],
+  }),
+}));
+
+// fiatProviders
+export const fiatProvidersRelations = relations(fiatProviders, ({ many }) => ({
+  fiatAccounts: many(fiatAccounts),
+  fiatTransactions: many(fiatTransactions),
+  fiatExternalTransactions: many(fiatExternalTransactions),
+  reconciliationRecords: many(reconciliationRecords),
+}));
+
+// fiatAccounts
+export const fiatAccountsRelations = relations(fiatAccounts, ({ one, many }) => ({
+  user: one(users, {
+    fields: [fiatAccounts.userId],
+    references: [users.id],
+  }),
+  provider: one(fiatProviders, {
+    fields: [fiatAccounts.providerId],
+    references: [fiatProviders.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [fiatAccounts.assetId],
+    references: [financialAssets.id],
+  }),
+  paymentMethods: many(fiatPaymentMethods),
+}));
+
+// fiatPaymentMethods
+export const fiatPaymentMethodsRelations = relations(fiatPaymentMethods, ({ one }) => ({
+  user: one(users, {
+    fields: [fiatPaymentMethods.userId],
+    references: [users.id],
+  }),
+  fiatAccount: one(fiatAccounts, {
+    fields: [fiatPaymentMethods.fiatAccountId],
+    references: [fiatAccounts.id],
+  }),
+}));
+
+// fiatTransactions
+export const fiatTransactionsRelations = relations(fiatTransactions, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [fiatTransactions.financialTransactionId],
+    references: [financialTransactions.id],
+  }),
+  paymentMethod: one(fiatPaymentMethods, {
+    fields: [fiatTransactions.paymentMethodId],
+    references: [fiatPaymentMethods.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [fiatTransactions.assetId],
+    references: [financialAssets.id],
+  }),
+  provider: one(fiatProviders, {
+    fields: [fiatTransactions.providerId],
+    references: [fiatProviders.id],
+  }),
+}));
+
+// cryptoTransactions
+export const cryptoTransactionsRelations = relations(cryptoTransactions, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [cryptoTransactions.financialTransactionId],
+    references: [financialTransactions.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [cryptoTransactions.assetId],
+    references: [financialAssets.id],
+    relationName: 'cryptoTransactionAsset',
+  }),
+  feeAsset: one(financialAssets, {
+    fields: [cryptoTransactions.feeAssetId],
+    references: [financialAssets.id],
+    relationName: 'cryptoTransactionFeeAsset',
+  }),
+}));
+
+// exchangeRates
+export const exchangeRatesRelations = relations(exchangeRates, ({ one }) => ({
+  baseAsset: one(financialAssets, {
+    fields: [exchangeRates.baseAssetId],
+    references: [financialAssets.id],
+    relationName: 'exchangeRateBaseAsset',
+  }),
+  quoteAsset: one(financialAssets, {
+    fields: [exchangeRates.quoteAssetId],
+    references: [financialAssets.id],
+    relationName: 'exchangeRateQuoteAsset',
+  }),
+}));
+
+// assetConversions
+export const assetConversionsRelations = relations(assetConversions, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [assetConversions.financialTransactionId],
+    references: [financialTransactions.id],
+  }),
+  fromAsset: one(financialAssets, {
+    fields: [assetConversions.fromAssetId],
+    references: [financialAssets.id],
+    relationName: 'assetConversionFromAsset',
+  }),
+  toAsset: one(financialAssets, {
+    fields: [assetConversions.toAssetId],
+    references: [financialAssets.id],
+    relationName: 'assetConversionToAsset',
+  }),
+}));
+
+// financialFees
+export const financialFeesRelations = relations(financialFees, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [financialFees.transactionId],
+    references: [financialTransactions.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [financialFees.assetId],
+    references: [financialAssets.id],
+  }),
+  recipientAccount: one(financialAccounts, {
+    fields: [financialFees.recipientAccountId],
+    references: [financialAccounts.id],
+  }),
+}));
+
+// fiatExternalTransactions
+export const fiatExternalTransactionsRelations = relations(fiatExternalTransactions, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [fiatExternalTransactions.financialTransactionId],
+    references: [financialTransactions.id],
+  }),
+  provider: one(fiatProviders, {
+    fields: [fiatExternalTransactions.providerId],
+    references: [fiatProviders.id],
+  }),
+}));
+
+// idempotencyKeys
+export const idempotencyKeysRelations = relations(idempotencyKeys, ({ one }) => ({
+  user: one(users, {
+    fields: [idempotencyKeys.userId],
+    references: [users.id],
+  }),
+  financialTransaction: one(financialTransactions, {
+    fields: [idempotencyKeys.financialTransactionId],
+    references: [financialTransactions.id],
+  }),
+}));
+
+// reconciliationRecords
+export const reconciliationRecordsRelations = relations(reconciliationRecords, ({ one }) => ({
+  account: one(financialAccounts, {
+    fields: [reconciliationRecords.accountId],
+    references: [financialAccounts.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [reconciliationRecords.assetId],
+    references: [financialAssets.id],
+  }),
+  provider: one(fiatProviders, {
+    fields: [reconciliationRecords.providerId],
+    references: [fiatProviders.id],
+  }),
+}));
+
+```
+
+---
+
+### `src/db/finance/tables.ts`
+```typescript
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  uniqueIndex,
+  check,
+  foreignKey,
+} from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+
+import { users } from '../user/tables';
+
+/**
+ * ============================================================================
+ * FINANCE DOMAIN
+ * ============================================================================
+ *
+ * Responsibilities:
+ * - Financial assets supported by the platform
+ * - Financial accounts
+ * - Financial transactions
+ * - Double-entry ledger
+ * - Account balances
+ * - Balance holds
+ * - Fiat providers / accounts / payment operations
+ * - Crypto financial operations
+ * - Asset conversions
+ * - Fees
+ * - External transaction references
+ * - Idempotency
+ * - Reconciliation
+ *
+ * Explicit boundaries:
+ * - Authentication is owned by authentication/
+ * - KYC / civil identity is owned by civil-identity/
+ * - Authorization is owned by authorization/
+ * - Blockchain technical infrastructure is owned by web3/
+ * - Wallet identity is NOT represented here as a user identity
+ *
+ * Retention & Regulatory Policy:
+ * - Double-Entry Ledger entries (financialLedgerEntries) and fees (financialFees)
+ *   are APPEND-ONLY tables and MUST NEVER be deleted or updated.
+ * - All foreign keys referencing users.id use onDelete: 'restrict' to ensure
+ *   financial audit trails and accounting records survive user soft-deletion.
+ *
+ * Monetary values (Web3 Compatible):
+ * - All amounts are stored as TEXT in the asset's smallest unit to support
+ *   EVM precision (up to 18 decimals) which exceeds SQLite's 64-bit integer limit.
+ * - Application layer MUST handle these using JS BigInt.
+ * - BRL: 2 decimals  -> R$ 10.50 = "1050"
+ * - USD: 2 decimals  -> US$ 10.50 = "1050"
+ * - ETH: 18 decimals -> 1 ETH = "1000000000000000000"
+ *
+ * V1 supported financial assets:
+ * - BRL
+ * - USD
+ * - BTC
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * 1. FINANCIAL ASSETS
+ * ============================================================================
+ */
+export const financialAssets = sqliteTable(
+  'financial_assets',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    code: text('code').notNull(),
+    symbol: text('symbol').notNull(),
+    name: text('name').notNull(),
+    type: text('type', {
+      enum: ['fiat', 'crypto'],
+    }).notNull(),
+    decimals: integer('decimals').notNull(),
+    status: text('status', {
+      enum: ['active', 'inactive'],
+    })
+      .notNull()
+      .default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    codeUq: uniqueIndex('uq_financial_assets_code').on(table.code),
+    typeIdx: index('idx_financial_assets_type').on(table.type),
+    statusIdx: index('idx_financial_assets_status').on(table.status),
+    typeCheck: check('ck_financial_assets_type', sql`${table.type} IN ('fiat', 'crypto')`),
+    statusCheck: check(
+      'ck_financial_assets_status',
+      sql`${table.status} IN ('active', 'inactive')`
+    ),
+    decimalsCheck: check(
+      'ck_financial_assets_decimals',
+      sql`${table.decimals} >= 0 AND ${table.decimals} <= 18`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 2. FINANCIAL ACCOUNTS
+ * ============================================================================
+ */
+export const financialAccounts = sqliteTable(
+  'financial_accounts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    accountType: text('account_type', {
+      enum: ['user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow'],
+    }).notNull(),
+    status: text('status', {
+      enum: ['active', 'inactive', 'suspended'],
+    })
+      .notNull()
+      .default('active'),
+    name: text('name').notNull(),
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    userIdx: index('idx_financial_accounts_user').on(table.userId),
+    typeIdx: index('idx_financial_accounts_type').on(table.accountType),
+    statusIdx: index('idx_financial_accounts_status').on(table.status),
+    accountTypeCheck: check(
+      'ck_financial_accounts_type',
+      sql`${table.accountType} IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow')`
+    ),
+    statusCheck: check(
+      'ck_financial_accounts_status',
+      sql`${table.status} IN ('active', 'inactive', 'suspended')`
+    ),
+    userAccountTypeUq: uniqueIndex('uq_financial_accounts_user_type_name').on(
+      table.userId,
+      table.accountType,
+      table.name
+    ),
+    ownerRuleCheck: check(
+      'ck_financial_accounts_owner_rule',
+      sql`(${table.accountType} = 'user_available' AND ${table.userId} IS NOT NULL) OR (${table.accountType} != 'user_available' AND ${table.userId} IS NULL)`
+    ),
+    versionCheck: check('ck_financial_accounts_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 3. FINANCIAL TRANSACTIONS
+ * ============================================================================
+ */
+export const financialTransactions = sqliteTable(
+  'financial_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    type: text('type', {
+      enum: [
+        'deposit',
+        'withdrawal',
+        'transfer',
+        'payment',
+        'refund',
+        'fee',
+        'reward',
+        'yield',
+        'conversion',
+        'adjustment',
+      ],
+    }).notNull(),
+    category: text('category', {
+      enum: [
+        'membership',
+        'rwa_yield',
+        'grant',
+        'operational',
+        'payment',
+        'trading',
+        'withdrawal',
+        'deposit',
+        'fee',
+        'other',
+      ],
+    })
+      .notNull()
+      .default('other'),
+    status: text('status', {
+      enum: ['pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'refunded'],
+    })
+      .notNull()
+      .default('pending'),
+    sourceType: text('source_type', {
+      enum: [
+        'contribution',
+        'grant',
+        'membership',
+        'payroll',
+        'withdrawal',
+        'payment',
+        'conversion',
+        'system',
+        'other',
+      ],
+    }),
+    sourceId: text('source_id'),
+    correlationId: text('correlation_id'),
+    description: text('description').notNull(),
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_financial_transactions_user').on(table.userId),
+    typeIdx: index('idx_financial_transactions_type').on(table.type),
+    statusIdx: index('idx_financial_transactions_status').on(table.status),
+    createdIdx: index('idx_financial_transactions_created').on(table.createdAt),
+    correlationIdx: index('idx_financial_transactions_correlation').on(table.correlationId),
+    typeCheck: check(
+      'ck_financial_tx_type',
+      sql`${table.type} IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment')`
+    ),
+    categoryCheck: check(
+      'ck_financial_tx_category',
+      sql`${table.category} IN ('membership', 'rwa_yield', 'grant', 'operational', 'payment', 'trading', 'withdrawal', 'deposit', 'fee', 'other')`
+    ),
+    statusCheck: check(
+      'ck_financial_tx_status',
+      sql`${table.status} IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'refunded')`
+    ),
+    sourceTypeCheck: check(
+      'ck_financial_tx_source_type',
+      sql`${table.sourceType} IS NULL OR ${table.sourceType} IN ('contribution', 'grant', 'membership', 'payroll', 'withdrawal', 'payment', 'conversion', 'system', 'other')`
+    ),
+    completedStateCheck: check(
+      'ck_financial_tx_completed_state',
+      sql`${table.status} != 'completed' OR ${table.completedAt} IS NOT NULL`
+    ),
+    temporalOrderCheck: check(
+      'ck_financial_tx_dates',
+      sql`${table.completedAt} IS NULL OR ${table.completedAt} >= ${table.createdAt}`
+    ),
+    versionCheck: check('ck_financial_tx_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 4. FINANCIAL LEDGER ENTRIES
+ * ============================================================================
+ */
+export const financialLedgerEntries = sqliteTable(
+  'financial_ledger_entries',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    transactionId: integer('transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    direction: text('direction', {
+      enum: ['debit', 'credit'],
+    }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    transactionIdx: index('idx_financial_ledger_entries_transaction').on(table.transactionId),
+    accountIdx: index('idx_financial_ledger_entries_account').on(table.accountId),
+    assetIdx: index('idx_financial_ledger_entries_asset').on(table.assetId),
+    createdIdx: index('idx_financial_ledger_entries_created').on(table.createdAt),
+    directionCheck: check(
+      'ck_financial_ledger_direction',
+      sql`${table.direction} IN ('debit', 'credit')`
+    ),
+    amountCheck: check(
+      'ck_financial_ledger_entries_amount_positive',
+      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 5. ACCOUNT BALANCES
+ * ============================================================================
+ */
+export const accountBalances = sqliteTable(
+  'account_balances',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    availableBaseUnits: text('available_base_units').notNull().default('0'),
+    lockedBaseUnits: text('locked_base_units').notNull().default('0'),
+    version: integer('version').notNull().default(1),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    accountAssetUq: uniqueIndex('uq_account_balances_account_asset').on(
+      table.accountId,
+      table.assetId
+    ),
+    accountIdx: index('idx_account_balances_account').on(table.accountId),
+    assetIdx: index('idx_account_balances_asset').on(table.assetId),
+    availableCheck: check(
+      'ck_account_balances_available_nonnegative',
+      sql`${table.availableBaseUnits} <> '' AND ltrim(${table.availableBaseUnits}, '0123456789') = '' AND (${table.availableBaseUnits} = '0' OR ltrim(${table.availableBaseUnits}, '0') = ${table.availableBaseUnits})`
+    ),
+    lockedCheck: check(
+      'ck_account_balances_locked_nonnegative',
+      sql`${table.lockedBaseUnits} <> '' AND ltrim(${table.lockedBaseUnits}, '0123456789') = '' AND (${table.lockedBaseUnits} = '0' OR ltrim(${table.lockedBaseUnits}, '0') = ${table.lockedBaseUnits})`
+    ),
+    versionCheck: check('ck_account_balances_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 6. BALANCE HOLDS
+ * ============================================================================
+ */
+export const balanceHolds = sqliteTable(
+  'balance_holds',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    amountBaseUnits: text('amount_base_units').notNull(),
+    reason: text('reason').notNull(),
+    referenceType: text('reference_type'),
+    referenceId: text('reference_id'),
+    status: text('status', {
+      enum: ['active', 'released', 'expired', 'consumed'],
+    })
+      .notNull()
+      .default('active'),
+    version: integer('version').notNull().default(1),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+    releasedAt: integer('released_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    accountIdx: index('idx_balance_holds_account').on(table.accountId),
+    assetIdx: index('idx_balance_holds_asset').on(table.assetId),
+    statusIdx: index('idx_balance_holds_status').on(table.status),
+    referenceIdx: index('idx_balance_holds_reference').on(table.referenceType, table.referenceId),
+    statusCheck: check(
+      'ck_balance_holds_status',
+      sql`${table.status} IN ('active', 'released', 'expired', 'consumed')`
+    ),
+    amountCheck: check(
+      'ck_balance_holds_amount_positive',
+      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+    ),
+    releasedStateCheck: check(
+      'ck_balance_holds_released_state',
+      sql`${table.status} != 'released' OR ${table.releasedAt} IS NOT NULL`
+    ),
+    expiredStateCheck: check(
+      'ck_balance_holds_expired_state',
+      sql`${table.status} != 'expired' OR ${table.expiresAt} IS NOT NULL`
+    ),
+    versionCheck: check('ck_balance_holds_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 7. FIAT PROVIDERS
+ * ============================================================================
+ */
+export const fiatProviders = sqliteTable(
+  'fiat_providers',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    code: text('code').notNull(),
+    type: text('type', {
+      enum: ['bank', 'payment_provider', 'pix_provider', 'gateway'],
+    }).notNull(),
+    status: text('status', {
+      enum: ['active', 'inactive', 'suspended'],
+    })
+      .notNull()
+      .default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    codeUq: uniqueIndex('uq_fiat_providers_code').on(table.code),
+    typeIdx: index('idx_fiat_providers_type').on(table.type),
+    statusIdx: index('idx_fiat_providers_status').on(table.status),
+    typeCheck: check(
+      'ck_fiat_providers_type',
+      sql`${table.type} IN ('bank', 'payment_provider', 'pix_provider', 'gateway')`
+    ),
+    statusCheck: check(
+      'ck_fiat_providers_status',
+      sql`${table.status} IN ('active', 'inactive', 'suspended')`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 8. FIAT ACCOUNTS
+ * ============================================================================
+ */
+export const fiatAccounts = sqliteTable(
+  'fiat_accounts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    providerId: integer('provider_id').references(() => fiatProviders.id, {
+      onDelete: 'restrict',
+    }),
+    type: text('type', {
+      enum: ['bank_account', 'payment_account', 'pix_account'],
+    }).notNull(),
+    externalAccountId: text('external_account_id'),
+    displayName: text('display_name'),
+    last4: text('last4'),
+    status: text('status', {
+      enum: ['active', 'inactive', 'blocked'],
+    })
+      .notNull()
+      .default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+    blockedAt: integer('blocked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_fiat_accounts_user').on(table.userId),
+    providerIdx: index('idx_fiat_accounts_provider').on(table.providerId),
+    statusIdx: index('idx_fiat_accounts_status').on(table.status),
+    typeCheck: check(
+      'ck_fiat_accounts_type',
+      sql`${table.type} IN ('bank_account', 'payment_account', 'pix_account')`
+    ),
+    statusCheck: check(
+      'ck_fiat_accounts_status',
+      sql`${table.status} IN ('active', 'inactive', 'blocked')`
+    ),
+    blockedStateCheck: check(
+      'ck_fiat_accounts_blocked_state',
+      sql`${table.status} != 'blocked' OR ${table.blockedAt} IS NOT NULL`
+    ),
+    externalUq: uniqueIndex('uq_fiat_accounts_provider_external').on(
+      table.providerId,
+      table.externalAccountId
+    ),
+    userAccountUq: uniqueIndex('uq_fiat_accounts_user_account').on(table.userId, table.id),
+  })
+);
+
+/* ============================================================================
+ * 9. FIAT PAYMENT METHODS
+ * ============================================================================
+ */
+export const fiatPaymentMethods = sqliteTable(
+  'fiat_payment_methods',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'restrict',
+      }),
+    fiatAccountId: integer('fiat_account_id'),
+    type: text('type', {
+      enum: ['pix', 'bank_transfer', 'boleto', 'card'],
+    }).notNull(),
+    label: text('label').notNull(),
+    status: text('status', {
+      enum: ['active', 'inactive', 'blocked'],
+    })
+      .notNull()
+      .default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+    blockedAt: integer('blocked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    fiatAccountFk: foreignKey({
+      columns: [table.userId, table.fiatAccountId],
+      foreignColumns: [fiatAccounts.userId, fiatAccounts.id],
+      name: 'fk_fiat_payment_methods_user_account',
+    }).onDelete('restrict'),
+    userIdx: index('idx_fiat_payment_methods_user').on(table.userId),
+    accountIdx: index('idx_fiat_payment_methods_account').on(table.fiatAccountId),
+    typeIdx: index('idx_fiat_payment_methods_type').on(table.type),
+    statusIdx: index('idx_fiat_payment_methods_status').on(table.status),
+    typeCheck: check(
+      'ck_fiat_pm_type',
+      sql`${table.type} IN ('pix', 'bank_transfer', 'boleto', 'card')`
+    ),
+    statusCheck: check(
+      'ck_fiat_pm_status',
+      sql`${table.status} IN ('active', 'inactive', 'blocked')`
+    ),
+    blockedStateCheck: check(
+      'ck_fiat_pm_blocked_state',
+      sql`${table.status} != 'blocked' OR ${table.blockedAt} IS NOT NULL`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 10. FIAT TRANSACTIONS
+ * ============================================================================
+ */
+export const fiatTransactions = sqliteTable(
+  'fiat_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    financialTransactionId: integer('financial_transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    providerId: integer('provider_id').references(() => fiatProviders.id, {
+      onDelete: 'restrict',
+    }),
+    paymentMethodId: integer('payment_method_id').references(() => fiatPaymentMethods.id, {
+      onDelete: 'restrict',
+    }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    direction: text('direction', {
+      enum: ['inbound', 'outbound'],
+    }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
+    status: text('status', {
+      enum: ['pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed'],
+    })
+      .notNull()
+      .default('pending'),
+    version: integer('version').notNull().default(1),
+    requestedAt: integer('requested_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    processedAt: integer('processed_at', { mode: 'timestamp' }),
+    settledAt: integer('settled_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    transactionUq: uniqueIndex('uq_fiat_transactions_financial_transaction').on(
+      table.financialTransactionId
+    ),
+    providerIdx: index('idx_fiat_transactions_provider').on(table.providerId),
+    paymentMethodIdx: index('idx_fiat_transactions_payment_method').on(table.paymentMethodId),
+    assetIdx: index('idx_fiat_transactions_asset').on(table.assetId),
+    statusIdx: index('idx_fiat_transactions_status').on(table.status),
+    directionCheck: check(
+      'ck_fiat_tx_direction',
+      sql`${table.direction} IN ('inbound', 'outbound')`
+    ),
+    statusCheck: check(
+      'ck_fiat_tx_status',
+      sql`${table.status} IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed')`
+    ),
+    amountCheck: check(
+      'ck_fiat_transactions_amount_positive',
+      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+    ),
+    temporalOrderCheck: check(
+      'ck_fiat_tx_dates',
+      sql`${table.settledAt} IS NULL OR ${table.settledAt} >= ${table.requestedAt}`
+    ),
+    versionCheck: check('ck_fiat_tx_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 11. CRYPTO TRANSACTIONS
+ * ============================================================================
+ */
+export const cryptoTransactions = sqliteTable(
+  'crypto_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    financialTransactionId: integer('financial_transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    web3TransactionId: text('web3_transaction_id'),
+    direction: text('direction', {
+      enum: ['inbound', 'outbound'],
+    }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
+    feeAssetId: integer('fee_asset_id').references(() => financialAssets.id, {
+      onDelete: 'restrict',
+    }),
+    feeBaseUnits: text('fee_base_units').notNull().default('0'),
+    status: text('status', {
+      enum: ['pending', 'processing', 'confirmed', 'failed', 'reversed'],
+    })
+      .notNull()
+      .default('pending'),
+    version: integer('version').notNull().default(1),
+    requestedAt: integer('requested_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    settledAt: integer('settled_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    transactionUq: uniqueIndex('uq_crypto_transactions_financial_transaction').on(
+      table.financialTransactionId
+    ),
+    web3TransactionUq: uniqueIndex('uq_crypto_transactions_web3_transaction').on(
+      table.web3TransactionId
+    ),
+    assetIdx: index('idx_crypto_transactions_asset').on(table.assetId),
+    statusIdx: index('idx_crypto_transactions_status').on(table.status),
+    directionCheck: check(
+      'ck_crypto_tx_direction',
+      sql`${table.direction} IN ('inbound', 'outbound')`
+    ),
+    statusCheck: check(
+      'ck_crypto_tx_status',
+      sql`${table.status} IN ('pending', 'processing', 'confirmed', 'failed', 'reversed')`
+    ),
+    amountCheck: check(
+      'ck_crypto_transactions_amount_positive',
+      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+    ),
+    feeCheck: check(
+      'ck_crypto_transactions_fee_nonnegative',
+      sql`${table.feeBaseUnits} <> '' AND ltrim(${table.feeBaseUnits}, '0123456789') = '' AND (${table.feeBaseUnits} = '0' OR ltrim(${table.feeBaseUnits}, '0') = ${table.feeBaseUnits})`
+    ),
+    feeAssetCheck: check(
+      'ck_crypto_transactions_fee_asset',
+      sql`${table.feeBaseUnits} = '0' OR ${table.feeAssetId} IS NOT NULL`
+    ),
+    temporalOrderCheck: check(
+      'ck_crypto_tx_dates',
+      sql`${table.settledAt} IS NULL OR ${table.settledAt} >= ${table.requestedAt}`
+    ),
+    versionCheck: check('ck_crypto_tx_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 12. EXCHANGE RATES
+ * ============================================================================
+ */
+export const exchangeRates = sqliteTable(
+  'exchange_rates',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    baseAssetId: integer('base_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    quoteAssetId: integer('quote_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    rate: text('rate').notNull(),
+    source: text('source').notNull(),
+    quotedAt: integer('quoted_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    pairIdx: index('idx_exchange_rates_pair').on(table.baseAssetId, table.quoteAssetId),
+    quotedIdx: index('idx_exchange_rates_quoted').on(table.quotedAt),
+    pairDifferentCheck: check(
+      'ck_exchange_rates_different_assets',
+      sql`${table.baseAssetId} <> ${table.quoteAssetId}`
+    ),
+    rateCheck: check('ck_exchange_rates_rate_positive', sql`CAST(${table.rate} AS REAL) > 0`),
+    expiresCheck: check(
+      'ck_exchange_rates_expires_after_quoted',
+      sql`${table.expiresAt} IS NULL OR ${table.expiresAt} >= ${table.quotedAt}`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 13. ASSET CONVERSIONS
+ * ============================================================================
+ */
+export const assetConversions = sqliteTable(
+  'asset_conversions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    financialTransactionId: integer('financial_transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    fromAssetId: integer('from_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    toAssetId: integer('to_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    fromAmountBaseUnits: text('from_amount_base_units').notNull(),
+    toAmountBaseUnits: text('to_amount_base_units').notNull(),
+    rate: text('rate').notNull(),
+    rateSource: text('rate_source'),
+    quotedAt: integer('quoted_at', { mode: 'timestamp' }),
+    feeAmountBaseUnits: text('fee_amount_base_units').notNull().default('0'),
+    status: text('status', {
+      enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
+    })
+      .notNull()
+      .default('pending'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    transactionUq: uniqueIndex('uq_asset_conversions_transaction').on(table.financialTransactionId),
+    fromAssetIdx: index('idx_asset_conversions_from_asset').on(table.fromAssetId),
+    toAssetIdx: index('idx_asset_conversions_to_asset').on(table.toAssetId),
+    statusCheck: check(
+      'ck_asset_conversions_status',
+      sql`${table.status} IN ('pending', 'processing', 'completed', 'failed', 'cancelled')`
+    ),
+    fromAmountCheck: check(
+      'ck_asset_conversions_from_amount_positive',
+      sql`${table.fromAmountBaseUnits} <> '' AND ltrim(${table.fromAmountBaseUnits}, '0123456789') = '' AND ${table.fromAmountBaseUnits} <> '0' AND ltrim(${table.fromAmountBaseUnits}, '0') = ${table.fromAmountBaseUnits}`
+    ),
+    toAmountCheck: check(
+      'ck_asset_conversions_to_amount_positive',
+      sql`${table.toAmountBaseUnits} <> '' AND ltrim(${table.toAmountBaseUnits}, '0123456789') = '' AND ${table.toAmountBaseUnits} <> '0' AND ltrim(${table.toAmountBaseUnits}, '0') = ${table.toAmountBaseUnits}`
+    ),
+    feeCheck: check(
+      'ck_asset_conversions_fee_nonnegative',
+      sql`${table.feeAmountBaseUnits} <> '' AND ltrim(${table.feeAmountBaseUnits}, '0123456789') = '' AND (${table.feeAmountBaseUnits} = '0' OR ltrim(${table.feeAmountBaseUnits}, '0') = ${table.feeAmountBaseUnits})`
+    ),
+    assetsDifferentCheck: check(
+      'ck_asset_conversions_different_assets',
+      sql`${table.fromAssetId} <> ${table.toAssetId}`
+    ),
+    rateCheck: check('ck_asset_conversions_rate_positive', sql`CAST(${table.rate} AS REAL) > 0`),
+  })
+);
+
+/* ============================================================================
+ * 14. FINANCIAL FEES
+ * ============================================================================
+ */
+export const financialFees = sqliteTable(
+  'financial_fees',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    transactionId: integer('transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    recipientAccountId: integer('recipient_account_id').references(() => financialAccounts.id, {
+      onDelete: 'restrict',
+    }),
+    feeType: text('fee_type', {
+      enum: ['platform', 'withdrawal', 'payment', 'conversion', 'network', 'other'],
+    }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    transactionIdx: index('idx_financial_fees_transaction').on(table.transactionId),
+    assetIdx: index('idx_financial_fees_asset').on(table.assetId),
+    recipientIdx: index('idx_financial_fees_recipient_account').on(table.recipientAccountId),
+    feeTypeCheck: check(
+      'ck_financial_fees_type',
+      sql`${table.feeType} IN ('platform', 'withdrawal', 'payment', 'conversion', 'network', 'other')`
+    ),
+    amountCheck: check(
+      'ck_financial_fees_amount_positive',
+      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 15. EXTERNAL TRANSACTIONS
+ * ============================================================================
+ */
+export const fiatExternalTransactions = sqliteTable(
+  'fiat_external_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    financialTransactionId: integer('financial_transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    providerId: integer('provider_id').references(() => fiatProviders.id, {
+      onDelete: 'restrict',
+    }),
+    externalTransactionId: text('external_transaction_id').notNull(),
+    type: text('type').notNull(),
+    status: text('status').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    providerExternalUq: uniqueIndex('uq_fiat_external_transactions_provider_external').on(
+      table.providerId,
+      table.externalTransactionId
+    ),
+    transactionIdx: index('idx_fiat_external_transactions_transaction').on(
+      table.financialTransactionId
+    ),
+    providerIdx: index('idx_fiat_external_transactions_provider').on(table.providerId),
+    statusIdx: index('idx_fiat_external_transactions_status').on(table.status),
+  })
+);
+
+/* ============================================================================
+ * 16. IDEMPOTENCY KEYS
+ * ============================================================================
+ */
+export const idempotencyKeys = sqliteTable(
+  'idempotency_keys',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    scope: text('scope').notNull(),
+    key: text('key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    financialTransactionId: integer('financial_transaction_id').references(
+      () => financialTransactions.id,
+      {
+        onDelete: 'restrict',
+      }
+    ),
+    status: text('status', {
+      enum: ['processing', 'completed', 'failed'],
+    })
+      .notNull()
+      .default('processing'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    scopeKeyUq: uniqueIndex('uq_idempotency_scope_key').on(table.scope, table.key),
+    userIdx: index('idx_idempotency_keys_user').on(table.userId),
+    transactionIdx: index('idx_idempotency_keys_transaction').on(table.financialTransactionId),
+    statusIdx: index('idx_idempotency_keys_status').on(table.status),
+    statusCheck: check(
+      'ck_idempotency_keys_status',
+      sql`${table.status} IN ('processing', 'completed', 'failed')`
+    ),
+    expiresCheck: check(
+      'ck_idempotency_keys_expires',
+      sql`${table.expiresAt} IS NULL OR ${table.createdAt} < ${table.expiresAt}`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 17. RECONCILIATION RECORDS
+ * ============================================================================
+ */
+export const reconciliationRecords = sqliteTable(
+  'reconciliation_records',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    providerId: integer('provider_id').references(() => fiatProviders.id, {
+      onDelete: 'restrict',
+    }),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    expectedBalanceBaseUnits: text('expected_balance_base_units').notNull(),
+    actualBalanceBaseUnits: text('actual_balance_base_units').notNull(),
+    differenceBaseUnits: text('difference_base_units').notNull(),
+    status: text('status', {
+      enum: ['matched', 'mismatch', 'resolved'],
+    })
+      .notNull()
+      .default('matched'),
+    reconciliationRunId: text('reconciliation_run_id').notNull(),
+    version: integer('version').notNull().default(1),
+    reconciliationDate: integer('reconciliation_date', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    accountIdx: index('idx_reconciliation_records_account').on(table.accountId),
+    assetIdx: index('idx_reconciliation_records_asset').on(table.assetId),
+    providerIdx: index('idx_reconciliation_records_provider').on(table.providerId),
+    statusIdx: index('idx_reconciliation_records_status').on(table.status),
+    statusCheck: check(
+      'ck_reconciliation_status',
+      sql`${table.status} IN ('matched', 'mismatch', 'resolved')`
+    ),
+    resolvedStateCheck: check(
+      'ck_reconciliation_resolved_state',
+      sql`${table.status} != 'resolved' OR ${table.resolvedAt} IS NOT NULL`
+    ),
+    versionCheck: check('ck_reconciliation_records_version', sql`${table.version} > 0`),
+    expectedCheck: check(
+      'ck_reconciliation_expected_nonnegative',
+      sql`${table.expectedBalanceBaseUnits} <> '' AND ltrim(${table.expectedBalanceBaseUnits}, '0123456789') = '' AND (${table.expectedBalanceBaseUnits} = '0' OR ltrim(${table.expectedBalanceBaseUnits}, '0') = ${table.expectedBalanceBaseUnits})`
+    ),
+    actualCheck: check(
+      'ck_reconciliation_actual_nonnegative',
+      sql`${table.actualBalanceBaseUnits} <> '' AND ltrim(${table.actualBalanceBaseUnits}, '0123456789') = '' AND (${table.actualBalanceBaseUnits} = '0' OR ltrim(${table.actualBalanceBaseUnits}, '0') = ${table.actualBalanceBaseUnits})`
+    ),
+  })
+);
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleAuthenticationRepositoryAdapter.ts`
+```typescript
+import { eq, and, isNull } from 'drizzle-orm';
+import {
+  userAuthenticators,
+  passwordCredentials,
+  totpCredentials,
+  webauthnCredentials,
+} from '../../db/authentication/tables';
+import {
+  IAuthenticationRepository,
+  PasswordCredentialRecord,
+  TotpCredentialRecord,
+  WebAuthnCredentialRecord,
+} from '../../application/ports/output/IAuthenticationRepository';
+
+export type { PasswordCredentialRecord, TotpCredentialRecord, WebAuthnCredentialRecord };
+
+export class DrizzleAuthenticationRepositoryAdapter implements IAuthenticationRepository {
+  constructor(private readonly db: any) {}
+
+  // --------------------------------------------------------------------------
+  // PASSWORD CREDENTIALS (Strictly in authentication domain)
+  // --------------------------------------------------------------------------
+  async findPasswordCredentialByUserId(userId: number): Promise<PasswordCredentialRecord | null> {
+    const [row] = await this.db
+      .select({
+        authenticatorId: passwordCredentials.authenticatorId,
+        userId: userAuthenticators.userId,
+        passwordHash: passwordCredentials.passwordHash,
+      })
+      .from(passwordCredentials)
+      .innerJoin(userAuthenticators, eq(passwordCredentials.authenticatorId, userAuthenticators.id))
+      .where(
+        and(
+          eq(userAuthenticators.userId, userId),
+          eq(userAuthenticators.type, 'password'),
+          isNull(userAuthenticators.revokedAt)
+        )
+      )
+      .limit(1);
+
+    if (!row) return null;
+    return row;
+  }
+
+  async savePasswordCredential(userId: number, passwordHash: string): Promise<string> {
+    const existing = await this.findPasswordCredentialByUserId(userId);
+
+    if (existing) {
+      await this.db
+        .update(passwordCredentials)
+        .set({ passwordHash })
+        .where(eq(passwordCredentials.authenticatorId, existing.authenticatorId));
+      return existing.authenticatorId;
+    }
+
+    const authenticatorId = crypto.randomUUID();
+    await this.db.insert(userAuthenticators).values({
+      id: authenticatorId,
+      userId,
+      type: 'password',
+      verifiedAt: new Date(),
+    });
+
+    await this.db.insert(passwordCredentials).values({
+      authenticatorId,
+      passwordHash,
+    });
+
+    return authenticatorId;
+  }
+
+  // --------------------------------------------------------------------------
+  // TOTP CREDENTIALS
+  // --------------------------------------------------------------------------
+  async findTotpCredentialByUserId(userId: number): Promise<TotpCredentialRecord | null> {
+    const [row] = await this.db
+      .select({
+        authenticatorId: totpCredentials.authenticatorId,
+        userId: userAuthenticators.userId,
+        encryptedTotpSecret: totpCredentials.encryptedTotpSecret,
+        verifiedAt: userAuthenticators.verifiedAt,
+      })
+      .from(totpCredentials)
+      .innerJoin(userAuthenticators, eq(totpCredentials.authenticatorId, userAuthenticators.id))
+      .where(
+        and(
+          eq(userAuthenticators.userId, userId),
+          eq(userAuthenticators.type, 'totp'),
+          isNull(userAuthenticators.revokedAt)
+        )
+      )
+      .limit(1);
+
+    if (!row) return null;
+    return {
+      authenticatorId: row.authenticatorId,
+      userId: row.userId,
+      encryptedTotpSecret: row.encryptedTotpSecret,
+      verified: row.verifiedAt !== null,
+    };
+  }
+
+  async saveTotpSecret(userId: number, encryptedTotpSecret: string): Promise<string> {
+    const existing = await this.findTotpCredentialByUserId(userId);
+    if (existing) {
+      await this.db
+        .update(totpCredentials)
+        .set({ encryptedTotpSecret })
+        .where(eq(totpCredentials.authenticatorId, existing.authenticatorId));
+      return existing.authenticatorId;
+    }
+
+    const authenticatorId = crypto.randomUUID();
+    await this.db.insert(userAuthenticators).values({
+      id: authenticatorId,
+      userId,
+      type: 'totp',
+    });
+
+    await this.db.insert(totpCredentials).values({
+      authenticatorId,
+      encryptedTotpSecret,
+    });
+
+    return authenticatorId;
+  }
+
+  async verifyTotpAuthenticator(authenticatorId: string): Promise<void> {
+    await this.db
+      .update(userAuthenticators)
+      .set({ verifiedAt: new Date() })
+      .where(eq(userAuthenticators.id, authenticatorId));
+  }
+
+  // --------------------------------------------------------------------------
+  // WEBAUTHN / PASSKEY CREDENTIALS
+  // --------------------------------------------------------------------------
+  async findAllWebAuthnCredentialsByUserId(userId: number): Promise<WebAuthnCredentialRecord[]> {
+    const rows = await this.db
+      .select({
+        authenticatorId: webauthnCredentials.authenticatorId,
+        userId: userAuthenticators.userId,
+        credentialId: webauthnCredentials.credentialId,
+        publicKeyCose: webauthnCredentials.publicKeyCose,
+        signCount: webauthnCredentials.signCount,
+      })
+      .from(webauthnCredentials)
+      .innerJoin(userAuthenticators, eq(webauthnCredentials.authenticatorId, userAuthenticators.id))
+      .where(
+        and(
+          eq(userAuthenticators.userId, userId),
+          eq(userAuthenticators.type, 'webauthn'),
+          isNull(userAuthenticators.revokedAt)
+        )
+      );
+
+    return rows;
+  }
+
+  async findWebAuthnCredentialById(credentialId: string): Promise<WebAuthnCredentialRecord | null> {
+    const [row] = await this.db
+      .select({
+        authenticatorId: webauthnCredentials.authenticatorId,
+        userId: userAuthenticators.userId,
+        credentialId: webauthnCredentials.credentialId,
+        publicKeyCose: webauthnCredentials.publicKeyCose,
+        signCount: webauthnCredentials.signCount,
+      })
+      .from(webauthnCredentials)
+      .innerJoin(userAuthenticators, eq(webauthnCredentials.authenticatorId, userAuthenticators.id))
+      .where(
+        and(
+          eq(webauthnCredentials.credentialId, credentialId),
+          eq(userAuthenticators.type, 'webauthn'),
+          isNull(userAuthenticators.revokedAt)
+        )
+      )
+      .limit(1);
+
+    if (!row) return null;
+    return row;
+  }
+
+  async saveWebAuthnCredential(
+    userId: number,
+    credentialId: string,
+    publicKeyCose: string,
+    rpId: string = 'asppibra.com'
+  ): Promise<string> {
+    const authenticatorId = crypto.randomUUID();
+    await this.db.insert(userAuthenticators).values({
+      id: authenticatorId,
+      userId,
+      type: 'webauthn',
+      verifiedAt: new Date(),
+    });
+
+    await this.db.insert(webauthnCredentials).values({
+      authenticatorId,
+      credentialId,
+      publicKeyCose,
+      rpId,
+      backupEligible: false,
+      backupState: false,
+      uvInitialized: true,
+    });
+
+    return authenticatorId;
+  }
+
+  async updateWebAuthnSignCount(credentialId: string, newSignCount: number): Promise<void> {
+    await this.db
+      .update(webauthnCredentials)
+      .set({ signCount: newSignCount })
+      .where(eq(webauthnCredentials.credentialId, credentialId));
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleAuthTransactionRepository.ts`
+```typescript
+import { DrizzleD1Database } from '../../../types/bindings';
+import { IAuthTransactionRepository } from '../../../application/ports/output/IAuthTransactionRepository';
+import { AuthenticationTransaction } from '../../../domains/identity/entities/AuthenticationTransaction';
+import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
+import { authTransactions, authChallenges } from '../../../db/authentication/tables';
+import { eq, sql } from 'drizzle-orm';
+
+export class DrizzleAuthTransactionRepository implements IAuthTransactionRepository {
+  constructor(private readonly db: DrizzleD1Database) {}
+
+  async createTransaction(transaction: AuthenticationTransaction): Promise<void> {
+    const data = transaction.toPersistence();
+    await this.db.insert(authTransactions).values(data);
+  }
+
+  async getTransactionById(id: string): Promise<AuthenticationTransaction | null> {
+    const result = await this.db
+      .select()
+      .from(authTransactions)
+      .where(eq(authTransactions.id, id))
+      .limit(1)
+      .get();
+      
+    if (!result) return null;
+    return AuthenticationTransaction.fromPersistence(result);
+  }
+
+  async updateTransaction(transaction: AuthenticationTransaction): Promise<void> {
+    const data = transaction.toPersistence();
+    await this.db
+      .update(authTransactions)
+      .set(data)
+      .where(eq(authTransactions.id, data.id));
+  }
+
+  async createChallenge(challenge: AuthenticationChallenge): Promise<void> {
+    const data = challenge.toPersistence();
+    await this.db.insert(authChallenges).values(data);
+  }
+
+  async getChallengeById(id: string): Promise<AuthenticationChallenge | null> {
+    const result = await this.db
+      .select()
+      .from(authChallenges)
+      .where(eq(authChallenges.id, id))
+      .limit(1)
+      .get();
+
+    if (!result) return null;
+    return AuthenticationChallenge.fromPersistence(result);
+  }
+
+  async getChallengeByHash(hash: string): Promise<AuthenticationChallenge | null> {
+    const result = await this.db
+      .select()
+      .from(authChallenges)
+      .where(eq(authChallenges.challengeHash, hash))
+      .limit(1)
+      .get();
+
+    if (!result) return null;
+    return AuthenticationChallenge.fromPersistence(result);
+  }
+
+  async updateChallenge(challenge: AuthenticationChallenge): Promise<void> {
+    const data = challenge.toPersistence();
+    await this.db
+      .update(authChallenges)
+      .set(data)
+      .where(eq(authChallenges.id, data.id));
+  }
+
+  async completeFactorAtomically(txId: string, aal: number, authEpochAtStart: number, method: string): Promise<boolean> {
+    const result = await this.db
+      .update(authTransactions)
+      .set({
+        status: 'verified',
+        currentAal: aal,
+        method: method,
+        assuranceMethod: method,
+        lastAuthenticatedAt: new Date()
+      })
+      .where(sql`${authTransactions.id} = ${txId} AND ${authTransactions.status} IN ('created', 'awaiting_factor') AND ${authTransactions.authEpochAtStart} = ${authEpochAtStart}`);
+      
+    return result.meta.changes > 0;
+  }
+
+  async recordFailedAttemptAtomically(txId: string, maxAttempts: number): Promise<boolean> {
+    const result = await this.db
+      .update(authTransactions)
+      .set({
+        failureCount: sql`${authTransactions.failureCount} + 1`,
+        status: sql`CASE WHEN ${authTransactions.failureCount} + 1 >= ${maxAttempts} THEN 'locked' ELSE ${authTransactions.status} END`
+      })
+      .where(sql`${authTransactions.id} = ${txId} AND ${authTransactions.status} IN ('created', 'awaiting_factor')`);
+      
+    return result.meta.changes > 0;
+  }
+
+  async consumeChallengeAtomically(challengeId: string): Promise<boolean> {
+    const result = await this.db
+      .update(authChallenges)
+      .set({
+        usedAt: new Date()
+      })
+      .where(sql`${authChallenges.id} = ${challengeId} AND ${authChallenges.usedAt} IS NULL AND ${authChallenges.expiresAt} > ${new Date().getTime()}`); // SQLite uses integer timestamp if configured so, but standard is Date. Let's use current_timestamp or just JS Date. Since Drizzle maps Date to int, `new Date()` works. Wait, to be safe, `(strftime('%s', 'now') * 1000)` or just Drizzle's `eq` / `gt`.
+      
+    // Better Drizzle where syntax
+    return result.meta.changes > 0;
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleCivilIdentityRepositoryAdapter.ts`
+```typescript
+import { eq, desc } from 'drizzle-orm';
+import { citizens, identityDocuments, kycVerifications } from '../../db/civil-identity/tables';
+import {
+  ICivilIdentityRepository,
+  CitizenRecord,
+  IdentityDocumentRecord,
+  KycVerificationRecord,
+} from '../../application/ports/output/ICivilIdentityRepository';
+
+export type { CitizenRecord, IdentityDocumentRecord, KycVerificationRecord };
+
+export class DrizzleCivilIdentityRepositoryAdapter implements ICivilIdentityRepository {
+  constructor(private readonly db: any) {}
+
+  async findByDid(did: string): Promise<CitizenRecord | null> {
+    const username = did.split(':').pop();
+    const [row] = await this.db
+      .select()
+      .from(citizens)
+      .where(eq(citizens.username, username || did))
+      .limit(1);
+
+    if (!row) return null;
+    return this.mapCitizenRow(row);
+  }
+
+  async createCitizen(data: Partial<CitizenRecord> & { userId: number }): Promise<CitizenRecord> {
+    const [inserted] = await this.db
+      .insert(citizens)
+      .values({
+        userId: data.userId,
+        legalFirstName: data.legalFirstName || null,
+        legalLastName: data.legalLastName || null,
+        nationalityCode: data.nationalityCode || 'BR',
+        birthDate: data.birthDate || null,
+        maritalStatus: (data.maritalStatus as any) || null,
+        civilStatus: data.civilStatus || 'pending',
+      })
+      .returning();
+
+    return this.mapCitizenRow(inserted);
+  }
+
+  async findCitizenByUserId(userId: number): Promise<CitizenRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(citizens)
+      .where(eq(citizens.userId, userId))
+      .limit(1);
+
+    if (!row) return null;
+    return this.mapCitizenRow(row);
+  }
+
+  async updateCivilStatus(
+    userId: number,
+    civilStatus: 'pending' | 'verified' | 'suspended' | 'revoked',
+    verifiedBy?: number
+  ): Promise<void> {
+    await this.db
+      .update(citizens)
+      .set({
+        civilStatus,
+        verifiedAt: civilStatus === 'verified' ? new Date() : null,
+        verifiedBy: verifiedBy || null,
+        statusChangedAt: new Date(),
+      })
+      .where(eq(citizens.userId, userId));
+  }
+
+  async createIdentityDocument(data: IdentityDocumentRecord): Promise<IdentityDocumentRecord> {
+    const [inserted] = await this.db
+      .insert(identityDocuments)
+      .values({
+        userId: data.userId,
+        documentType: data.documentType,
+        countryCode: data.countryCode || 'BR',
+        numberLookupHash: data.numberLookupHash,
+        encryptedNumber: data.encryptedNumber,
+        last4: data.last4 || null,
+        source: data.source,
+        verificationStatus: data.verificationStatus || 'pending',
+        verifiedAt: data.verifiedAt || null,
+        verifiedBy: data.verifiedBy || null,
+      })
+      .returning();
+
+    return {
+      id: inserted.id,
+      userId: inserted.userId,
+      documentType: inserted.documentType as any,
+      countryCode: inserted.countryCode,
+      numberLookupHash: inserted.numberLookupHash,
+      encryptedNumber: inserted.encryptedNumber,
+      last4: inserted.last4,
+      source: inserted.source as any,
+      verificationStatus: inserted.verificationStatus as any,
+      verifiedAt: inserted.verifiedAt ? new Date(inserted.verifiedAt) : null,
+      verifiedBy: inserted.verifiedBy,
+      version: inserted.version,
+    };
+  }
+
+  async findDocumentsByUserId(userId: number): Promise<IdentityDocumentRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(identityDocuments)
+      .where(eq(identityDocuments.userId, userId));
+
+    return rows.map((r: any) => ({
+      id: r.id,
+      userId: r.userId,
+      documentType: r.documentType,
+      countryCode: r.countryCode,
+      numberLookupHash: r.numberLookupHash,
+      encryptedNumber: r.encryptedNumber,
+      last4: r.last4,
+      source: r.source,
+      verificationStatus: r.verificationStatus,
+      verifiedAt: r.verifiedAt ? new Date(r.verifiedAt) : null,
+      verifiedBy: r.verifiedBy,
+      version: r.version,
+    }));
+  }
+
+  async createKycVerification(data: KycVerificationRecord): Promise<KycVerificationRecord> {
+    const [inserted] = await this.db
+      .insert(kycVerifications)
+      .values({
+        userId: data.userId,
+        verificationLevel: data.verificationLevel,
+        status: data.status,
+        provider: data.provider,
+        riskScore: data.riskScore || null,
+        rejectionReason: data.rejectionReason || null,
+        startedAt: data.startedAt,
+        completedAt: data.completedAt || null,
+        expiresAt: data.expiresAt || null,
+      })
+      .returning();
+
+    return {
+      id: inserted.id,
+      userId: inserted.userId,
+      verificationLevel: inserted.verificationLevel as any,
+      status: inserted.status as any,
+      provider: inserted.provider,
+      riskScore: inserted.riskScore,
+      rejectionReason: inserted.rejectionReason,
+      startedAt: new Date(inserted.startedAt),
+      completedAt: inserted.completedAt ? new Date(inserted.completedAt) : null,
+      expiresAt: inserted.expiresAt ? new Date(inserted.expiresAt) : null,
+      version: inserted.version,
+    };
+  }
+
+  async getLatestKycByUserId(userId: number): Promise<KycVerificationRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(kycVerifications)
+      .where(eq(kycVerifications.userId, userId))
+      .orderBy(desc(kycVerifications.id))
+      .limit(1);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      userId: row.userId,
+      verificationLevel: row.verificationLevel as any,
+      status: row.status as any,
+      provider: row.provider,
+      riskScore: row.riskScore,
+      rejectionReason: row.rejectionReason,
+      startedAt: new Date(row.startedAt),
+      completedAt: row.completedAt ? new Date(row.completedAt) : null,
+      expiresAt: row.expiresAt ? new Date(row.expiresAt) : null,
+      version: row.version,
+    };
+  }
+
+  private mapCitizenRow(row: any): CitizenRecord {
+    return {
+      userId: row.userId,
+      username: row.username,
+      legalFirstName: row.legalFirstName,
+      legalLastName: row.legalLastName,
+      nationalityCode: row.nationalityCode,
+      birthDate: row.birthDate,
+      maritalStatus: row.maritalStatus,
+      civilStatus: row.civilStatus,
+      verifiedAt: row.verifiedAt ? new Date(row.verifiedAt) : null,
+      verifiedBy: row.verifiedBy,
+      version: row.version,
+    };
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleFinanceRepository.ts`
+```typescript
+import { eq } from 'drizzle-orm';
+import {
+  financialAccounts,
+  accountBalances,
+  financialTransactions,
+  financialLedgerEntries,
+} from '../../db/finance/tables';
+import { Result } from '../../shared/kernel/Result';
+import {
+  IFinanceRepository,
+  FinancialAccountRecord,
+  AccountBalanceRecord,
+  FinancialTransactionRecord,
+} from '../../application/ports/output/IFinanceRepository';
+
+export type { FinancialAccountRecord, AccountBalanceRecord, FinancialTransactionRecord };
+
+export class DrizzleFinanceRepository implements IFinanceRepository {
+  constructor(private readonly db: any) {}
+
+  async getTreasuryAccount(): Promise<Result<FinancialAccountRecord>> {
+    try {
+      const [row] = await this.db
+        .select()
+        .from(financialAccounts)
+        .where(eq(financialAccounts.accountType, 'treasury'))
+        .limit(1);
+
+      if (!row) {
+        // Se não existir a conta tesouraria, cria uma nova conta padrão de tesouraria
+        const [inserted] = await this.db
+          .insert(financialAccounts)
+          .values({
+            userId: null,
+            accountType: 'treasury',
+            name: 'ASPPIBRA DAO Main Treasury',
+            status: 'active',
+          })
+          .returning();
+
+        return Result.ok({
+          id: inserted.id,
+          userId: inserted.userId,
+          accountType: inserted.accountType as any,
+          status: inserted.status as any,
+          name: inserted.name,
+          version: inserted.version,
+        });
+      }
+
+      return Result.ok({
+        id: row.id,
+        userId: row.userId,
+        accountType: row.accountType as any,
+        status: row.status as any,
+        name: row.name,
+        version: row.version,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>> {
+    try {
+      const treasuryRes = await this.getTreasuryAccount();
+      if (treasuryRes.isFailure) {
+        return Result.fail(treasuryRes.error || 'Treasury account error');
+      }
+
+      const treasuryId = treasuryRes.getValue().id;
+      const rows = await this.db
+        .select()
+        .from(accountBalances)
+        .where(eq(accountBalances.accountId, treasuryId));
+
+      const balances: AccountBalanceRecord[] = rows.map((r: any) => ({
+        id: r.id,
+        accountId: r.accountId,
+        assetId: r.assetId,
+        availableBaseUnits: r.availableBaseUnits,
+        lockedBaseUnits: r.lockedBaseUnits,
+        version: r.version,
+      }));
+
+      return Result.ok(balances);
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async createTransaction(data: {
+    userId?: number | null;
+    type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
+    category?: string;
+    description: string;
+    amountBaseUnits: string;
+    assetId: number;
+  }): Promise<Result<FinancialTransactionRecord>> {
+    try {
+      const treasuryRes = await this.getTreasuryAccount();
+      if (treasuryRes.isFailure) return Result.fail(treasuryRes.error || 'Treasury account error');
+
+      const treasuryId = treasuryRes.getValue().id;
+
+      // 1. Criar registro de transação
+      const [tx] = await this.db
+        .insert(financialTransactions)
+        .values({
+          userId: data.userId || null,
+          type: data.type,
+          category: (data.category as any) || 'operational',
+          status: 'completed',
+          description: data.description,
+          completedAt: new Date(),
+        })
+        .returning();
+
+      // 2. Criar entrada contábil (Ledger Entry)
+      await this.db.insert(financialLedgerEntries).values({
+        transactionId: tx.id,
+        accountId: treasuryId,
+        assetId: data.assetId,
+        direction: data.type === 'deposit' ? 'credit' : 'debit',
+        amountBaseUnits: data.amountBaseUnits,
+      });
+
+      return Result.ok({
+        id: tx.id,
+        userId: tx.userId,
+        type: tx.type as any,
+        category: tx.category,
+        status: tx.status as any,
+        description: tx.description,
+        createdAt: new Date(tx.createdAt),
+        completedAt: tx.completedAt ? new Date(tx.completedAt) : null,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>> {
+    try {
+      const query = userId
+        ? this.db.select().from(financialTransactions).where(eq(financialTransactions.userId, userId))
+        : this.db.select().from(financialTransactions);
+
+      const rows = await query;
+      const txs: FinancialTransactionRecord[] = rows.map((r: any) => ({
+        id: r.id,
+        userId: r.userId,
+        type: r.type,
+        category: r.category,
+        status: r.status,
+        description: r.description,
+        createdAt: new Date(r.createdAt),
+        completedAt: r.completedAt ? new Date(r.completedAt) : null,
+      }));
+
+      return Result.ok(txs);
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleIdentityResolverAdapter.ts`
+```typescript
+import { eq } from 'drizzle-orm';
+import { IIdentityResolverPort } from '../../application/ports/output/IIdentityResolverPort';
+import { IdentityAssertion } from '../../application/dto/IdentityAssertion';
+import { IdentityResolutionResult } from '../../application/dto/IdentityResolutionResult';
+import { wallets } from '../../db/web3/tables';
+import { webauthnCredentials, userAuthenticators } from '../../db/authentication/tables';
+import { didIdentities } from '../../db/ssi/tables';
+
+export class DrizzleIdentityResolverAdapter implements IIdentityResolverPort {
+  constructor(private readonly db: any) {}
+
+  async resolve(assertion: IdentityAssertion): Promise<IdentityResolutionResult> {
+    switch (assertion.type) {
+      case 'oauth': {
+        const [authenticator] = await this.db
+          .select({ userId: userAuthenticators.userId })
+          .from(userAuthenticators)
+          .where(eq(userAuthenticators.id, assertion.subjectId))
+          .limit(1);
+
+        if (authenticator) {
+          return {
+            status: 'resolved',
+            userId: authenticator.userId,
+            bindingType: 'oauth',
+            provider: assertion.provider,
+          };
+        }
+        break;
+      }
+
+      case 'web3_wallet': {
+        const normalizedAddress = assertion.subjectId.toLowerCase();
+        const [wallet] = await this.db
+          .select({ userId: wallets.userId })
+          .from(wallets)
+          .where(eq(wallets.addressNormalized, normalizedAddress))
+          .limit(1);
+
+        if (wallet && wallet.userId) {
+          return {
+            status: 'resolved',
+            userId: wallet.userId,
+            bindingType: 'web3_wallet',
+            provider: 'evm',
+          };
+        }
+        break;
+      }
+
+      case 'passkey': {
+        const [passkey] = await this.db
+          .select({ userId: userAuthenticators.userId })
+          .from(webauthnCredentials)
+          .innerJoin(userAuthenticators, eq(webauthnCredentials.authenticatorId, userAuthenticators.id))
+          .where(eq(webauthnCredentials.credentialId, assertion.subjectId))
+          .limit(1);
+
+        if (passkey) {
+          return {
+            status: 'resolved',
+            userId: passkey.userId,
+            bindingType: 'passkey',
+            provider: 'webauthn',
+          };
+        }
+        break;
+      }
+
+      case 'ssi_did': {
+        const [did] = await this.db
+          .select({ userId: didIdentities.userId })
+          .from(didIdentities)
+          .where(eq(didIdentities.did, assertion.subjectId))
+          .limit(1);
+
+        if (did) {
+          return {
+            status: 'resolved',
+            userId: did.userId,
+            bindingType: 'ssi_did',
+            provider: 'polygonid',
+          };
+        }
+        break;
+      }
+    }
+
+    return {
+      status: 'not_linked',
+      code: 'IDENTITY_NOT_LINKED',
+      message: 'Identidade não vinculada a nenhuma conta existente.',
+    };
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleOutboxRepository.ts`
+```typescript
+import { IDomainEvent } from '../../shared/kernel/DomainEvent';
+import { Result } from '../../shared/kernel/Result';
+import { IOutboxRepository, OutboxEventRecord } from '../../application/ports/output/IOutboxRepository';
+import { outboxEvents } from '../../db/infrastructure/tables';
+import { eq, asc, sql } from 'drizzle-orm';
+
+export class DrizzleOutboxRepository implements IOutboxRepository {
+  // Recebe a instância do banco OU da transação (tx) ativa no UnitOfWork
+  constructor(private db: any) {}
+
+  async saveEvent(event: IDomainEvent, aggregateId: number, aggregateType: string, aggregateVersion: number): Promise<Result<void>> {
+    try {
+      const eventId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+      await this.db.insert(outboxEvents).values({
+        id: eventId,
+        aggregateId,
+        aggregateType,
+        aggregateVersion,
+        eventName: event.constructor.name,
+        payload: JSON.stringify(event),
+        metadata: JSON.stringify({ occurredOn: event.dateTimeOccurred }),
+        attempts: 0,
+        published: false,
+        createdAt: new Date(),
+      });
+      return Result.ok();
+    } catch (error: any) {
+      return Result.fail(`Failed to save outbox event: ${error.message}`);
+    }
+  }
+
+  async getPendingEvents(limit: number): Promise<Result<OutboxEventRecord[]>> {
+    try {
+      const pending = await this.db
+        .select()
+        .from(outboxEvents)
+        .where(eq(outboxEvents.published, false))
+        .orderBy(asc(outboxEvents.createdAt))
+        .limit(limit);
+        
+      return Result.ok(pending);
+    } catch (error: any) {
+      return Result.fail(`Failed to fetch pending outbox events: ${error.message}`);
+    }
+  }
+
+  async markAsPublished(eventId: string): Promise<Result<void>> {
+    try {
+      await this.db
+        .update(outboxEvents)
+        .set({
+          published: true,
+          publishedAt: new Date(),
+        })
+        .where(eq(outboxEvents.id, eventId));
+      return Result.ok();
+    } catch (error: any) {
+      return Result.fail(`Failed to mark outbox event as published: ${error.message}`);
+    }
+  }
+
+  async markAsFailed(eventId: string, error: string): Promise<Result<void>> {
+    try {
+      const result = await this.db
+        .update(outboxEvents)
+        .set({
+          attempts: sql`${outboxEvents.attempts} + 1`,
+          error: error.substring(0, 500)
+        })
+        .where(eq(outboxEvents.id, eventId))
+        .returning();
+        
+      if (!result || result.length === 0) {
+        return Result.fail('Event not found');
+      }
+
+      return Result.ok();
+    } catch (err: any) {
+      return Result.fail(`Failed to mark outbox event as failed: ${err.message}`);
+    }
+  }
+}
+
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzlePasswordResetRepository.ts`
+```typescript
+import { Result } from '../../shared/kernel/Result';
+import { IPasswordResetRepository, PasswordReset } from '../../application/ports/output/IPasswordResetRepository';
+import { passwordResets } from '../../db/authentication/tables';
+import { eq } from 'drizzle-orm';
+
+export class DrizzlePasswordResetRepository implements IPasswordResetRepository {
+  constructor(private db: any) {}
+
+  async findByToken(tokenHash: string): Promise<Result<PasswordReset>> {
+    try {
+      const [reset] = await this.db
+        .select()
+        .from(passwordResets)
+        .where(eq(passwordResets.tokenHash, tokenHash))
+        .limit(1);
+
+      if (!reset) {
+        return Result.fail('PasswordResetNotFound');
+      }
+      return Result.ok(reset as PasswordReset);
+    } catch (e: any) {
+      return Result.fail(e.message);
+    }
+  }
+
+  async invalidate(id: number): Promise<Result<void>> {
+    try {
+      await this.db
+        .update(passwordResets)
+        .set({ usedAt: new Date() })
+        .where(eq(passwordResets.id, id));
+      return Result.ok();
+    } catch (e: any) {
+      return Result.fail(e.message);
+    }
+  }
+
+  async create(data: { userId: number; tokenHash: string; expiresAt: Date }): Promise<Result<void>> {
+    try {
+      await this.db.insert(passwordResets).values(data);
+      return Result.ok();
+    } catch (e: any) {
+      return Result.fail(e.message);
+    }
+  }
+
+  async consumeToken(tokenHash: string): Promise<Result<PasswordReset>> {
+    try {
+      const { and, isNull, sql } = await import('drizzle-orm');
+      
+      const [reset] = await this.db
+        .update(passwordResets)
+        .set({ usedAt: new Date() })
+        .where(and(
+          eq(passwordResets.tokenHash, tokenHash),
+          isNull(passwordResets.usedAt),
+          sql`${passwordResets.expiresAt} > ${new Date().getTime()}`
+        ))
+        .returning();
+
+      if (!reset) {
+        return Result.fail('PasswordResetNotFoundOrUsed');
+      }
+      return Result.ok(reset as PasswordReset);
+    } catch (e: any) {
+      return Result.fail(e.message);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleSessionRepository.ts`
+```typescript
+import { ISessionRepository } from '../../application/ports/output/ISessionRepository';
+import { eq } from 'drizzle-orm';
+import { userSessions } from '../../db/authentication/tables';
+
+export class DrizzleSessionRepository implements ISessionRepository {
+  constructor(private db: any) {}
+
+  async createSession(sessionData: {
+    id: string;
+    userId: number;
+    jti: string;
+    ip: string;
+    userAgent: string;
+    familyId?: string;
+    refreshTokenHash: string;
+    aal: number;
+    authEpoch: number;
+    createdAt: Date;
+    expiresAt: Date;
+    lastAuthenticatedAt?: Date;
+  }): Promise<void> {
+    await this.db.insert(userSessions).values(sessionData);
+  }
+
+  async rotateRefreshTokenAtomically(sessionId: string, oldRefreshTokenHash: string): Promise<boolean> {
+    const { sql } = await import('drizzle-orm');
+    const result = await this.db
+      .update(userSessions)
+      .set({ revokedAt: new Date(), revocationReason: 'Rotated' })
+      .where(sql`${userSessions.id} = ${sessionId} AND ${userSessions.revokedAt} IS NULL AND ${userSessions.refreshTokenHash} = ${oldRefreshTokenHash}`);
+    
+    return result.meta.changes > 0;
+  }
+
+  async revokeSession(sessionId: string): Promise<void> {
+    await this.db
+      .update(userSessions)
+      .set({ revokedAt: new Date(), revocationReason: 'User logout' })
+      .where(eq(userSessions.id, sessionId));
+  }
+
+  async revokeAllUserSessions(userId: number): Promise<void> {
+    await this.db.update(userSessions)
+      .set({ revokedAt: new Date(), revocationReason: 'Revoked all user sessions' })
+      .where(eq(userSessions.userId, userId));
+  }
+
+  async getSessionById(sessionId: string): Promise<any | null> {
+    const [session] = await this.db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.id, sessionId))
+      .limit(1);
+    return session || null;
+  }
+
+  async createRefreshTokenFamily(familyData: {
+    id: string;
+    userId: number;
+    createdAt: Date;
+  }): Promise<void> {
+    const { refreshTokenFamilies } = await import('../../db/authentication/tables');
+    await this.db.insert(refreshTokenFamilies).values(familyData);
+  }
+
+  async revokeFamily(familyId: string, reason?: string): Promise<void> {
+    const { refreshTokenFamilies, userSessions } = await import('../../db/authentication/tables');
+    
+    // Revoke the family
+    await this.db.update(refreshTokenFamilies)
+      .set({ revokedAt: new Date(), revocationReason: reason || 'Family revoked' })
+      .where(eq(refreshTokenFamilies.id, familyId));
+
+    // Revoke all sessions in the family
+    await this.db.update(userSessions)
+      .set({ revokedAt: new Date(), revocationReason: reason || 'Parent family revoked' })
+      .where(eq(userSessions.familyId, familyId));
+  }
+
+  async getSessionByRefreshTokenHash(refreshTokenHash: string): Promise<any | null> {
+    const [session] = await this.db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.refreshTokenHash, refreshTokenHash))
+      .limit(1);
+    return session || null;
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleSsiRepository.ts`
+```typescript
+import { eq, and, sql } from 'drizzle-orm';
+import { didIdentities, verifiableCredentials } from '../../db/ssi/tables';
+import { Result } from '../../shared/kernel/Result';
+import {
+  ISsiRepository,
+  DidIdentityRecord,
+  VerifiableCredentialRecord,
+} from '../../application/ports/output/ISsiRepository';
+
+export type { DidIdentityRecord, VerifiableCredentialRecord };
+
+export class DrizzleSsiRepository implements ISsiRepository {
+  constructor(private db: any) {}
+
+  async findDidByUserId(userId: number): Promise<Result<DidIdentityRecord>> {
+    try {
+      const result = await this.db
+        .select()
+        .from(didIdentities)
+        .where(and(eq(didIdentities.userId, userId), eq(didIdentities.status, 'active')))
+        .limit(1);
+
+      if (!result || result.length === 0) {
+        return Result.fail('DID identity not found');
+      }
+
+      return Result.ok({
+        id: result[0].id,
+        userId: result[0].userId,
+        did: result[0].did,
+        method: result[0].method,
+        controller: result[0].controller,
+        status: result[0].status,
+        version: result[0].version || 1,
+      });
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async saveDid(record: DidIdentityRecord): Promise<Result<DidIdentityRecord>> {
+    try {
+      const existing = await this.db
+        .select()
+        .from(didIdentities)
+        .where(eq(didIdentities.id, record.id))
+        .limit(1);
+
+      if (!existing || existing.length === 0) {
+        await this.db.insert(didIdentities).values({
+          id: record.id,
+          userId: record.userId,
+          did: record.did,
+          method: record.method,
+          controller: record.controller,
+          status: record.status || 'active',
+          version: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        record.version = 1;
+      } else {
+        const currentVersion = record.version ?? existing[0].version ?? 1;
+
+        const updated = await this.db
+          .update(didIdentities)
+          .set({
+            status: record.status || 'active',
+            updatedAt: new Date(),
+            version: sql`${didIdentities.version} + 1`,
+          })
+          .where(
+            and(
+              eq(didIdentities.id, record.id),
+              eq(didIdentities.version, currentVersion)
+            )
+          )
+          .returning();
+
+        if (!updated || updated.length === 0) {
+          return Result.fail('CONCURRENT_MODIFICATION_ERROR: DID identity was modified by another process');
+        }
+
+        record.version = currentVersion + 1;
+      }
+      return Result.ok(record);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async saveVerifiableCredential(
+    record: VerifiableCredentialRecord
+  ): Promise<Result<VerifiableCredentialRecord>> {
+    try {
+      await this.db.insert(verifiableCredentials).values({
+        id: record.id,
+        holderUserId: record.holderUserId,
+        issuerDid: record.issuerDid,
+        subjectDid: record.subjectDid,
+        credentialType: record.credentialType,
+        credentialHash: record.credentialHash,
+        encryptedClaims: record.encryptedClaims,
+        proofType: record.proofType,
+        status: record.status || 'active',
+        issuanceDate: record.issuanceDate,
+        expirationDate: record.expirationDate || null,
+        version: 1,
+      });
+
+      return Result.ok(record);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async findVerifiableCredentialById(id: string): Promise<Result<VerifiableCredentialRecord>> {
+    try {
+      const [row] = await this.db
+        .select()
+        .from(verifiableCredentials)
+        .where(eq(verifiableCredentials.id, id))
+        .limit(1);
+
+      if (!row) return Result.fail('Verifiable Credential not found');
+
+      return Result.ok({
+        id: row.id,
+        holderUserId: row.holderUserId,
+        issuerDid: row.issuerDid,
+        subjectDid: row.subjectDid,
+        credentialType: row.credentialType as any,
+        credentialHash: row.credentialHash,
+        encryptedClaims: row.encryptedClaims,
+        proofType: row.proofType as any,
+        status: row.status as any,
+        issuanceDate: new Date(row.issuanceDate),
+        expirationDate: row.expirationDate ? new Date(row.expirationDate) : null,
+        revokedAt: row.revokedAt ? new Date(row.revokedAt) : null,
+        version: row.version,
+      });
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async listVerifiableCredentialsByUserId(
+    userId: number
+  ): Promise<Result<VerifiableCredentialRecord[]>> {
+    try {
+      const rows = await this.db
+        .select()
+        .from(verifiableCredentials)
+        .where(eq(verifiableCredentials.holderUserId, userId));
+
+      const credentials: VerifiableCredentialRecord[] = rows.map((row: any) => ({
+        id: row.id,
+        holderUserId: row.holderUserId,
+        issuerDid: row.issuerDid,
+        subjectDid: row.subjectDid,
+        credentialType: row.credentialType,
+        credentialHash: row.credentialHash,
+        encryptedClaims: row.encryptedClaims,
+        proofType: row.proofType,
+        status: row.status,
+        issuanceDate: new Date(row.issuanceDate),
+        expirationDate: row.expirationDate ? new Date(row.expirationDate) : null,
+        revokedAt: row.revokedAt ? new Date(row.revokedAt) : null,
+        version: row.version,
+      }));
+
+      return Result.ok(credentials);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async revokeVerifiableCredential(id: string): Promise<Result<void>> {
+    try {
+      await this.db
+        .update(verifiableCredentials)
+        .set({
+          status: 'revoked',
+          revokedAt: new Date(),
+        })
+        .where(eq(verifiableCredentials.id, id));
+
+      return Result.ok(undefined);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleUnitOfWork.ts`
+```typescript
+import { IUnitOfWork, IRepositoryFactory } from '../../application/ports/output/IUnitOfWork';
+import { IUserRepository } from '../../application/ports/output/IUserRepository';
+import { IAuthenticationRepository } from '../../application/ports/output/IAuthenticationRepository';
+import { IWeb3Repository } from '../../application/ports/output/IWeb3Repository';
+import { ICivilIdentityRepository } from '../../application/ports/output/ICivilIdentityRepository';
+import { ISessionRepository } from '../../application/ports/output/ISessionRepository';
+import { IOutboxRepository } from '../../application/ports/output/IOutboxRepository';
+import { IPasswordResetRepository } from '../../application/ports/output/IPasswordResetRepository';
+
+import { DrizzleUserRepositoryAdapter } from '../repositories/DrizzleUserRepositoryAdapter';
+import { DrizzleAuthenticationRepositoryAdapter } from '../repositories/DrizzleAuthenticationRepositoryAdapter';
+import { DrizzleWeb3RepositoryAdapter } from '../repositories/DrizzleWeb3RepositoryAdapter';
+import { DrizzleCivilIdentityRepositoryAdapter } from '../repositories/DrizzleCivilIdentityRepositoryAdapter';
+import { DrizzleSessionRepository } from './DrizzleSessionRepository';
+import { ISsiRepository } from '../../application/ports/output/ISsiRepository';
+import { DrizzleSsiRepository } from './DrizzleSsiRepository';
+import { DrizzleOutboxRepository } from './DrizzleOutboxRepository';
+import { DrizzlePasswordResetRepository } from './DrizzlePasswordResetRepository';
+import { IFinanceRepository } from '../../application/ports/output/IFinanceRepository';
+import { DrizzleFinanceRepository } from './DrizzleFinanceRepository';
+import { Result } from '../../shared/kernel/Result';
+import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
+import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
+
+class DrizzleRepositoryFactory implements IRepositoryFactory {
+  constructor(private tx: any, private db?: any) {}
+
+  getUserRepository(): IUserRepository {
+    return new DrizzleUserRepositoryAdapter(this.tx || this.db);
+  }
+
+  getAuthTransactionRepository(): IAuthTransactionRepository {
+    return new DrizzleAuthTransactionRepository(this.tx || this.db);
+  }
+
+  getAuthenticationRepository(): IAuthenticationRepository {
+    return new DrizzleAuthenticationRepositoryAdapter(this.tx);
+  }
+
+  getWeb3Repository(): IWeb3Repository {
+    return new DrizzleWeb3RepositoryAdapter(this.tx);
+  }
+
+  getSessionRepository(): ISessionRepository {
+    return new DrizzleSessionRepository(this.tx);
+  }
+
+  getCivilIdentityRepository(): ICivilIdentityRepository {
+    return new DrizzleCivilIdentityRepositoryAdapter(this.tx);
+  }
+
+  getSsiRepository(): ISsiRepository {
+    return new DrizzleSsiRepository(this.tx);
+  }
+
+  getOutboxRepository(): IOutboxRepository {
+    return new DrizzleOutboxRepository(this.tx);
+  }
+
+  getPasswordResetRepository(): IPasswordResetRepository {
+    return new DrizzlePasswordResetRepository(this.tx);
+  }
+
+  getFinanceRepository(): IFinanceRepository {
+    return new DrizzleFinanceRepository(this.tx);
+  }
+}
+
+
+export class DrizzleUnitOfWork implements IUnitOfWork {
+  constructor(private db: any) {}
+
+  async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
+    if (typeof this.db?.transaction === 'function') {
+      let result: Result<T> | null = null;
+      let workStarted = false;
+      try {
+        await this.db.transaction(async (tx: any) => {
+          workStarted = true;
+          const factory = new DrizzleRepositoryFactory(tx);
+          result = await work(factory);
+
+          if (result && result.isFailure && typeof tx.rollback === 'function') {
+            tx.rollback();
+          }
+        });
+        if (result) return result;
+      } catch (err: any) {
+        const errorMsg = err?.message || err?.toString() || '';
+        
+        // FAIL-CLOSED: No fallback to non-transactional execution for SECURITY_CRITICAL operations.
+        const failureResult = result as Result<T> | null;
+        if (failureResult && failureResult.isFailure) {
+          return failureResult;
+        }
+        return Result.fail(errorMsg || 'Transaction aborted or driver error');
+      }
+    }
+
+    const factory = new DrizzleRepositoryFactory(this.db);
+    return await work(factory);
+  }
+}
+
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleUserRepositoryAdapter.ts`
+```typescript
+import { eq, sql } from 'drizzle-orm';
+import { users } from '../../db/user/tables';
+import {
+  IUserRepository,
+  UserRecord,
+  CreateUserData,
+} from '../../application/ports/output/IUserRepository';
+
+export type { UserRecord, CreateUserData };
+
+export class DrizzleUserRepositoryAdapter implements IUserRepository {
+  constructor(private readonly db: any) {}
+
+  async findById(id: number): Promise<UserRecord | null> {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+
+    if (!user) return null;
+    return this.mapToRecord(user);
+  }
+
+  async findByEmail(email: string): Promise<UserRecord | null> {
+    const normalized = email.toLowerCase().trim();
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.emailNormalized, normalized))
+      .limit(1);
+
+    if (!user) return null;
+    return this.mapToRecord(user);
+  }
+
+  async create(data: CreateUserData): Promise<UserRecord> {
+    const email = data.email || '';
+    const normalized = (data.emailNormalized || email).toLowerCase().trim();
+    const subjectType = data.subjectType === 'citizen' || !data.subjectType ? 'human' : data.subjectType;
+
+    const [created] = await this.db
+      .insert(users)
+      .values({
+        email: email ? email.trim() : null,
+        emailNormalized: normalized || null,
+        subjectType,
+        status: data.status || 'active',
+        authEpoch: 1,
+      })
+      .returning();
+
+    if (!created) {
+      throw new Error('Falha ao criar usuário no D1.');
+    }
+    return this.mapToRecord(created);
+  }
+
+  async updateStatus(id: number, status: 'active' | 'suspended' | 'pending' | 'locked'): Promise<void> {
+    await this.db
+      .update(users)
+      .set({ status })
+      .where(eq(users.id, id));
+  }
+
+  async incrementAuthEpoch(userId: number): Promise<number> {
+    const [updated] = await this.db
+      .update(users)
+      .set({
+        authEpoch: sql`${users.authEpoch} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!updated) {
+      throw new Error('User not found to increment authEpoch');
+    }
+    return updated.authEpoch;
+  }
+
+  async incrementFailedLoginAttempts(userId: number, maxAttempts: number): Promise<void> {
+    const now = new Date();
+    await this.db
+      .update(users)
+      .set({
+        failedLoginAttempts: sql`${users.failedLoginAttempts} + 1`,
+        lastFailedLoginAt: now,
+        status: sql`CASE WHEN ${users.failedLoginAttempts} + 1 >= ${maxAttempts} THEN 'locked' ELSE ${users.status} END`,
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async resetFailedLoginAttempts(userId: number): Promise<void> {
+    await this.db
+      .update(users)
+      .set({
+        failedLoginAttempts: 0,
+        lastFailedLoginAt: null,
+      })
+      .where(eq(users.id, userId));
+  }
+
+  private mapToRecord(raw: any): UserRecord {
+    return {
+      id: raw.id,
+      publicId: raw.publicId || null,
+      email: raw.email || null,
+      emailNormalized: raw.emailNormalized || raw.email || null,
+      status: raw.status || 'active',
+      subjectType: raw.subjectType || 'human',
+      failedLoginAttempts: raw.failedLoginAttempts || 0,
+      lastFailedLoginAt: raw.lastFailedLoginAt instanceof Date ? raw.lastFailedLoginAt : (raw.lastFailedLoginAt ? new Date(raw.lastFailedLoginAt * 1000) : null),
+      authEpoch: raw.authEpoch || 1,
+      createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt ? raw.createdAt * 1000 : Date.now()),
+      updatedAt: raw.updatedAt instanceof Date ? raw.updatedAt : new Date(raw.updatedAt ? raw.updatedAt * 1000 : Date.now()),
+    };
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleWalletRepository.ts`
+```typescript
+import { eq } from 'drizzle-orm';
+import { wallets } from '../../db/web3/tables';
+import { Result } from '../../shared/kernel/Result';
+
+export interface WalletRecord {
+  id?: number;
+  userId: number;
+  provenance?: 'internal' | 'external';
+  networkId: string | number;
+  walletType?: 'eoa' | 'smart_account' | 'multisig';
+  controlMode?: 'external_user' | 'platform_key' | 'custodial' | 'mpc';
+  address: string;
+  addressNormalized?: string;
+  isPrimary?: boolean;
+  status?: 'active' | 'suspended' | 'revoked';
+  verificationStatus?: 'unverified' | 'verified';
+}
+
+export class DrizzleWalletRepository {
+  constructor(private db: any) {}
+
+  async findByAddress(address: string): Promise<Result<WalletRecord>> {
+    try {
+      const normalized = address.toLowerCase();
+      const result = await this.db
+        .select()
+        .from(wallets)
+        .where(eq(wallets.addressNormalized, normalized))
+        .limit(1);
+
+      if (!result || result.length === 0) {
+        return Result.fail('Wallet not found');
+      }
+
+      return Result.ok(result[0]);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async findByUserId(userId: number): Promise<Result<WalletRecord[]>> {
+    try {
+      const result = await this.db
+        .select()
+        .from(wallets)
+        .where(eq(wallets.userId, userId));
+
+      return Result.ok(result || []);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async save(wallet: WalletRecord): Promise<Result<WalletRecord>> {
+    try {
+      const provenance = wallet.provenance || 'external';
+      const walletType = wallet.walletType || 'eoa';
+      const controlMode =
+        wallet.controlMode ||
+        (provenance === 'internal' ? 'platform_key' : 'external_user');
+      const addressNormalized = wallet.addressNormalized || wallet.address.toLowerCase();
+
+      if (wallet.id) {
+        await this.db
+          .update(wallets)
+          .set({
+            isPrimary: wallet.isPrimary,
+            status: wallet.status,
+            verificationStatus: wallet.verificationStatus,
+            updatedAt: new Date(),
+          })
+          .where(eq(wallets.id, wallet.id));
+      } else {
+        const [inserted] = await this.db
+          .insert(wallets)
+          .values({
+            userId: wallet.userId,
+            provenance,
+            networkId: String(wallet.networkId),
+            walletType,
+            controlMode,
+            address: wallet.address,
+            addressNormalized,
+            isPrimary: wallet.isPrimary || false,
+            status: wallet.status || 'active',
+            verificationStatus: wallet.verificationStatus || 'verified',
+            linkedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+
+        wallet.id = inserted.id;
+      }
+      return Result.ok(wallet);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleWeb3RepositoryAdapter.ts`
+```typescript
+import { eq, and, sql } from 'drizzle-orm';
+import { wallets } from '../../db/web3/tables';
+import {
+  IWeb3Repository,
+  WalletRecord,
+  LinkWalletData,
+} from '../../application/ports/output/IWeb3Repository';
+
+export type { WalletRecord, LinkWalletData };
+
+export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
+  constructor(private readonly db: any) {}
+
+  async findByAddress(address: string): Promise<WalletRecord | null> {
+    const normalized = address.toLowerCase().trim();
+    const [row] = await this.db
+      .select()
+      .from(wallets)
+      .where(eq(wallets.addressNormalized, normalized))
+      .limit(1);
+
+    if (!row) return null;
+    return this.mapToRecord(row);
+  }
+
+  async findByUserId(userId: number): Promise<WalletRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(wallets)
+      .where(eq(wallets.userId, userId));
+
+    return rows.map((r: any) => this.mapToRecord(r));
+  }
+
+  async findActiveByUserId(userId: number): Promise<WalletRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(wallets)
+      .where(and(eq(wallets.userId, userId), eq(wallets.status, 'active')))
+      .limit(1);
+
+    if (!row) return null;
+    return this.mapToRecord(row);
+  }
+
+  async linkExternalWallet(data: LinkWalletData): Promise<WalletRecord> {
+    const addressNormalized = data.address.toLowerCase().trim();
+    const existing = await this.findByAddress(addressNormalized);
+    if (existing) return existing;
+
+    const [newWallet] = await this.db
+      .insert(wallets)
+      .values({
+        userId: data.userId,
+        provenance: data.provenance || 'external',
+        networkId: data.networkId || 1, // Default mainnet network
+        walletType: data.walletType || 'eoa',
+        controlMode: data.controlMode || 'external_user',
+        address: data.address,
+        addressNormalized,
+        label: data.label || 'Web3 Wallet',
+        status: 'active',
+        verificationStatus: 'verified',
+        isPrimary: false,
+        version: 1,
+      })
+      .returning();
+
+    return this.mapToRecord(newWallet);
+  }
+
+  async updateWallet(wallet: WalletRecord): Promise<WalletRecord> {
+    const currentVersion = wallet.version ?? 1;
+
+    const result = await this.db
+      .update(wallets)
+      .set({
+        isPrimary: wallet.isPrimary,
+        status: wallet.status,
+        verificationStatus: wallet.verificationStatus,
+        label: wallet.label,
+        updatedAt: new Date(),
+        version: sql`${wallets.version} + 1`,
+      })
+      .where(
+        and(
+          eq(wallets.id, wallet.id),
+          eq(wallets.version, currentVersion)
+        )
+      )
+      .returning();
+
+    if (!result || result.length === 0) {
+      throw new Error('CONCURRENT_MODIFICATION_ERROR: Wallet was updated by another process');
+    }
+
+    return this.mapToRecord(result[0]);
+  }
+
+  async revokeWallet(userId: number, address: string): Promise<boolean> {
+    const addressNormalized = address.toLowerCase().trim();
+    
+    // Revocação atômica (AF-012)
+    const result = await this.db
+      .update(wallets)
+      .set({ 
+        status: 'revoked',
+        isPrimary: false,
+        updatedAt: new Date()
+      })
+      .where(
+        and(
+          eq(wallets.userId, userId),
+          eq(wallets.addressNormalized, addressNormalized),
+          eq(wallets.status, 'active') // Só revoga se estiver ativa
+        )
+      )
+      .returning();
+      
+    return result.length > 0;
+  }
+
+  private mapToRecord(raw: any): WalletRecord {
+    return {
+      id: raw.id,
+      userId: raw.userId,
+      provenance: raw.provenance,
+      networkId: raw.networkId,
+      walletType: raw.walletType,
+      controlMode: raw.controlMode,
+      address: raw.address,
+      addressNormalized: raw.addressNormalized,
+      label: raw.label || null,
+      status: raw.status,
+      verificationStatus: raw.verificationStatus,
+      isPrimary: Boolean(raw.isPrimary),
+      linkedAt: raw.linkedAt instanceof Date ? raw.linkedAt : new Date(raw.linkedAt || Date.now()),
+      version: raw.version || 1,
+    };
+  }
+}
+
+
+```
+
+---
+
+### `src/infrastructure/security/crypto/crypto.ts`
+```typescript
+/**
+ * CryptoCore & CryptoVault
+ * Web Crypto API utilities compatible with Cloudflare Workers.
+ */
+export class CryptoCore {
+  static async verify(
+    signature: Uint8Array,
+    message: Uint8Array,
+    publicKey: Uint8Array
+  ): Promise<boolean> {
+    try {
+      const algorithm = { name: 'Ed25519' };
+      const importedKey = await crypto.subtle.importKey('raw', publicKey, algorithm, false, [
+        'verify',
+      ]);
+      return await crypto.subtle.verify(algorithm, importedKey, signature, message);
+    } catch (e) {
+      console.error('CryptoCore Error:', e);
+      return false;
+    }
+  }
+}
+
+export class CryptoVault {
+  static async encrypt(text: string, secret: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secret.padEnd(32, '0').slice(0, 32));
+    const key = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['encrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(text));
+    const buffer = new Uint8Array(iv.length + encrypted.byteLength);
+    buffer.set(iv, 0);
+    buffer.set(new Uint8Array(encrypted), iv.length);
+    return btoa(String.fromCharCode(...buffer));
+  }
+
+  static async decrypt(encryptedBase64: string, secret: string): Promise<string> {
+    const binaryString = atob(encryptedBase64);
+    const buffer = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      buffer[i] = binaryString.charCodeAt(i);
+    }
+    const iv = buffer.slice(0, 12);
+    const data = buffer.slice(12);
+    
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secret.padEnd(32, '0').slice(0, 32));
+    const key = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['decrypt']);
+    
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+    return new TextDecoder().decode(decrypted);
+  }
+
+  static async generateEventHash(payload: any, prevHash = 'GENESIS'): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(JSON.stringify(payload) + prevHash);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/security/crypto/Eip4361Verifier.ts`
+```typescript
+import { SiweMessage } from 'siwe';
+import { ISiweVerifierPort, SiweVerificationInput, SiweVerificationOutput } from '../../../application/ports/security/ISiweVerifierPort';
+
+export class Eip4361Verifier implements ISiweVerifierPort {
+  async verify(input: SiweVerificationInput): Promise<SiweVerificationOutput> {
+    try {
+      const siweMessage = new SiweMessage(input.message);
+      const result = await siweMessage.verify({
+        signature: input.signature,
+        nonce: input.expectedNonce,
+        domain: input.expectedDomain,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error?.type || 'Assinatura SIWE EIP-4361 inválida.');
+      }
+
+      return {
+        address: result.data.address.toLowerCase(),
+        chainId: result.data.chainId,
+        nonce: result.data.nonce,
+        domain: result.data.domain,
+      };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha na verificação da assinatura SIWE.';
+      throw new Error(message);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/security/crypto/PBKDF2PasswordHasher.ts`
+```typescript
+import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
+
+export class PBKDF2PasswordHasher implements IPasswordHasher {
+  async hash(password: string, existingSaltB64?: string): Promise<string> {
+    const enc = new TextEncoder();
+    let salt: Uint8Array;
+
+    if (existingSaltB64) {
+      const rawString = atob(existingSaltB64);
+      salt = new Uint8Array(rawString.length);
+      for (let i = 0; i < rawString.length; i++) {
+        salt[i] = rawString.charCodeAt(i);
+      }
+    } else {
+      salt = crypto.getRandomValues(new Uint8Array(16));
+    }
+
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(password),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits']
+    );
+
+    const derivedBits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+      keyMaterial,
+      256
+    );
+
+    const hashArray = Array.from(new Uint8Array(derivedBits));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+
+    const finalSaltB64 = btoa(String.fromCharCode(...salt));
+    return `${finalSaltB64}:${hashHex}`;
+  }
+
+  private timingSafeEqual(a: string, b: string): boolean {
+    if (a.length !== b.length) {
+      let result = 0;
+      for (let i = 0; i < a.length; i++) {
+        result |= a.charCodeAt(i) ^ a.charCodeAt(i);
+      }
+      return false;
+    }
+    let result = 0;
+    for (let i = 0; i < a.length; i++) {
+      result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return result === 0;
+  }
+
+  async verify(password: string, storedHashText: string): Promise<boolean> {
+    const [saltB64, originalHex] = storedHashText.split(':');
+    if (!saltB64 || !originalHex) return false;
+
+    const newDigest = await this.hash(password, saltB64);
+    return this.timingSafeEqual(newDigest, storedHashText);
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/security/crypto/timing_safe.ts`
+```typescript
+/**
+ * Utilitário: Timing-Safe String Comparison
+ * Previne ataques de timing (side-channel) ao comparar strings secretas.
+ * Usa Web Crypto API (disponível em Cloudflare Workers).
+ */
+export function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aBytes = enc.encode(a);
+  const bBytes = enc.encode(b);
+
+  // Arrays devem ter o mesmo comprimento para a comparação ser segura.
+  // Paddinamos o array menor com zeros — a comparação final ainda retorna false.
+  const len = Math.max(aBytes.length, bBytes.length);
+  const aPadded = new Uint8Array(len);
+  const bPadded = new Uint8Array(len);
+  aPadded.set(aBytes);
+  bPadded.set(bBytes);
+
+  // XOR byte a byte — resultado != 0 significa strings diferentes
+  let diff = 0;
+  for (let i = 0; i < len; i++) {
+    diff |= aPadded[i] ^ bPadded[i];
+  }
+
+  // Também garante que os comprimentos originais são iguais
+  diff |= aBytes.length ^ bBytes.length;
+
+  return diff === 0;
+}
+
+```
+
+---
+
+### `src/infrastructure/security/jwt/JwtService.ts`
+```typescript
+import { IJwtService } from '../../../application/ports/security/IJwtService';
+
+const DEFAULT_EXPIRES_IN_SECONDS = 86400; // 24h
+
+export class JwtService implements IJwtService {
+  private base64UrlEncode(arr: Uint8Array): string {
+    const binString = String.fromCharCode(...arr);
+    return btoa(binString).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
+  private base64UrlDecode(str: string): Uint8Array {
+    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    const binString = atob(base64);
+    const bytes = new Uint8Array(binString.length);
+    for (let i = 0; i < binString.length; i++) {
+      bytes[i] = binString.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  private async getSigningKey(secretKey: string): Promise<CryptoKey> {
+    const enc = new TextEncoder();
+    const masterKey = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(secretKey),
+      { name: 'HKDF' },
+      false,
+      ['deriveKey']
+    );
+
+    return await crypto.subtle.deriveKey(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: enc.encode('ASPPIBRA-JWT'),
+        info: enc.encode('JWT-SIGNING'),
+      },
+      masterKey,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign', 'verify']
+    );
+  }
+
+  /**
+   * Assina o payload. Se `exp`/`iat` não forem fornecidos explicitamente,
+   * são preenchidos automaticamente (iat = agora, exp = agora + expiresInSeconds).
+   * Isso evita a emissão silenciosa de tokens perenes (sem expiração).
+   */
+  async sign(
+    payload: Record<string, any>,
+    secret: string,
+    kid: string = 'v1',
+    expiresInSeconds: number = DEFAULT_EXPIRES_IN_SECONDS
+  ): Promise<string> {
+    if (!secret) {
+      throw new Error('JWT secret ausente: assinatura recusada.');
+    }
+
+    const key = await this.getSigningKey(secret);
+    const header = { alg: 'HS256', typ: 'JWT', kid };
+    const enc = new TextEncoder();
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const fullPayload = {
+      iss: 'asppibra-identity',
+      aud: 'asppibra-ecosystem',
+      ...payload,
+      iat: typeof payload.iat === 'number' ? payload.iat : nowSeconds,
+      nbf: typeof payload.nbf === 'number' ? payload.nbf : nowSeconds,
+      exp: typeof payload.exp === 'number' ? payload.exp : nowSeconds + expiresInSeconds,
+    };
+
+    const encodedHeader = this.base64UrlEncode(enc.encode(JSON.stringify(header)));
+    const encodedPayload = this.base64UrlEncode(enc.encode(JSON.stringify(fullPayload)));
+
+    const signingInput = `${encodedHeader}.${encodedPayload}`;
+    const signatureBuffer = await crypto.subtle.sign({ name: 'HMAC' }, key, enc.encode(signingInput));
+
+    const encodedSignature = this.base64UrlEncode(new Uint8Array(signatureBuffer));
+    return `${signingInput}.${encodedSignature}`;
+  }
+
+  /**
+   * Verifica assinatura HMAC E claims temporais (exp obrigatório, nbf opcional).
+   * Tokens sem `exp` são rejeitados — não é permitido emitir/aceitar tokens perenes.
+   */
+  async verify(token: string, secret: string): Promise<any> {
+    if (!secret) {
+      throw new Error('JWT secret ausente: verificação recusada.');
+    }
+
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      throw new Error('Token JWT malformatado.');
+    }
+    const [headerB64, payloadB64, signatureB64] = parts;
+
+    const key = await this.getSigningKey(secret);
+    const enc = new TextEncoder();
+    const signingInput = `${headerB64}.${payloadB64}`;
+    const signatureBytes = this.base64UrlDecode(signatureB64);
+
+    const isValid = await crypto.subtle.verify(
+      { name: 'HMAC' },
+      key,
+      signatureBytes,
+      enc.encode(signingInput)
+    );
+
+    if (!isValid) {
+      throw new Error('Assinatura JWT inválida.');
+    }
+
+    const payloadStr = new TextDecoder().decode(this.base64UrlDecode(payloadB64));
+    const payload = JSON.parse(payloadStr);
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+
+    // Bloqueia tokens perenes: exp é obrigatório.
+    if (typeof payload.exp !== 'number') {
+      throw new Error('Token sem claim de expiração (exp). Rejeitado.');
+    }
+    if (payload.exp < nowSeconds) {
+      throw new Error('Token expirado.');
+    }
+    if (typeof payload.nbf === 'number' && payload.nbf > nowSeconds) {
+      throw new Error('Token ainda não é válido (nbf).');
+    }
+    if (payload.iss !== 'asppibra-identity') {
+      throw new Error('Token emitido por origem desconhecida (iss).');
+    }
+    if (payload.aud !== 'asppibra-ecosystem') {
+      throw new Error('Token não destinado a este ecosistema (aud).');
+    }
+
+    return payload;
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/security/SecurityAuditAdapter.ts`
+```typescript
+import { ISecurityAuditPort, SecurityAuditEvent } from '../../application/ports/output/ISecurityAuditPort';
+import { TransactionContext } from '../../application/dto/TransactionContext';
+import { securityEvents } from '../../db/security/tables';
+
+/**
+ * Adapter de Infraestrutura para Auditoria de Segurança.
+ * Grava registros imutáveis em security_events utilizando o mesmo cliente
+ * de transação Drizzle exposto através de TransactionContext.
+ */
+export class SecurityAuditAdapter implements ISecurityAuditPort {
+  constructor(private readonly db: any) {}
+
+  public async logEvent(event: SecurityAuditEvent, txCtx?: TransactionContext): Promise<void> {
+    const executor = (txCtx?.nativeTx as any) || this.db;
+
+    // Mapear eventos de alto nível para os enums de securityEvents
+    const eventType =
+      event.event === 'identity_linked'
+        ? 'credential_created'
+        : event.event === 'identity_unlinked'
+        ? 'credential_revoked'
+        : event.event === 'authentication_succeeded'
+        ? 'authentication_succeeded'
+        : 'authentication_failed';
+
+    await executor.insert(securityEvents).values({
+      id: crypto.randomUUID(),
+      userId: event.userId,
+      event: eventType,
+      result: event.event.includes('failed') ? 'failure' : 'success',
+      source: 'api',
+      metadata: event.metadata,
+      createdAt: event.timestamp || new Date(),
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/AuthenticateAccountUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { Result } from '../../../shared/kernel/Result';
+import {
+  AuthenticateAccountDTO,
+  AuthenticateAccountResult,
+} from '../../../application/dto/identity/AuthenticateAccountDTO';
+
+// Re-exportado para não quebrar imports existentes que ainda apontam para este arquivo.
+export type { AuthenticateAccountDTO, AuthenticateAccountResult };
+
+// In-memory brute-force tracker for failed login attempts (keyed by userId)
+//
+// ⚠️ ACHADO ADICIONAL (não coberto pelo relatório de auditoria):
+// Este Map vive na memória do módulo/isolate. Em runtime edge (Cloudflare
+// Workers) isso NÃO é confiável como mecanismo de rate-limit: isolates são
+// reciclados e não compartilham memória entre si. Um atacante distribuído,
+// ou aguardando um cold-start, reseta o contador. Deve ser substituído por
+// um contador persistido (D1/KV) antes de produção. Mantido aqui apenas
+// para não quebrar o comportamento atual sem acesso ao schema/repositório.
+const failedAttemptsMap = new Map<number, { count: number; lastAttempt: Date }>();
+const MAX_FAILED_ATTEMPTS = 5;
+
+// Mensagem única para TODAS as falhas de autenticação (item 3.1: anti-enumeration).
+// Nunca deve revelar se o e-mail existe, se a conta está bloqueada, suspensa,
+// ou se a senha está incorreta — todas as causas produzem exatamente a mesma
+// resposta (mesma string + mesmo HTTP status na camada de controller).
+const GENERIC_AUTH_FAILURE_MESSAGE =
+  'Não foi possível autenticar com as credenciais fornecidas. Se você esqueceu sua senha, solicite a redefinição.';
+
+// Hash "isca" usado para equalizar o tempo de resposta quando o usuário não
+// existe, evitando que a ausência de chamada ao hasher.verify() vaze a
+// existência da conta por timing side-channel (achado adicional, item B).
+// Deve ter o mesmo formato dos hashes reais gerados pelo IPasswordHasher em uso.
+const DUMMY_PASSWORD_HASH =
+  '$pbkdf2$iterations=100000$salt=0000000000000000000000000000000000000000000000000000000000000000$hash=0000000000000000000000000000000000000000000000000000000000000000';
+
+export class AuthenticateAccountUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly hasher: IPasswordHasher,
+    private readonly auditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(dto: AuthenticateAccountDTO): Promise<Result<AuthenticateAccountResult>> {
+    if (!dto.email || !dto.password) {
+      // Validação de entrada: não há conta envolvida ainda, então esta
+      // mensagem específica não vaza nada sobre existência de contas.
+      return Result.fail<AuthenticateAccountResult>('Email e senha são obrigatórios.');
+    }
+
+    const emailNormalized = dto.email.trim().toLowerCase();
+
+    return await this.uow.execute(async (factory) => {
+      const userRepo = factory.getUserRepository();
+      const authRepo = factory.getAuthenticationRepository();
+
+      const userRecord = await userRepo.findByEmail(emailNormalized);
+
+      if (!userRecord) {
+        // Achado adicional (B): equaliza o tempo de resposta executando um
+        // hash "isca" com o mesmo custo computacional do hasher real, para
+        // que "usuário inexistente" e "senha incorreta" fiquem indistinguíveis
+        // por tempo de resposta.
+        await this.hasher.verify(dto.password, DUMMY_PASSWORD_HASH).catch(() => undefined);
+        return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
+      }
+
+      const { User } = await import('../../../domains/identity/entities/User');
+      const user = new User(userRecord as any);
+
+      // 1. Conta bloqueada ou suspensa — mesma mensagem genérica (item 3.1).
+      if (!user.canAuthenticate()) {
+        if (this.auditPort) {
+          await this.auditPort.logEvent({
+            event: 'identity_login_blocked',
+            userId: user.id,
+            metadata: { email: emailNormalized, reason: `Account status: ${user.status}, subject: ${user.subjectType}` },
+          });
+        }
+        return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
+      }
+
+      // 2. Buscar credencial de senha
+      const credential = await authRepo.findPasswordCredentialByUserId(user.id);
+      if (!credential) {
+        // Equaliza tempo de resposta com hash isca
+        await this.hasher.verify(dto.password, DUMMY_PASSWORD_HASH).catch(() => undefined);
+        if (this.auditPort) {
+          await this.auditPort.logEvent({
+            event: 'identity_login_failed',
+            userId: user.id,
+            metadata: { email: emailNormalized, reason: 'Missing credential' },
+          });
+        }
+        return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
+      }
+
+      // 3. Verificar senha
+      const isPasswordValid = await this.hasher.verify(dto.password, credential.passwordHash);
+      if (!isPasswordValid) {
+        // Rate-Limit Persistente no D1
+        user.registerFailedLogin();
+        await userRepo.incrementFailedLoginAttempts(user.id, User.MAX_FAILED_ATTEMPTS);
+
+        if (this.auditPort) {
+          await this.auditPort.logEvent({
+            event: 'identity_login_failed',
+            userId: user.id,
+            metadata: { email: emailNormalized, reason: 'Invalid password', attemptCount: user.failedLoginAttempts },
+          });
+        }
+
+        if (user.status === 'locked') {
+          if (this.auditPort) {
+            await this.auditPort.logEvent({
+              event: 'identity_account_locked',
+              userId: user.id,
+              metadata: { email: emailNormalized, reason: 'Max failed attempts reached' },
+            });
+          }
+        }
+
+        return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
+      }
+
+      // Sucesso: resetar tentativas no banco
+      await userRepo.resetFailedLoginAttempts(user.id);
+
+      if (this.auditPort) {
+        await this.auditPort.logEvent({
+          event: 'authentication_succeeded',
+          userId: user.id,
+          metadata: { email: user.email || '' },
+        });
+      }
+
+      return Result.ok<AuthenticateAccountResult>({
+        userId: user.id,
+        email: user.email || '',
+        publicId: userRecord.publicId,
+        status: user.status,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/AuthenticateTotpUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { Result } from '../../../shared/kernel/Result';
+import { AuthenticateTotpDTO } from '../../../application/dto/identity/AuthenticateTotpDTO';
+import { authenticator } from 'otplib';
+import { CryptoVault } from '../../../infrastructure/security/crypto/crypto';
+
+export class AuthenticateTotpUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly auditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(dto: AuthenticateTotpDTO): Promise<Result<{ verified: boolean; aal: number }>> {
+    if (!dto.transactionId || !dto.code || !dto.encryptionKey) {
+      return Result.fail<{ verified: boolean; aal: number }>('Transação, chave e código são obrigatórios.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+      const transaction = await authTxRepo.getTransactionById(dto.transactionId);
+      const userRepo = factory.getUserRepository();
+      const user = await userRepo.findById(transaction?.userId || 0);
+      if (!user) {
+        return Result.fail<{ verified: boolean; aal: number }>('Usuário não encontrado.');
+      }
+      
+      if (!transaction || !transaction.isValid(user.authEpoch || 1)) {
+        return Result.fail<{ verified: boolean; aal: number }>('Transação inválida ou expirada (Epoch revogado).');
+      }
+
+      if (transaction.context !== 'login' && transaction.context !== 'mfa_setup' && transaction.context !== 'sensitive_operation') {
+        return Result.fail<{ verified: boolean; aal: number }>('Transação não permite TOTP verification neste contexto.');
+      }
+
+      const authRepo = factory.getAuthenticationRepository();
+      const totpRecord = await authRepo.findTotpCredentialByUserId(transaction.userId);
+
+      if (!totpRecord) {
+        return Result.fail<{ verified: boolean; aal: number }>('Segredo 2FA não configurado.');
+      }
+
+      let secret = '';
+      try {
+        secret = await CryptoVault.decrypt(totpRecord.encryptedTotpSecret, dto.encryptionKey);
+      } catch (e) {
+        return Result.fail<{ verified: boolean; aal: number }>('Falha ao descriptografar TOTP Secret.');
+      }
+
+      const isValid = authenticator.verify({
+        token: dto.code.trim(),
+        secret,
+      });
+
+      if (!isValid) {
+        const recorded = await authTxRepo.recordFailedAttemptAtomically(transaction.id, 5);
+        if (!recorded) {
+          return Result.fail<{ verified: boolean; aal: number }>('Falha ao registrar tentativa (transação expirada ou finalizada).');
+        }
+
+        if (this.auditPort) {
+          await this.auditPort.logEvent({
+            event: 'totp_verification_failed',
+            userId: transaction.userId,
+            metadata: { reason: 'Invalid OTP token', transactionId: transaction.id },
+          });
+        }
+        return Result.fail<{ verified: boolean; aal: number }>('Código 2FA inválido.');
+      }
+
+      if (!totpRecord.verified) {
+        await authRepo.verifyTotpAuthenticator(totpRecord.authenticatorId);
+      }
+
+      const completed = await authTxRepo.completeFactorAtomically(transaction.id, 2, transaction.authEpochAtStart, 'totp');
+      if (!completed) {
+        return Result.fail<{ verified: boolean; aal: number }>('Falha de concorrência ou transação inválida no D1.');
+      }
+
+      if (this.auditPort) {
+        await this.auditPort.logEvent({
+          event: 'totp_verification_succeeded',
+          userId: transaction.userId,
+          metadata: { aal: 2, transactionId: transaction.id },
+        });
+      }
+
+      return Result.ok<{ verified: boolean; aal: number }>({
+        verified: true,
+        aal: 2,
+      });
+    });
+  }
+}
+
+
+```
+
+---
+
+### `src/application/use-cases/identity/ConfirmPasswordResetUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { Result } from '../../../shared/kernel/Result';
+import { ConfirmPasswordResetDTO } from '../../../application/dto/identity/ConfirmPasswordResetDTO';
+
+export class ConfirmPasswordResetUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly hasher: IPasswordHasher,
+    private readonly auditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(dto: ConfirmPasswordResetDTO): Promise<Result<void>> {
+    if (!dto.token || !dto.newPassword) {
+      return Result.fail<void>('Token e nova senha são obrigatórios.');
+    }
+
+    if (dto.newPassword.length < 8) {
+      return Result.fail<void>('A senha deve ter no mínimo 8 caracteres.');
+    }
+
+    // Compute hash of provided raw token
+    const tokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(dto.token.trim()));
+    const tokenHash = Array.from(new Uint8Array(tokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return await this.uow.execute(async (factory) => {
+      const resetRepo = factory.getPasswordResetRepository();
+      const authRepo = factory.getAuthenticationRepository();
+      const userRepo = factory.getUserRepository();
+      const sessionRepo = factory.getSessionRepository();
+
+      // Atomic consume: updates usedAt if it's null, preventing race conditions
+      const resetResult = await resetRepo.consumeToken(tokenHash);
+      if (resetResult.isFailure || !resetResult.getValue()) {
+        return Result.fail<void>('Token de redefinição inválido, expirado ou já utilizado.');
+      }
+
+      const resetRecord = resetResult.getValue();
+      if (new Date(resetRecord.expiresAt) < new Date()) {
+        return Result.fail<void>('Token de redefinição expirado.');
+      }
+
+      const newPasswordHash = await this.hasher.hash(dto.newPassword);
+      await authRepo.savePasswordCredential(resetRecord.userId, newPasswordHash);
+
+      // AF-008: Increment authEpoch to revoke all active user sessions globally
+      if (typeof userRepo.incrementAuthEpoch === 'function') {
+        await userRepo.incrementAuthEpoch(resetRecord.userId);
+      }
+      await sessionRepo.revokeAllUserSessions(resetRecord.userId);
+
+      if (this.auditPort) {
+        await this.auditPort.logEvent({
+          event: 'password_reset_confirmed',
+          userId: resetRecord.userId,
+          metadata: { revokedAllSessions: true },
+        });
+      }
+
+      return Result.ok();
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/GeneratePasskeyChallengeUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
+import { generateRegistrationOptions, generateAuthenticationOptions } from '@simplewebauthn/server';
+
+export interface GeneratePasskeyChallengeDTO {
+  context: 'login' | 'credential_link';
+  transactionId?: string;
+  userId?: number;
+  userName?: string;
+  rpID: string;
+  rpName: string;
+}
+
+export class GeneratePasskeyChallengeUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: GeneratePasskeyChallengeDTO): Promise<Result<{ challengeId: string; options: any }>> {
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+
+      let options: any;
+
+      if (dto.context === 'credential_link') {
+        if (!dto.userId || !dto.userName) {
+          return Result.fail<{ challengeId: string; options: any }>('UserId e UserName são obrigatórios para credential_link');
+        }
+
+        const authRepo = factory.getAuthenticationRepository();
+        const existingPasskeys = await authRepo.findAllWebAuthnCredentialsByUserId(dto.userId);
+
+        options = await generateRegistrationOptions({
+          rpName: dto.rpName,
+          rpID: dto.rpID,
+          userID: Uint8Array.from(dto.userId.toString(), c => c.charCodeAt(0)),
+          userName: dto.userName,
+          attestationType: 'none',
+          excludeCredentials: existingPasskeys.map(key => ({
+            id: Uint8Array.from(atob(key.credentialId), c => c.charCodeAt(0)),
+            type: 'public-key',
+            transports: ['internal', 'hybrid', 'usb', 'ble', 'nfc'],
+          })),
+          authenticatorSelection: {
+            residentKey: 'required',
+            userVerification: 'preferred',
+          }
+        });
+      } else {
+        options = await generateAuthenticationOptions({
+          rpID: dto.rpID,
+          userVerification: 'preferred',
+        });
+      }
+
+      const challengeId = crypto.randomUUID();
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutes
+
+      const challenge = new AuthenticationChallenge({
+        id: challengeId,
+        transactionId: dto.transactionId || null,
+        userId: dto.userId || null,
+        challengeHash: options.challenge, // We store the plain challenge here for simplewebauthn
+        challengeType: 'webauthn',
+        context: dto.context,
+        createdAt: now,
+        expiresAt,
+      });
+
+      await authTxRepo.createChallenge(challenge);
+
+      return Result.ok({
+        challengeId,
+        options,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/GenerateWeb3ChallengeUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
+import { CryptoVault } from '../../../infrastructure/security/crypto/crypto';
+
+export interface GenerateWeb3ChallengeDTO {
+  context: 'login' | 'credential_link';
+  transactionId?: string;
+  domain: string;
+}
+
+export class GenerateWeb3ChallengeUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: GenerateWeb3ChallengeDTO): Promise<Result<{ challengeId: string; nonce: string; domain: string }>> {
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+
+      const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      const challengeId = crypto.randomUUID();
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutes
+
+      const challenge = new AuthenticationChallenge({
+        id: challengeId,
+        transactionId: dto.transactionId || null,
+        challengeHash: nonce, // Para SIWE, o hash é o nonce
+        challengeType: 'siwe',
+        context: dto.context,
+        createdAt: now,
+        expiresAt,
+      });
+
+      await authTxRepo.createChallenge(challenge);
+
+      return Result.ok({
+        challengeId,
+        nonce,
+        domain: dto.domain,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/LinkExternalIdentityUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { LinkExternalIdentityInputDTO, LinkExternalIdentityOutputDTO } from '../../../application/dto/identity/LinkExternalIdentityDTO';
+import { Result } from '../../../shared/kernel/Result';
+
+export class LinkExternalIdentityUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly securityAuditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(input: LinkExternalIdentityInputDTO): Promise<Result<LinkExternalIdentityOutputDTO>> {
+    // Exigência AAL2+ (AF-007)
+    if (input.sessionAal < 2) {
+      return Result.fail<LinkExternalIdentityOutputDTO>(
+        'Nível de autenticação insuficiente (AAL2+ obrigatório para vincular credenciais).'
+      );
+    }
+
+    const { assertion, userId } = input;
+    const now = new Date();
+
+    return this.uow.execute(async (factory) => {
+      if (assertion.type === 'web3_wallet') {
+        const web3Repo = factory.getWeb3Repository();
+        const existing = await web3Repo.findByAddress(assertion.subjectId);
+
+        if (existing) {
+          if (existing.userId === userId) {
+            return Result.ok<LinkExternalIdentityOutputDTO>({
+              success: true,
+              provider: 'evm',
+              subjectId: assertion.subjectId,
+              linkedAt: existing.linkedAt || now,
+            });
+          }
+          return Result.fail<LinkExternalIdentityOutputDTO>('Esta carteira Web3 já está vinculada a outra conta.');
+        }
+
+        await web3Repo.linkExternalWallet({
+          userId,
+          address: assertion.subjectId,
+          provenance: 'external',
+          networkId: assertion.networkId || 1,
+          walletType: 'eoa',
+          controlMode: 'external_user',
+        });
+      }
+
+      if (this.securityAuditPort) {
+        await this.securityAuditPort.logEvent({
+          event: 'identity_linked',
+          userId,
+          metadata: { type: assertion.type, provider: assertion.provider, subjectId: assertion.subjectId },
+        });
+      }
+
+      return Result.ok<LinkExternalIdentityOutputDTO>({
+        success: true,
+        provider: assertion.provider,
+        subjectId: assertion.subjectId,
+        linkedAt: now,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/RefreshTokenUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { Result } from '../../../shared/kernel/Result';
+import { RefreshTokenDTO, RefreshTokenResult } from '../../../application/dto/identity/RefreshTokenDTO';
+
+export interface ITokenService {
+  generateAccessToken(payload: { userId: number; email: string; authEpoch: number }): Promise<string>;
+  generateRefreshToken(): Promise<string>;
+}
+
+export class RefreshTokenUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly tokenService: ITokenService,
+    private readonly auditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(dto: RefreshTokenDTO): Promise<Result<RefreshTokenResult>> {
+    if (!dto.refreshToken) {
+      return Result.fail<RefreshTokenResult>('Refresh token é obrigatório.');
+    }
+
+    const tokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(dto.refreshToken.trim()));
+    const tokenHash = Array.from(new Uint8Array(tokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return await this.uow.execute(async (factory) => {
+      const sessionRepo = factory.getSessionRepository();
+      const userRepo = factory.getUserRepository();
+
+      const session = await sessionRepo.getSessionByRefreshTokenHash(tokenHash);
+      if (!session) {
+        return Result.fail<RefreshTokenResult>('Sessão ou refresh token inválido.');
+      }
+
+      if (session.revokedAt) {
+        // MALICIOUS REUSE DETECTED: Revoke the entire family!
+        if (session.familyId) {
+          await sessionRepo.revokeFamily(session.familyId, 'Malicious refresh token reuse detected');
+        } else {
+          await sessionRepo.revokeAllUserSessions(session.userId);
+        }
+
+        if (typeof userRepo.incrementAuthEpoch === 'function') {
+          await userRepo.incrementAuthEpoch(session.userId);
+        }
+
+        if (this.auditPort) {
+          await this.auditPort.logEvent({
+            event: 'refresh_token_reuse_detected',
+            userId: session.userId,
+            metadata: { sessionId: session.id, familyId: session.familyId },
+          });
+        }
+
+        return Result.fail<RefreshTokenResult>('Refresh token reutilizado. Por razões de segurança, todas as sessões relacionadas foram encerradas.');
+      }
+
+      if (new Date(session.expiresAt) < new Date()) {
+        return Result.fail<RefreshTokenResult>('Refresh token expirado. Faça login novamente.');
+      }
+
+      const user = await userRepo.findById(session.userId);
+      if (!user || user.status !== 'active') {
+        return Result.fail<RefreshTokenResult>('Usuário inativo ou não encontrado.');
+      }
+
+      // 1. Revoke the current session as it's been consumed (Single-use ATOMICALLY)
+      const rotated = await sessionRepo.rotateRefreshTokenAtomically(session.id, tokenHash);
+      if (!rotated) {
+        return Result.fail<RefreshTokenResult>('Falha de concorrência ou sessão revogada por outra requisição (Race Condition).');
+      }
+
+      const newAccessToken = await this.tokenService.generateAccessToken({
+        userId: user.id,
+        email: user.email || '',
+        authEpoch: user.authEpoch || 1,
+      });
+
+      const newRefreshToken = await this.tokenService.generateRefreshToken();
+
+      // Create new session in the same family
+      const newSessionId = crypto.randomUUID();
+      const newJti = crypto.randomUUID();
+      const newRefreshTokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(newRefreshToken));
+      const newRefreshTokenHash = Array.from(new Uint8Array(newRefreshTokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 86400 * 1000 * 30); // 30 days for refresh session TTL
+
+      await sessionRepo.createSession({
+        id: newSessionId,
+        userId: user.id,
+        jti: newJti,
+        ip: session.ip, // Inherit IP from previous session or update from request if possible
+        userAgent: session.userAgent,
+        familyId: session.familyId, // Inherit the family
+        refreshTokenHash: newRefreshTokenHash,
+        aal: session.aal,
+        authEpoch: user.authEpoch || 1,
+        createdAt: now,
+        expiresAt,
+        lastAuthenticatedAt: session.lastAuthenticatedAt ? new Date(session.lastAuthenticatedAt) : undefined,
+      });
+
+      return Result.ok<RefreshTokenResult>({
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        expiresIn: 3600, // 1 hour access token
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/RegisterAccountUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { RegisterAccountInputDTO, RegisterAccountOutputDTO } from '../../../application/dto/identity/RegisterAccountDTO';
+import { Result } from '../../../shared/kernel/Result';
+
+export class RegisterAccountUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly passwordHasher: IPasswordHasher,
+    private readonly securityAuditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(input: RegisterAccountInputDTO): Promise<Result<RegisterAccountOutputDTO>> {
+    if (!input.email || !input.password) {
+      return Result.fail<RegisterAccountOutputDTO>('Email e senha são obrigatórios para cadastro.');
+    }
+
+    const emailNormalized = input.email.trim().toLowerCase();
+
+    return this.uow.execute(async (factory) => {
+      const userRepo = factory.getUserRepository();
+      const authRepo = factory.getAuthenticationRepository();
+
+      // 1. Verificar se o e-mail já existe
+      const existingUser = await userRepo.findByEmail(emailNormalized);
+      if (existingUser) {
+        return Result.fail<RegisterAccountOutputDTO>('E-mail já cadastrado no sistema.');
+      }
+
+      // 2. Hash da senha com PBKDF2
+      const passwordHash = await this.passwordHasher.hash(input.password);
+
+      // 3. Criar registro mestre do usuário
+      const newUser = await userRepo.create({
+        email: input.email.trim(),
+        emailNormalized,
+        subjectType: 'citizen',
+        status: 'active',
+      });
+
+      // 4. Salvar credencial de senha no repositório de autenticação
+      await authRepo.savePasswordCredential(newUser.id, passwordHash);
+
+      // 5. Auditoria Transacional ACID
+      if (this.securityAuditPort) {
+        await this.securityAuditPort.logEvent({
+          event: 'account_created',
+          userId: newUser.id,
+          metadata: { email: emailNormalized },
+        });
+      }
+
+      return Result.ok<RegisterAccountOutputDTO>({
+        userId: newUser.id,
+        email: newUser.email || '',
+        status: newUser.status,
+        createdAt: newUser.createdAt,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/RequestPasswordResetUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { Result } from '../../../shared/kernel/Result';
+import { RequestPasswordResetDTO } from '../../../application/dto/identity/RequestPasswordResetDTO';
+import { IDomainEvent } from '../../../shared/kernel/DomainEvent';
+
+export class PasswordResetRequestedEvent implements IDomainEvent {
+  dateTimeOccurred: Date = new Date();
+  constructor(
+    public readonly userId: number,
+    public readonly email: string
+    // rawToken removido por segurança (FASE 5)
+  ) {}
+
+  getAggregateId(): string {
+    return String(this.userId);
+  }
+}
+
+export class RequestPasswordResetUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly auditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(dto: RequestPasswordResetDTO): Promise<Result<{ rawToken: string | null }>> {
+    if (!dto.email) {
+      return Result.fail<{ rawToken: string | null }>('E-mail é obrigatório.');
+    }
+
+    const normalizedEmail = dto.email.trim().toLowerCase();
+
+    // Use variable to extract rawToken out of the UoW closure
+    let generatedRawToken: string | null = null;
+
+    await this.uow.execute(async (factory) => {
+      const userRepo = factory.getUserRepository();
+      const resetRepo = factory.getPasswordResetRepository();
+      const outboxRepo = factory.getOutboxRepository();
+
+      const user = await userRepo.findByEmail(normalizedEmail);
+      if (!user) {
+        // Anti-user enumeration: Return success even if user not found
+        // But do not generate a token.
+        return Result.ok();
+      }
+
+      // Generate secure random token
+      const rawTokenBytes = new Uint8Array(32);
+      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        crypto.getRandomValues(rawTokenBytes);
+      } else {
+        for (let i = 0; i < 32; i++) rawTokenBytes[i] = Math.floor(Math.random() * 256);
+      }
+      const rawToken = Array.from(rawTokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      generatedRawToken = rawToken;
+
+      // Create token hash for DB storage
+      const tokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawToken));
+      const tokenHash = Array.from(new Uint8Array(tokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const expiresAt = new Date(Date.now() + 3600 * 1000); // 1 hour expiration
+
+      await resetRepo.create({
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      });
+
+      // Salva evento de auditoria no Outbox SEM o rawToken
+      const event = new PasswordResetRequestedEvent(user.id, user.email || '');
+      await outboxRepo.saveEvent(event, user.id, 'User', 1);
+
+      if (this.auditPort) {
+        await this.auditPort.logEvent({
+          event: 'password_reset_requested',
+          userId: user.id,
+          metadata: { email: user.email },
+        });
+      }
+
+      return Result.ok();
+    });
+
+    return Result.ok({ rawToken: generatedRawToken });
+  }
+}
+
+
+```
+
+---
+
+### `src/application/use-cases/identity/SetupTotpUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { SetupTotpDTO, SetupTotpResult } from '../../../application/dto/identity/SetupTotpDTO';
+import { authenticator } from 'otplib';
+import { CryptoVault } from '../../../infrastructure/security/crypto/crypto';
+import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
+
+export class SetupTotpUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: SetupTotpDTO): Promise<Result<SetupTotpResult>> {
+    if (!dto.transactionId || !dto.encryptionKey) {
+      return Result.fail<SetupTotpResult>('ID da transação e chave de encriptação são obrigatórios.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+      const transaction = await authTxRepo.getTransactionById(dto.transactionId);
+      const userRepo = factory.getUserRepository();
+      const user = await userRepo.findById(transaction.userId);
+      if (!user) {
+        return Result.fail<SetupTotpResult>('Usuário não encontrado.');
+      }
+      
+      if (!transaction || !transaction.isValid(user.authEpoch || 1)) {
+        return Result.fail<SetupTotpResult>('Transação inválida ou expirada (Epoch revogado).');
+      }
+
+      if (transaction.context !== 'mfa_setup') {
+        return Result.fail<SetupTotpResult>('Transação não é de setup de MFA.');
+      }
+
+      const authRepo = factory.getAuthenticationRepository();
+
+      // Verifica se já tem TOTP
+      const existingTotp = await authRepo.findTotpCredentialByUserId(user.id);
+      if (existingTotp) {
+        // Se já tiver e estiver verificado, não deixa configurar outro direto sem remover.
+        if (existingTotp.verified) {
+          return Result.fail<SetupTotpResult>('Usuário já possui TOTP ativo.');
+        }
+      }
+
+      const secret = authenticator.generateSecret();
+      const otpauthUrl = authenticator.keyuri(user.email || 'unknown', 'ASPPIBRA DAO', secret);
+
+      // Criptografa o secret em repouso
+      const encryptedSecret = await CryptoVault.encrypt(secret, dto.encryptionKey);
+
+      await authRepo.saveTotpSecret(user.id, encryptedSecret);
+
+      return Result.ok<SetupTotpResult>({
+        secret,
+        otpauthUrl,
+      });
+    });
+  }
+}
+
+
+```
+
+---
+
+### `src/application/use-cases/identity/UnlinkExternalIdentityUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { UnlinkExternalIdentityInputDTO, UnlinkExternalIdentityOutputDTO } from '../../../application/dto/identity/UnlinkExternalIdentityDTO';
+import { AntiLockoutViolationError } from '../../../domains/identity/errors/AntiLockoutViolationError';
+import { Result } from '../../../shared/kernel/Result';
+
+export class UnlinkExternalIdentityUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly securityAuditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(input: UnlinkExternalIdentityInputDTO): Promise<Result<UnlinkExternalIdentityOutputDTO>> {
+    const { userId, provider, subjectId } = input;
+    const now = new Date();
+
+    return this.uow.execute(async (factory) => {
+      const authRepo = factory.getAuthenticationRepository();
+      const web3Repo = factory.getWeb3Repository();
+
+      const passwordCredential = await authRepo.findPasswordCredentialByUserId(userId);
+      const userWallets = await web3Repo.findByUserId(userId);
+
+      const totalMethods = (passwordCredential ? 1 : 0) + userWallets.length;
+
+      // Trava Anti-Lockout (AF-008)
+      if (totalMethods <= 1) {
+        return Result.fail<UnlinkExternalIdentityOutputDTO>(new AntiLockoutViolationError().message);
+      }
+
+      if (provider === 'web3_wallet') {
+        const revoked = await web3Repo.revokeWallet(userId, subjectId);
+        if (!revoked) {
+          return Result.fail<UnlinkExternalIdentityOutputDTO>('Carteira não encontrada, já revogada ou indisponível.');
+        }
+      } else {
+        return Result.fail<UnlinkExternalIdentityOutputDTO>(`Revogação não implementada para o provedor: ${provider}`);
+      }
+
+      if (this.securityAuditPort) {
+        await this.securityAuditPort.logEvent({
+          event: 'identity_unlinked',
+          userId,
+          metadata: { provider, subjectId, action: 'revoked' },
+        });
+      }
+
+      return Result.ok<UnlinkExternalIdentityOutputDTO>({
+        success: true,
+        unlinkedAt: now,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/VerifyPasskeyIdentityUseCase.ts`
+```typescript
+import { IIdentityResolverPort } from '../../../application/ports/output/IIdentityResolverPort';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { VerifyPasskeyIdentityInputDTO, VerifyPasskeyIdentityOutputDTO } from '../../../application/dto/identity/VerifyPasskeyIdentityDTO';
+import { Result } from '../../../shared/kernel/Result';
+import { verifyAuthenticationResponse } from '@simplewebauthn/server';
+
+export class VerifyPasskeyIdentityUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly identityResolver: IIdentityResolverPort,
+    private readonly securityAuditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(input: VerifyPasskeyIdentityInputDTO): Promise<Result<VerifyPasskeyIdentityOutputDTO>> {
+    if (!input.challengeId || !input.responseJSON || !input.expectedOrigin || !input.expectedRPID) {
+      return Result.fail<VerifyPasskeyIdentityOutputDTO>('Parâmetros de autenticação Passkey ausentes.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+      const authRepo = factory.getAuthenticationRepository();
+
+      const challenge = await authTxRepo.getChallengeById(input.challengeId);
+      if (!challenge || !challenge.isValid()) {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Challenge inválido, expirado ou já utilizado.');
+      }
+
+      if (challenge.context !== 'login') {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Contexto do challenge não permite login via Passkey.');
+      }
+
+      const expectedChallenge = challenge.challengeHash;
+
+
+      const passkeyRecord = await authRepo.findWebAuthnCredentialById(input.responseJSON.id);
+      if (!passkeyRecord) {
+        if (this.securityAuditPort) {
+          await this.securityAuditPort.logEvent({
+            event: 'authentication_failed',
+            metadata: { provider: 'webauthn', credentialId: input.responseJSON.id, reason: 'Passkey record not found in DB' },
+          });
+        }
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Passkey não encontrada no sistema.');
+      }
+
+      const credentialID = Uint8Array.from(atob(passkeyRecord.credentialId), c => c.charCodeAt(0));
+      const credentialPublicKey = Uint8Array.from(atob(passkeyRecord.publicKeyCose), c => c.charCodeAt(0));
+
+      let verification;
+      try {
+        verification = await verifyAuthenticationResponse({
+          response: input.responseJSON,
+          expectedChallenge,
+          expectedOrigin: input.expectedOrigin,
+          expectedRPID: input.expectedRPID,
+          authenticator: {
+            credentialID,
+            credentialPublicKey,
+            counter: passkeyRecord.signCount,
+            transports: ['internal', 'hybrid', 'usb', 'ble', 'nfc'],
+          },
+          requireUserVerification: true, // as required for high assurance (AAL2)
+        });
+      } catch (error: any) {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>(`Falha na verificação da passkey: ${error.message}`);
+      }
+
+      if (!verification.verified || !verification.authenticationInfo) {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Assinatura do Passkey não verificada.');
+      }
+
+      // Atomic challenge consumption AFTER successful verification
+      const consumed = await authTxRepo.consumeChallengeAtomically(challenge.id);
+      if (!consumed) {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Falha de concorrência ou challenge expirado (replay attack).');
+      }
+
+      // Update signCount to prevent counter regression attacks
+      await authRepo.updateWebAuthnSignCount(passkeyRecord.credentialId, verification.authenticationInfo.newCounter);
+
+
+      // 1. Resolver a identidade via CanonicalIdentityResolver (AF-013)
+      const resolution = await this.identityResolver.resolve({
+        type: 'passkey',
+        provider: 'webauthn',
+        subjectId: passkeyRecord.credentialId,
+        verifiedAt: new Date(),
+      });
+
+      // 2. Aplicar regra anti-shadow account (AF-009 & AF-012)
+      if (resolution.status === 'not_linked') {
+        if (this.securityAuditPort) {
+          await this.securityAuditPort.logEvent({
+            event: 'authentication_failed',
+            metadata: { provider: 'webauthn', credentialId: passkeyRecord.credentialId, reason: 'Passkey not linked' },
+          });
+        }
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>(
+          'Passkey não vinculada a nenhuma conta existente. Efetue login e vincule a passkey nas configurações.'
+        );
+      }
+
+      // 3. Auditoria de sucesso
+      if (this.securityAuditPort) {
+        await this.securityAuditPort.logEvent({
+          event: 'authentication_succeeded',
+          userId: resolution.userId || 0,
+          metadata: { provider: 'webauthn', credentialId: passkeyRecord.credentialId },
+        });
+      }
+
+      return Result.ok<VerifyPasskeyIdentityOutputDTO>({
+        userId: resolution.userId || 0,
+        credentialId: passkeyRecord.credentialId,
+        bindingType: 'passkey',
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/VerifyPasskeyRegistrationUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { verifyRegistrationResponse } from '@simplewebauthn/server';
+import type { RegistrationResponseJSON } from '@simplewebauthn/types';
+
+export interface VerifyPasskeyRegistrationDTO {
+  challengeId: string;
+  responseJSON: RegistrationResponseJSON;
+  expectedOrigin: string;
+  expectedRPID: string;
+}
+
+export class VerifyPasskeyRegistrationUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: VerifyPasskeyRegistrationDTO): Promise<Result<{ authenticatorId: string }>> {
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+      const authRepo = factory.getAuthenticationRepository();
+
+      const challenge = await authTxRepo.getChallengeById(dto.challengeId);
+      if (!challenge || !challenge.isValid()) {
+        return Result.fail<{ authenticatorId: string }>('Challenge inválido, expirado ou já utilizado.');
+      }
+
+      if (challenge.context !== 'credential_link') {
+        return Result.fail<{ authenticatorId: string }>('Contexto do challenge não permite registro de Passkey.');
+      }
+
+      if (!challenge.userId) {
+        return Result.fail<{ authenticatorId: string }>('Challenge não está associado a um usuário.');
+      }
+
+      const expectedChallenge = challenge.challengeHash;
+
+
+      let verification;
+      try {
+        verification = await verifyRegistrationResponse({
+          response: dto.responseJSON,
+          expectedChallenge,
+          expectedOrigin: dto.expectedOrigin,
+          expectedRPID: dto.expectedRPID,
+        });
+      } catch (error: any) {
+        return Result.fail<{ authenticatorId: string }>(`Falha na verificação da passkey: ${error.message}`);
+      }
+
+      const { verified, registrationInfo } = verification;
+
+      if (!verified || !registrationInfo) {
+        return Result.fail<{ authenticatorId: string }>('Registro de Passkey não verificado.');
+      }
+
+      // Atomic challenge consumption AFTER successful verification
+      const consumed = await authTxRepo.consumeChallengeAtomically(challenge.id);
+      if (!consumed) {
+        return Result.fail<{ authenticatorId: string }>('Falha de concorrência ou challenge expirado (replay attack).');
+      }
+
+      const { credentialID, credentialPublicKey } = registrationInfo;
+
+      const credentialIdStr = btoa(String.fromCharCode(...credentialID));
+      const publicKeyStr = btoa(String.fromCharCode(...credentialPublicKey));
+
+      const authenticatorId = await authRepo.saveWebAuthnCredential(
+        challenge.userId,
+        credentialIdStr,
+        publicKeyStr,
+        dto.expectedRPID
+      );
+
+      return Result.ok({
+        authenticatorId,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/VerifyWalletIdentityUseCase.ts`
+```typescript
+import { ISiweVerifierPort } from '../../../application/ports/security/ISiweVerifierPort';
+import { IIdentityResolverPort } from '../../../application/ports/output/IIdentityResolverPort';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { VerifyWalletIdentityInputDTO, VerifyWalletIdentityOutputDTO } from '../../../application/dto/identity/VerifyWalletIdentityDTO';
+import { Result } from '../../../shared/kernel/Result';
+
+export class VerifyWalletIdentityUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly siweVerifier: ISiweVerifierPort,
+    private readonly identityResolver: IIdentityResolverPort,
+    private readonly securityAuditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(input: VerifyWalletIdentityInputDTO): Promise<Result<VerifyWalletIdentityOutputDTO>> {
+    try {
+      if (!input.challengeId) {
+        return Result.fail<VerifyWalletIdentityOutputDTO>('ID do Challenge é obrigatório.');
+      }
+
+      return await this.uow.execute(async (factory) => {
+        const authTxRepo = factory.getAuthTransactionRepository();
+        
+        // Load Challenge
+        const challenge = await authTxRepo.getChallengeById(input.challengeId);
+        if (!challenge || !challenge.isValid()) {
+          return Result.fail<VerifyWalletIdentityOutputDTO>('Challenge inválido, expirado ou já utilizado.');
+        }
+
+        if (challenge.context !== 'login' && challenge.context !== 'credential_link') {
+          return Result.fail<VerifyWalletIdentityOutputDTO>('Contexto do challenge não permite autenticação SIWE aqui.');
+        }
+
+        // 1. Verificar a assinatura EIP-4361 usando o nonce atrelado ao challenge
+        const verifiedData = await this.siweVerifier.verify({
+          message: input.message,
+          signature: input.signature,
+          expectedNonce: challenge.challengeHash,
+          expectedDomain: input.expectedDomain, // Este valor agora será o env do server
+        });
+
+        // Atomic challenge consumption AFTER successful verification
+        const consumed = await authTxRepo.consumeChallengeAtomically(challenge.id);
+        if (!consumed) {
+          return Result.fail<VerifyWalletIdentityOutputDTO>('Falha de concorrência ou challenge expirado (replay attack).');
+        }
+
+        // 2. Resolver a identidade via CanonicalIdentityResolver (AF-013)
+        const resolution = await this.identityResolver.resolve({
+          type: 'web3_wallet',
+          provider: 'evm',
+          subjectId: verifiedData.address,
+          networkId: verifiedData.chainId,
+          verifiedAt: new Date(),
+        });
+
+        // 3. Aplicar regra anti-shadow account (AF-010 & AF-012)
+        if (resolution.status === 'not_linked' && challenge.context === 'login') {
+          if (this.securityAuditPort) {
+            await this.securityAuditPort.logEvent({
+              event: 'authentication_failed',
+              metadata: { provider: 'evm', address: verifiedData.address, reason: 'Identity not linked' },
+            });
+          }
+          return Result.fail<VerifyWalletIdentityOutputDTO>(
+            'Carteira Web3 não vinculada a nenhuma conta existente. Efetue login e vincule a carteira nas configurações.'
+          );
+        }
+
+        // 4. Auditoria de sucesso
+        if (this.securityAuditPort) {
+          await this.securityAuditPort.logEvent({
+            event: 'authentication_succeeded',
+            userId: resolution.userId || 0,
+            metadata: { provider: 'evm', address: verifiedData.address },
+          });
+        }
+
+        return Result.ok<VerifyWalletIdentityOutputDTO>({
+          userId: resolution.userId || 0,
+          address: verifiedData.address,
+          chainId: verifiedData.chainId,
+          bindingType: 'web3_wallet',
+        });
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao autenticar carteira Web3.';
+      return Result.fail<VerifyWalletIdentityOutputDTO>(message);
+    }
+  }
+}
+
+
+```
+
+---
+
+### `src/application/ports/output/IAuthenticationRepository.ts`
+```typescript
+export interface PasswordCredentialRecord {
+  authenticatorId: string;
+  userId: number;
+  passwordHash: string;
+}
+
+export interface TotpCredentialRecord {
+  authenticatorId: string;
+  userId: number;
+  encryptedTotpSecret: string;
+  verified: boolean;
+}
+
+export interface WebAuthnCredentialRecord {
+  authenticatorId: string;
+  userId: number;
+  credentialId: string;
+  publicKeyCose: string;
+  signCount: number;
+}
+
+export interface IAuthenticationRepository {
+  findPasswordCredentialByUserId(userId: number): Promise<PasswordCredentialRecord | null>;
+  savePasswordCredential(userId: number, passwordHash: string): Promise<string>;
+  findTotpCredentialByUserId(userId: number): Promise<TotpCredentialRecord | null>;
+  saveTotpSecret(userId: number, encryptedTotpSecret: string): Promise<string>;
+  verifyTotpAuthenticator(authenticatorId: string): Promise<void>;
+  findAllWebAuthnCredentialsByUserId(userId: number): Promise<WebAuthnCredentialRecord[]>;
+  findWebAuthnCredentialById(credentialId: string): Promise<WebAuthnCredentialRecord | null>;
+  saveWebAuthnCredential(
+    userId: number,
+    credentialId: string,
+    publicKeyCose: string,
+    rpId?: string
+  ): Promise<string>;
+  updateWebAuthnSignCount(credentialId: string, newSignCount: number): Promise<void>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IAuthTransactionRepository.ts`
+```typescript
+import { AuthenticationTransaction } from '../../../domains/identity/entities/AuthenticationTransaction';
+import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
+
+export interface IAuthTransactionRepository {
+  createTransaction(transaction: AuthenticationTransaction): Promise<void>;
+  getTransactionById(id: string): Promise<AuthenticationTransaction | null>;
+  updateTransaction(transaction: AuthenticationTransaction): Promise<void>;
+  
+  createChallenge(challenge: AuthenticationChallenge): Promise<void>;
+  getChallengeById(id: string): Promise<AuthenticationChallenge | null>;
+  getChallengeByHash(hash: string): Promise<AuthenticationChallenge | null>;
+  updateChallenge(challenge: AuthenticationChallenge): Promise<void>;
+  
+  // Atomic Operations
+  completeFactorAtomically(txId: string, aal: number, authEpochAtStart: number, method: string): Promise<boolean>;
+  recordFailedAttemptAtomically(txId: string, maxAttempts: number): Promise<boolean>;
+  consumeChallengeAtomically(challengeId: string): Promise<boolean>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IChallengeStorePort.ts`
+```typescript
+export interface IChallengeStorePort {
+  saveNonce(username: string, nonce: string, ttlSeconds: number): Promise<void>;
+  getNonce(username: string): Promise<string | null>;
+  deleteNonce(username: string): Promise<void>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/ICivilIdentityRepository.ts`
+```typescript
+export interface CitizenRecord {
+  userId: number;
+  username: string | null;
+  legalFirstName: string | null;
+  legalLastName: string | null;
+  nationalityCode: string | null;
+  birthDate: string | null;
+  maritalStatus: string | null;
+  civilStatus: 'pending' | 'verified' | 'suspended' | 'revoked';
+  status?: string;
+  publicKey?: string;
+  did?: string;
+  verifiedAt?: Date | null;
+  verifiedBy?: number | null;
+  version?: number;
+}
+
+
+export interface IdentityDocumentRecord {
+  id?: number;
+  userId: number;
+  documentType: 'cpf' | 'rg' | 'passport' | 'cnh';
+  countryCode: string;
+  numberLookupHash: string;
+  encryptedNumber: string;
+  last4?: string | null;
+  source: 'government' | 'manual_upload' | 'kyc_provider' | 'admin' | 'import';
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+  verifiedAt?: Date | null;
+  verifiedBy?: number | null;
+  version?: number;
+}
+
+export interface KycVerificationRecord {
+  id?: number;
+  userId: number;
+  verificationLevel: 'basic' | 'enhanced' | 'institutional';
+  status: 'submitted' | 'under_review' | 'approved' | 'rejected' | 'expired';
+  provider: string;
+  riskScore?: number | null;
+  rejectionReason?: string | null;
+  startedAt: Date;
+  completedAt?: Date | null;
+  expiresAt?: Date | null;
+  version?: number;
+}
+
+export interface ICivilIdentityRepository {
+  findByDid(did: string): Promise<CitizenRecord | null>;
+  createCitizen(data: Partial<CitizenRecord> & { userId: number }): Promise<CitizenRecord>;
+  findCitizenByUserId(userId: number): Promise<CitizenRecord | null>;
+  updateCivilStatus(userId: number, civilStatus: 'pending' | 'verified' | 'suspended' | 'revoked', verifiedBy?: number): Promise<void>;
+  createIdentityDocument(data: IdentityDocumentRecord): Promise<IdentityDocumentRecord>;
+  findDocumentsByUserId(userId: number): Promise<IdentityDocumentRecord[]>;
+  createKycVerification(data: KycVerificationRecord): Promise<KycVerificationRecord>;
+  getLatestKycByUserId(userId: number): Promise<KycVerificationRecord | null>;
+}
+
+
+```
+
+---
+
+### `src/application/ports/output/IFinanceRepository.ts`
+```typescript
+import { Result } from '../../../shared/kernel/Result';
+
+export interface FinancialAccountRecord {
+  id: number;
+  userId: number | null;
+  accountType: 'user_available' | 'treasury' | 'operating' | 'reserve' | 'fees' | 'escrow';
+  status: 'active' | 'inactive' | 'suspended';
+  name: string;
+  version: number;
+}
+
+export interface AccountBalanceRecord {
+  id: number;
+  accountId: number;
+  assetId: number;
+  availableBaseUnits: string;
+  lockedBaseUnits: string;
+  version: number;
+}
+
+export interface FinancialTransactionRecord {
+  id: number;
+  userId: number | null;
+  type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
+  category: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'reversed' | 'refunded';
+  description: string;
+  createdAt: Date;
+  completedAt?: Date | null;
+}
+
+export interface IFinanceRepository {
+  getTreasuryAccount(): Promise<Result<FinancialAccountRecord>>;
+  getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>>;
+  createTransaction(data: {
+    userId?: number | null;
+    type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
+    category?: string;
+    description: string;
+    amountBaseUnits: string;
+    assetId: number;
+  }): Promise<Result<FinancialTransactionRecord>>;
+  listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IIdentityResolverPort.ts`
+```typescript
+import { IdentityAssertion } from '../../dto/IdentityAssertion';
+import { IdentityResolutionResult } from '../../dto/IdentityResolutionResult';
+
+/**
+ * Porta de saída para Resolução Canônica de Identidade.
+ * O orquestrador central (CanonicalIdentityResolver) implementa esta interface
+ * para isolar os Use Cases de infraestrutura e persistência concreta.
+ */
+export interface IIdentityResolverPort {
+  resolve(assertion: IdentityAssertion): Promise<IdentityResolutionResult>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IOutboxRepository.ts`
+```typescript
+import { IDomainEvent } from '../../../shared/kernel/DomainEvent';
+import { Result } from '../../../shared/kernel/Result';
+
+export interface OutboxEventRecord {
+  id: string; // UUID
+  aggregateId: number;
+  aggregateType: string;
+  aggregateVersion: number;
+  eventName: string;
+  payload: string; // JSON
+  metadata?: string; // JSON
+  attempts: number;
+  published: boolean;
+  publishedAt?: Date;
+  error?: string;
+  createdAt: Date;
+}
+
+export interface IOutboxRepository {
+  /**
+   * Persiste um evento de domínio no Outbox.
+   * IMPORTANTE: Deve ser chamado dentro da mesma transação do banco (UoW).
+   */
+  saveEvent(event: IDomainEvent, aggregateId: number, aggregateType: string, aggregateVersion: number): Promise<Result<void>>;
+  
+  /**
+   * Busca eventos pendentes para publicação (published = false) limitando a quantidade.
+   */
+  getPendingEvents(limit: number): Promise<Result<OutboxEventRecord[]>>;
+  
+  /**
+   * Marca um evento como publicado (sucesso).
+   */
+  markAsPublished(eventId: string): Promise<Result<void>>;
+  
+  /**
+   * Registra uma falha de tentativa de publicação. Incrementa attempts e salva o erro.
+   */
+  markAsFailed(eventId: string, error: string): Promise<Result<void>>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IPasswordResetRepository.ts`
+```typescript
+import { Result } from '../../../shared/kernel/Result';
+
+export interface PasswordReset {
+  id: number;
+  userId: number;
+  tokenHash: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface IPasswordResetRepository {
+  findByToken(tokenHash: string): Promise<Result<PasswordReset>>;
+  invalidate(id: number): Promise<Result<void>>;
+  create(data: { userId: number; tokenHash: string; expiresAt: Date }): Promise<Result<void>>;
+  consumeToken(tokenHash: string): Promise<Result<PasswordReset>>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/ISecurityAuditPort.ts`
+```typescript
+import { TransactionContext } from '../../dto/TransactionContext';
+
+export interface SecurityAuditEvent {
+  readonly event:
+    | 'identity_linked'
+    | 'identity_unlinked'
+    | 'identity_login_failed'
+    | 'identity_login_blocked'
+    | 'identity_account_locked'
+    | 'identity_resolution_failed'
+    | 'authentication_succeeded'
+    | 'authentication_failed'
+    | 'account_created'
+    | 'totp_verification_failed'
+    | 'totp_verification_succeeded'
+    | 'password_reset_requested'
+    | 'password_reset_confirmed'
+    | 'refresh_token_reuse_detected';
+  readonly userId?: number;
+  readonly metadata: Record<string, unknown>;
+  readonly timestamp?: Date;
+}
+
+/**
+ * Porta de Saída de Auditoria de Segurança.
+ * Desacopla Use Cases da tabela security_events e aceita TransactionContext
+ * para garantir execução na mesma transação atômica D1/Drizzle.
+ */
+export interface ISecurityAuditPort {
+  logEvent(event: SecurityAuditEvent, txCtx?: TransactionContext): Promise<void>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/ISessionRepository.ts`
+```typescript
+export interface ISessionRepository {
+  createSession(sessionData: {
+    id: string;
+    userId: number;
+    jti: string;
+    ip: string;
+    userAgent: string;
+    familyId?: string;
+    refreshTokenHash: string;
+    aal: number;
+    authEpoch: number;
+    createdAt: Date;
+    expiresAt: Date;
+    lastAuthenticatedAt?: Date;
+  }): Promise<void>;
+
+  rotateRefreshTokenAtomically(sessionId: string, oldRefreshTokenHash: string): Promise<boolean>;
+
+  revokeSession(sessionId: string): Promise<void>;
+
+  revokeAllUserSessions(userId: number): Promise<void>;
+
+  getSessionById(sessionId: string): Promise<any | null>;
+
+  createRefreshTokenFamily(familyData: {
+    id: string;
+    userId: number;
+    createdAt: Date;
+  }): Promise<void>;
+
+  revokeFamily(familyId: string, reason?: string): Promise<void>;
+
+  getSessionByRefreshTokenHash(refreshTokenHash: string): Promise<any | null>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/ISsiRepository.ts`
+```typescript
+import { Result } from '../../../shared/kernel/Result';
+
+export interface DidIdentityRecord {
+  id: string; // UUID v4
+  userId: number;
+  did: string;
+  method: 'key' | 'ion' | 'polygonid' | 'web' | 'cheqd' | 'pkh';
+  controller: string;
+  status?: 'active' | 'suspended' | 'revoked';
+  version?: number;
+}
+
+export interface VerifiableCredentialRecord {
+  id: string;
+  holderUserId: number;
+  issuerDid: string;
+  subjectDid: string;
+  credentialType: 'CivicIdentityCredential' | 'MembershipCredential' | 'KycVerificationCredential' | 'ReputationCredential';
+  credentialHash: string;
+  encryptedClaims: string;
+  proofType: 'Ed25519Signature2020' | 'BbsBlsSignature2020' | 'JsonWebSignature2020';
+  status: 'active' | 'suspended' | 'revoked' | 'expired';
+  issuanceDate: Date;
+  expirationDate?: Date | null;
+  revokedAt?: Date | null;
+  version?: number;
+}
+
+export interface ISsiRepository {
+  findDidByUserId(userId: number): Promise<Result<DidIdentityRecord>>;
+  saveDid(record: DidIdentityRecord): Promise<Result<DidIdentityRecord>>;
+  saveVerifiableCredential(record: VerifiableCredentialRecord): Promise<Result<VerifiableCredentialRecord>>;
+  findVerifiableCredentialById(id: string): Promise<Result<VerifiableCredentialRecord>>;
+  listVerifiableCredentialsByUserId(userId: number): Promise<Result<VerifiableCredentialRecord[]>>;
+  revokeVerifiableCredential(id: string): Promise<Result<void>>;
+}
+
+
+```
+
+---
+
+### `src/application/ports/output/IUnitOfWork.ts`
+```typescript
+import { Result } from '../../../shared/kernel/Result';
+import { IUserRepository } from './IUserRepository';
+import { IAuthenticationRepository } from './IAuthenticationRepository';
+import { IWeb3Repository } from './IWeb3Repository';
+import { ICivilIdentityRepository } from './ICivilIdentityRepository';
+import { ISessionRepository } from './ISessionRepository';
+import { IOutboxRepository } from './IOutboxRepository';
+import { IPasswordResetRepository } from './IPasswordResetRepository';
+import { ISsiRepository } from './ISsiRepository';
+import { IFinanceRepository } from './IFinanceRepository';
+
+export interface IRepositoryFactory {
+  getUserRepository(): IUserRepository;
+  getAuthTransactionRepository(): import('./IAuthTransactionRepository').IAuthTransactionRepository;
+  getAuthenticationRepository(): IAuthenticationRepository;
+  getWeb3Repository(): IWeb3Repository;
+  getSessionRepository(): ISessionRepository;
+  getCivilIdentityRepository(): ICivilIdentityRepository;
+  getSsiRepository(): ISsiRepository;
+  getOutboxRepository(): IOutboxRepository;
+  getPasswordResetRepository(): IPasswordResetRepository;
+  getFinanceRepository(): IFinanceRepository;
+}
+
+
+export interface IUnitOfWork {
+  execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>>;
+}
+
+
+```
+
+---
+
+### `src/application/ports/output/IUserRepository.ts`
+```typescript
+export interface UserRecord {
+  id: number;
+  publicId: string | null;
+  email: string | null;
+  emailNormalized: string | null;
+  status: string;
+  subjectType: string;
+  failedLoginAttempts: number;
+  lastFailedLoginAt: Date | null;
+  authEpoch: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateUserData {
+  email?: string;
+  emailNormalized?: string;
+  subjectType?: 'citizen' | 'organization' | 'system' | 'service';
+  status?: 'active' | 'suspended' | 'pending' | 'locked';
+}
+
+export interface IUserRepository {
+  findById(id: number): Promise<UserRecord | null>;
+  findByEmail(email: string): Promise<UserRecord | null>;
+  create(data: CreateUserData): Promise<UserRecord>;
+  updateStatus(id: number, status: 'active' | 'suspended' | 'pending' | 'locked'): Promise<void>;
+  incrementAuthEpoch?(userId: number): Promise<number>;
+  incrementFailedLoginAttempts(userId: number, maxAttempts: number): Promise<void>;
+  resetFailedLoginAttempts(userId: number): Promise<void>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IWeb3Repository.ts`
+```typescript
+export interface WalletRecord {
+  id: number;
+  userId: number;
+  provenance: 'internal' | 'external';
+  networkId: number;
+  walletType: 'eoa' | 'smart_contract';
+  controlMode: 'platform_key' | 'external_user' | 'contract_controller';
+  address: string;
+  addressNormalized: string;
+  label: string | null;
+  status: 'pending' | 'active' | 'suspended' | 'revoked' | 'unlinked';
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+  isPrimary: boolean;
+  linkedAt: Date;
+  version?: number;
+}
+
+export interface LinkWalletData {
+  userId: number;
+  address: string;
+  provenance?: 'internal' | 'external';
+  networkId?: number;
+  walletType?: 'eoa' | 'smart_contract';
+  controlMode?: 'platform_key' | 'external_user' | 'contract_controller';
+  label?: string;
+}
+
+export interface IWeb3Repository {
+  findByAddress(address: string): Promise<WalletRecord | null>;
+  findByUserId(userId: number): Promise<WalletRecord[]>;
+  findActiveByUserId(userId: number): Promise<WalletRecord | null>;
+  linkExternalWallet(data: LinkWalletData): Promise<WalletRecord>;
+  updateWallet(wallet: WalletRecord): Promise<WalletRecord>;
+  revokeWallet(userId: number, address: string): Promise<boolean>;
+}
+
+
+```
+
+---
+
+### `src/application/dto/identity/AuthenticateAccountDTO.ts`
+```typescript
+export interface AuthenticateAccountDTO {
+  email: string;
+  password: string;
+}
+
+export interface AuthenticateAccountResult {
+  userId: number;
+  email: string;
+  publicId: string | null;
+  status: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/AuthenticateTotpDTO.ts`
+```typescript
+export interface AuthenticateTotpDTO {
+  transactionId: string;
+  code: string;
+  encryptionKey: string;
+  sessionId?: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/ConfirmPasswordResetDTO.ts`
+```typescript
+export interface ConfirmPasswordResetDTO {
+  token: string;
+  newPassword: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/LinkExternalIdentityDTO.ts`
+```typescript
+import { IdentityAssertion } from '../IdentityAssertion';
+
+export interface LinkExternalIdentityInputDTO {
+  readonly userId: number;
+  readonly sessionAal: number; // AAL2+ obrigatório (AF-007)
+  readonly assertion: IdentityAssertion;
+}
+
+export interface LinkExternalIdentityOutputDTO {
+  readonly success: boolean;
+  readonly provider: string;
+  readonly subjectId: string;
+  readonly linkedAt: Date;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/RefreshTokenDTO.ts`
+```typescript
+export interface RefreshTokenDTO {
+  refreshToken: string;
+}
+
+export interface RefreshTokenResult {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/RegisterAccountDTO.ts`
+```typescript
+export interface RegisterAccountInputDTO {
+  readonly email: string;
+  readonly password: string;
+  readonly displayName?: string;
+  readonly username?: string;
+}
+
+export interface RegisterAccountOutputDTO {
+  readonly userId: number;
+  readonly email: string;
+  readonly status: string;
+  readonly createdAt: Date;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/RequestPasswordResetDTO.ts`
+```typescript
+export interface RequestPasswordResetDTO {
+  email: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/SetupTotpDTO.ts`
+```typescript
+export interface SetupTotpDTO {
+  transactionId: string;
+  encryptionKey: string;
+}
+
+export interface SetupTotpResult {
+  secret: string;
+  otpauthUrl: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/UnlinkExternalIdentityDTO.ts`
+```typescript
+export interface UnlinkExternalIdentityInputDTO {
+  readonly userId: number;
+  readonly sessionAal: number;
+  readonly provider: string;
+  readonly subjectId: string;
+}
+
+export interface UnlinkExternalIdentityOutputDTO {
+  readonly success: boolean;
+  readonly unlinkedAt: Date;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/VerifyPasskeyIdentityDTO.ts`
+```typescript
+import type { AuthenticationResponseJSON } from '@simplewebauthn/types';
+
+export interface VerifyPasskeyIdentityInputDTO {
+  readonly challengeId: string;
+  readonly responseJSON: AuthenticationResponseJSON;
+  readonly expectedOrigin: string;
+  readonly expectedRPID: string;
+}
+
+export interface VerifyPasskeyIdentityOutputDTO {
+  readonly userId: number;
+  readonly credentialId: string;
+  readonly bindingType: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/VerifyWalletIdentityDTO.ts`
+```typescript
+export interface VerifyWalletIdentityInputDTO {
+  readonly challengeId: string;
+  readonly message: string;
+  readonly signature: string;
+  readonly expectedDomain?: string;
+}
+
+export interface VerifyWalletIdentityOutputDTO {
+  readonly userId: number;
+  readonly address: string;
+  readonly chainId: number;
+  readonly bindingType: string;
+}
+
+```
+
+---
+
+### `src/application/dto/IdentityAssertion.ts`
+```typescript
+/**
+ * DTO Canônico de Afirmação de Identidade Externa (Discriminated Union).
+ * Garante em tempo de compilação que provedores e mecanismos não sofram combinações inválidas.
+ */
+export type IdentityAssertion =
+  | {
+      readonly type: 'oauth';
+      readonly provider: 'google' | 'github' | 'discord' | 'apple';
+      readonly subjectId: string;
+      readonly emailSnapshot?: string;
+      readonly verifiedAt: Date;
+    }
+  | {
+      readonly type: 'web3_wallet';
+      readonly provider: 'evm';
+      readonly subjectId: string; // Endereço EVM normalizado em minúsculas
+      readonly networkId: number;
+      readonly verifiedAt: Date;
+    }
+  | {
+      readonly type: 'passkey';
+      readonly provider: 'webauthn';
+      readonly subjectId: string; // Passkey Credential ID
+      readonly verifiedAt: Date;
+    }
+  | {
+      readonly type: 'ssi_did';
+      readonly provider: 'polygonid';
+      readonly subjectId: string; // W3C DID string
+      readonly verifiedAt: Date;
+    };
+
+```
+
+---
+
+### `src/application/dto/IdentityResolutionResult.ts`
+```typescript
+/**
+ * DTO Canônico do Resultado de Resolução de Identidade.
+ */
+export type IdentityResolutionResult =
+  | {
+      readonly status: 'resolved';
+      readonly userId: number;
+      readonly bindingType: 'oauth' | 'web3_wallet' | 'passkey' | 'ssi_did';
+      readonly provider: 'google' | 'github' | 'discord' | 'apple' | 'evm' | 'webauthn' | 'polygonid';
+    }
+  | {
+      readonly status: 'not_linked';
+      readonly code: 'IDENTITY_NOT_LINKED';
+      readonly message: string;
+    };
+
+```
+
+---
+
+### `src/domains/identity/entities/AuthenticationChallenge.ts`
+```typescript
+import { AuthContext } from './AuthenticationTransaction';
+
+export interface AuthenticationChallengeProps {
+  id: string;
+  transactionId?: string | null;
+  userId?: number | null;
+  challengeHash: string;
+  challengeType: string;
+  context: AuthContext;
+  usedAt?: Date | null;
+  createdAt: Date;
+  expiresAt: Date;
+}
+
+export class AuthenticationChallenge {
+  private props: AuthenticationChallengeProps;
+
+  constructor(props: AuthenticationChallengeProps) {
+    this.props = { ...props };
+  }
+
+  get id(): string { return this.props.id; }
+  get transactionId(): string | null { return this.props.transactionId || null; }
+  get challengeHash(): string { return this.props.challengeHash; }
+  get context(): AuthContext { return this.props.context; }
+
+  public isExpired(now: Date = new Date()): boolean {
+    return now.getTime() > this.props.expiresAt.getTime();
+  }
+
+  public isUsed(): boolean {
+    return this.props.usedAt !== null && this.props.usedAt !== undefined;
+  }
+
+  public isValid(): boolean {
+    return !this.isExpired() && !this.isUsed();
+  }
+
+  public markAsUsed(): void {
+    if (this.isUsed()) {
+      throw new Error('Challenge already used (Replay detected)');
+    }
+    this.props.usedAt = new Date();
+  }
+
+  public toPersistence(): any {
+    return { ...this.props };
+  }
+
+  public static fromPersistence(record: any): AuthenticationChallenge {
+    return new AuthenticationChallenge({
+      id: record.id,
+      transactionId: record.transactionId,
+      userId: record.userId,
+      challengeHash: record.challengeHash,
+      challengeType: record.challengeType,
+      context: record.context as AuthContext,
+      usedAt: record.usedAt ? new Date(record.usedAt) : null,
+      createdAt: new Date(record.createdAt),
+      expiresAt: new Date(record.expiresAt),
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/entities/AuthenticationTransaction.ts`
+```typescript
+export type AuthTransactionStatus =
+  | 'created'
+  | 'awaiting_factor'
+  | 'verified'
+  | 'completed'
+  | 'expired'
+  | 'cancelled'
+  | 'failed'
+  | 'replayed'
+  | 'locked';
+
+export type AuthContext =
+  | 'login'
+  | 'mfa_setup'
+  | 'mfa_change'
+  | 'credential_link'
+  | 'credential_unlink'
+  | 'sensitive_operation'
+  | 'password_change'
+  | 'recovery';
+
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export interface AuthenticationTransactionProps {
+  id: string;
+  userId: number;
+  status: AuthTransactionStatus;
+  initialAal: number;
+  currentAal: number;
+  targetAal: number;
+  method: string;
+  challengeHash?: string | null;
+  context: AuthContext;
+  ip?: string | null;
+  userAgent?: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+  completedAt?: Date | null;
+  consumedAt?: Date | null;
+  failureCount: number;
+  authEpochAtStart: number;
+  lastAuthenticatedAt?: Date | null;
+  assuranceMethod?: string | null;
+  riskLevel: RiskLevel;
+}
+
+export class AuthenticationTransaction {
+  private props: AuthenticationTransactionProps;
+
+  constructor(props: AuthenticationTransactionProps) {
+    this.props = { ...props };
+  }
+
+  get id(): string { return this.props.id; }
+  get userId(): number { return this.props.userId; }
+  get status(): AuthTransactionStatus { return this.props.status; }
+  get targetAal(): number { return this.props.targetAal; }
+  get currentAal(): number { return this.props.currentAal; }
+  get context(): AuthContext { return this.props.context; }
+  get authEpochAtStart(): number { return this.props.authEpochAtStart; }
+  get expiresAt(): Date { return this.props.expiresAt; }
+  get failureCount(): number { return this.props.failureCount; }
+
+  public isExpired(now: Date = new Date()): boolean {
+    return now.getTime() > this.props.expiresAt.getTime();
+  }
+
+  public isValid(currentAuthEpoch: number): boolean {
+    if (this.isExpired()) return false;
+    if (this.props.status === 'expired' || this.props.status === 'cancelled' || this.props.status === 'failed' || this.props.status === 'locked' || this.props.status === 'completed') {
+      return false;
+    }
+    // AuthEpoch must match the one at the start of the transaction
+    if (currentAuthEpoch !== this.props.authEpochAtStart) {
+      return false;
+    }
+    return true;
+  }
+
+  public recordFailedAttempt(maxAttempts: number = 5): void {
+    this.props.failureCount += 1;
+    if (this.props.failureCount >= maxAttempts) {
+      this.props.status = 'locked';
+    }
+  }
+
+  public verifyFactor(method: string, newAal: number): void {
+    if (this.props.status !== 'created' && this.props.status !== 'awaiting_factor') {
+      throw new Error(`Cannot verify factor in status ${this.props.status}`);
+    }
+    this.props.method = method;
+    this.props.currentAal = newAal;
+    this.props.status = 'verified';
+    this.props.assuranceMethod = method;
+  }
+
+  public complete(): void {
+    if (this.props.status !== 'verified') {
+      throw new Error('Transaction must be verified before completion');
+    }
+    this.props.status = 'completed';
+    this.props.completedAt = new Date();
+  }
+
+  public toPersistence(): any {
+    return { ...this.props };
+  }
+
+  public static fromPersistence(record: any): AuthenticationTransaction {
+    return new AuthenticationTransaction({
+      id: record.id,
+      userId: record.userId,
+      status: record.status,
+      initialAal: record.initialAal,
+      currentAal: record.currentAal,
+      targetAal: record.targetAal,
+      method: record.method,
+      challengeHash: record.challengeHash,
+      context: record.context,
+      ip: record.ip,
+      userAgent: record.userAgent,
+      createdAt: new Date(record.createdAt),
+      expiresAt: new Date(record.expiresAt),
+      completedAt: record.completedAt ? new Date(record.completedAt) : null,
+      consumedAt: record.consumedAt ? new Date(record.consumedAt) : null,
+      failureCount: record.failureCount,
+      authEpochAtStart: record.authEpochAtStart,
+      lastAuthenticatedAt: record.lastAuthenticatedAt ? new Date(record.lastAuthenticatedAt) : null,
+      assuranceMethod: record.assuranceMethod,
+      riskLevel: record.riskLevel,
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/entities/Session.ts`
+```typescript
+export interface SessionProps {
+  id: string;
+  userId: number;
+  jti: string;
+  ip: string | null;
+  userAgent: string | null;
+  refreshTokenHash: string;
+  aal: number;
+  authEpoch: number;
+  lastActivityAt: Date | null;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  revocationReason: string | null;
+}
+
+export class Session {
+  private props: SessionProps;
+
+  private constructor(props: SessionProps) {
+    this.props = { ...props };
+  }
+
+  public static fromPersistence(props: SessionProps): Session {
+    return new Session(props);
+  }
+
+  get id(): string {
+    return this.props.id;
+  }
+
+  get userId(): number {
+    return this.props.userId;
+  }
+
+  get authEpoch(): number {
+    return this.props.authEpoch;
+  }
+  
+  get aal(): number {
+    return this.props.aal;
+  }
+
+  get createdAt(): Date {
+    return this.props.createdAt;
+  }
+
+  get lastActivityAt(): Date | null {
+    return this.props.lastActivityAt;
+  }
+
+  get isRevoked(): boolean {
+    return this.props.revokedAt !== null;
+  }
+
+  get isExpired(): boolean {
+    return new Date() > this.props.expiresAt;
+  }
+
+  public isValid(): boolean {
+    return !this.isRevoked && !this.isExpired;
+  }
+
+  public matchesUserEpoch(userAuthEpoch: number): boolean {
+    return this.props.authEpoch === userAuthEpoch;
+  }
+
+  public revoke(reason: string): void {
+    if (!this.isRevoked) {
+      this.props.revokedAt = new Date();
+      this.props.revocationReason = reason;
+    }
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/entities/User.ts`
+```typescript
+export type UserStatus = 'active' | 'suspended' | 'pending_setup' | 'locked';
+export type SubjectType = 'human' | 'service' | 'system' | 'citizen';
+
+export interface UserProps {
+  id: number;
+  publicId?: string | null;
+  email?: string | null;
+  emailNormalized?: string | null;
+  status: UserStatus;
+  subjectType: SubjectType;
+  failedLoginAttempts: number;
+  lastFailedLoginAt: Date | null;
+  authEpoch: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export class User {
+  public static readonly MAX_FAILED_ATTEMPTS = 5;
+
+  private props: UserProps;
+
+  constructor(props: UserProps) {
+    this.props = { ...props };
+  }
+
+  get id(): number {
+    return this.props.id;
+  }
+
+  get email(): string | null {
+    return this.props.email || null;
+  }
+
+  get status(): UserStatus {
+    return this.props.status;
+  }
+
+  get subjectType(): SubjectType {
+    return this.props.subjectType;
+  }
+
+  get failedLoginAttempts(): number {
+    return this.props.failedLoginAttempts;
+  }
+
+  get authEpoch(): number {
+    return this.props.authEpoch;
+  }
+
+  public canAuthenticate(): boolean {
+    if (this.props.status === 'suspended' || this.props.status === 'locked' || this.props.status === 'pending_setup') {
+      return false;
+    }
+    
+    // Only humans (or citizens, depending on legacy naming) can authenticate via standard login forms
+    if (this.props.subjectType !== 'human' && this.props.subjectType !== 'citizen') {
+      return false;
+    }
+    
+    return true;
+  }
+
+  public registerFailedLogin(): void {
+    this.props.failedLoginAttempts += 1;
+    this.props.lastFailedLoginAt = new Date();
+    
+    if (this.props.failedLoginAttempts >= User.MAX_FAILED_ATTEMPTS) {
+      this.props.status = 'locked';
+    }
+  }
+
+  public resetFailedLogins(): void {
+    this.props.failedLoginAttempts = 0;
+    this.props.lastFailedLoginAt = null;
+    
+    if (this.props.status === 'locked') {
+      this.props.status = 'active';
+    }
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/errors/AntiLockoutViolationError.ts`
+```typescript
+export class AntiLockoutViolationError extends Error {
+  readonly code = 'ANTI_LOCKOUT_VIOLATION';
+
+  constructor(message: string = 'Não é possível remover a última credencial de autenticação da conta.') {
+    super(message);
+    this.name = 'AntiLockoutViolationError';
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/errors/IdentityNotLinkedError.ts`
+```typescript
+export class IdentityNotLinkedError extends Error {
+  readonly code = 'IDENTITY_NOT_LINKED';
+
+  constructor(message: string = 'Identidade não vinculada a nenhuma conta existente.') {
+    super(message);
+    this.name = 'IdentityNotLinkedError';
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/services/CanonicalIdentityResolver.ts`
+```typescript
+import { IIdentityResolverPort } from '../../../application/ports/output/IIdentityResolverPort';
+import { IdentityAssertion } from '../../../application/dto/IdentityAssertion';
+import { IdentityResolutionResult } from '../../../application/dto/IdentityResolutionResult';
+
+export class CanonicalIdentityResolver implements IIdentityResolverPort {
+  constructor(private readonly resolverAdapter: IIdentityResolverPort) {}
+
+  async resolve(assertion: IdentityAssertion): Promise<IdentityResolutionResult> {
+    return this.resolverAdapter.resolve(assertion);
+  }
+}
+
+```
+
+---
+
+### `src/domains/ssi/use-cases/CreateDidUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { DidIdentityRecord } from '../../../application/ports/output/ISsiRepository';
+
+export interface CreateDidDTO {
+  userId: number;
+  method?: 'key' | 'ion' | 'polygonid' | 'web' | 'cheqd' | 'pkh';
+}
+
+export class CreateDidUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: CreateDidDTO): Promise<Result<DidIdentityRecord>> {
+    if (!dto.userId) {
+      return Result.fail<DidIdentityRecord>('ID do usuário é obrigatório para geração de DID.');
+    }
+
+    const method = dto.method || 'key';
+
+    return await this.uow.execute(async (factory) => {
+      const ssiRepo = factory.getSsiRepository();
+      const existingRes = await ssiRepo.findDidByUserId(dto.userId);
+
+      if (existingRes.isSuccess) {
+        return existingRes;
+      }
+
+      const id = crypto.randomUUID();
+      const did = `did:${method}:${id}`;
+      const record: DidIdentityRecord = {
+        id,
+        userId: dto.userId,
+        did,
+        method,
+        controller: did,
+        status: 'active',
+        version: 1,
+      };
+
+      return await ssiRepo.saveDid(record);
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/ssi/use-cases/IssueVerifiableCredentialUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { VerifiableCredentialRecord } from '../../../application/ports/output/ISsiRepository';
+
+export interface IssueVerifiableCredentialDTO {
+  holderUserId: number;
+  credentialType: 'CivicIdentityCredential' | 'MembershipCredential' | 'KycVerificationCredential' | 'ReputationCredential';
+  claims: Record<string, any>;
+  expirationDays?: number;
+}
+
+export class IssueVerifiableCredentialUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: IssueVerifiableCredentialDTO): Promise<Result<VerifiableCredentialRecord>> {
+    if (!dto.holderUserId || !dto.credentialType) {
+      return Result.fail<VerifiableCredentialRecord>('HolderUserId e credentialType são obrigatórios.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const ssiRepo = factory.getSsiRepository();
+      const didRes = await ssiRepo.findDidByUserId(dto.holderUserId);
+
+      if (didRes.isFailure) {
+        return Result.fail<VerifiableCredentialRecord>('DID não encontrado para o cidadão informado. Crie o DID primeiro.');
+      }
+
+      const subjectDid = didRes.getValue().did;
+      const issuerDid = 'did:key:asppibra-dao-root-issuer';
+      const id = crypto.randomUUID();
+      const claimsStr = JSON.stringify(dto.claims);
+
+      const encoder = new TextEncoder();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(id + subjectDid + claimsStr));
+      const credentialHash = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      const issuanceDate = new Date();
+      const expirationDate = dto.expirationDays
+        ? new Date(Date.now() + dto.expirationDays * 86400 * 1000)
+        : null;
+
+      const record: VerifiableCredentialRecord = {
+        id,
+        holderUserId: dto.holderUserId,
+        issuerDid,
+        subjectDid,
+        credentialType: dto.credentialType,
+        credentialHash,
+        encryptedClaims: `enc_${claimsStr}`, // Simulação KMS / Vault
+        proofType: 'Ed25519Signature2020',
+        status: 'active',
+        issuanceDate,
+        expirationDate,
+        version: 1,
+      };
+
+      return await ssiRepo.saveVerifiableCredential(record);
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/ssi/use-cases/RevokeCredentialUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+
+export interface RevokeCredentialDTO {
+  credentialId: string;
+}
+
+export class RevokeCredentialUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: RevokeCredentialDTO): Promise<Result<void>> {
+    if (!dto.credentialId) {
+      return Result.fail<void>('CredentialId é obrigatório para revogação.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const ssiRepo = factory.getSsiRepository();
+      const vcRes = await ssiRepo.findVerifiableCredentialById(dto.credentialId);
+
+      if (vcRes.isFailure) {
+        return Result.fail<void>('Credencial Verificável não encontrada.');
+      }
+
+      return await ssiRepo.revokeVerifiableCredential(dto.credentialId);
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/finance/use-cases/GetTreasuryBalanceUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { AccountBalanceRecord } from '../../../application/ports/output/IFinanceRepository';
+
+export class GetTreasuryBalanceUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(): Promise<Result<AccountBalanceRecord[]>> {
+    return await this.uow.execute(async (factory) => {
+      const financeRepo = factory.getFinanceRepository();
+      return await financeRepo.getTreasuryBalance();
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/finance/use-cases/RecordTreasuryTransactionUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { FinancialTransactionRecord } from '../../../application/ports/output/IFinanceRepository';
+
+export interface RecordTreasuryTransactionDTO {
+  userId?: number | null;
+  type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
+  category?: string;
+  description: string;
+  amountBaseUnits: string;
+  assetId?: number;
+}
+
+export class RecordTreasuryTransactionUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: RecordTreasuryTransactionDTO): Promise<Result<FinancialTransactionRecord>> {
+    if (!dto.description || !dto.amountBaseUnits) {
+      return Result.fail<FinancialTransactionRecord>('Descrição e valor são obrigatórios.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const financeRepo = factory.getFinanceRepository();
+      return await financeRepo.createTransaction({
+        userId: dto.userId || null,
+        type: dto.type,
+        category: dto.category || 'operational',
+        description: dto.description,
+        amountBaseUnits: dto.amountBaseUnits,
+        assetId: dto.assetId || 1, // 1 = BRL / Native asset
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/interfaces/http/routes/identity/identity.routes.ts`
+```typescript
+import { Hono } from 'hono';
+import { Bindings, Variables } from '../../../../types/bindings';
+import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
+import { PBKDF2PasswordHasher } from '../../../../infrastructure/security/crypto/PBKDF2PasswordHasher';
+import { JwtService } from '../../../../infrastructure/security/jwt/JwtService';
+import { SecurityAuditAdapter } from '../../../../infrastructure/security/SecurityAuditAdapter';
+import { DrizzleSessionRepository } from '../../../../infrastructure/repositories/DrizzleSessionRepository';
+import { DrizzleIdentityResolverAdapter } from '../../../../infrastructure/repositories/DrizzleIdentityResolverAdapter';
+import { Eip4361Verifier } from '../../../../infrastructure/security/crypto/Eip4361Verifier';
+
+import { AuthenticateAccountUseCase } from '../../../../application/use-cases/identity/AuthenticateAccountUseCase';
+import { RegisterAccountUseCase } from '../../../../application/use-cases/identity/RegisterAccountUseCase';
+import { VerifyWalletIdentityUseCase } from '../../../../application/use-cases/identity/VerifyWalletIdentityUseCase';
+import { VerifyPasskeyIdentityUseCase } from '../../../../application/use-cases/identity/VerifyPasskeyIdentityUseCase';
+import { LinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/LinkExternalIdentityUseCase';
+import { UnlinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/UnlinkExternalIdentityUseCase';
+
+import { SetupTotpUseCase } from '../../../../application/use-cases/identity/SetupTotpUseCase';
+import { AuthenticateTotpUseCase } from '../../../../application/use-cases/identity/AuthenticateTotpUseCase';
+import { RequestPasswordResetUseCase } from '../../../../application/use-cases/identity/RequestPasswordResetUseCase';
+import { ConfirmPasswordResetUseCase } from '../../../../application/use-cases/identity/ConfirmPasswordResetUseCase';
+import { RefreshTokenUseCase } from '../../../../application/use-cases/identity/RefreshTokenUseCase';
+
+import { IdentityController } from '../../controllers/identity/IdentityController';
+import { ExternalIdentityController } from '../../controllers/identity/ExternalIdentityController';
+import { AuthAuxiliaryController } from '../../controllers/identity/AuthAuxiliaryController';
+import { rateLimit } from '../../middlewares/rate_limit';
+import { sessionGuard } from '../../middlewares/session_guard';
+
+type AppType = {
+  Bindings: Bindings;
+  Variables: Variables;
+};
+
+const identityRouter = new Hono<AppType>();
+
+// ----------------------------------------------------------------------------
+// 1. CANONICAL REGISTER & LOGIN (LOCAL, WEB3 SIWE, PASSKEY, LOGOUT)
+// ----------------------------------------------------------------------------
+identityRouter.post('/logout', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const jwtService = new JwtService();
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.logout(c);
+});
+
+identityRouter.post('/logout-all', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const jwtService = new JwtService();
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.logoutAll(c);
+});
+
+identityRouter.post(
+  '/register',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const hasher = new PBKDF2PasswordHasher();
+    const jwtService = new JwtService();
+    const auditAdapter = new SecurityAuditAdapter(db);
+    const sessionRepo = new DrizzleSessionRepository(db);
+
+    const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
+    const registerUseCase = new RegisterAccountUseCase(uow, hasher, auditAdapter);
+    const controller = new IdentityController(authenticateUseCase, jwtService, sessionRepo, registerUseCase);
+
+    return controller.register(c);
+  }
+);
+
+identityRouter.post(
+  '/login/local',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const hasher = new PBKDF2PasswordHasher();
+    const jwtService = new JwtService();
+    const auditAdapter = new SecurityAuditAdapter(db);
+    const sessionRepo = new DrizzleSessionRepository(db);
+
+    const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
+    const controller = new IdentityController(authenticateUseCase, jwtService, sessionRepo);
+
+    return controller.loginLocal(c);
+  }
+);
+
+identityRouter.post('/web3/challenge', async (c) => {
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.generateWeb3Challenge(c);
+});
+
+identityRouter.post(
+  '/login/web3',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const hasher = new PBKDF2PasswordHasher();
+    const jwtService = new JwtService();
+    const auditAdapter = new SecurityAuditAdapter(db);
+    const sessionRepo = new DrizzleSessionRepository(db);
+    const resolverAdapter = new DrizzleIdentityResolverAdapter(db);
+    const siweVerifier = new Eip4361Verifier();
+
+    const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
+    const verifyWalletUseCase = new VerifyWalletIdentityUseCase(siweVerifier, resolverAdapter, auditAdapter);
+    const controller = new IdentityController(
+      authenticateUseCase,
+      jwtService,
+      sessionRepo,
+      undefined,
+      verifyWalletUseCase
+    );
+
+    return controller.loginWeb3(c);
+  }
+);
+
+identityRouter.post('/login/passkey/challenge', async (c) => {
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.generatePasskeyChallenge(c);
+});
+
+identityRouter.post('/registration/passkey/challenge', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.generatePasskeyChallenge(c);
+});
+
+identityRouter.post(
+  '/login/passkey',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const jwtService = new JwtService();
+    const sessionRepo = new DrizzleSessionRepository(db);
+    const resolverAdapter = new DrizzleIdentityResolverAdapter(db);
+    const auditAdapter = new SecurityAuditAdapter(db);
+
+    const verifyPasskeyUseCase = new VerifyPasskeyIdentityUseCase(uow, resolverAdapter, auditAdapter);
+    const controller = new IdentityController(
+      undefined as any,
+      jwtService,
+      sessionRepo,
+      undefined,
+      undefined,
+      verifyPasskeyUseCase
+    );
+
+    return controller.loginPasskey(c);
+  }
+);
+
+// ----------------------------------------------------------------------------
+// 2. AUXILIARY AUTHENTICATION (2FA / TOTP, PASSWORD RESET, REFRESH SESSION)
+// ----------------------------------------------------------------------------
+identityRouter.post('/totp/setup', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const setupTotpUseCase = new SetupTotpUseCase(uow);
+  const controller = new AuthAuxiliaryController(setupTotpUseCase);
+  return controller.setupTotp(c);
+});
+
+identityRouter.post('/totp/verify', rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+  const authTotpUseCase = new AuthenticateTotpUseCase(uow, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, authTotpUseCase);
+  return controller.verifyTotp(c);
+});
+
+identityRouter.post('/password-reset/request', rateLimit({ windowMs: 60 * 1000, maxRequests: 3 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+  const requestResetUseCase = new RequestPasswordResetUseCase(uow, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, undefined, requestResetUseCase);
+  return controller.requestPasswordReset(c);
+});
+
+identityRouter.post('/password-reset/confirm', rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const hasher = new PBKDF2PasswordHasher();
+  const auditAdapter = new SecurityAuditAdapter(db);
+  const confirmResetUseCase = new ConfirmPasswordResetUseCase(uow, hasher, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, undefined, undefined, confirmResetUseCase);
+  return controller.confirmPasswordReset(c);
+});
+
+identityRouter.post('/refresh', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const jwtService = new JwtService();
+  const auditAdapter = new SecurityAuditAdapter(db);
+
+  const secret = c.env?.JWT_SECRET;
+  if (!secret) {
+    return c.json({ success: false, message: 'Erro de configuração do servidor (JWT_SECRET ausente).' }, 500);
+  }
+
+  const tokenService = {
+    generateAccessToken: async (payload: { userId: number; email: string; authEpoch: number }) => {
+      return await jwtService.sign(
+        { sub: String(payload.userId), userId: payload.userId, email: payload.email, authEpoch: payload.authEpoch },
+        secret
+      );
+    },
+    generateRefreshToken: async () => crypto.randomUUID(),
+  };
+
+  const refreshUseCase = new RefreshTokenUseCase(uow, tokenService, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, undefined, undefined, undefined, refreshUseCase);
+  return controller.refreshSession(c);
+});
+
+// ----------------------------------------------------------------------------
+// 3. EXTERNAL IDENTITIES (GET, POST /link, POST /unlink)
+// ----------------------------------------------------------------------------
+identityRouter.get('/external-identities', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+
+  const linkUseCase = new LinkExternalIdentityUseCase(uow, auditAdapter);
+  const unlinkUseCase = new UnlinkExternalIdentityUseCase(uow, auditAdapter);
+  const controller = new ExternalIdentityController(linkUseCase, unlinkUseCase);
+
+  return controller.list(c);
+});
+
+identityRouter.post('/external-identities/link', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+
+  const linkUseCase = new LinkExternalIdentityUseCase(uow, auditAdapter);
+  const unlinkUseCase = new UnlinkExternalIdentityUseCase(uow, auditAdapter);
+  const controller = new ExternalIdentityController(linkUseCase, unlinkUseCase);
+
+  return controller.link(c);
+});
+
+identityRouter.post('/external-identities/unlink', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+
+  const linkUseCase = new LinkExternalIdentityUseCase(uow, auditAdapter);
+  const unlinkUseCase = new UnlinkExternalIdentityUseCase(uow, auditAdapter);
+  const controller = new ExternalIdentityController(linkUseCase, unlinkUseCase);
+
+  return controller.unlink(c);
+});
+
+export default identityRouter;
+
+
+```
+
+---
+
+### `src/interfaces/http/routes/ssi/ssi.routes.ts`
+```typescript
+import { Hono } from 'hono';
+import { Bindings, Variables } from '../../../../types/bindings';
+import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
+import { DrizzleSsiRepository } from '../../../../infrastructure/repositories/DrizzleSsiRepository';
+import { CreateDidUseCase } from '../../../../domains/ssi/use-cases/CreateDidUseCase';
+import { IssueVerifiableCredentialUseCase } from '../../../../domains/ssi/use-cases/IssueVerifiableCredentialUseCase';
+import { RevokeCredentialUseCase } from '../../../../domains/ssi/use-cases/RevokeCredentialUseCase';
+import { SsiController } from '../../controllers/ssi/SsiController';
+import { sessionGuard } from '../../middlewares/session_guard';
+
+type AppType = {
+  Bindings: Bindings;
+  Variables: Variables;
+};
+
+export const ssiRouter = new Hono<AppType>();
+
+ssiRouter.use('*', sessionGuard);
+
+ssiRouter.post('/did', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const ssiRepo = new DrizzleSsiRepository(db);
+  const createDidUseCase = new CreateDidUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+
+  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
+  return controller.createDid(c);
+});
+
+ssiRouter.post('/credentials/issue', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const ssiRepo = new DrizzleSsiRepository(db);
+  const createDidUseCase = new CreateDidUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+
+  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
+  return controller.issueCredential(c);
+});
+
+ssiRouter.post('/credentials/revoke', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const ssiRepo = new DrizzleSsiRepository(db);
+  const createDidUseCase = new CreateDidUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+
+  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
+  return controller.revokeCredential(c);
+});
+
+ssiRouter.get('/credentials', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const ssiRepo = new DrizzleSsiRepository(db);
+  const createDidUseCase = new CreateDidUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+
+  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
+  return controller.listMyCredentials(c);
+});
+
+```
+
+---
+
+### `src/interfaces/http/routes/finance/finance.routes.ts`
+```typescript
+import { Hono } from 'hono';
+import { Bindings, Variables } from '../../../../types/bindings';
+import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
+import { DrizzleFinanceRepository } from '../../../../infrastructure/repositories/DrizzleFinanceRepository';
+import { GetTreasuryBalanceUseCase } from '../../../../domains/finance/use-cases/GetTreasuryBalanceUseCase';
+import { RecordTreasuryTransactionUseCase } from '../../../../domains/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { FinanceController } from '../../controllers/finance/FinanceController';
+import { sessionGuard } from '../../middlewares/session_guard';
+
+type AppType = {
+  Bindings: Bindings;
+  Variables: Variables;
+};
+
+export const financeRouter = new Hono<AppType>();
+
+financeRouter.use('*', sessionGuard);
+
+financeRouter.get('/treasury/balance', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const financeRepo = new DrizzleFinanceRepository(db);
+  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
+
+  const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+  return controller.getBalance(c);
+});
+
+financeRouter.post('/transactions', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const financeRepo = new DrizzleFinanceRepository(db);
+  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
+
+  const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+  return controller.recordTransaction(c);
+});
+
+financeRouter.get('/transactions', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const financeRepo = new DrizzleFinanceRepository(db);
+  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
+
+  const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+  return controller.listTransactions(c);
+});
+
+```
+
+---
+
+### `src/interfaces/http/controllers/identity/AuthAuxiliaryController.ts`
+```typescript
+import { Context } from 'hono';
+import { SetupTotpUseCase } from '../../../../application/use-cases/identity/SetupTotpUseCase';
+import { AuthenticateTotpUseCase } from '../../../../application/use-cases/identity/AuthenticateTotpUseCase';
+import { RequestPasswordResetUseCase } from '../../../../application/use-cases/identity/RequestPasswordResetUseCase';
+import { ConfirmPasswordResetUseCase } from '../../../../application/use-cases/identity/ConfirmPasswordResetUseCase';
+import { RefreshTokenUseCase } from '../../../../application/use-cases/identity/RefreshTokenUseCase';
+import { error, success } from '../../helpers/response';
+
+export class AuthAuxiliaryController {
+  constructor(
+    private readonly setupTotpUseCase?: SetupTotpUseCase,
+    private readonly authenticateTotpUseCase?: AuthenticateTotpUseCase,
+    private readonly requestPasswordResetUseCase?: RequestPasswordResetUseCase,
+    private readonly confirmPasswordResetUseCase?: ConfirmPasswordResetUseCase,
+    private readonly refreshTokenUseCase?: RefreshTokenUseCase
+  ) {}
+
+  async setupTotp(c: Context): Promise<Response> {
+    try {
+      if (!this.setupTotpUseCase) {
+        return error(c, 'Caso de uso SetupTotp não configurado', null, 500);
+      }
+      const body = await c.req.json().catch(() => ({}));
+      const transactionId = body?.transactionId;
+
+      const encryptionKey = c.env.TOTP_ENCRYPTION_KEY;
+      if (!encryptionKey) {
+        return error(c, 'Configuração do servidor incorreta (TOTP_ENCRYPTION_KEY ausente)', null, 500);
+      }
+
+      if (!transactionId) {
+        return error(c, 'ID da transação é obrigatório', null, 400);
+      }
+
+      const result = await this.setupTotpUseCase.execute({ transactionId, encryptionKey });
+      if (result.isFailure) {
+        return error(c, result.error || 'Erro ao configurar 2FA', null, 400);
+      }
+
+      return success(c, 'Configuração 2FA gerada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao configurar 2FA', message, 500);
+    }
+  }
+
+  async verifyTotp(c: Context): Promise<Response> {
+    try {
+      if (!this.authenticateTotpUseCase) {
+        return error(c, 'Caso de uso AuthenticateTotp não configurado', null, 500);
+      }
+      const body = await c.req.json().catch(() => ({}));
+      const { code, transactionId } = body || {};
+
+      const encryptionKey = c.env.TOTP_ENCRYPTION_KEY;
+      if (!encryptionKey) {
+        return error(c, 'Configuração do servidor incorreta (TOTP_ENCRYPTION_KEY ausente)', null, 500);
+      }
+
+      if (!transactionId || !code) {
+        return error(c, 'ID da transação e código 2FA são obrigatórios', null, 400);
+      }
+
+      const result = await this.authenticateTotpUseCase.execute({ transactionId, code, encryptionKey });
+      if (result.isFailure) {
+        return error(c, result.error || 'Código 2FA inválido', null, 400);
+      }
+
+      return success(c, 'Autenticação 2FA validada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao validar 2FA', message, 500);
+    }
+  }
+
+  async requestPasswordReset(c: Context): Promise<Response> {
+    try {
+      if (!this.requestPasswordResetUseCase) {
+        return error(c, 'Caso de uso RequestPasswordReset não configurado', null, 500);
+      }
+      const body = await c.req.json().catch(() => ({}));
+      const { email } = body || {};
+
+      if (!email) {
+        return error(c, 'E-mail é obrigatório para redefinição de senha', null, 400);
+      }
+
+      const result = await this.requestPasswordResetUseCase.execute({ email });
+      if (result.isFailure) {
+        return error(c, result.error || 'Erro ao solicitar redefinição de senha', null, 400);
+      }
+
+      // Canal protegido: Envia direto para a fila usando Cloudflare Queues
+      // Garantindo que o rawToken NUNCA vá para o banco (Outbox) em texto plano.
+      const payload = result.getValue();
+      if (payload?.rawToken && c.env.EMAIL_PIPELINE_QUEUE) {
+        const rawToken = payload.rawToken;
+        
+        // HKDF to derive a specific encryption key from JWT_SECRET
+        const enc = new TextEncoder();
+        const baseKey = await crypto.subtle.importKey(
+          'raw',
+          enc.encode(c.env.JWT_SECRET),
+          { name: 'HKDF' },
+          false,
+          ['deriveKey']
+        );
+        const encryptionKey = await crypto.subtle.deriveKey(
+          {
+            name: 'HKDF',
+            hash: 'SHA-256',
+            salt: enc.encode('asppibra-queue-salt'),
+            info: enc.encode('email-queue-encryption')
+          },
+          baseKey,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['encrypt']
+        );
+        
+        // Encrypt rawToken using AES-GCM
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const aad = enc.encode('password-reset-v1');
+        const ciphertextBuffer = await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv, additionalData: aad },
+          encryptionKey,
+          enc.encode(rawToken)
+        );
+        
+        const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
+        const ciphertextHex = Array.from(new Uint8Array(ciphertextBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        const envelope = {
+          version: 1,
+          alg: 'A256GCM',
+          kid: 'email-v1',
+          iv: ivHex,
+          ciphertext: ciphertextHex,
+          aad: 'password-reset-v1'
+        };
+        
+        await c.env.EMAIL_PIPELINE_QUEUE.send({
+          type: 'password_reset',
+          email,
+          tokenEnvelope: envelope,
+          timestamp: Date.now()
+        });
+      }
+
+      return success(c, 'Se o e-mail estiver cadastrado, as instruções de redefinição foram enviadas com sucesso.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao solicitar redefinição de senha', message, 500);
+    }
+  }
+
+  async confirmPasswordReset(c: Context): Promise<Response> {
+    try {
+      if (!this.confirmPasswordResetUseCase) {
+        return error(c, 'Caso de uso ConfirmPasswordReset não configurado', null, 500);
+      }
+      const body = await c.req.json().catch(() => ({}));
+      const { token, newPassword } = body || {};
+
+      if (!token || !newPassword) {
+        return error(c, 'Token e nova senha são obrigatórios', null, 400);
+      }
+
+      const result = await this.confirmPasswordResetUseCase.execute({ token, newPassword });
+      if (result.isFailure) {
+        return error(c, result.error || 'Erro ao confirmar redefinição de senha', null, 400);
+      }
+
+      return success(c, 'Senha redefinida com sucesso. Todas as sessões anteriores foram encerradas.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao confirmar redefinição de senha', message, 500);
+    }
+  }
+
+  async refreshSession(c: Context): Promise<Response> {
+    try {
+      if (!this.refreshTokenUseCase) {
+        return error(c, 'Caso de uso RefreshToken não configurado', null, 500);
+      }
+      const body = await c.req.json().catch(() => ({}));
+      const { refreshToken } = body || {};
+
+      if (!refreshToken) {
+        return error(c, 'Refresh token é obrigatório', null, 400);
+      }
+
+      const result = await this.refreshTokenUseCase.execute({ refreshToken });
+      if (result.isFailure) {
+        return error(c, result.error || 'Sessão ou refresh token inválido', null, 401);
+      }
+
+      return success(c, 'Sessão renovada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao renovar sessão', message, 500);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/interfaces/http/controllers/identity/ExternalIdentityController.ts`
+```typescript
+import { Context } from 'hono';
+import { LinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/LinkExternalIdentityUseCase';
+import { UnlinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/UnlinkExternalIdentityUseCase';
+import { error, success } from '../../helpers/response';
+
+export interface IExternalIdentityQueryPort {
+  listUserIdentities(userId: number): Promise<{ oauth: any[]; wallets: any[] }>;
+}
+
+export class ExternalIdentityController {
+  constructor(
+    private readonly linkUseCase: LinkExternalIdentityUseCase,
+    private readonly unlinkUseCase: UnlinkExternalIdentityUseCase,
+    private readonly queryPort?: IExternalIdentityQueryPort
+  ) {}
+
+  async list(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId');
+
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      if (!this.queryPort) {
+        return success(c, 'Identidades externas carregadas com sucesso', { oauth: [], wallets: [] });
+      }
+
+      const data = await this.queryPort.listUserIdentities(userId);
+      return success(c, 'Identidades externas carregadas com sucesso', data);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao listar identidades externas', message, 500);
+    }
+  }
+
+  async link(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId');
+      const sessionAal = c.get('sessionAal') || 1;
+
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { type, challengeId, signature, message } = body || {};
+
+      if (!type) {
+        return error(c, 'Tipo de identidade não especificado.', null, 400);
+      }
+
+      let assertion: any = null;
+
+      if (type === 'web3_wallet') {
+        if (!challengeId || !signature || !message) {
+          return error(c, 'Challenge ID, Mensagem e Assinatura são obrigatórios para vincular carteira.', null, 400);
+        }
+
+        // 1. Instanciar VerifyWalletIdentityUseCase para validar a assinatura e o challenge
+        const db = c.get('db');
+        const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+        const { Eip4361Verifier } = await import('../../../../infrastructure/security/crypto/Eip4361Verifier');
+        const { DrizzleIdentityResolverAdapter } = await import('../../../../infrastructure/repositories/DrizzleIdentityResolverAdapter');
+        const { VerifyWalletIdentityUseCase } = await import('../../../../application/use-cases/identity/VerifyWalletIdentityUseCase');
+
+        const uow = new DrizzleUnitOfWork(db);
+        const siweVerifier = new Eip4361Verifier();
+        const resolver = new DrizzleIdentityResolverAdapter(db);
+        const verifyWallet = new VerifyWalletIdentityUseCase(uow, siweVerifier, resolver);
+
+        const domain = c.req.header('host') || 'w3.app';
+
+        const verifyResult = await verifyWallet.execute({
+          challengeId,
+          message,
+          signature,
+          expectedDomain: domain,
+        });
+
+        if (verifyResult.isFailure) {
+          return error(c, verifyResult.error || 'Falha ao verificar assinatura da carteira.', null, 400);
+        }
+
+        assertion = {
+          type: 'web3_wallet',
+          provider: 'evm',
+          subjectId: verifyResult.getValue().address,
+          networkId: verifyResult.getValue().chainId,
+          verifiedAt: new Date()
+        };
+      } else if (type === 'passkey') {
+        const { responseJSON } = body || {};
+
+        if (!challengeId || !responseJSON) {
+          return error(c, 'Challenge ID e resposta WebAuthn são obrigatórios para vincular passkey.', null, 400);
+        }
+
+        const db = c.get('db');
+        const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+        const { VerifyPasskeyRegistrationUseCase } = await import('../../../../application/use-cases/identity/VerifyPasskeyRegistrationUseCase');
+
+        const uow = new DrizzleUnitOfWork(db);
+        const verifyRegistration = new VerifyPasskeyRegistrationUseCase(uow);
+
+        const origin = c.req.header('origin') || `https://${c.req.header('host')}`;
+        const rpID = c.req.header('host') || 'w3.app';
+
+        const verifyResult = await verifyRegistration.execute({
+          challengeId,
+          responseJSON,
+          expectedOrigin: origin,
+          expectedRPID: rpID,
+        });
+
+        if (verifyResult.isFailure) {
+          return error(c, verifyResult.error || 'Falha ao verificar registro da Passkey.', null, 400);
+        }
+
+        assertion = {
+          type: 'passkey',
+          provider: 'webauthn',
+          subjectId: verifyResult.getValue().authenticatorId,
+          verifiedAt: new Date()
+        };
+      } else {
+        return error(c, 'Tipo de identidade não suportado para vinculação no momento.', null, 400);
+      }
+
+      const result = await this.linkUseCase.execute({
+        userId,
+        sessionAal,
+        assertion,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Erro ao vincular identidade', null, 400);
+      }
+
+      return success(c, 'Identidade vinculada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao vincular identidade externa', message, 500);
+    }
+  }
+
+  async unlink(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId');
+      const sessionAal = c.get('sessionAal') || 1;
+
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { provider, subjectId } = body || {};
+
+      if (!provider || !subjectId) {
+        return error(c, 'Provider e subjectId são obrigatórios para desvínculo.', null, 400);
+      }
+
+      const result = await this.unlinkUseCase.execute({
+        userId,
+        sessionAal,
+        provider,
+        subjectId,
+      });
+
+      if (result.isFailure) {
+        const errStr = result.error || 'Erro ao desvincular identidade';
+        const statusCode = errStr.includes('última credencial') ? 409 : 400;
+        return error(c, errStr, null, statusCode);
+      }
+
+      return success(c, 'Identidade desvinculada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao desvincular identidade externa', message, 500);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/interfaces/http/controllers/identity/IdentityController.ts`
+```typescript
+import { Context } from 'hono';
+import { AuthenticateAccountUseCase } from '../../../../application/use-cases/identity/AuthenticateAccountUseCase';
+import { RegisterAccountUseCase } from '../../../../application/use-cases/identity/RegisterAccountUseCase';
+import { VerifyWalletIdentityUseCase } from '../../../../application/use-cases/identity/VerifyWalletIdentityUseCase';
+import { VerifyPasskeyIdentityUseCase } from '../../../../application/use-cases/identity/VerifyPasskeyIdentityUseCase';
+import { IJwtService } from '../../../../application/ports/security/IJwtService';
+import { ISessionRepository } from '../../../../application/ports/output/ISessionRepository';
+import { error, success } from '../../helpers/response';
+
+export class IdentityController {
+  constructor(
+    private readonly authenticateUseCase: AuthenticateAccountUseCase,
+    private readonly jwtService: IJwtService,
+    private readonly sessionRepo: ISessionRepository,
+    private readonly registerUseCase?: RegisterAccountUseCase,
+    private readonly verifyWalletUseCase?: VerifyWalletIdentityUseCase,
+    private readonly verifyPasskeyUseCase?: VerifyPasskeyIdentityUseCase
+  ) {}
+
+  async register(c: Context): Promise<Response> {
+    try {
+      if (!this.registerUseCase) {
+        return error(c, 'Caso de uso de registro não configurado.', null, 500);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { email, password, displayName, username } = body || {};
+
+      if (!email || !password) {
+        return error(c, 'Email e senha são obrigatórios para cadastro.', null, 400);
+      }
+
+      const result = await this.registerUseCase.execute({ email, password, displayName, username });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha ao registrar conta', null, 400);
+      }
+
+      const registeredUser = result.getValue();
+      return success(c, 'Conta registrada com sucesso', registeredUser, 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao processar cadastro de conta', message, 500);
+    }
+  }
+
+  async loginLocal(c: Context): Promise<Response> {
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const { email, password } = body || {};
+
+      if (!email || !password) {
+        return error(c, 'Email e senha são obrigatórios', null, 400);
+      }
+
+      const result = await this.authenticateUseCase.execute({ email, password });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Credenciais inválidas', null, 401);
+      }
+
+      const user = result.getValue();
+      return this.issueSessionResponse(c, user.userId, user.email, user.publicId, user.status, 1, new Date(), 'password');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno no servidor ao processar autenticação', message, 500);
+    }
+  }
+
+  async generateWeb3Challenge(c: Context): Promise<Response> {
+    try {
+      const db = c.get('db');
+      const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+      const { GenerateWeb3ChallengeUseCase } = await import('../../../../application/use-cases/identity/GenerateWeb3ChallengeUseCase');
+      
+      const uow = new DrizzleUnitOfWork(db);
+      const generateWeb3ChallengeUseCase = new GenerateWeb3ChallengeUseCase(uow);
+
+      const body = await c.req.json().catch(() => ({}));
+      const { transactionId, context } = body || {};
+
+      const domain = c.req.header('host') || 'w3.app'; // Em prod, pegar env.EXPECTED_DOMAIN
+
+      const result = await generateWeb3ChallengeUseCase.execute({
+        context: context || 'login',
+        transactionId,
+        domain,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha ao gerar challenge Web3', null, 400);
+      }
+
+      return success(c, 'Challenge gerado com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao gerar challenge Web3', message, 500);
+    }
+  }
+
+  async loginWeb3(c: Context): Promise<Response> {
+    try {
+      if (!this.verifyWalletUseCase) {
+        return error(c, 'Autenticação Web3 não configurada.', null, 500);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { challengeId, message, signature } = body || {};
+
+      if (!challengeId || !message || !signature) {
+        return error(c, 'Challenge ID, Mensagem SIWE e assinatura são obrigatórios.', null, 400);
+      }
+
+      // SECURITY ENFORCEMENT: Domain must come from strict server environment, not client headers.
+      const domain = c.env.SIWE_ALLOWED_DOMAIN || 'w3.app';
+
+      const result = await this.verifyWalletUseCase.execute({
+        challengeId,
+        message,
+        signature,
+        expectedDomain: domain,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha na autenticação Web3', null, 401);
+      }
+
+      const walletAuth = result.getValue();
+      return this.issueSessionResponse(c, walletAuth.userId, `wallet_${walletAuth.address}@w3.app`, null, 'active', 2, new Date(), 'web3_wallet');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao processar autenticação Web3 SIWE', message, 500);
+    }
+  }
+
+  async generatePasskeyChallenge(c: Context): Promise<Response> {
+    try {
+      const db = c.get('db');
+      const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+      const { GeneratePasskeyChallengeUseCase } = await import('../../../../application/use-cases/identity/GeneratePasskeyChallengeUseCase');
+      
+      const uow = new DrizzleUnitOfWork(db);
+      const generatePasskeyChallengeUseCase = new GeneratePasskeyChallengeUseCase(uow);
+
+      const body = await c.req.json().catch(() => ({}));
+      let { transactionId, context, userId, userName } = body || {};
+
+      if (context === 'credential_link') {
+        const sessionUser = c.get('user');
+        if (!sessionUser || !sessionUser.userId) {
+          return error(c, 'Sessão ativa necessária para registrar Passkey', null, 401);
+        }
+        userId = sessionUser.userId;
+      }
+
+      const rpID = c.env.WEBAUTHN_RP_ID || 'w3.app';
+      const rpName = 'ASPPIBRA W3';
+
+      const result = await generatePasskeyChallengeUseCase.execute({
+        context: context || 'login',
+        transactionId,
+        userId,
+        userName,
+        rpID,
+        rpName,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha ao gerar challenge Passkey', null, 400);
+      }
+
+      return success(c, 'Challenge gerado com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao gerar challenge Passkey', message, 500);
+    }
+  }
+
+  async loginPasskey(c: Context): Promise<Response> {
+    try {
+      if (!this.verifyPasskeyUseCase) {
+        return error(c, 'Autenticação Passkey não configurada.', null, 500);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { challengeId, responseJSON } = body || {};
+
+      if (!challengeId || !responseJSON) {
+        return error(c, 'Challenge ID e resposta WebAuthn são obrigatórios.', null, 400);
+      }
+
+      // SECURITY ENFORCEMENT: Origin and RP_ID must come from strict server environment, not client headers.
+      const origin = c.env.WEBAUTHN_ALLOWED_ORIGINS || 'https://w3.app';
+      const rpID = c.env.WEBAUTHN_RP_ID || 'w3.app';
+
+      const result = await this.verifyPasskeyUseCase.execute({
+        challengeId,
+        responseJSON,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha na autenticação Passkey', null, 401);
+      }
+
+      const passkeyAuth = result.getValue();
+      return this.issueSessionResponse(c, passkeyAuth.userId, `passkey_${passkeyAuth.credentialId}@w3.app`, null, 'active', 2, new Date(), 'passkey');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao processar autenticação Passkey', message, 500);
+    }
+  }
+
+  public async issueSessionResponse(
+    c: Context,
+    userId: number,
+    email: string,
+    publicId: string | null,
+    status: string,
+    effectiveAal: number,
+    authTime: Date,
+    authMethod: string
+  ): Promise<Response> {
+    const jwtSecret = c.env?.JWT_SECRET;
+    if (!jwtSecret) {
+      return error(c, 'Erro de configuração do servidor (JWT_SECRET ausente).', null, 500);
+    }
+
+    const sessionId = crypto.randomUUID();
+    const familyId = crypto.randomUUID();
+    const jti = crypto.randomUUID();
+    
+    // Generate secure refresh token
+    const rawRefreshToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+    const refreshTokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawRefreshToken));
+    const refreshTokenHash = Array.from(new Uint8Array(refreshTokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+    const userAgent = c.req.header('user-agent') || 'unknown';
+    
+    const now = new Date();
+    const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 3600 * 1000); // 30 days for refresh session
+    const jwtExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 mins for access token
+
+    // Create the token family first
+    if (this.sessionRepo.createRefreshTokenFamily) {
+      await this.sessionRepo.createRefreshTokenFamily({
+        id: familyId,
+        userId,
+        createdAt: now,
+      });
+    }
+
+    // Get actual user authEpoch instead of hardcoding 1
+    const db = c.get('db');
+    const userRepo = new (await import('../../../../infrastructure/repositories/DrizzleUserRepositoryAdapter')).DrizzleUserRepositoryAdapter(db);
+    const user = await userRepo.findById(userId);
+    const userAuthEpoch = user?.authEpoch || 1;
+
+    await this.sessionRepo.createSession({
+      id: sessionId,
+      userId,
+      jti,
+      ip,
+      userAgent,
+      familyId,
+      refreshTokenHash,
+      aal: effectiveAal,
+      authEpoch: userAuthEpoch,
+      createdAt: now,
+      expiresAt: sessionExpiresAt,
+      lastAuthenticatedAt: authTime,
+    } as any); // Type cast due to possible interface mismatches, since we added lastAuthenticatedAt
+
+    const token = await this.jwtService.sign(
+      {
+        sub: publicId || String(userId),
+        userId,
+        email,
+        publicId,
+        sid: sessionId,
+        jti,
+        aal: effectiveAal,
+        auth_time: Math.floor(authTime.getTime() / 1000),
+        exp: Math.floor(jwtExpiresAt.getTime() / 1000), 
+      },
+      jwtSecret
+    );
+
+    return success(c, 'Autenticação realizada com sucesso', {
+      token, // Access Token
+      refreshToken: rawRefreshToken, // Send back for the client to store securely
+      expiresIn: 15 * 60, // 15 minutes
+      user: {
+        id: userId,
+        email,
+        publicId,
+        status,
+      },
+      session: {
+        id: sessionId,
+        aal: effectiveAal,
+        auth_time: authTime.toISOString(),
+        expiresAt: sessionExpiresAt,
+      },
+    });
+  }
+
+  async logout(c: Context): Promise<Response> {
+    try {
+      const sessionId = c.get('sessionId') || c.get('user')?.sessionId;
+      if (!sessionId) {
+        return error(c, 'Sessão ativa não encontrada', null, 400);
+      }
+
+      await this.sessionRepo.revokeSession(sessionId);
+      return success(c, 'Sessão encerrada com sucesso');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao realizar logout', message, 500);
+    }
+  }
+
+  async logoutAll(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      await this.sessionRepo.revokeAllUserSessions(userId);
+      return success(c, 'Todas as sessões ativas foram encerradas com sucesso.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao realizar logout global', message, 500);
+    }
+  }
+}
+
+
+```
+
+---
+
+### `src/interfaces/http/controllers/ssi/SsiController.ts`
+```typescript
+import { Context } from 'hono';
+import { CreateDidUseCase } from '../../../../domains/ssi/use-cases/CreateDidUseCase';
+import { IssueVerifiableCredentialUseCase } from '../../../../domains/ssi/use-cases/IssueVerifiableCredentialUseCase';
+import { RevokeCredentialUseCase } from '../../../../domains/ssi/use-cases/RevokeCredentialUseCase';
+import { ISsiRepository } from '../../../../application/ports/output/ISsiRepository';
+
+export class SsiController {
+  constructor(
+    private readonly createDidUseCase: CreateDidUseCase,
+    private readonly issueVcUseCase: IssueVerifiableCredentialUseCase,
+    private readonly revokeVcUseCase: RevokeCredentialUseCase,
+    private readonly ssiRepo: ISsiRepository
+  ) {}
+
+  async createDid(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return c.json({ success: false, message: 'Usuário não autenticado' }, 401);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const result = await this.createDidUseCase.execute({
+        userId,
+        method: body.method || 'key',
+      });
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, message: 'DID gerado com sucesso', data: result.getValue() }, 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async issueCredential(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return c.json({ success: false, message: 'Usuário não autenticado' }, 401);
+      }
+
+      const body = await c.req.json();
+      const result = await this.issueVcUseCase.execute({
+        holderUserId: userId,
+        credentialType: body.credentialType || 'CivicIdentityCredential',
+        claims: body.claims || {},
+        expirationDays: body.expirationDays || 365,
+      });
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, message: 'Credencial Verificável emitida com sucesso', data: result.getValue() }, 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async revokeCredential(c: Context): Promise<Response> {
+    try {
+      const body = await c.req.json();
+      const result = await this.revokeVcUseCase.execute({ credentialId: body.credentialId });
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, message: 'Credencial Verificável revogada com sucesso' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async listMyCredentials(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return c.json({ success: false, message: 'Usuário não autenticado' }, 401);
+      }
+
+      const didRes = await this.ssiRepo.findDidByUserId(userId);
+      const vcsRes = await this.ssiRepo.listVerifiableCredentialsByUserId(userId);
+
+      return c.json({
+        success: true,
+        data: {
+          did: didRes.isSuccess ? didRes.getValue() : null,
+          credentials: vcsRes.isSuccess ? vcsRes.getValue() : [],
+        },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/interfaces/http/controllers/finance/FinanceController.ts`
+```typescript
+import { Context } from 'hono';
+import { GetTreasuryBalanceUseCase } from '../../../../domains/finance/use-cases/GetTreasuryBalanceUseCase';
+import { RecordTreasuryTransactionUseCase } from '../../../../domains/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { IFinanceRepository } from '../../../../application/ports/output/IFinanceRepository';
+
+export class FinanceController {
+  constructor(
+    private readonly getTreasuryBalanceUseCase: GetTreasuryBalanceUseCase,
+    private readonly recordTxUseCase: RecordTreasuryTransactionUseCase,
+    private readonly financeRepo: IFinanceRepository
+  ) {}
+
+  async getBalance(c: Context): Promise<Response> {
+    try {
+      const result = await this.getTreasuryBalanceUseCase.execute();
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, data: result.getValue() });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async recordTransaction(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      const body = await c.req.json();
+
+      const result = await this.recordTxUseCase.execute({
+        userId,
+        type: body.type || 'deposit',
+        category: body.category,
+        description: body.description,
+        amountBaseUnits: body.amountBaseUnits,
+        assetId: body.assetId,
+      });
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, message: 'Transação registrada com sucesso', data: result.getValue() }, 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async listTransactions(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      const result = await this.financeRepo.listTransactions(userId);
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, data: result.getValue() });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/interfaces/http/middlewares/auth_signature.ts`
+```typescript
+import { Context, Next } from 'hono';
+import { CryptoCore } from '../../../infrastructure/security/crypto/crypto';
+import { JwtService } from '../../../infrastructure/security/jwt/JwtService';
+import { DrizzleUnitOfWork } from '../../../infrastructure/repositories/DrizzleUnitOfWork';
+import { CitizenRecord } from '../../../application/ports/output/ICivilIdentityRepository';
+import { Result } from '../../../shared/kernel/Result';
+
+const jwtService = new JwtService();
+
+function requireJwtSecret(c: Context): string {
+  const secret = c.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET não configurado no ambiente.');
+  }
+  return secret;
+}
+
+/**
+ * Zero-Trust Signature Middleware
+ * Requer o header X-Identity-Signature: Base64(Ed25519_Sign(Timestamp + Body))
+ * E o header X-Identity-DID: did:dao:asppibra:<username>
+ *
+ * FALLBACK: Aceita JWT Bearer token se os headers de Zero-Trust estiverem ausentes.
+ */
+export const authSignature = async (c: Context, next: Next) => {
+  const path = c.req.path;
+  if (path.includes('/webhook')) {
+    return next();
+  }
+
+  const signature = c.req.header('X-Identity-Signature');
+  const did = c.req.header('X-Identity-DID');
+  const timestamp = c.req.header('X-Identity-Timestamp');
+
+  const hasAnyZeroTrustHeader = signature || did || timestamp;
+
+  // --- FALLBACK JWT (Para sessões padrão de Cidadão via Web2/Social) ---
+  if (!signature || !did || !timestamp) {
+    if (hasAnyZeroTrustHeader) {
+      return c.json({ success: false, message: 'Missing Zero-Trust credentials.' }, 401);
+    }
+
+    const authHeader = c.req.header('Authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+    if (token) {
+      let secret: string;
+      try {
+        secret = requireJwtSecret(c);
+      } catch (err) {
+        console.error('[SECURITY] JWT_SECRET ausente — recusando autenticação.', err);
+        return c.json({ success: false, message: 'Erro de configuração do servidor.' }, 500);
+      }
+
+      try {
+        const payload = await jwtService.verify(token, secret);
+
+        // Correção 1.2: sid é OBRIGATÓRIO. Sem sid, não há como validar a sessão
+        // no D1 (revogação/expiração), então o token NUNCA é aceito silenciosamente.
+        if (!payload.sid) {
+          return c.json({ success: false, message: 'Invalid session payload (sid missing).' }, 401);
+        }
+
+        const db = c.get('db');
+        if (!db) {
+          return c.json({ success: false, message: 'Database context unavailable.' }, 500);
+        }
+
+        const { DrizzleSessionRepository } = await import('../../../infrastructure/repositories/DrizzleSessionRepository');
+        const sessionRepo = new DrizzleSessionRepository(db);
+        const sessionRecord = await sessionRepo.getSessionById(payload.sid);
+
+        const { Session } = await import('../../../domains/identity/entities/Session');
+        const session = sessionRecord ? Session.fromPersistence(sessionRecord as any) : null;
+
+        if (!session || !session.isValid()) {
+          return c.json({ success: false, message: 'Session revoked, inactive or expired.' }, 401);
+        }
+
+        c.set('user', {
+          userId: session.userId,
+          sessionId: session.id,
+          sessionAal: session.aal,
+          role: payload.role || 'citizen',
+        });
+
+        return await next();
+      } catch (err) {
+        return c.json({ success: false, message: 'Invalid or expired session token.' }, 401);
+      }
+    }
+    return c.json({ success: false, message: 'Authentication required (Zero-Trust or JWT).' }, 401);
+  }
+
+  // 1. Verificar expiração do Timestamp (máximo 5 min)
+  const now = Date.now();
+  if (Math.abs(now - parseInt(timestamp)) > 300000) {
+    return c.json({ success: false, message: 'Request signature expired.' }, 401);
+  }
+
+  // 2. Buscar Cidadão via UnitOfWork & Repositório Canônico
+  const username = did.split(':').pop();
+  if (!username) {
+    return c.json({ success: false, message: 'Invalid DID format.' }, 401);
+  }
+
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+
+  const repoResult = await uow.execute<CitizenRecord | null>(async (factory) => {
+    const citizenRepo = factory.getCivilIdentityRepository();
+    const record = await citizenRepo.findByDid(did);
+    return Result.ok<CitizenRecord | null>(record);
+  });
+
+  const activeCitizen: CitizenRecord | null = repoResult.isSuccess ? repoResult.getValue() : null;
+
+  if (!activeCitizen || activeCitizen.status === 'revoked' || activeCitizen.civilStatus === 'revoked') {
+    return c.json({ success: false, message: 'Citizen not found or revoked.' }, 401);
+  }
+
+  // 3. Verificar Assinatura
+  if (!activeCitizen.publicKey) {
+    return c.json({ success: false, message: 'Public key missing for citizen.' }, 401);
+  }
+
+  const publicKey = Uint8Array.from(JSON.parse(activeCitizen.publicKey));
+  const bodyText = await c.req.raw.clone().text();
+  const msg = new TextEncoder().encode(timestamp + bodyText);
+
+  try {
+    const isValid = await CryptoCore.verify(
+      Uint8Array.from(
+        atob(signature)
+          .split('')
+          .map((char) => char.charCodeAt(0))
+      ),
+      msg,
+      publicKey
+    );
+
+    if (!isValid) {
+      return c.json({ success: false, message: 'Invalid Zero-Trust signature.' }, 401);
+    }
+
+    if (!activeCitizen.userId) {
+      return c.json({ success: false, message: 'Citizen is not linked to a User account.' }, 403);
+    }
+
+    c.set('user', { userId: activeCitizen.userId, role: 'citizen' });
+  } catch (e) {
+    return c.json({ success: false, message: 'Signature verification failed.' }, 401);
+  }
+
+  await next();
+};
+
+```
+
+---
+
+### `src/interfaces/http/middlewares/correlation_id.ts`
+```typescript
+import { MiddlewareHandler } from 'hono';
+
+export const correlationIdMiddleware = (): MiddlewareHandler => {
+  return async (c, next) => {
+    let correlationId = c.req.header('X-Correlation-ID');
+    if (!correlationId) {
+      correlationId = crypto.randomUUID();
+    }
+    c.set('correlationId', correlationId);
+    c.header('X-Correlation-ID', correlationId);
+    await next();
+  };
+};
+
+```
+
+---
+
+### `src/interfaces/http/middlewares/rate_limit.ts`
+```typescript
+import { Context, Next } from 'hono';
+
+interface RateLimitConfig {
+  windowMs: number;
+  maxRequests: number;
+}
+
+// In-memory store (funciona por isolate no Cloudflare Workers)
+// Para uma solução distribuída real, usar KV, Durable Objects ou Redis.
+const store = new Map<string, { count: number; resetTime: number }>();
+
+export interface RateLimiterProvider {
+  isAllowed(
+    ip: string,
+    config: RateLimitConfig
+  ): Promise<{ allowed: boolean; retryAfter?: number }>;
+}
+
+class MemoryProvider implements RateLimiterProvider {
+  private store = new Map<string, { count: number; resetTime: number }>();
+
+  async isAllowed(ip: string, config: RateLimitConfig) {
+    const now = Date.now();
+    let record = this.store.get(ip);
+
+    if (!record || record.resetTime < now) {
+      record = { count: 1, resetTime: now + config.windowMs };
+      this.store.set(ip, record);
+    } else {
+      record.count++;
+    }
+
+    if (record.count > config.maxRequests) {
+      return { allowed: false, retryAfter: Math.ceil((record.resetTime - now) / 1000) };
+    }
+    return { allowed: true };
+  }
+}
+
+class KVProvider implements RateLimiterProvider {
+  constructor(private kv: any) {}
+
+  async isAllowed(ip: string, config: RateLimitConfig) {
+    const now = Date.now();
+    const key = `ratelimit:${ip}`;
+
+    const data = await this.kv.get(key, 'json');
+    let record = data ? (data as { count: number; resetTime: number }) : null;
+
+    if (!record || record.resetTime < now) {
+      record = { count: 1, resetTime: now + config.windowMs };
+    } else {
+      record.count++;
+    }
+
+    if (record.count > config.maxRequests) {
+      return { allowed: false, retryAfter: Math.ceil((record.resetTime - now) / 1000) };
+    }
+
+    // TTL for KV
+    await this.kv.put(key, JSON.stringify(record), {
+      expirationTtl: Math.ceil(config.windowMs / 1000),
+    });
+    return { allowed: true };
+  }
+}
+
+const memoryProvider = new MemoryProvider();
+
+export const rateLimit = (config: RateLimitConfig) => {
+  return async (c: Context, next: Next) => {
+    const ip = c.req.header('cf-connecting-ip') || 'unknown';
+
+    // Use KV if available, else Memory
+    const provider = c.env.KV_CACHE ? new KVProvider(c.env.KV_CACHE) : memoryProvider;
+
+    const result = await provider.isAllowed(ip, config);
+
+    if (!result.allowed) {
+      return c.json(
+        {
+          success: false,
+          message: 'Too Many Requests',
+          retryAfter: result.retryAfter,
+        },
+        429
+      );
+    }
+
+    await next();
+  };
+};
+
+export const idempotency = () => {
+  return async (c: Context, next: Next) => {
+    const idempotencyKey = c.req.header('Idempotency-Key');
+    if (idempotencyKey && c.env.KV_CACHE) {
+      const key = `idempotency:${idempotencyKey}`;
+      const exists = await c.env.KV_CACHE.get(key);
+      if (exists) {
+        return c.json({ success: true, message: 'Request already processed (Idempotency)' }, 200);
+      }
+      await c.env.KV_CACHE.put(key, '1', { expirationTtl: 86400 }); // 24 hours
+    }
+    await next();
+  };
+};
+
+```
+
+---
+
+### `src/interfaces/http/middlewares/rbac.ts`
+```typescript
+import { Context, Next } from 'hono';
+import { error } from '../helpers/response';
+import { eq, and, isNull, sql } from 'drizzle-orm';
+
+/**
+ * verifyRole - Middleware para Role-Based Access Control (RBAC)
+ * Verifica diretamente no banco de dados, ignorando a claim do JWT.
+ * @param allowedRoles Lista de cargos permitidos (ex: ['admin', 'partner'])
+ */
+export const verifyRole = (allowedRoles: string[]) => {
+  return async (c: Context, next: Next) => {
+    try {
+      // GARANTIA FASE 0: RBAC nunca deve rodar sem sessionGuard
+      const sessionUserId = c.get('userId');
+      if (!sessionUserId) {
+        return error(c, 'Erro Interno: Acesso negado. RBAC executado sem sessionGuard anterior.', null, 500);
+      }
+
+      const db = c.get('db');
+      if (!db) {
+        return error(c, 'Erro Interno: Conexão com banco de dados não encontrada.', null, 500);
+      }
+
+      const { userRoles, roles } = await import('../../../../db/authorization/tables');
+
+      // Query para verificar se o usuário possui algum dos roles permitidos
+      const userRolesData = await db
+        .select({ roleKey: roles.key })
+        .from(userRoles)
+        .innerJoin(roles, eq(userRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userRoles.userId, sessionUserId),
+            isNull(userRoles.revokedAt), // A role não deve estar revogada
+            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${new Date().getTime()}`,
+            eq(roles.status, 'active') // A role deve estar ativa no sistema
+          )
+        );
+
+      const userRoleKeys = userRolesData.map((r: any) => r.roleKey);
+      
+      // The system should not grant implicit roles. All roles must be recorded in the DB.
+
+      const hasRole = userRoleKeys.some((role: string) => allowedRoles.includes(role));
+
+      if (!hasRole) {
+        return error(
+          c,
+          `Acesso negado: Você não tem permissão para realizar esta ação. Requerido um dos: [${allowedRoles.join(', ')}]`,
+          null,
+          403
+        );
+      }
+
+      await next();
+    } catch (err: unknown) {
+      console.error('🚨 RBAC Auth Error:', err);
+      return error(c, 'Erro ao verificar permissões de acesso.', null, 500);
+    }
+  };
+};
+
+/**
+ * verifyPermission - Middleware para verificar Permissões Granulares (FASE 4)
+ * Verifica se as roles do usuário concedem a permissão requerida.
+ * @param requiredPermission Permissão granular (ex: 'user.read')
+ */
+export const verifyPermission = (requiredPermission: string) => {
+  return async (c: Context, next: Next) => {
+    try {
+      const sessionUserId = c.get('userId');
+      if (!sessionUserId) {
+        return error(c, 'Erro Interno: Acesso negado. RBAC executado sem sessionGuard anterior.', null, 500);
+      }
+
+      const db = c.get('db');
+      const { userRoles, roles, rolePermissions, permissions } = await import('../../../../db/authorization/tables');
+
+      const userPerms = await db
+        .select({ permKey: permissions.key })
+        .from(userRoles)
+        .innerJoin(roles, eq(userRoles.roleId, roles.id))
+        .innerJoin(rolePermissions, eq(roles.id, rolePermissions.roleId))
+        .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+        .where(
+          and(
+            eq(userRoles.userId, sessionUserId),
+            isNull(userRoles.revokedAt),
+            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${new Date().getTime()}`,
+            eq(roles.status, 'active'),
+            eq(permissions.key, requiredPermission)
+          )
+        )
+        .limit(1);
+
+      if (userPerms.length === 0) {
+        return error(
+          c,
+          `Acesso negado: Permissão '${requiredPermission}' necessária para esta ação.`,
+          null,
+          403
+        );
+      }
+
+      await next();
+    } catch (err: unknown) {
+      console.error('🚨 Permission Auth Error:', err);
+      return error(c, 'Erro ao verificar permissões de acesso.', null, 500);
+    }
+  };
+};
+
+
+```
+
+---
+
+### `src/interfaces/http/middlewares/session_guard.ts`
+```typescript
+import { Context, Next } from 'hono';
+import { JwtService } from '../../../infrastructure/security/jwt/JwtService';
+import { DrizzleSessionRepository } from '../../../infrastructure/repositories/DrizzleSessionRepository';
+import { DrizzleUserRepositoryAdapter } from '../../../infrastructure/repositories/DrizzleUserRepositoryAdapter';
+import { IJwtService } from '../../../application/ports/security/IJwtService';
+
+function resolveJwtService(c: Context): IJwtService {
+  const service = c.get('jwtService') as IJwtService | undefined;
+  if (!service) {
+    throw new Error('IJwtService was not provided in the Hono context (Dependency Injection missing).');
+  }
+  return service;
+}
+
+/**
+ * Stateful Session Guard Middleware
+ * 1. Extrai o Bearer token do header Authorization.
+ * 2. Valida a assinatura criptográfica e as claims temporais do JWT.
+ * 3. Extrai o sid (Session ID) do payload.
+ * 4. Realiza o lookup físico no D1 (user_sessions).
+ * 5. Bloqueia (HTTP 401) se a sessão não existir, estiver revogada ou expirada.
+ * 6. Injeta no contexto do Hono (c.set('user', ...)) o userId, sessionId e sessionAal.
+ */
+export const sessionGuard = async (c: Context, next: Next) => {
+  const authHeader = c.req.header('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+  if (!token) {
+    return c.json({ success: false, message: 'Authentication required (Bearer token missing).' }, 401);
+  }
+
+  const secret = c.env.JWT_SECRET;
+  if (!secret) {
+    console.error('[SECURITY] JWT_SECRET ausente — recusando autenticação.');
+    return c.json({ success: false, message: 'Erro de configuração do servidor.' }, 500);
+  }
+
+  try {
+    const jwtService = resolveJwtService(c);
+    const payload = await jwtService.verify(token, secret);
+
+    if (!payload.sid) {
+      return c.json({ success: false, message: 'Invalid session payload (sid missing).' }, 401);
+    }
+
+    const db = c.get('db');
+    if (!db) {
+      return c.json({ success: false, message: 'Database context unavailable.' }, 500);
+    }
+
+    const sessionRepo = new DrizzleSessionRepository(db);
+    const sessionRecord = await sessionRepo.getSessionById(payload.sid);
+
+    if (!sessionRecord) {
+      return c.json({ success: false, message: 'Session not found.' }, 401);
+    }
+
+    const { Session } = await import('../../../domains/identity/entities/Session');
+    const session = Session.fromPersistence(sessionRecord as any);
+
+    if (!session.isValid()) {
+      return c.json({ success: false, message: session.isRevoked ? 'Session has been revoked.' : 'Session has expired.' }, 401);
+    }
+
+    const userRepo = new DrizzleUserRepositoryAdapter(db);
+    const userRecord = await userRepo.findById(session.userId);
+
+    if (!userRecord) {
+      return c.json({ success: false, message: 'User account not found.' }, 401);
+    }
+
+    const { User } = await import('../../../domains/identity/entities/User');
+    const user = new User(userRecord as any);
+
+    if (!user.canAuthenticate()) {
+      return c.json({ success: false, message: `User account is not eligible for authentication.` }, 403);
+    }
+
+    // AF-008: Validar authEpoch da entidade Session contra o authEpoch atual do usuário (D1 -> D1)
+    if (!session.matchesUserEpoch(user.authEpoch)) {
+      return c.json(
+        {
+          success: false,
+          message: 'Session invalidated due to password reset or security revocation (authEpoch mismatch).',
+        },
+        401
+      );
+    }
+
+    c.set('user', {
+      userId: session.userId,
+      sessionId: session.id,
+      sessionAal: session.aal,
+    });
+    c.set('userId', session.userId);
+    c.set('sessionId', session.id);
+    c.set('sessionAal', session.aal);
+    c.set('lastAuthenticatedAt', session.lastAuthenticatedAt);
+
+    await next();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Token inválido';
+    return c.json({ success: false, message: 'Invalid or expired session token.', error: message }, 401);
+  }
+};
+
+/**
+ * Middleware para impor Nível de Garantia de Autenticação (AAL) e Recent Auth.
+ * Deve ser usado APÓS o sessionGuard na cadeia de middlewares da rota.
+ * 
+ * @param minAal O AAL mínimo necessário (1, 2, ou 3).
+ * @param maxAgeMinutes O tempo máximo permitido desde a autenticação (opcional).
+ */
+export const requireAal = (minAal: number, maxAgeMinutes?: number) => {
+  return async (c: Context, next: Next) => {
+    const sessionAal = c.get('sessionAal') as number | undefined;
+    const lastAuthenticatedAt = c.get('lastAuthenticatedAt') as Date | undefined;
+
+    if (!sessionAal) {
+      return c.json({ success: false, message: 'Authentication level not found in context. sessionGuard is required.' }, 500);
+    }
+
+    if (sessionAal < minAal) {
+      return c.json({ 
+        success: false, 
+        message: 'Insufficient authentication level.', 
+        code: 'AAL_INSUFFICIENT',
+        requiredAal: minAal 
+      }, 403);
+    }
+
+    if (maxAgeMinutes && lastAuthenticatedAt) {
+      const now = new Date();
+      const diffMinutes = (now.getTime() - lastAuthenticatedAt.getTime()) / (1000 * 60);
+      if (diffMinutes > maxAgeMinutes) {
+        return c.json({ 
+          success: false, 
+          message: 'Recent authentication required.', 
+          code: 'RECENT_AUTH_REQUIRED',
+          maxAgeMinutes 
+        }, 403);
+      }
+    }
+
+    await next();
+  };
+};
+
+```
+
+---
+
+## 2. Gaps de Arquitetura Limpa (Missing DDD Components)
+
+Comparando a estrutura presente com o nosso Master Architecture Contract (Clean Architecture rigorosa), identifiquei ausências críticas na segregação das camadas de Domínio e Aplicação:
+
+### 🔴 Módulo Financeiro
+- **Missing Domain Entities:** `src/domains/finance/entities/` está totalmente ausente. Não existem as entidades `LedgerEntry.ts`, `FinancialTransaction.ts`, `FinancialAccount.ts` ou `AccountBalance.ts` que deveriam encapsular as regras de partida dobrada (Double-Entry).
+- **Missing Domain Services:** Falta o `DoubleEntryLedgerService.ts` para garantir que `Debit = Credit` na camada de Domínio, evitando que a infraestrutura cuide dessas regras de negócio vitais.
+- **Missing Application DTOs:** Faltam os DTOs do Financeiro (ex: `TransferFundsDTO.ts`, `GetBalanceDTO.ts`). Hoje, os UseCases misturam as validações com os tipos de repositório.
+
+### 🔴 Módulo SSI (Verifiable Credentials)
+- **Missing Domain Entities:** `src/domains/ssi/entities/` está ausente. Entidades obrigatórias como `VerifiableCredential.ts` (estado de ativação/revogação) e `DIDDocument.ts` (métodos de verificação) deveriam ditar as regras de expiração e validade.
+- **Missing Application DTOs:** Os DTOs de `CreateDidDTO.ts` e `IssueVerifiableCredentialDTO.ts` não estão no diretório de `src/application/dto/ssi/` (na verdade, eles estão misturados nos arquivos de UseCase em `src/domains/ssi/use-cases/`, quebrando a inversão de dependência). O Domain não deve conter DTOs de HTTP/Application.
+
+### 🟡 Módulo Identity
+- A estrutura de Domínio é a mais madura (`Session`, `AuthenticationTransaction`, `User` existem e contêm regras), mas há DTOs globais (`IdentityAssertion.ts` e `IdentityResolutionResult.ts`) soltos na raiz de `src/application/dto/` em vez de ficarem agrupados no contexto correto (e.g., `identity/` ou `core/`).
+
+---
+
+## 3. Auditoria Rigorosa de Segurança (SecOps 10/10)
+
+Esta seção documenta as correções iminentes necessárias para atestar a segurança (grau P0/Crítico) e liberar o uso financeiro do sistema.
+
+### 1. Timing Attacks (Código Morto e Inseguro)
+- **Problema:** Em `src/infrastructure/security/crypto/PBKDF2PasswordHasher.ts`, o método `timingSafeEqual` contém uma bifurcação morta que efetua `a.charCodeAt(i) ^ a.charCodeAt(i)` (resultado sempre zero) quando os tamanhos das strings diferem. Embora retorne `false` rapidamente logo a seguir, é um erro matemático gravíssimo para um arquivo de segurança que pode levar a um vazamento de side-channel se copiado ou alterado no futuro.
+- **Solução:** Substituir a implementação local pelo import oficial `timingSafeEqual` de `src/infrastructure/security/crypto/timing_safe.ts`, que já lida com tamanhos assimétricos corretamente via preenchimento de bytes (`padding`).
+
+### 2. Shadow Accounts & Identidade Canônica (OAuth Leakage)
+- **Problema:** Em `DrizzleIdentityResolverAdapter.ts`, no case `oauth`, o `subjectId` (ID que vem da Google/Github) está sendo checado como se fosse o ID sequencial de `userAuthenticators.id`. Isso causa um "OAuth Leak", que impede logins ou, em piores casos de colisão, vincula erroneamente ao usuário com `id` igual ao identificador externo da rede. Além disso, não há rotas reais para `/oauth/google` em `identity.routes.ts`.
+- **Solução:** O lookup precisa bater contra um identificador OAuth persistido corretamente em `external_identities` (ou tabelas correlatas de web3), assegurando o princípio AF-009. E as rotas que não existem devem ser limpas da documentação para não acusarem Shadow APIs em auditoria de terceiros.
+
+### 3. AAL & Session Assurance (Bypass de Middlewares)
+- **Problema:** Foi identificado um risco real de bypass (Privilege Escalation). O middleware `session_guard.ts` audita a chave `canAuthenticate()` e valida mudanças de `authEpoch` (invalidando tokens de usuários bloqueados ou de resets de senhas passados). Porém, o `auth_signature.ts` (usado muitas vezes como fallback) NÃO verifica essas propriedades AF-008. Se um usuário sofrer lockout mas possuir um JWT assinado válido aceito pelo `auth_signature`, ele continuará transitando pela API impunemente.
+- **Solução:** Unificar as políticas. O `auth_signature.ts` DEVE utilizar o mesmíssimo código de verificação temporal e de status que existe no `sessionGuard`, barrando peremptoriamente epochs desatualizados.
+
+### 4. Anti-Lockout Enforced
+- O sistema apresenta robustez em sua tese (ex: `AntiLockoutViolationError.ts`), porém isso precisa ser atestado e defendido no `UnlinkExternalIdentityUseCase.ts`. Conforme revisto anteriormente, a revogação agora acontece ativamente no banco, mas os testes de E2E precisam bater nessa rota repetidamente com usuários que possuem 1 e 2 métodos de autenticação para provar a inviabilidade da autossabotagem em produção.
+
+---
+
+### Veredito Final
+A fundação de tabelas D1 (Fase 1) e o roteamento Hono (Fase 2) estão consolidados. Para elevar a certificação de 6.5/10 para 10/10, o plano agora é refatorar os bugs críticos, preencher o vácuo de Domain Entities no Financeiro/SSI, e arrancar pelas raízes as inconsistências dos algoritmos de segurança (`PBKDF2PasswordHasher` e `auth_signature`).
+
+
+
+# Auditoria Estrutural e de Segurança (Identity, SSI e Finance)
+
+Conforme solicitado, atuei como Arquiteto Sênior e SecOps para realizar um levantamento exaustivo e rigoroso das camadas referentes aos módulos de **Credenciais** (Identity/Auth e SSI) e **Financeiro**. Abaixo, apresento a árvore de arquivos físicos (snapshot atual), a identificação dos gaps no DDD e a auditoria de segurança crítica com base nos princípios AF-001 a AF-014 e nas Golden Rules.
+
+---
+
+## 1. Mapeamento de Arquivos e Código Fonte (Snapshot Real)
+
+Baseado nos diretórios exigidos, o projeto reflete exatamente a seguinte estrutura no sistema de arquivos:
+
+---
+
+### `src/db/authentication/relations.ts`
+```typescript
+import { relations } from 'drizzle-orm';
+import {
+  userAuthenticators,
+  passwordCredentials,
+  webauthnCredentials,
+  totpCredentials,
+  walletAuthenticators,
+  recoverySets,
+  recoveryCredentials,
+  userSessions,
+  passwordResets,
+  authChallenges,
+} from './tables';
+import { users } from '../user/tables';
+import { securityEvents } from '../security/tables';
+
+/**
+ * ============================================================================
+ * AUTHENTICATION DOMAIN RELATIONS
+ * ============================================================================
+ * ARCHITECTURAL NOTE:
+ * Navigation from users to authentication entities is intentionally one-directional
+ * (child → parent only), per Section 05 boundary isolation matrix.
+ * Direct queries on authentication tables should be executed with { with: { user: true } }
+ * instead of querying bidirectionally from users.
+ * ============================================================================
+ */
+export const userAuthenticatorsRelations = relations(userAuthenticators, ({ one, many }) => ({
+  user: one(users, {
+    fields: [userAuthenticators.userId],
+    references: [users.id],
+    relationName: 'authenticatorOwner',
+  }),
+  revokedByUser: one(users, {
+    fields: [userAuthenticators.revokedBy],
+    references: [users.id],
+    relationName: 'revokedAuthenticators',
+  }),
+
+  passwordCredential: one(passwordCredentials),
+  webauthnCredential: one(webauthnCredentials),
+  totpCredential: one(totpCredentials),
+  walletAuthenticator: one(walletAuthenticators),
+
+  recoverySet: one(recoverySets),
+
+  securityEvents: many(securityEvents),
+}));
+
+/**
+ * ============================================================================
+ * CREDENTIALS
+ * ============================================================================
+ */
+export const passwordCredentialsRelations = relations(passwordCredentials, ({ one }) => ({
+  authenticator: one(userAuthenticators, {
+    fields: [passwordCredentials.authenticatorId],
+    references: [userAuthenticators.id],
+  }),
+}));
+
+export const webauthnCredentialsRelations = relations(webauthnCredentials, ({ one }) => ({
+  authenticator: one(userAuthenticators, {
+    fields: [webauthnCredentials.authenticatorId],
+    references: [userAuthenticators.id],
+  }),
+}));
+
+export const totpCredentialsRelations = relations(totpCredentials, ({ one }) => ({
+  authenticator: one(userAuthenticators, {
+    fields: [totpCredentials.authenticatorId],
+    references: [userAuthenticators.id],
+  }),
+}));
+
+/**
+ * ============================================================================
+ * RECOVERY
+ * ============================================================================
+ */
+export const recoverySetsRelations = relations(recoverySets, ({ one, many }) => ({
+  authenticator: one(userAuthenticators, {
+    fields: [recoverySets.authenticatorId],
+    references: [userAuthenticators.id],
+  }),
+  credentials: many(recoveryCredentials),
+}));
+
+export const recoveryCredentialsRelations = relations(recoveryCredentials, ({ one }) => ({
+  recoverySet: one(recoverySets, {
+    fields: [recoveryCredentials.recoverySetId],
+    references: [recoverySets.id],
+  }),
+}));
+
+/**
+ * ============================================================================
+ * WALLET
+ * ============================================================================
+ */
+export const walletAuthenticatorsRelations = relations(walletAuthenticators, ({ one }) => ({
+  authenticator: one(userAuthenticators, {
+    fields: [walletAuthenticators.authenticatorId],
+    references: [userAuthenticators.id],
+  }),
+  // Navigation to web3.wallets removed intentionally (Cross-Domain
+  // Dependency Matrix — authentication MUST NOT depend on web3).
+  // Resolve via application layer: IWeb3Repository.findById(walletId).
+}));
+
+/**
+ * ============================================================================
+ * SESSION
+ * ============================================================================
+ */
+export const userSessionsRelations = relations(userSessions, ({ one }) => ({
+  user: one(users, { fields: [userSessions.userId], references: [users.id] }),
+}));
+
+/**
+ * ============================================================================
+ * PASSWORD RESET
+ * ============================================================================
+ */
+export const passwordResetsRelations = relations(passwordResets, ({ one }) => ({
+  user: one(users, { fields: [passwordResets.userId], references: [users.id] }),
+}));
+
+/**
+ * ============================================================================
+ * AUTH CHALLENGE
+ * ============================================================================
+ */
+export const authChallengesRelations = relations(authChallenges, ({ one }) => ({
+  user: one(users, { fields: [authChallenges.userId], references: [users.id] }),
+}));
+
+```
+
+---
+
+### `src/db/authentication/tables.ts`
+```typescript
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  check,
+} from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import { users } from '../user/tables';
+import { AUTH_TYPES } from '../constants';
+
+/**
+ * ============================================================================
+ * AUTHENTICATION DOMAIN
+ * ============================================================================
+ *
+ * Bounded Context Boundaries:
+ * - User/actor identity is owned by user/
+ * - Web3 Evm Wallets are owned by web3/
+ * - Authentication domain owns authenticators, credentials, sessions, and auth challenges.
+ *
+ * Security & Persistence Standard:
+ * - Credentials and session storage rely on standard Unix Epoch timestamps.
+ * - Sensitive secrets (hashes, tokens) are NEVER logged or stored in unencrypted metadata.
+ * ============================================================================
+ */
+
+// ----------------------------------------------------------------------
+// Entity: userAuthenticators
+// ----------------------------------------------------------------------
+export const userAuthenticators = sqliteTable(
+  'user_authenticators',
+  {
+    id: text('id').primaryKey(), // UUID v4
+
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    type: text('type', { enum: AUTH_TYPES }).notNull(),
+    label: text('label'),
+
+    verifiedAt: integer('verified_at', { mode: 'timestamp' }),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
+
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+    revokedBy: integer('revoked_by').references(() => users.id, { onDelete: 'set null' }),
+    revocationReason: text('revocation_reason'),
+
+    // SECURITY:
+    // metadata is non-secret operational metadata only.
+    // NEVER store: password hashes, TOTP secrets, private keys,
+    // recovery codes, session tokens, or bearer credentials.
+    metadata: text('metadata', { mode: 'json' }),
+
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull()
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    userTypeRevokedIdx: index('idx_authenticators_user_type_revoked').on(
+      table.userId,
+      table.type,
+      table.revokedAt
+    ),
+    typeCheck: check(
+      'user_authenticators_type_check',
+      sql`${table.type} IN ('password', 'totp', 'webauthn', 'recovery_code', 'wallet')`
+    ),
+    revokedStateCheck: check(
+      'user_authenticators_revoked_state_check',
+      sql`${table.revokedAt} IS NOT NULL OR ${table.revocationReason} IS NULL`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: passwordCredentials
+// ----------------------------------------------------------------------
+export const passwordCredentials = sqliteTable('password_credentials', {
+  authenticatorId: text('authenticator_id')
+    .primaryKey()
+    .references(() => userAuthenticators.id, { onDelete: 'cascade' }),
+  passwordHash: text('password_hash').notNull(), // Argon2id hash com parâmetros embutidos
+});
+
+// ----------------------------------------------------------------------
+// Entity: webauthnCredentials
+// ----------------------------------------------------------------------
+export const webauthnCredentials = sqliteTable(
+  'webauthn_credentials',
+  {
+    authenticatorId: text('authenticator_id')
+      .primaryKey()
+      .references(() => userAuthenticators.id, { onDelete: 'cascade' }),
+    credentialId: text('credential_id').notNull().unique(),
+    publicKeyCose: text('public_key_cose').notNull(),
+    rpId: text('rp_id').notNull(),
+    userHandle: text('user_handle'), // nullable pois nem todo webauthn é discoverable/resident
+    signCount: integer('sign_count').notNull().default(0),
+    transports: text('transports', { mode: 'json' }),
+    backupEligible: integer('backup_eligible', { mode: 'boolean' }).notNull(),
+    backupState: integer('backup_state', { mode: 'boolean' }).notNull(),
+    uvInitialized: integer('uv_initialized', { mode: 'boolean' }).notNull(),
+    aaguid: text('aaguid'),
+    attestationFormat: text('attestation_format'),
+    attestationObject: text('attestation_object'),
+  },
+  (table) => ({
+    signCountCheck: check('webauthn_sign_count_check', sql`${table.signCount} >= 0`),
+    rpIdCheck: check('webauthn_rpid_check', sql`length(${table.rpId}) > 0`),
+    backupStateCheck: check(
+      'webauthn_backup_state_check',
+      sql`${table.backupState} = 0 OR ${table.backupEligible} = 1`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: totpCredentials
+// ----------------------------------------------------------------------
+export const totpCredentials = sqliteTable(
+  'totp_credentials',
+  {
+    authenticatorId: text('authenticator_id')
+      .primaryKey()
+      .references(() => userAuthenticators.id, { onDelete: 'cascade' }),
+    encryptedTotpSecret: text('encrypted_totp_secret').notNull(),
+    algorithm: text('algorithm').notNull().default('SHA1'),
+    digits: integer('digits').notNull().default(6),
+    period: integer('period').notNull().default(30),
+  },
+  (table) => ({
+    digitsCheck: check('totp_digits_check', sql`${table.digits} IN (6, 8)`),
+    periodCheck: check('totp_period_check', sql`${table.period} IN (30, 60)`),
+    algorithmCheck: check(
+      'totp_algorithm_check',
+      sql`${table.algorithm} IN ('SHA1', 'SHA256', 'SHA512')`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: recoverySets
+// ----------------------------------------------------------------------
+export const recoverySets = sqliteTable('recovery_sets', {
+  id: text('id').primaryKey(),
+  authenticatorId: text('authenticator_id')
+    .unique()
+    .references(() => userAuthenticators.id, { onDelete: 'cascade' })
+    .notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .default(sql`(unixepoch())`)
+    .notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+});
+
+// ----------------------------------------------------------------------
+// Entity: recoveryCredentials
+// ----------------------------------------------------------------------
+export const recoveryCredentials = sqliteTable(
+  'recovery_credentials',
+  {
+    id: text('id').primaryKey(),
+    recoverySetId: text('recovery_set_id')
+      .references(() => recoverySets.id, { onDelete: 'cascade' })
+      .notNull(),
+    codeHash: text('code_hash').notNull(), // Argon2id hash
+    consumedAt: integer('consumed_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+  },
+  (table) => ({
+    recoverySetIdx: index('idx_recovery_credentials_set').on(table.recoverySetId),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: passwordResets
+// ----------------------------------------------------------------------
+export const passwordResets = sqliteTable(
+  'password_resets',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    usedAt: integer('used_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+  },
+  (table) => ({
+    expiresAtIdx: index('idx_password_resets_expires').on(table.expiresAt),
+    usedStateCheck: check(
+      'password_resets_used_state_check',
+      sql`${table.usedAt} IS NULL OR ${table.usedAt} >= ${table.createdAt}`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: refreshTokenFamilies
+// ----------------------------------------------------------------------
+export const refreshTokenFamilies = sqliteTable(
+  'refresh_token_families',
+  {
+    id: text('id').primaryKey(), // UUID da família de tokens
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+    revocationReason: text('revocation_reason'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('idx_refresh_families_user').on(table.userId),
+    revokedStateCheck: check(
+      'refresh_families_revoked_state_check',
+      sql`${table.revokedAt} IS NOT NULL OR ${table.revocationReason} IS NULL`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: userSessions
+// ----------------------------------------------------------------------
+export const userSessions = sqliteTable(
+  'user_sessions',
+  {
+    id: text('id').primaryKey(), // UUID da sessão
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    jti: text('jti').notNull().unique(),
+    ip: text('ip'),
+    userAgent: text('user_agent'),
+    familyId: text('family_id') // Adicionado relacionamento com a família
+      .references(() => refreshTokenFamilies.id, { onDelete: 'cascade' }),
+    refreshTokenHash: text('refresh_token_hash').notNull(),
+    aal: integer('aal').notNull().default(1),
+    authEpoch: integer('auth_epoch').notNull().default(1),
+    lastActivityAt: integer('last_activity_at', { mode: 'timestamp' }),
+    lastAuthenticatedAt: integer('last_authenticated_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+    revocationReason: text('revocation_reason'),
+  },
+  (table) => ({
+    userIdIdx: index('idx_sessions_user').on(table.userId),
+    familyIdIdx: index('idx_sessions_family').on(table.familyId),
+    expiresAtIdx: index('idx_sessions_expires').on(table.expiresAt),
+    aalCheck: check('user_sessions_aal_check', sql`${table.aal} IN (1, 2, 3)`),
+    expirationCheck: check(
+      'user_sessions_expiration_check',
+      sql`${table.createdAt} < ${table.expiresAt}`
+    ),
+    revokedStateCheck: check(
+      'user_sessions_revoked_state_check',
+      sql`${table.revokedAt} IS NOT NULL OR ${table.revocationReason} IS NULL`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: authChallenges
+// ----------------------------------------------------------------------
+export const authChallenges = sqliteTable(
+  'auth_challenges',
+  {
+    id: text('id').primaryKey(), // UUID do desafio
+    transactionId: text('transaction_id').references(() => authTransactions.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    challengeHash: text('challenge_hash').notNull(),
+    challengeType: text('challenge_type').notNull(), // 'ssh', 'totp', 'webauthn', 'siwe'
+    context: text('context').notNull(), // 'login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery'
+    usedAt: integer('used_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => ({
+    transactionIdIdx: index('idx_auth_challenges_transaction').on(table.transactionId),
+    expiresAtIdx: index('idx_auth_challenges_expires').on(table.expiresAt),
+    typeCheck: check(
+      'auth_challenges_type_check',
+      sql`${table.challengeType} IN ('ssh', 'totp', 'webauthn', 'siwe')`
+    ),
+    contextCheck: check(
+      'auth_challenges_context_check',
+      sql`${table.context} IN ('login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery')`
+    ),
+    expirationCheck: check(
+      'auth_challenges_expiration_check',
+      sql`${table.createdAt} < ${table.expiresAt}`
+    ),
+    usedStateCheck: check(
+      'auth_challenges_used_state_check',
+      sql`${table.usedAt} IS NULL OR ${table.usedAt} >= ${table.createdAt}`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: authTransactions
+// ----------------------------------------------------------------------
+export const authTransactions = sqliteTable(
+  'auth_transactions',
+  {
+    id: text('id').primaryKey(), // UUID v4
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: ['created', 'awaiting_factor', 'verified', 'completed', 'expired', 'cancelled', 'failed', 'replayed', 'locked'] })
+      .notNull()
+      .default('created'),
+    initialAal: integer('initial_aal').notNull().default(1),
+    currentAal: integer('current_aal').notNull().default(1),
+    targetAal: integer('target_aal').notNull().default(2),
+    method: text('method').notNull(), // ex: 'password', 'totp', 'webauthn', 'siwe'
+    challengeHash: text('challenge_hash'),
+    context: text('context').notNull(), // 'login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery'
+    ip: text('ip'),
+    userAgent: text('user_agent'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
+    consumedAt: integer('consumed_at', { mode: 'timestamp' }),
+    failureCount: integer('failure_count').notNull().default(0),
+    authEpochAtStart: integer('auth_epoch_at_start').notNull(),
+    lastAuthenticatedAt: integer('last_authenticated_at', { mode: 'timestamp' }),
+    assuranceMethod: text('assurance_method'),
+    riskLevel: text('risk_level', { enum: ['low', 'medium', 'high', 'critical'] }).notNull().default('low'),
+  },
+  (table) => ({
+    userIdIdx: index('idx_auth_transactions_user').on(table.userId),
+    expiresAtIdx: index('idx_auth_transactions_expires').on(table.expiresAt),
+    statusCheck: check(
+      'auth_transactions_status_check',
+      sql`${table.status} IN ('created', 'awaiting_factor', 'verified', 'completed', 'expired', 'cancelled', 'failed', 'replayed', 'locked')`
+    ),
+    contextCheck: check(
+      'auth_transactions_context_check',
+      sql`${table.context} IN ('login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery')`
+    ),
+    expirationCheck: check(
+      'auth_transactions_expiration_check',
+      sql`${table.createdAt} < ${table.expiresAt}`
+    ),
+  })
+);
+
+// ----------------------------------------------------------------------
+// Entity: walletAuthenticators
+// ----------------------------------------------------------------------
+export const walletAuthenticators = sqliteTable(
+  'wallet_authenticators',
+  {
+    authenticatorId: text('authenticator_id')
+      .primaryKey()
+      .references(() => userAuthenticators.id, { onDelete: 'cascade' }),
+    /**
+     * Opaque reference to web3.wallets.id.
+     * Intentionally NOT a physical FK — authentication MUST NOT depend on
+     * web3 (Cross-Domain Dependency Matrix). Integrity is enforced at the
+     * application layer via IWeb3Repository at link-time
+     * (LinkExternalIdentityUseCase / VerifyExternalIdentityUseCase).
+     */
+    walletId: integer('wallet_id').unique().notNull(),
+    protocol: text('protocol', { enum: ['siwe', 'eip191', 'eip712', 'eip1271'] })
+      .notNull()
+      .default('siwe'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull()
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    protocolCheck: check(
+      'wallet_authenticators_protocol_check',
+      sql`${table.protocol} IN ('siwe', 'eip191', 'eip712', 'eip1271')`
+    ),
+  })
+);
+
+```
+
+---
+
+### `src/db/ssi/relations.ts`
+```typescript
+import { relations } from 'drizzle-orm';
+import {
+  secureVaults,
+  didIdentities,
+  didVerificationMethods,
+  verifiableCredentials,
+  verifiablePresentations,
+} from './tables';
+import { users } from '../user/tables';
+
+/**
+ * ============================================================================
+ * SSI DOMAIN RELATIONS
+ * ============================================================================
+ * ARCHITECTURAL NOTE:
+ * Navigation from users to SSI entities is intentionally one-directional
+ * (child → parent only), per Section 05 boundary isolation matrix.
+ * Direct queries on SSI tables should be executed with { with: { user: true } }
+ * instead of querying bidirectionally from users.
+ * ============================================================================
+ */
+
+/**
+ * ============================================================================
+ * SECURE VAULTS RELATIONS
+ * ============================================================================
+ */
+export const secureVaultsRelations = relations(secureVaults, ({ one }) => ({
+  user: one(users, {
+    fields: [secureVaults.userId],
+    references: [users.id],
+    relationName: 'userSecureVaults',
+  }),
+}));
+
+/**
+ * ============================================================================
+ * DID IDENTITIES RELATIONS
+ * ============================================================================
+ */
+export const didIdentitiesRelations = relations(didIdentities, ({ one, many }) => ({
+  user: one(users, {
+    fields: [didIdentities.userId],
+    references: [users.id],
+    relationName: 'userDidIdentities',
+  }),
+  verificationMethods: many(didVerificationMethods),
+}));
+
+/**
+ * ============================================================================
+ * DID VERIFICATION METHODS RELATIONS
+ * ============================================================================
+ */
+export const didVerificationMethodsRelations = relations(didVerificationMethods, ({ one }) => ({
+  didIdentity: one(didIdentities, {
+    fields: [didVerificationMethods.didId],
+    references: [didIdentities.id],
+  }),
+}));
+
+/**
+ * ============================================================================
+ * VERIFIABLE CREDENTIALS RELATIONS
+ * ============================================================================
+ */
+export const verifiableCredentialsRelations = relations(verifiableCredentials, ({ one }) => ({
+  holderUser: one(users, {
+    fields: [verifiableCredentials.holderUserId],
+    references: [users.id],
+    relationName: 'userVerifiableCredentials',
+  }),
+}));
+
+/**
+ * ============================================================================
+ * VERIFIABLE PRESENTATIONS RELATIONS
+ * ============================================================================
+ */
+export const verifiablePresentationsRelations = relations(verifiablePresentations, ({ one }) => ({
+  user: one(users, {
+    fields: [verifiablePresentations.userId],
+    references: [users.id],
+    relationName: 'userVerifiablePresentations',
+  }),
+}));
+
+```
+
+---
+
+### `src/db/ssi/tables.ts`
+```typescript
+import { sqliteTable, text, integer, index, uniqueIndex, check } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import { users } from '../user/tables';
+
+/**
+ * ============================================================================
+ * SELF-SOVEREIGN IDENTITY (SSI) DOMAIN
+ * ============================================================================
+ *
+ * Specifications & Compliance:
+ * - W3C Decentralized Identifiers (DIDs) v1.0 Core Architecture
+ * - W3C Verifiable Credentials Data Model v1.1 / v2.0
+ * - Cryptographic Key Vaults (AES-256-GCM / XChaCha20-Poly1305 + External KMS)
+ *
+ * Bounded Context Boundaries:
+ * - Base account identity is owned by user/
+ * - Civil identity & government PII are owned by civil-identity/
+ * - Web3 EVM wallets & smart contracts are owned by web3/
+ * - SSI owns DIDs, Key Vaults, Verifiable Credentials & Presentations
+ *
+ * Retention & Compliance Policy:
+ * - Decentralized Identifiers (DIDs), verification methods, and verifiable credentials
+ *   are cryptographically immutable identity anchors.
+ * - All foreign keys referencing users.id use onDelete: 'restrict' to ensure
+ *   verifiable claims and key audit logs survive user soft-deletion.
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * 1. SECURE VAULTS
+ * ============================================================================
+ *
+ * Encrypted custody storage for sensitive key material, seeds, and mnemonics.
+ */
+export const secureVaults = sqliteTable(
+  'secure_vaults',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+
+    purpose: text('purpose', {
+      enum: ['wallet_mnemonic', 'recovery_material', 'private_key', 'identity_seed'],
+    }).notNull(),
+    ciphertext: text('ciphertext').notNull(),
+    nonce: text('nonce').notNull(),
+    authTag: text('auth_tag').notNull(),
+    encryptionAlgorithm: text('encryption_algorithm', {
+      enum: ['AES-256-GCM', 'XChaCha20-Poly1305'],
+    }).notNull(),
+    keyVersion: integer('key_version').notNull().default(1),
+    keyReference: text('key_reference').notNull(), // KMS / Key Management reference
+
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    rotatedAt: integer('rotated_at', { mode: 'timestamp' }),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_secure_vaults_user').on(table.userId),
+    userPurposeVersionUnq: uniqueIndex('uq_secure_vaults_user_purpose_version').on(
+      table.userId,
+      table.purpose,
+      table.keyVersion
+    ),
+    activePurposeUnq: uniqueIndex('uq_secure_vaults_active_purpose')
+      .on(table.userId, table.purpose)
+      .where(sql`${table.revokedAt} IS NULL`),
+    purposeCheck: check(
+      'ck_secure_vaults_purpose',
+      sql`${table.purpose} IN ('wallet_mnemonic', 'recovery_material', 'private_key', 'identity_seed')`
+    ),
+    algorithmCheck: check(
+      'ck_secure_vaults_algorithm',
+      sql`${table.encryptionAlgorithm} IN ('AES-256-GCM', 'XChaCha20-Poly1305')`
+    ),
+    rotatedAfterCreatedCheck: check(
+      'ck_secure_vaults_rotated_after_created',
+      sql`${table.rotatedAt} IS NULL OR ${table.rotatedAt} >= ${table.createdAt}`
+    ),
+    revokedAfterCreatedCheck: check(
+      'ck_secure_vaults_revoked_after_created',
+      sql`${table.revokedAt} IS NULL OR ${table.revokedAt} >= ${table.createdAt}`
+    ),
+    versionCheck: check(
+      'ck_secure_vaults_version',
+      sql`${table.version} > 0 AND ${table.keyVersion} > 0`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 2. DID IDENTITIES
+ * ============================================================================
+ *
+ * W3C Decentralized Identifier (DID) Documents.
+ */
+export const didIdentities = sqliteTable(
+  'did_identities',
+  {
+    id: text('id').primaryKey(), // UUID v4
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+
+    did: text('did').notNull().unique(),
+    method: text('method', {
+      enum: ['key', 'ion', 'polygonid', 'web', 'cheqd', 'pkh'],
+    }).notNull(),
+    controller: text('controller').notNull(),
+    status: text('status', {
+      enum: ['active', 'suspended', 'revoked'],
+    })
+      .notNull()
+      .default('active'),
+
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull()
+      .$onUpdateFn(() => new Date()),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_did_identities_user').on(table.userId),
+    didIdx: index('idx_did_identities_did').on(table.did),
+    statusIdx: index('idx_did_identities_status').on(table.status),
+    didFormatCheck: check('ck_did_identities_did_format', sql`${table.did} LIKE 'did:%'`),
+    statusCheck: check(
+      'ck_did_identities_status',
+      sql`${table.status} IN ('active', 'suspended', 'revoked')`
+    ),
+    methodCheck: check(
+      'ck_did_identities_method',
+      sql`${table.method} IN ('key', 'ion', 'polygonid', 'web', 'cheqd', 'pkh')`
+    ),
+    revokedStateCheck: check(
+      'ck_did_identities_revoked_state',
+      sql`${table.status} != 'revoked' OR ${table.revokedAt} IS NOT NULL`
+    ),
+    versionCheck: check('ck_did_identities_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 3. DID VERIFICATION METHODS
+ * ============================================================================
+ *
+ * Public cryptographic keys associated with a DID for authentication & assertion.
+ */
+export const didVerificationMethods = sqliteTable(
+  'did_verification_methods',
+  {
+    id: text('id').primaryKey(), // DID URL: did:example:123#key-1
+    didId: text('did_id')
+      .notNull()
+      .references(() => didIdentities.id, { onDelete: 'restrict' }),
+
+    type: text('type', {
+      enum: [
+        'Ed25519VerificationKey2020',
+        'EcdsaSecp256k1RecoveryMethod2020',
+        'X25519KeyAgreementKey2020',
+        'JsonWebKey2020',
+      ],
+    }).notNull(),
+    controllerDid: text('controller_did').notNull(),
+    publicKeyMultibase: text('public_key_multibase').notNull(),
+    purpose: text('purpose', {
+      enum: [
+        'authentication',
+        'assertionMethod',
+        'keyAgreement',
+        'capabilityInvocation',
+        'capabilityDelegation',
+      ],
+    }).notNull(),
+    status: text('status', {
+      enum: ['active', 'suspended', 'revoked'],
+    })
+      .notNull()
+      .default('active'),
+
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    didIdx: index('idx_did_verification_methods_did').on(table.didId),
+    purposeIdx: index('idx_did_verification_methods_purpose').on(table.purpose),
+    statusIdx: index('idx_did_verification_methods_status').on(table.status),
+    controllerDidFormatCheck: check(
+      'ck_did_vm_controller_did_format',
+      sql`${table.controllerDid} LIKE 'did:%'`
+    ),
+    statusCheck: check(
+      'ck_did_vm_status',
+      sql`${table.status} IN ('active', 'suspended', 'revoked')`
+    ),
+    purposeCheck: check(
+      'ck_did_vm_purpose',
+      sql`${table.purpose} IN ('authentication', 'assertionMethod', 'keyAgreement', 'capabilityInvocation', 'capabilityDelegation')`
+    ),
+    typeCheck: check(
+      'ck_did_vm_type',
+      sql`${table.type} IN ('Ed25519VerificationKey2020', 'EcdsaSecp256k1RecoveryMethod2020', 'X25519KeyAgreementKey2020', 'JsonWebKey2020')`
+    ),
+    revokedStateCheck: check(
+      'ck_did_vm_revoked_state',
+      sql`${table.status} != 'revoked' OR ${table.revokedAt} IS NOT NULL`
+    ),
+    versionCheck: check('ck_did_vm_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 4. VERIFIABLE CREDENTIALS
+ * ============================================================================
+ *
+ * W3C Verifiable Credentials issued to holders.
+ */
+export const verifiableCredentials = sqliteTable(
+  'verifiable_credentials',
+  {
+    id: text('id').primaryKey(), // UUID v4
+    holderUserId: integer('holder_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+
+    issuerDid: text('issuer_did').notNull(),
+    subjectDid: text('subject_did').notNull(),
+    credentialType: text('credential_type', {
+      enum: [
+        'CivicIdentityCredential',
+        'MembershipCredential',
+        'KycVerificationCredential',
+        'ReputationCredential',
+      ],
+    }).notNull(),
+    credentialHash: text('credential_hash').notNull().unique(),
+    encryptedClaims: text('encrypted_claims').notNull(),
+    proofType: text('proof_type', {
+      enum: ['Ed25519Signature2020', 'BbsBlsSignature2020', 'JsonWebSignature2020'],
+    }).notNull(),
+    status: text('status', {
+      enum: ['active', 'suspended', 'revoked', 'expired'],
+    })
+      .notNull()
+      .default('active'),
+
+    version: integer('version').notNull().default(1),
+    issuanceDate: integer('issuance_date', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    expirationDate: integer('expiration_date', { mode: 'timestamp' }),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    holderIdx: index('idx_vc_holder_user').on(table.holderUserId),
+    subjectIdx: index('idx_vc_subject_did').on(table.subjectDid),
+    issuerIdx: index('idx_vc_issuer_did').on(table.issuerDid),
+    statusIdx: index('idx_vc_status').on(table.status),
+    issuerDidFormatCheck: check('ck_vc_issuer_did_format', sql`${table.issuerDid} LIKE 'did:%'`),
+    subjectDidFormatCheck: check('ck_vc_subject_did_format', sql`${table.subjectDid} LIKE 'did:%'`),
+    statusCheck: check(
+      'ck_vc_status',
+      sql`${table.status} IN ('active', 'suspended', 'revoked', 'expired')`
+    ),
+    credentialTypeCheck: check(
+      'ck_vc_type',
+      sql`${table.credentialType} IN ('CivicIdentityCredential', 'MembershipCredential', 'KycVerificationCredential', 'ReputationCredential')`
+    ),
+    proofTypeCheck: check(
+      'ck_vc_proof_type',
+      sql`${table.proofType} IN ('Ed25519Signature2020', 'BbsBlsSignature2020', 'JsonWebSignature2020')`
+    ),
+    revokedStateCheck: check(
+      'ck_vc_revoked_state',
+      sql`${table.status} != 'revoked' OR ${table.revokedAt} IS NOT NULL`
+    ),
+    temporalOrderCheck: check(
+      'ck_vc_dates',
+      sql`${table.expirationDate} IS NULL OR ${table.expirationDate} > ${table.issuanceDate}`
+    ),
+    versionCheck: check('ck_vc_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 5. VERIFIABLE PRESENTATIONS
+ * ============================================================================
+ *
+ * Cryptographic proofs presented by users to verifiers.
+ */
+export const verifiablePresentations = sqliteTable(
+  'verifiable_presentations',
+  {
+    id: text('id').primaryKey(), // UUID v4
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+
+    verifierDid: text('verifier_did').notNull(),
+    presentationType: text('presentation_type').notNull(),
+    challenge: text('challenge').notNull(),
+    presentationHash: text('presentation_hash').notNull().unique(),
+    status: text('status', {
+      enum: ['verified', 'rejected', 'expired'],
+    }).notNull(),
+
+    version: integer('version').notNull().default(1),
+    submittedAt: integer('submitted_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    verifiedAt: integer('verified_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_vp_user').on(table.userId),
+    verifierIdx: index('idx_vp_verifier').on(table.verifierDid),
+    statusIdx: index('idx_vp_status').on(table.status),
+    verifierDidFormatCheck: check(
+      'ck_vp_verifier_did_format',
+      sql`${table.verifierDid} LIKE 'did:%'`
+    ),
+    statusCheck: check('ck_vp_status', sql`${table.status} IN ('verified', 'rejected', 'expired')`),
+    verifiedStateCheck: check(
+      'ck_vp_verified_state',
+      sql`${table.status} != 'verified' OR ${table.verifiedAt} IS NOT NULL`
+    ),
+    verifiedAfterSubmittedCheck: check(
+      'ck_vp_verified_after_submitted',
+      sql`${table.verifiedAt} IS NULL OR ${table.verifiedAt} >= ${table.submittedAt}`
+    ),
+    versionCheck: check('ck_vp_version', sql`${table.version} > 0`),
+  })
+);
+
+```
+
+---
+
+### `src/db/finance/relations.ts`
+```typescript
+import { relations } from 'drizzle-orm';
+import { users } from '../user/tables';
+import {
+  financialAssets,
+  financialAccounts,
+  financialTransactions,
+  financialLedgerEntries,
+  accountBalances,
+  balanceHolds,
+  fiatProviders,
+  fiatAccounts,
+  fiatPaymentMethods,
+  fiatTransactions,
+  cryptoTransactions,
+  exchangeRates,
+  assetConversions,
+  financialFees,
+  fiatExternalTransactions,
+  idempotencyKeys,
+  reconciliationRecords,
+} from './tables';
+
+/**
+ * ============================================================================
+ * FINANCE DOMAIN RELATIONS
+ * ============================================================================
+ * ARCHITECTURAL NOTE:
+ * Navigation from users to finance entities is intentionally one-directional
+ * (child → parent only), per Section 05 boundary isolation matrix.
+ * Direct queries on finance tables should be executed with { with: { user: true } }
+ * instead of querying bidirectionally from users.
+ * ============================================================================
+ */
+
+// financialAssets
+export const financialAssetsRelations = relations(financialAssets, ({ many }) => ({
+  financialLedgerEntries: many(financialLedgerEntries),
+  accountBalances: many(accountBalances),
+  balanceHolds: many(balanceHolds),
+  cryptoTransactionsAsAsset: many(cryptoTransactions, { relationName: 'cryptoTransactionAsset' }),
+  cryptoTransactionsAsFeeAsset: many(cryptoTransactions, {
+    relationName: 'cryptoTransactionFeeAsset',
+  }),
+  exchangeRatesAsBase: many(exchangeRates, { relationName: 'exchangeRateBaseAsset' }),
+  exchangeRatesAsQuote: many(exchangeRates, { relationName: 'exchangeRateQuoteAsset' }),
+  assetConversionsAsFrom: many(assetConversions, { relationName: 'assetConversionFromAsset' }),
+  assetConversionsAsTo: many(assetConversions, { relationName: 'assetConversionToAsset' }),
+  financialFees: many(financialFees),
+  reconciliationRecords: many(reconciliationRecords),
+}));
+
+// financialAccounts
+export const financialAccountsRelations = relations(financialAccounts, ({ one, many }) => ({
+  user: one(users, {
+    fields: [financialAccounts.userId],
+    references: [users.id],
+  }),
+  financialLedgerEntries: many(financialLedgerEntries),
+  accountBalances: many(accountBalances),
+  balanceHolds: many(balanceHolds),
+  financialFeesReceived: many(financialFees),
+  reconciliationRecords: many(reconciliationRecords),
+}));
+
+// financialTransactions
+export const financialTransactionsRelations = relations(financialTransactions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [financialTransactions.userId],
+    references: [users.id],
+  }),
+  ledgerEntries: many(financialLedgerEntries),
+  fiatTransaction: one(fiatTransactions),
+  cryptoTransaction: one(cryptoTransactions),
+  assetConversion: one(assetConversions),
+  fees: many(financialFees),
+  idempotencyKeys: many(idempotencyKeys),
+}));
+
+// financialLedgerEntries
+export const financialLedgerEntriesRelations = relations(financialLedgerEntries, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [financialLedgerEntries.transactionId],
+    references: [financialTransactions.id],
+  }),
+  account: one(financialAccounts, {
+    fields: [financialLedgerEntries.accountId],
+    references: [financialAccounts.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [financialLedgerEntries.assetId],
+    references: [financialAssets.id],
+  }),
+}));
+
+// accountBalances
+export const accountBalancesRelations = relations(accountBalances, ({ one }) => ({
+  account: one(financialAccounts, {
+    fields: [accountBalances.accountId],
+    references: [financialAccounts.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [accountBalances.assetId],
+    references: [financialAssets.id],
+  }),
+}));
+
+// balanceHolds
+export const balanceHoldsRelations = relations(balanceHolds, ({ one }) => ({
+  account: one(financialAccounts, {
+    fields: [balanceHolds.accountId],
+    references: [financialAccounts.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [balanceHolds.assetId],
+    references: [financialAssets.id],
+  }),
+}));
+
+// fiatProviders
+export const fiatProvidersRelations = relations(fiatProviders, ({ many }) => ({
+  fiatAccounts: many(fiatAccounts),
+  fiatTransactions: many(fiatTransactions),
+  fiatExternalTransactions: many(fiatExternalTransactions),
+  reconciliationRecords: many(reconciliationRecords),
+}));
+
+// fiatAccounts
+export const fiatAccountsRelations = relations(fiatAccounts, ({ one, many }) => ({
+  user: one(users, {
+    fields: [fiatAccounts.userId],
+    references: [users.id],
+  }),
+  provider: one(fiatProviders, {
+    fields: [fiatAccounts.providerId],
+    references: [fiatProviders.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [fiatAccounts.assetId],
+    references: [financialAssets.id],
+  }),
+  paymentMethods: many(fiatPaymentMethods),
+}));
+
+// fiatPaymentMethods
+export const fiatPaymentMethodsRelations = relations(fiatPaymentMethods, ({ one }) => ({
+  user: one(users, {
+    fields: [fiatPaymentMethods.userId],
+    references: [users.id],
+  }),
+  fiatAccount: one(fiatAccounts, {
+    fields: [fiatPaymentMethods.fiatAccountId],
+    references: [fiatAccounts.id],
+  }),
+}));
+
+// fiatTransactions
+export const fiatTransactionsRelations = relations(fiatTransactions, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [fiatTransactions.financialTransactionId],
+    references: [financialTransactions.id],
+  }),
+  paymentMethod: one(fiatPaymentMethods, {
+    fields: [fiatTransactions.paymentMethodId],
+    references: [fiatPaymentMethods.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [fiatTransactions.assetId],
+    references: [financialAssets.id],
+  }),
+  provider: one(fiatProviders, {
+    fields: [fiatTransactions.providerId],
+    references: [fiatProviders.id],
+  }),
+}));
+
+// cryptoTransactions
+export const cryptoTransactionsRelations = relations(cryptoTransactions, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [cryptoTransactions.financialTransactionId],
+    references: [financialTransactions.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [cryptoTransactions.assetId],
+    references: [financialAssets.id],
+    relationName: 'cryptoTransactionAsset',
+  }),
+  feeAsset: one(financialAssets, {
+    fields: [cryptoTransactions.feeAssetId],
+    references: [financialAssets.id],
+    relationName: 'cryptoTransactionFeeAsset',
+  }),
+}));
+
+// exchangeRates
+export const exchangeRatesRelations = relations(exchangeRates, ({ one }) => ({
+  baseAsset: one(financialAssets, {
+    fields: [exchangeRates.baseAssetId],
+    references: [financialAssets.id],
+    relationName: 'exchangeRateBaseAsset',
+  }),
+  quoteAsset: one(financialAssets, {
+    fields: [exchangeRates.quoteAssetId],
+    references: [financialAssets.id],
+    relationName: 'exchangeRateQuoteAsset',
+  }),
+}));
+
+// assetConversions
+export const assetConversionsRelations = relations(assetConversions, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [assetConversions.financialTransactionId],
+    references: [financialTransactions.id],
+  }),
+  fromAsset: one(financialAssets, {
+    fields: [assetConversions.fromAssetId],
+    references: [financialAssets.id],
+    relationName: 'assetConversionFromAsset',
+  }),
+  toAsset: one(financialAssets, {
+    fields: [assetConversions.toAssetId],
+    references: [financialAssets.id],
+    relationName: 'assetConversionToAsset',
+  }),
+}));
+
+// financialFees
+export const financialFeesRelations = relations(financialFees, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [financialFees.transactionId],
+    references: [financialTransactions.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [financialFees.assetId],
+    references: [financialAssets.id],
+  }),
+  recipientAccount: one(financialAccounts, {
+    fields: [financialFees.recipientAccountId],
+    references: [financialAccounts.id],
+  }),
+}));
+
+// fiatExternalTransactions
+export const fiatExternalTransactionsRelations = relations(fiatExternalTransactions, ({ one }) => ({
+  transaction: one(financialTransactions, {
+    fields: [fiatExternalTransactions.financialTransactionId],
+    references: [financialTransactions.id],
+  }),
+  provider: one(fiatProviders, {
+    fields: [fiatExternalTransactions.providerId],
+    references: [fiatProviders.id],
+  }),
+}));
+
+// idempotencyKeys
+export const idempotencyKeysRelations = relations(idempotencyKeys, ({ one }) => ({
+  user: one(users, {
+    fields: [idempotencyKeys.userId],
+    references: [users.id],
+  }),
+  financialTransaction: one(financialTransactions, {
+    fields: [idempotencyKeys.financialTransactionId],
+    references: [financialTransactions.id],
+  }),
+}));
+
+// reconciliationRecords
+export const reconciliationRecordsRelations = relations(reconciliationRecords, ({ one }) => ({
+  account: one(financialAccounts, {
+    fields: [reconciliationRecords.accountId],
+    references: [financialAccounts.id],
+  }),
+  asset: one(financialAssets, {
+    fields: [reconciliationRecords.assetId],
+    references: [financialAssets.id],
+  }),
+  provider: one(fiatProviders, {
+    fields: [reconciliationRecords.providerId],
+    references: [fiatProviders.id],
+  }),
+}));
+
+```
+
+---
+
+### `src/db/finance/tables.ts`
+```typescript
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  uniqueIndex,
+  check,
+  foreignKey,
+} from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+
+import { users } from '../user/tables';
+
+/**
+ * ============================================================================
+ * FINANCE DOMAIN
+ * ============================================================================
+ *
+ * Responsibilities:
+ * - Financial assets supported by the platform
+ * - Financial accounts
+ * - Financial transactions
+ * - Double-entry ledger
+ * - Account balances
+ * - Balance holds
+ * - Fiat providers / accounts / payment operations
+ * - Crypto financial operations
+ * - Asset conversions
+ * - Fees
+ * - External transaction references
+ * - Idempotency
+ * - Reconciliation
+ *
+ * Explicit boundaries:
+ * - Authentication is owned by authentication/
+ * - KYC / civil identity is owned by civil-identity/
+ * - Authorization is owned by authorization/
+ * - Blockchain technical infrastructure is owned by web3/
+ * - Wallet identity is NOT represented here as a user identity
+ *
+ * Retention & Regulatory Policy:
+ * - Double-Entry Ledger entries (financialLedgerEntries) and fees (financialFees)
+ *   are APPEND-ONLY tables and MUST NEVER be deleted or updated.
+ * - All foreign keys referencing users.id use onDelete: 'restrict' to ensure
+ *   financial audit trails and accounting records survive user soft-deletion.
+ *
+ * Monetary values (Web3 Compatible):
+ * - All amounts are stored as TEXT in the asset's smallest unit to support
+ *   EVM precision (up to 18 decimals) which exceeds SQLite's 64-bit integer limit.
+ * - Application layer MUST handle these using JS BigInt.
+ * - BRL: 2 decimals  -> R$ 10.50 = "1050"
+ * - USD: 2 decimals  -> US$ 10.50 = "1050"
+ * - ETH: 18 decimals -> 1 ETH = "1000000000000000000"
+ *
+ * V1 supported financial assets:
+ * - BRL
+ * - USD
+ * - BTC
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * 1. FINANCIAL ASSETS
+ * ============================================================================
+ */
+export const financialAssets = sqliteTable(
+  'financial_assets',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    code: text('code').notNull(),
+    symbol: text('symbol').notNull(),
+    name: text('name').notNull(),
+    type: text('type', {
+      enum: ['fiat', 'crypto'],
+    }).notNull(),
+    decimals: integer('decimals').notNull(),
+    status: text('status', {
+      enum: ['active', 'inactive'],
+    })
+      .notNull()
+      .default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    codeUq: uniqueIndex('uq_financial_assets_code').on(table.code),
+    typeIdx: index('idx_financial_assets_type').on(table.type),
+    statusIdx: index('idx_financial_assets_status').on(table.status),
+    typeCheck: check('ck_financial_assets_type', sql`${table.type} IN ('fiat', 'crypto')`),
+    statusCheck: check(
+      'ck_financial_assets_status',
+      sql`${table.status} IN ('active', 'inactive')`
+    ),
+    decimalsCheck: check(
+      'ck_financial_assets_decimals',
+      sql`${table.decimals} >= 0 AND ${table.decimals} <= 18`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 2. FINANCIAL ACCOUNTS
+ * ============================================================================
+ */
+export const financialAccounts = sqliteTable(
+  'financial_accounts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    accountType: text('account_type', {
+      enum: ['user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow'],
+    }).notNull(),
+    status: text('status', {
+      enum: ['active', 'inactive', 'suspended'],
+    })
+      .notNull()
+      .default('active'),
+    name: text('name').notNull(),
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    userIdx: index('idx_financial_accounts_user').on(table.userId),
+    typeIdx: index('idx_financial_accounts_type').on(table.accountType),
+    statusIdx: index('idx_financial_accounts_status').on(table.status),
+    accountTypeCheck: check(
+      'ck_financial_accounts_type',
+      sql`${table.accountType} IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow')`
+    ),
+    statusCheck: check(
+      'ck_financial_accounts_status',
+      sql`${table.status} IN ('active', 'inactive', 'suspended')`
+    ),
+    userAccountTypeUq: uniqueIndex('uq_financial_accounts_user_type_name').on(
+      table.userId,
+      table.accountType,
+      table.name
+    ),
+    ownerRuleCheck: check(
+      'ck_financial_accounts_owner_rule',
+      sql`(${table.accountType} = 'user_available' AND ${table.userId} IS NOT NULL) OR (${table.accountType} != 'user_available' AND ${table.userId} IS NULL)`
+    ),
+    versionCheck: check('ck_financial_accounts_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 3. FINANCIAL TRANSACTIONS
+ * ============================================================================
+ */
+export const financialTransactions = sqliteTable(
+  'financial_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    type: text('type', {
+      enum: [
+        'deposit',
+        'withdrawal',
+        'transfer',
+        'payment',
+        'refund',
+        'fee',
+        'reward',
+        'yield',
+        'conversion',
+        'adjustment',
+      ],
+    }).notNull(),
+    category: text('category', {
+      enum: [
+        'membership',
+        'rwa_yield',
+        'grant',
+        'operational',
+        'payment',
+        'trading',
+        'withdrawal',
+        'deposit',
+        'fee',
+        'other',
+      ],
+    })
+      .notNull()
+      .default('other'),
+    status: text('status', {
+      enum: ['pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'refunded'],
+    })
+      .notNull()
+      .default('pending'),
+    sourceType: text('source_type', {
+      enum: [
+        'contribution',
+        'grant',
+        'membership',
+        'payroll',
+        'withdrawal',
+        'payment',
+        'conversion',
+        'system',
+        'other',
+      ],
+    }),
+    sourceId: text('source_id'),
+    correlationId: text('correlation_id'),
+    description: text('description').notNull(),
+    version: integer('version').notNull().default(1),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_financial_transactions_user').on(table.userId),
+    typeIdx: index('idx_financial_transactions_type').on(table.type),
+    statusIdx: index('idx_financial_transactions_status').on(table.status),
+    createdIdx: index('idx_financial_transactions_created').on(table.createdAt),
+    correlationIdx: index('idx_financial_transactions_correlation').on(table.correlationId),
+    typeCheck: check(
+      'ck_financial_tx_type',
+      sql`${table.type} IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment')`
+    ),
+    categoryCheck: check(
+      'ck_financial_tx_category',
+      sql`${table.category} IN ('membership', 'rwa_yield', 'grant', 'operational', 'payment', 'trading', 'withdrawal', 'deposit', 'fee', 'other')`
+    ),
+    statusCheck: check(
+      'ck_financial_tx_status',
+      sql`${table.status} IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'refunded')`
+    ),
+    sourceTypeCheck: check(
+      'ck_financial_tx_source_type',
+      sql`${table.sourceType} IS NULL OR ${table.sourceType} IN ('contribution', 'grant', 'membership', 'payroll', 'withdrawal', 'payment', 'conversion', 'system', 'other')`
+    ),
+    completedStateCheck: check(
+      'ck_financial_tx_completed_state',
+      sql`${table.status} != 'completed' OR ${table.completedAt} IS NOT NULL`
+    ),
+    temporalOrderCheck: check(
+      'ck_financial_tx_dates',
+      sql`${table.completedAt} IS NULL OR ${table.completedAt} >= ${table.createdAt}`
+    ),
+    versionCheck: check('ck_financial_tx_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 4. FINANCIAL LEDGER ENTRIES
+ * ============================================================================
+ */
+export const financialLedgerEntries = sqliteTable(
+  'financial_ledger_entries',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    transactionId: integer('transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    direction: text('direction', {
+      enum: ['debit', 'credit'],
+    }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    transactionIdx: index('idx_financial_ledger_entries_transaction').on(table.transactionId),
+    accountIdx: index('idx_financial_ledger_entries_account').on(table.accountId),
+    assetIdx: index('idx_financial_ledger_entries_asset').on(table.assetId),
+    createdIdx: index('idx_financial_ledger_entries_created').on(table.createdAt),
+    directionCheck: check(
+      'ck_financial_ledger_direction',
+      sql`${table.direction} IN ('debit', 'credit')`
+    ),
+    amountCheck: check(
+      'ck_financial_ledger_entries_amount_positive',
+      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 5. ACCOUNT BALANCES
+ * ============================================================================
+ */
+export const accountBalances = sqliteTable(
+  'account_balances',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    availableBaseUnits: text('available_base_units').notNull().default('0'),
+    lockedBaseUnits: text('locked_base_units').notNull().default('0'),
+    version: integer('version').notNull().default(1),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    accountAssetUq: uniqueIndex('uq_account_balances_account_asset').on(
+      table.accountId,
+      table.assetId
+    ),
+    accountIdx: index('idx_account_balances_account').on(table.accountId),
+    assetIdx: index('idx_account_balances_asset').on(table.assetId),
+    availableCheck: check(
+      'ck_account_balances_available_nonnegative',
+      sql`${table.availableBaseUnits} <> '' AND ltrim(${table.availableBaseUnits}, '0123456789') = '' AND (${table.availableBaseUnits} = '0' OR ltrim(${table.availableBaseUnits}, '0') = ${table.availableBaseUnits})`
+    ),
+    lockedCheck: check(
+      'ck_account_balances_locked_nonnegative',
+      sql`${table.lockedBaseUnits} <> '' AND ltrim(${table.lockedBaseUnits}, '0123456789') = '' AND (${table.lockedBaseUnits} = '0' OR ltrim(${table.lockedBaseUnits}, '0') = ${table.lockedBaseUnits})`
+    ),
+    versionCheck: check('ck_account_balances_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 6. BALANCE HOLDS
+ * ============================================================================
+ */
+export const balanceHolds = sqliteTable(
+  'balance_holds',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    amountBaseUnits: text('amount_base_units').notNull(),
+    reason: text('reason').notNull(),
+    referenceType: text('reference_type'),
+    referenceId: text('reference_id'),
+    status: text('status', {
+      enum: ['active', 'released', 'expired', 'consumed'],
+    })
+      .notNull()
+      .default('active'),
+    version: integer('version').notNull().default(1),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+    releasedAt: integer('released_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    accountIdx: index('idx_balance_holds_account').on(table.accountId),
+    assetIdx: index('idx_balance_holds_asset').on(table.assetId),
+    statusIdx: index('idx_balance_holds_status').on(table.status),
+    referenceIdx: index('idx_balance_holds_reference').on(table.referenceType, table.referenceId),
+    statusCheck: check(
+      'ck_balance_holds_status',
+      sql`${table.status} IN ('active', 'released', 'expired', 'consumed')`
+    ),
+    amountCheck: check(
+      'ck_balance_holds_amount_positive',
+      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+    ),
+    releasedStateCheck: check(
+      'ck_balance_holds_released_state',
+      sql`${table.status} != 'released' OR ${table.releasedAt} IS NOT NULL`
+    ),
+    expiredStateCheck: check(
+      'ck_balance_holds_expired_state',
+      sql`${table.status} != 'expired' OR ${table.expiresAt} IS NOT NULL`
+    ),
+    versionCheck: check('ck_balance_holds_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 7. FIAT PROVIDERS
+ * ============================================================================
+ */
+export const fiatProviders = sqliteTable(
+  'fiat_providers',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    code: text('code').notNull(),
+    type: text('type', {
+      enum: ['bank', 'payment_provider', 'pix_provider', 'gateway'],
+    }).notNull(),
+    status: text('status', {
+      enum: ['active', 'inactive', 'suspended'],
+    })
+      .notNull()
+      .default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    codeUq: uniqueIndex('uq_fiat_providers_code').on(table.code),
+    typeIdx: index('idx_fiat_providers_type').on(table.type),
+    statusIdx: index('idx_fiat_providers_status').on(table.status),
+    typeCheck: check(
+      'ck_fiat_providers_type',
+      sql`${table.type} IN ('bank', 'payment_provider', 'pix_provider', 'gateway')`
+    ),
+    statusCheck: check(
+      'ck_fiat_providers_status',
+      sql`${table.status} IN ('active', 'inactive', 'suspended')`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 8. FIAT ACCOUNTS
+ * ============================================================================
+ */
+export const fiatAccounts = sqliteTable(
+  'fiat_accounts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    providerId: integer('provider_id').references(() => fiatProviders.id, {
+      onDelete: 'restrict',
+    }),
+    type: text('type', {
+      enum: ['bank_account', 'payment_account', 'pix_account'],
+    }).notNull(),
+    externalAccountId: text('external_account_id'),
+    displayName: text('display_name'),
+    last4: text('last4'),
+    status: text('status', {
+      enum: ['active', 'inactive', 'blocked'],
+    })
+      .notNull()
+      .default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+    blockedAt: integer('blocked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_fiat_accounts_user').on(table.userId),
+    providerIdx: index('idx_fiat_accounts_provider').on(table.providerId),
+    statusIdx: index('idx_fiat_accounts_status').on(table.status),
+    typeCheck: check(
+      'ck_fiat_accounts_type',
+      sql`${table.type} IN ('bank_account', 'payment_account', 'pix_account')`
+    ),
+    statusCheck: check(
+      'ck_fiat_accounts_status',
+      sql`${table.status} IN ('active', 'inactive', 'blocked')`
+    ),
+    blockedStateCheck: check(
+      'ck_fiat_accounts_blocked_state',
+      sql`${table.status} != 'blocked' OR ${table.blockedAt} IS NOT NULL`
+    ),
+    externalUq: uniqueIndex('uq_fiat_accounts_provider_external').on(
+      table.providerId,
+      table.externalAccountId
+    ),
+    userAccountUq: uniqueIndex('uq_fiat_accounts_user_account').on(table.userId, table.id),
+  })
+);
+
+/* ============================================================================
+ * 9. FIAT PAYMENT METHODS
+ * ============================================================================
+ */
+export const fiatPaymentMethods = sqliteTable(
+  'fiat_payment_methods',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'restrict',
+      }),
+    fiatAccountId: integer('fiat_account_id'),
+    type: text('type', {
+      enum: ['pix', 'bank_transfer', 'boleto', 'card'],
+    }).notNull(),
+    label: text('label').notNull(),
+    status: text('status', {
+      enum: ['active', 'inactive', 'blocked'],
+    })
+      .notNull()
+      .default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+    blockedAt: integer('blocked_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    fiatAccountFk: foreignKey({
+      columns: [table.userId, table.fiatAccountId],
+      foreignColumns: [fiatAccounts.userId, fiatAccounts.id],
+      name: 'fk_fiat_payment_methods_user_account',
+    }).onDelete('restrict'),
+    userIdx: index('idx_fiat_payment_methods_user').on(table.userId),
+    accountIdx: index('idx_fiat_payment_methods_account').on(table.fiatAccountId),
+    typeIdx: index('idx_fiat_payment_methods_type').on(table.type),
+    statusIdx: index('idx_fiat_payment_methods_status').on(table.status),
+    typeCheck: check(
+      'ck_fiat_pm_type',
+      sql`${table.type} IN ('pix', 'bank_transfer', 'boleto', 'card')`
+    ),
+    statusCheck: check(
+      'ck_fiat_pm_status',
+      sql`${table.status} IN ('active', 'inactive', 'blocked')`
+    ),
+    blockedStateCheck: check(
+      'ck_fiat_pm_blocked_state',
+      sql`${table.status} != 'blocked' OR ${table.blockedAt} IS NOT NULL`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 10. FIAT TRANSACTIONS
+ * ============================================================================
+ */
+export const fiatTransactions = sqliteTable(
+  'fiat_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    financialTransactionId: integer('financial_transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    providerId: integer('provider_id').references(() => fiatProviders.id, {
+      onDelete: 'restrict',
+    }),
+    paymentMethodId: integer('payment_method_id').references(() => fiatPaymentMethods.id, {
+      onDelete: 'restrict',
+    }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    direction: text('direction', {
+      enum: ['inbound', 'outbound'],
+    }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
+    status: text('status', {
+      enum: ['pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed'],
+    })
+      .notNull()
+      .default('pending'),
+    version: integer('version').notNull().default(1),
+    requestedAt: integer('requested_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    processedAt: integer('processed_at', { mode: 'timestamp' }),
+    settledAt: integer('settled_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    transactionUq: uniqueIndex('uq_fiat_transactions_financial_transaction').on(
+      table.financialTransactionId
+    ),
+    providerIdx: index('idx_fiat_transactions_provider').on(table.providerId),
+    paymentMethodIdx: index('idx_fiat_transactions_payment_method').on(table.paymentMethodId),
+    assetIdx: index('idx_fiat_transactions_asset').on(table.assetId),
+    statusIdx: index('idx_fiat_transactions_status').on(table.status),
+    directionCheck: check(
+      'ck_fiat_tx_direction',
+      sql`${table.direction} IN ('inbound', 'outbound')`
+    ),
+    statusCheck: check(
+      'ck_fiat_tx_status',
+      sql`${table.status} IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed')`
+    ),
+    amountCheck: check(
+      'ck_fiat_transactions_amount_positive',
+      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+    ),
+    temporalOrderCheck: check(
+      'ck_fiat_tx_dates',
+      sql`${table.settledAt} IS NULL OR ${table.settledAt} >= ${table.requestedAt}`
+    ),
+    versionCheck: check('ck_fiat_tx_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 11. CRYPTO TRANSACTIONS
+ * ============================================================================
+ */
+export const cryptoTransactions = sqliteTable(
+  'crypto_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    financialTransactionId: integer('financial_transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    web3TransactionId: text('web3_transaction_id'),
+    direction: text('direction', {
+      enum: ['inbound', 'outbound'],
+    }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
+    feeAssetId: integer('fee_asset_id').references(() => financialAssets.id, {
+      onDelete: 'restrict',
+    }),
+    feeBaseUnits: text('fee_base_units').notNull().default('0'),
+    status: text('status', {
+      enum: ['pending', 'processing', 'confirmed', 'failed', 'reversed'],
+    })
+      .notNull()
+      .default('pending'),
+    version: integer('version').notNull().default(1),
+    requestedAt: integer('requested_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    settledAt: integer('settled_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    transactionUq: uniqueIndex('uq_crypto_transactions_financial_transaction').on(
+      table.financialTransactionId
+    ),
+    web3TransactionUq: uniqueIndex('uq_crypto_transactions_web3_transaction').on(
+      table.web3TransactionId
+    ),
+    assetIdx: index('idx_crypto_transactions_asset').on(table.assetId),
+    statusIdx: index('idx_crypto_transactions_status').on(table.status),
+    directionCheck: check(
+      'ck_crypto_tx_direction',
+      sql`${table.direction} IN ('inbound', 'outbound')`
+    ),
+    statusCheck: check(
+      'ck_crypto_tx_status',
+      sql`${table.status} IN ('pending', 'processing', 'confirmed', 'failed', 'reversed')`
+    ),
+    amountCheck: check(
+      'ck_crypto_transactions_amount_positive',
+      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+    ),
+    feeCheck: check(
+      'ck_crypto_transactions_fee_nonnegative',
+      sql`${table.feeBaseUnits} <> '' AND ltrim(${table.feeBaseUnits}, '0123456789') = '' AND (${table.feeBaseUnits} = '0' OR ltrim(${table.feeBaseUnits}, '0') = ${table.feeBaseUnits})`
+    ),
+    feeAssetCheck: check(
+      'ck_crypto_transactions_fee_asset',
+      sql`${table.feeBaseUnits} = '0' OR ${table.feeAssetId} IS NOT NULL`
+    ),
+    temporalOrderCheck: check(
+      'ck_crypto_tx_dates',
+      sql`${table.settledAt} IS NULL OR ${table.settledAt} >= ${table.requestedAt}`
+    ),
+    versionCheck: check('ck_crypto_tx_version', sql`${table.version} > 0`),
+  })
+);
+
+/* ============================================================================
+ * 12. EXCHANGE RATES
+ * ============================================================================
+ */
+export const exchangeRates = sqliteTable(
+  'exchange_rates',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    baseAssetId: integer('base_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    quoteAssetId: integer('quote_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    rate: text('rate').notNull(),
+    source: text('source').notNull(),
+    quotedAt: integer('quoted_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    pairIdx: index('idx_exchange_rates_pair').on(table.baseAssetId, table.quoteAssetId),
+    quotedIdx: index('idx_exchange_rates_quoted').on(table.quotedAt),
+    pairDifferentCheck: check(
+      'ck_exchange_rates_different_assets',
+      sql`${table.baseAssetId} <> ${table.quoteAssetId}`
+    ),
+    rateCheck: check('ck_exchange_rates_rate_positive', sql`CAST(${table.rate} AS REAL) > 0`),
+    expiresCheck: check(
+      'ck_exchange_rates_expires_after_quoted',
+      sql`${table.expiresAt} IS NULL OR ${table.expiresAt} >= ${table.quotedAt}`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 13. ASSET CONVERSIONS
+ * ============================================================================
+ */
+export const assetConversions = sqliteTable(
+  'asset_conversions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    financialTransactionId: integer('financial_transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    fromAssetId: integer('from_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    toAssetId: integer('to_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    fromAmountBaseUnits: text('from_amount_base_units').notNull(),
+    toAmountBaseUnits: text('to_amount_base_units').notNull(),
+    rate: text('rate').notNull(),
+    rateSource: text('rate_source'),
+    quotedAt: integer('quoted_at', { mode: 'timestamp' }),
+    feeAmountBaseUnits: text('fee_amount_base_units').notNull().default('0'),
+    status: text('status', {
+      enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
+    })
+      .notNull()
+      .default('pending'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    transactionUq: uniqueIndex('uq_asset_conversions_transaction').on(table.financialTransactionId),
+    fromAssetIdx: index('idx_asset_conversions_from_asset').on(table.fromAssetId),
+    toAssetIdx: index('idx_asset_conversions_to_asset').on(table.toAssetId),
+    statusCheck: check(
+      'ck_asset_conversions_status',
+      sql`${table.status} IN ('pending', 'processing', 'completed', 'failed', 'cancelled')`
+    ),
+    fromAmountCheck: check(
+      'ck_asset_conversions_from_amount_positive',
+      sql`${table.fromAmountBaseUnits} <> '' AND ltrim(${table.fromAmountBaseUnits}, '0123456789') = '' AND ${table.fromAmountBaseUnits} <> '0' AND ltrim(${table.fromAmountBaseUnits}, '0') = ${table.fromAmountBaseUnits}`
+    ),
+    toAmountCheck: check(
+      'ck_asset_conversions_to_amount_positive',
+      sql`${table.toAmountBaseUnits} <> '' AND ltrim(${table.toAmountBaseUnits}, '0123456789') = '' AND ${table.toAmountBaseUnits} <> '0' AND ltrim(${table.toAmountBaseUnits}, '0') = ${table.toAmountBaseUnits}`
+    ),
+    feeCheck: check(
+      'ck_asset_conversions_fee_nonnegative',
+      sql`${table.feeAmountBaseUnits} <> '' AND ltrim(${table.feeAmountBaseUnits}, '0123456789') = '' AND (${table.feeAmountBaseUnits} = '0' OR ltrim(${table.feeAmountBaseUnits}, '0') = ${table.feeAmountBaseUnits})`
+    ),
+    assetsDifferentCheck: check(
+      'ck_asset_conversions_different_assets',
+      sql`${table.fromAssetId} <> ${table.toAssetId}`
+    ),
+    rateCheck: check('ck_asset_conversions_rate_positive', sql`CAST(${table.rate} AS REAL) > 0`),
+  })
+);
+
+/* ============================================================================
+ * 14. FINANCIAL FEES
+ * ============================================================================
+ */
+export const financialFees = sqliteTable(
+  'financial_fees',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    transactionId: integer('transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    recipientAccountId: integer('recipient_account_id').references(() => financialAccounts.id, {
+      onDelete: 'restrict',
+    }),
+    feeType: text('fee_type', {
+      enum: ['platform', 'withdrawal', 'payment', 'conversion', 'network', 'other'],
+    }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    transactionIdx: index('idx_financial_fees_transaction').on(table.transactionId),
+    assetIdx: index('idx_financial_fees_asset').on(table.assetId),
+    recipientIdx: index('idx_financial_fees_recipient_account').on(table.recipientAccountId),
+    feeTypeCheck: check(
+      'ck_financial_fees_type',
+      sql`${table.feeType} IN ('platform', 'withdrawal', 'payment', 'conversion', 'network', 'other')`
+    ),
+    amountCheck: check(
+      'ck_financial_fees_amount_positive',
+      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 15. EXTERNAL TRANSACTIONS
+ * ============================================================================
+ */
+export const fiatExternalTransactions = sqliteTable(
+  'fiat_external_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    financialTransactionId: integer('financial_transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+    providerId: integer('provider_id').references(() => fiatProviders.id, {
+      onDelete: 'restrict',
+    }),
+    externalTransactionId: text('external_transaction_id').notNull(),
+    type: text('type').notNull(),
+    status: text('status').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    providerExternalUq: uniqueIndex('uq_fiat_external_transactions_provider_external').on(
+      table.providerId,
+      table.externalTransactionId
+    ),
+    transactionIdx: index('idx_fiat_external_transactions_transaction').on(
+      table.financialTransactionId
+    ),
+    providerIdx: index('idx_fiat_external_transactions_provider').on(table.providerId),
+    statusIdx: index('idx_fiat_external_transactions_status').on(table.status),
+  })
+);
+
+/* ============================================================================
+ * 16. IDEMPOTENCY KEYS
+ * ============================================================================
+ */
+export const idempotencyKeys = sqliteTable(
+  'idempotency_keys',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+    scope: text('scope').notNull(),
+    key: text('key').notNull(),
+    requestHash: text('request_hash').notNull(),
+    financialTransactionId: integer('financial_transaction_id').references(
+      () => financialTransactions.id,
+      {
+        onDelete: 'restrict',
+      }
+    ),
+    status: text('status', {
+      enum: ['processing', 'completed', 'failed'],
+    })
+      .notNull()
+      .default('processing'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    scopeKeyUq: uniqueIndex('uq_idempotency_scope_key').on(table.scope, table.key),
+    userIdx: index('idx_idempotency_keys_user').on(table.userId),
+    transactionIdx: index('idx_idempotency_keys_transaction').on(table.financialTransactionId),
+    statusIdx: index('idx_idempotency_keys_status').on(table.status),
+    statusCheck: check(
+      'ck_idempotency_keys_status',
+      sql`${table.status} IN ('processing', 'completed', 'failed')`
+    ),
+    expiresCheck: check(
+      'ck_idempotency_keys_expires',
+      sql`${table.expiresAt} IS NULL OR ${table.createdAt} < ${table.expiresAt}`
+    ),
+  })
+);
+
+/* ============================================================================
+ * 17. RECONCILIATION RECORDS
+ * ============================================================================
+ */
+export const reconciliationRecords = sqliteTable(
+  'reconciliation_records',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    providerId: integer('provider_id').references(() => fiatProviders.id, {
+      onDelete: 'restrict',
+    }),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+    expectedBalanceBaseUnits: text('expected_balance_base_units').notNull(),
+    actualBalanceBaseUnits: text('actual_balance_base_units').notNull(),
+    differenceBaseUnits: text('difference_base_units').notNull(),
+    status: text('status', {
+      enum: ['matched', 'mismatch', 'resolved'],
+    })
+      .notNull()
+      .default('matched'),
+    reconciliationRunId: text('reconciliation_run_id').notNull(),
+    version: integer('version').notNull().default(1),
+    reconciliationDate: integer('reconciliation_date', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    accountIdx: index('idx_reconciliation_records_account').on(table.accountId),
+    assetIdx: index('idx_reconciliation_records_asset').on(table.assetId),
+    providerIdx: index('idx_reconciliation_records_provider').on(table.providerId),
+    statusIdx: index('idx_reconciliation_records_status').on(table.status),
+    statusCheck: check(
+      'ck_reconciliation_status',
+      sql`${table.status} IN ('matched', 'mismatch', 'resolved')`
+    ),
+    resolvedStateCheck: check(
+      'ck_reconciliation_resolved_state',
+      sql`${table.status} != 'resolved' OR ${table.resolvedAt} IS NOT NULL`
+    ),
+    versionCheck: check('ck_reconciliation_records_version', sql`${table.version} > 0`),
+    expectedCheck: check(
+      'ck_reconciliation_expected_nonnegative',
+      sql`${table.expectedBalanceBaseUnits} <> '' AND ltrim(${table.expectedBalanceBaseUnits}, '0123456789') = '' AND (${table.expectedBalanceBaseUnits} = '0' OR ltrim(${table.expectedBalanceBaseUnits}, '0') = ${table.expectedBalanceBaseUnits})`
+    ),
+    actualCheck: check(
+      'ck_reconciliation_actual_nonnegative',
+      sql`${table.actualBalanceBaseUnits} <> '' AND ltrim(${table.actualBalanceBaseUnits}, '0123456789') = '' AND (${table.actualBalanceBaseUnits} = '0' OR ltrim(${table.actualBalanceBaseUnits}, '0') = ${table.actualBalanceBaseUnits})`
+    ),
+  })
+);
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleAuthenticationRepositoryAdapter.ts`
+```typescript
+import { eq, and, isNull } from 'drizzle-orm';
+import {
+  userAuthenticators,
+  passwordCredentials,
+  totpCredentials,
+  webauthnCredentials,
+} from '../../db/authentication/tables';
+import {
+  IAuthenticationRepository,
+  PasswordCredentialRecord,
+  TotpCredentialRecord,
+  WebAuthnCredentialRecord,
+} from '../../application/ports/output/IAuthenticationRepository';
+
+export type { PasswordCredentialRecord, TotpCredentialRecord, WebAuthnCredentialRecord };
+
+export class DrizzleAuthenticationRepositoryAdapter implements IAuthenticationRepository {
+  constructor(private readonly db: any) {}
+
+  // --------------------------------------------------------------------------
+  // PASSWORD CREDENTIALS (Strictly in authentication domain)
+  // --------------------------------------------------------------------------
+  async findPasswordCredentialByUserId(userId: number): Promise<PasswordCredentialRecord | null> {
+    const [row] = await this.db
+      .select({
+        authenticatorId: passwordCredentials.authenticatorId,
+        userId: userAuthenticators.userId,
+        passwordHash: passwordCredentials.passwordHash,
+      })
+      .from(passwordCredentials)
+      .innerJoin(userAuthenticators, eq(passwordCredentials.authenticatorId, userAuthenticators.id))
+      .where(
+        and(
+          eq(userAuthenticators.userId, userId),
+          eq(userAuthenticators.type, 'password'),
+          isNull(userAuthenticators.revokedAt)
+        )
+      )
+      .limit(1);
+
+    if (!row) return null;
+    return row;
+  }
+
+  async savePasswordCredential(userId: number, passwordHash: string): Promise<string> {
+    const existing = await this.findPasswordCredentialByUserId(userId);
+
+    if (existing) {
+      await this.db
+        .update(passwordCredentials)
+        .set({ passwordHash })
+        .where(eq(passwordCredentials.authenticatorId, existing.authenticatorId));
+      return existing.authenticatorId;
+    }
+
+    const authenticatorId = crypto.randomUUID();
+    await this.db.insert(userAuthenticators).values({
+      id: authenticatorId,
+      userId,
+      type: 'password',
+      verifiedAt: new Date(),
+    });
+
+    await this.db.insert(passwordCredentials).values({
+      authenticatorId,
+      passwordHash,
+    });
+
+    return authenticatorId;
+  }
+
+  // --------------------------------------------------------------------------
+  // TOTP CREDENTIALS
+  // --------------------------------------------------------------------------
+  async findTotpCredentialByUserId(userId: number): Promise<TotpCredentialRecord | null> {
+    const [row] = await this.db
+      .select({
+        authenticatorId: totpCredentials.authenticatorId,
+        userId: userAuthenticators.userId,
+        encryptedTotpSecret: totpCredentials.encryptedTotpSecret,
+        verifiedAt: userAuthenticators.verifiedAt,
+      })
+      .from(totpCredentials)
+      .innerJoin(userAuthenticators, eq(totpCredentials.authenticatorId, userAuthenticators.id))
+      .where(
+        and(
+          eq(userAuthenticators.userId, userId),
+          eq(userAuthenticators.type, 'totp'),
+          isNull(userAuthenticators.revokedAt)
+        )
+      )
+      .limit(1);
+
+    if (!row) return null;
+    return {
+      authenticatorId: row.authenticatorId,
+      userId: row.userId,
+      encryptedTotpSecret: row.encryptedTotpSecret,
+      verified: row.verifiedAt !== null,
+    };
+  }
+
+  async saveTotpSecret(userId: number, encryptedTotpSecret: string): Promise<string> {
+    const existing = await this.findTotpCredentialByUserId(userId);
+    if (existing) {
+      await this.db
+        .update(totpCredentials)
+        .set({ encryptedTotpSecret })
+        .where(eq(totpCredentials.authenticatorId, existing.authenticatorId));
+      return existing.authenticatorId;
+    }
+
+    const authenticatorId = crypto.randomUUID();
+    await this.db.insert(userAuthenticators).values({
+      id: authenticatorId,
+      userId,
+      type: 'totp',
+    });
+
+    await this.db.insert(totpCredentials).values({
+      authenticatorId,
+      encryptedTotpSecret,
+    });
+
+    return authenticatorId;
+  }
+
+  async verifyTotpAuthenticator(authenticatorId: string): Promise<void> {
+    await this.db
+      .update(userAuthenticators)
+      .set({ verifiedAt: new Date() })
+      .where(eq(userAuthenticators.id, authenticatorId));
+  }
+
+  // --------------------------------------------------------------------------
+  // WEBAUTHN / PASSKEY CREDENTIALS
+  // --------------------------------------------------------------------------
+  async findAllWebAuthnCredentialsByUserId(userId: number): Promise<WebAuthnCredentialRecord[]> {
+    const rows = await this.db
+      .select({
+        authenticatorId: webauthnCredentials.authenticatorId,
+        userId: userAuthenticators.userId,
+        credentialId: webauthnCredentials.credentialId,
+        publicKeyCose: webauthnCredentials.publicKeyCose,
+        signCount: webauthnCredentials.signCount,
+      })
+      .from(webauthnCredentials)
+      .innerJoin(userAuthenticators, eq(webauthnCredentials.authenticatorId, userAuthenticators.id))
+      .where(
+        and(
+          eq(userAuthenticators.userId, userId),
+          eq(userAuthenticators.type, 'webauthn'),
+          isNull(userAuthenticators.revokedAt)
+        )
+      );
+
+    return rows;
+  }
+
+  async findWebAuthnCredentialById(credentialId: string): Promise<WebAuthnCredentialRecord | null> {
+    const [row] = await this.db
+      .select({
+        authenticatorId: webauthnCredentials.authenticatorId,
+        userId: userAuthenticators.userId,
+        credentialId: webauthnCredentials.credentialId,
+        publicKeyCose: webauthnCredentials.publicKeyCose,
+        signCount: webauthnCredentials.signCount,
+      })
+      .from(webauthnCredentials)
+      .innerJoin(userAuthenticators, eq(webauthnCredentials.authenticatorId, userAuthenticators.id))
+      .where(
+        and(
+          eq(webauthnCredentials.credentialId, credentialId),
+          eq(userAuthenticators.type, 'webauthn'),
+          isNull(userAuthenticators.revokedAt)
+        )
+      )
+      .limit(1);
+
+    if (!row) return null;
+    return row;
+  }
+
+  async saveWebAuthnCredential(
+    userId: number,
+    credentialId: string,
+    publicKeyCose: string,
+    rpId: string = 'asppibra.com'
+  ): Promise<string> {
+    const authenticatorId = crypto.randomUUID();
+    await this.db.insert(userAuthenticators).values({
+      id: authenticatorId,
+      userId,
+      type: 'webauthn',
+      verifiedAt: new Date(),
+    });
+
+    await this.db.insert(webauthnCredentials).values({
+      authenticatorId,
+      credentialId,
+      publicKeyCose,
+      rpId,
+      backupEligible: false,
+      backupState: false,
+      uvInitialized: true,
+    });
+
+    return authenticatorId;
+  }
+
+  async updateWebAuthnSignCount(credentialId: string, newSignCount: number): Promise<void> {
+    await this.db
+      .update(webauthnCredentials)
+      .set({ signCount: newSignCount })
+      .where(eq(webauthnCredentials.credentialId, credentialId));
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleAuthTransactionRepository.ts`
+```typescript
+import { DrizzleD1Database } from '../../../types/bindings';
+import { IAuthTransactionRepository } from '../../../application/ports/output/IAuthTransactionRepository';
+import { AuthenticationTransaction } from '../../../domains/identity/entities/AuthenticationTransaction';
+import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
+import { authTransactions, authChallenges } from '../../../db/authentication/tables';
+import { eq, sql } from 'drizzle-orm';
+
+export class DrizzleAuthTransactionRepository implements IAuthTransactionRepository {
+  constructor(private readonly db: DrizzleD1Database) {}
+
+  async createTransaction(transaction: AuthenticationTransaction): Promise<void> {
+    const data = transaction.toPersistence();
+    await this.db.insert(authTransactions).values(data);
+  }
+
+  async getTransactionById(id: string): Promise<AuthenticationTransaction | null> {
+    const result = await this.db
+      .select()
+      .from(authTransactions)
+      .where(eq(authTransactions.id, id))
+      .limit(1)
+      .get();
+      
+    if (!result) return null;
+    return AuthenticationTransaction.fromPersistence(result);
+  }
+
+  async updateTransaction(transaction: AuthenticationTransaction): Promise<void> {
+    const data = transaction.toPersistence();
+    await this.db
+      .update(authTransactions)
+      .set(data)
+      .where(eq(authTransactions.id, data.id));
+  }
+
+  async createChallenge(challenge: AuthenticationChallenge): Promise<void> {
+    const data = challenge.toPersistence();
+    await this.db.insert(authChallenges).values(data);
+  }
+
+  async getChallengeById(id: string): Promise<AuthenticationChallenge | null> {
+    const result = await this.db
+      .select()
+      .from(authChallenges)
+      .where(eq(authChallenges.id, id))
+      .limit(1)
+      .get();
+
+    if (!result) return null;
+    return AuthenticationChallenge.fromPersistence(result);
+  }
+
+  async getChallengeByHash(hash: string): Promise<AuthenticationChallenge | null> {
+    const result = await this.db
+      .select()
+      .from(authChallenges)
+      .where(eq(authChallenges.challengeHash, hash))
+      .limit(1)
+      .get();
+
+    if (!result) return null;
+    return AuthenticationChallenge.fromPersistence(result);
+  }
+
+  async updateChallenge(challenge: AuthenticationChallenge): Promise<void> {
+    const data = challenge.toPersistence();
+    await this.db
+      .update(authChallenges)
+      .set(data)
+      .where(eq(authChallenges.id, data.id));
+  }
+
+  async completeFactorAtomically(txId: string, aal: number, authEpochAtStart: number, method: string): Promise<boolean> {
+    const result = await this.db
+      .update(authTransactions)
+      .set({
+        status: 'verified',
+        currentAal: aal,
+        method: method,
+        assuranceMethod: method,
+        lastAuthenticatedAt: new Date()
+      })
+      .where(sql`${authTransactions.id} = ${txId} AND ${authTransactions.status} IN ('created', 'awaiting_factor') AND ${authTransactions.authEpochAtStart} = ${authEpochAtStart}`);
+      
+    return result.meta.changes > 0;
+  }
+
+  async recordFailedAttemptAtomically(txId: string, maxAttempts: number): Promise<boolean> {
+    const result = await this.db
+      .update(authTransactions)
+      .set({
+        failureCount: sql`${authTransactions.failureCount} + 1`,
+        status: sql`CASE WHEN ${authTransactions.failureCount} + 1 >= ${maxAttempts} THEN 'locked' ELSE ${authTransactions.status} END`
+      })
+      .where(sql`${authTransactions.id} = ${txId} AND ${authTransactions.status} IN ('created', 'awaiting_factor')`);
+      
+    return result.meta.changes > 0;
+  }
+
+  async consumeChallengeAtomically(challengeId: string): Promise<boolean> {
+    const result = await this.db
+      .update(authChallenges)
+      .set({
+        usedAt: new Date()
+      })
+      .where(sql`${authChallenges.id} = ${challengeId} AND ${authChallenges.usedAt} IS NULL AND ${authChallenges.expiresAt} > ${new Date().getTime()}`); // SQLite uses integer timestamp if configured so, but standard is Date. Let's use current_timestamp or just JS Date. Since Drizzle maps Date to int, `new Date()` works. Wait, to be safe, `(strftime('%s', 'now') * 1000)` or just Drizzle's `eq` / `gt`.
+      
+    // Better Drizzle where syntax
+    return result.meta.changes > 0;
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleCivilIdentityRepositoryAdapter.ts`
+```typescript
+import { eq, desc } from 'drizzle-orm';
+import { citizens, identityDocuments, kycVerifications } from '../../db/civil-identity/tables';
+import {
+  ICivilIdentityRepository,
+  CitizenRecord,
+  IdentityDocumentRecord,
+  KycVerificationRecord,
+} from '../../application/ports/output/ICivilIdentityRepository';
+
+export type { CitizenRecord, IdentityDocumentRecord, KycVerificationRecord };
+
+export class DrizzleCivilIdentityRepositoryAdapter implements ICivilIdentityRepository {
+  constructor(private readonly db: any) {}
+
+  async findByDid(did: string): Promise<CitizenRecord | null> {
+    const username = did.split(':').pop();
+    const [row] = await this.db
+      .select()
+      .from(citizens)
+      .where(eq(citizens.username, username || did))
+      .limit(1);
+
+    if (!row) return null;
+    return this.mapCitizenRow(row);
+  }
+
+  async createCitizen(data: Partial<CitizenRecord> & { userId: number }): Promise<CitizenRecord> {
+    const [inserted] = await this.db
+      .insert(citizens)
+      .values({
+        userId: data.userId,
+        legalFirstName: data.legalFirstName || null,
+        legalLastName: data.legalLastName || null,
+        nationalityCode: data.nationalityCode || 'BR',
+        birthDate: data.birthDate || null,
+        maritalStatus: (data.maritalStatus as any) || null,
+        civilStatus: data.civilStatus || 'pending',
+      })
+      .returning();
+
+    return this.mapCitizenRow(inserted);
+  }
+
+  async findCitizenByUserId(userId: number): Promise<CitizenRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(citizens)
+      .where(eq(citizens.userId, userId))
+      .limit(1);
+
+    if (!row) return null;
+    return this.mapCitizenRow(row);
+  }
+
+  async updateCivilStatus(
+    userId: number,
+    civilStatus: 'pending' | 'verified' | 'suspended' | 'revoked',
+    verifiedBy?: number
+  ): Promise<void> {
+    await this.db
+      .update(citizens)
+      .set({
+        civilStatus,
+        verifiedAt: civilStatus === 'verified' ? new Date() : null,
+        verifiedBy: verifiedBy || null,
+        statusChangedAt: new Date(),
+      })
+      .where(eq(citizens.userId, userId));
+  }
+
+  async createIdentityDocument(data: IdentityDocumentRecord): Promise<IdentityDocumentRecord> {
+    const [inserted] = await this.db
+      .insert(identityDocuments)
+      .values({
+        userId: data.userId,
+        documentType: data.documentType,
+        countryCode: data.countryCode || 'BR',
+        numberLookupHash: data.numberLookupHash,
+        encryptedNumber: data.encryptedNumber,
+        last4: data.last4 || null,
+        source: data.source,
+        verificationStatus: data.verificationStatus || 'pending',
+        verifiedAt: data.verifiedAt || null,
+        verifiedBy: data.verifiedBy || null,
+      })
+      .returning();
+
+    return {
+      id: inserted.id,
+      userId: inserted.userId,
+      documentType: inserted.documentType as any,
+      countryCode: inserted.countryCode,
+      numberLookupHash: inserted.numberLookupHash,
+      encryptedNumber: inserted.encryptedNumber,
+      last4: inserted.last4,
+      source: inserted.source as any,
+      verificationStatus: inserted.verificationStatus as any,
+      verifiedAt: inserted.verifiedAt ? new Date(inserted.verifiedAt) : null,
+      verifiedBy: inserted.verifiedBy,
+      version: inserted.version,
+    };
+  }
+
+  async findDocumentsByUserId(userId: number): Promise<IdentityDocumentRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(identityDocuments)
+      .where(eq(identityDocuments.userId, userId));
+
+    return rows.map((r: any) => ({
+      id: r.id,
+      userId: r.userId,
+      documentType: r.documentType,
+      countryCode: r.countryCode,
+      numberLookupHash: r.numberLookupHash,
+      encryptedNumber: r.encryptedNumber,
+      last4: r.last4,
+      source: r.source,
+      verificationStatus: r.verificationStatus,
+      verifiedAt: r.verifiedAt ? new Date(r.verifiedAt) : null,
+      verifiedBy: r.verifiedBy,
+      version: r.version,
+    }));
+  }
+
+  async createKycVerification(data: KycVerificationRecord): Promise<KycVerificationRecord> {
+    const [inserted] = await this.db
+      .insert(kycVerifications)
+      .values({
+        userId: data.userId,
+        verificationLevel: data.verificationLevel,
+        status: data.status,
+        provider: data.provider,
+        riskScore: data.riskScore || null,
+        rejectionReason: data.rejectionReason || null,
+        startedAt: data.startedAt,
+        completedAt: data.completedAt || null,
+        expiresAt: data.expiresAt || null,
+      })
+      .returning();
+
+    return {
+      id: inserted.id,
+      userId: inserted.userId,
+      verificationLevel: inserted.verificationLevel as any,
+      status: inserted.status as any,
+      provider: inserted.provider,
+      riskScore: inserted.riskScore,
+      rejectionReason: inserted.rejectionReason,
+      startedAt: new Date(inserted.startedAt),
+      completedAt: inserted.completedAt ? new Date(inserted.completedAt) : null,
+      expiresAt: inserted.expiresAt ? new Date(inserted.expiresAt) : null,
+      version: inserted.version,
+    };
+  }
+
+  async getLatestKycByUserId(userId: number): Promise<KycVerificationRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(kycVerifications)
+      .where(eq(kycVerifications.userId, userId))
+      .orderBy(desc(kycVerifications.id))
+      .limit(1);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      userId: row.userId,
+      verificationLevel: row.verificationLevel as any,
+      status: row.status as any,
+      provider: row.provider,
+      riskScore: row.riskScore,
+      rejectionReason: row.rejectionReason,
+      startedAt: new Date(row.startedAt),
+      completedAt: row.completedAt ? new Date(row.completedAt) : null,
+      expiresAt: row.expiresAt ? new Date(row.expiresAt) : null,
+      version: row.version,
+    };
+  }
+
+  private mapCitizenRow(row: any): CitizenRecord {
+    return {
+      userId: row.userId,
+      username: row.username,
+      legalFirstName: row.legalFirstName,
+      legalLastName: row.legalLastName,
+      nationalityCode: row.nationalityCode,
+      birthDate: row.birthDate,
+      maritalStatus: row.maritalStatus,
+      civilStatus: row.civilStatus,
+      verifiedAt: row.verifiedAt ? new Date(row.verifiedAt) : null,
+      verifiedBy: row.verifiedBy,
+      version: row.version,
+    };
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleFinanceRepository.ts`
+```typescript
+import { eq } from 'drizzle-orm';
+import {
+  financialAccounts,
+  accountBalances,
+  financialTransactions,
+  financialLedgerEntries,
+} from '../../db/finance/tables';
+import { Result } from '../../shared/kernel/Result';
+import {
+  IFinanceRepository,
+  FinancialAccountRecord,
+  AccountBalanceRecord,
+  FinancialTransactionRecord,
+} from '../../application/ports/output/IFinanceRepository';
+
+export type { FinancialAccountRecord, AccountBalanceRecord, FinancialTransactionRecord };
+
+export class DrizzleFinanceRepository implements IFinanceRepository {
+  constructor(private readonly db: any) {}
+
+  async getTreasuryAccount(): Promise<Result<FinancialAccountRecord>> {
+    try {
+      const [row] = await this.db
+        .select()
+        .from(financialAccounts)
+        .where(eq(financialAccounts.accountType, 'treasury'))
+        .limit(1);
+
+      if (!row) {
+        // Se não existir a conta tesouraria, cria uma nova conta padrão de tesouraria
+        const [inserted] = await this.db
+          .insert(financialAccounts)
+          .values({
+            userId: null,
+            accountType: 'treasury',
+            name: 'ASPPIBRA DAO Main Treasury',
+            status: 'active',
+          })
+          .returning();
+
+        return Result.ok({
+          id: inserted.id,
+          userId: inserted.userId,
+          accountType: inserted.accountType as any,
+          status: inserted.status as any,
+          name: inserted.name,
+          version: inserted.version,
+        });
+      }
+
+      return Result.ok({
+        id: row.id,
+        userId: row.userId,
+        accountType: row.accountType as any,
+        status: row.status as any,
+        name: row.name,
+        version: row.version,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>> {
+    try {
+      const treasuryRes = await this.getTreasuryAccount();
+      if (treasuryRes.isFailure) {
+        return Result.fail(treasuryRes.error || 'Treasury account error');
+      }
+
+      const treasuryId = treasuryRes.getValue().id;
+      const rows = await this.db
+        .select()
+        .from(accountBalances)
+        .where(eq(accountBalances.accountId, treasuryId));
+
+      const balances: AccountBalanceRecord[] = rows.map((r: any) => ({
+        id: r.id,
+        accountId: r.accountId,
+        assetId: r.assetId,
+        availableBaseUnits: r.availableBaseUnits,
+        lockedBaseUnits: r.lockedBaseUnits,
+        version: r.version,
+      }));
+
+      return Result.ok(balances);
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async createTransaction(data: {
+    userId?: number | null;
+    type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
+    category?: string;
+    description: string;
+    amountBaseUnits: string;
+    assetId: number;
+  }): Promise<Result<FinancialTransactionRecord>> {
+    try {
+      const treasuryRes = await this.getTreasuryAccount();
+      if (treasuryRes.isFailure) return Result.fail(treasuryRes.error || 'Treasury account error');
+
+      const treasuryId = treasuryRes.getValue().id;
+
+      // 1. Criar registro de transação
+      const [tx] = await this.db
+        .insert(financialTransactions)
+        .values({
+          userId: data.userId || null,
+          type: data.type,
+          category: (data.category as any) || 'operational',
+          status: 'completed',
+          description: data.description,
+          completedAt: new Date(),
+        })
+        .returning();
+
+      // 2. Criar entrada contábil (Ledger Entry)
+      await this.db.insert(financialLedgerEntries).values({
+        transactionId: tx.id,
+        accountId: treasuryId,
+        assetId: data.assetId,
+        direction: data.type === 'deposit' ? 'credit' : 'debit',
+        amountBaseUnits: data.amountBaseUnits,
+      });
+
+      return Result.ok({
+        id: tx.id,
+        userId: tx.userId,
+        type: tx.type as any,
+        category: tx.category,
+        status: tx.status as any,
+        description: tx.description,
+        createdAt: new Date(tx.createdAt),
+        completedAt: tx.completedAt ? new Date(tx.completedAt) : null,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>> {
+    try {
+      const query = userId
+        ? this.db.select().from(financialTransactions).where(eq(financialTransactions.userId, userId))
+        : this.db.select().from(financialTransactions);
+
+      const rows = await query;
+      const txs: FinancialTransactionRecord[] = rows.map((r: any) => ({
+        id: r.id,
+        userId: r.userId,
+        type: r.type,
+        category: r.category,
+        status: r.status,
+        description: r.description,
+        createdAt: new Date(r.createdAt),
+        completedAt: r.completedAt ? new Date(r.completedAt) : null,
+      }));
+
+      return Result.ok(txs);
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleIdentityResolverAdapter.ts`
+```typescript
+import { eq } from 'drizzle-orm';
+import { IIdentityResolverPort } from '../../application/ports/output/IIdentityResolverPort';
+import { IdentityAssertion } from '../../application/dto/IdentityAssertion';
+import { IdentityResolutionResult } from '../../application/dto/IdentityResolutionResult';
+import { wallets } from '../../db/web3/tables';
+import { webauthnCredentials, userAuthenticators } from '../../db/authentication/tables';
+import { didIdentities } from '../../db/ssi/tables';
+
+export class DrizzleIdentityResolverAdapter implements IIdentityResolverPort {
+  constructor(private readonly db: any) {}
+
+  async resolve(assertion: IdentityAssertion): Promise<IdentityResolutionResult> {
+    switch (assertion.type) {
+      case 'oauth': {
+        const [authenticator] = await this.db
+          .select({ userId: userAuthenticators.userId })
+          .from(userAuthenticators)
+          .where(eq(userAuthenticators.id, assertion.subjectId))
+          .limit(1);
+
+        if (authenticator) {
+          return {
+            status: 'resolved',
+            userId: authenticator.userId,
+            bindingType: 'oauth',
+            provider: assertion.provider,
+          };
+        }
+        break;
+      }
+
+      case 'web3_wallet': {
+        const normalizedAddress = assertion.subjectId.toLowerCase();
+        const [wallet] = await this.db
+          .select({ userId: wallets.userId })
+          .from(wallets)
+          .where(eq(wallets.addressNormalized, normalizedAddress))
+          .limit(1);
+
+        if (wallet && wallet.userId) {
+          return {
+            status: 'resolved',
+            userId: wallet.userId,
+            bindingType: 'web3_wallet',
+            provider: 'evm',
+          };
+        }
+        break;
+      }
+
+      case 'passkey': {
+        const [passkey] = await this.db
+          .select({ userId: userAuthenticators.userId })
+          .from(webauthnCredentials)
+          .innerJoin(userAuthenticators, eq(webauthnCredentials.authenticatorId, userAuthenticators.id))
+          .where(eq(webauthnCredentials.credentialId, assertion.subjectId))
+          .limit(1);
+
+        if (passkey) {
+          return {
+            status: 'resolved',
+            userId: passkey.userId,
+            bindingType: 'passkey',
+            provider: 'webauthn',
+          };
+        }
+        break;
+      }
+
+      case 'ssi_did': {
+        const [did] = await this.db
+          .select({ userId: didIdentities.userId })
+          .from(didIdentities)
+          .where(eq(didIdentities.did, assertion.subjectId))
+          .limit(1);
+
+        if (did) {
+          return {
+            status: 'resolved',
+            userId: did.userId,
+            bindingType: 'ssi_did',
+            provider: 'polygonid',
+          };
+        }
+        break;
+      }
+    }
+
+    return {
+      status: 'not_linked',
+      code: 'IDENTITY_NOT_LINKED',
+      message: 'Identidade não vinculada a nenhuma conta existente.',
+    };
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleOutboxRepository.ts`
+```typescript
+import { IDomainEvent } from '../../shared/kernel/DomainEvent';
+import { Result } from '../../shared/kernel/Result';
+import { IOutboxRepository, OutboxEventRecord } from '../../application/ports/output/IOutboxRepository';
+import { outboxEvents } from '../../db/infrastructure/tables';
+import { eq, asc, sql } from 'drizzle-orm';
+
+export class DrizzleOutboxRepository implements IOutboxRepository {
+  // Recebe a instância do banco OU da transação (tx) ativa no UnitOfWork
+  constructor(private db: any) {}
+
+  async saveEvent(event: IDomainEvent, aggregateId: number, aggregateType: string, aggregateVersion: number): Promise<Result<void>> {
+    try {
+      const eventId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+      await this.db.insert(outboxEvents).values({
+        id: eventId,
+        aggregateId,
+        aggregateType,
+        aggregateVersion,
+        eventName: event.constructor.name,
+        payload: JSON.stringify(event),
+        metadata: JSON.stringify({ occurredOn: event.dateTimeOccurred }),
+        attempts: 0,
+        published: false,
+        createdAt: new Date(),
+      });
+      return Result.ok();
+    } catch (error: any) {
+      return Result.fail(`Failed to save outbox event: ${error.message}`);
+    }
+  }
+
+  async getPendingEvents(limit: number): Promise<Result<OutboxEventRecord[]>> {
+    try {
+      const pending = await this.db
+        .select()
+        .from(outboxEvents)
+        .where(eq(outboxEvents.published, false))
+        .orderBy(asc(outboxEvents.createdAt))
+        .limit(limit);
+        
+      return Result.ok(pending);
+    } catch (error: any) {
+      return Result.fail(`Failed to fetch pending outbox events: ${error.message}`);
+    }
+  }
+
+  async markAsPublished(eventId: string): Promise<Result<void>> {
+    try {
+      await this.db
+        .update(outboxEvents)
+        .set({
+          published: true,
+          publishedAt: new Date(),
+        })
+        .where(eq(outboxEvents.id, eventId));
+      return Result.ok();
+    } catch (error: any) {
+      return Result.fail(`Failed to mark outbox event as published: ${error.message}`);
+    }
+  }
+
+  async markAsFailed(eventId: string, error: string): Promise<Result<void>> {
+    try {
+      const result = await this.db
+        .update(outboxEvents)
+        .set({
+          attempts: sql`${outboxEvents.attempts} + 1`,
+          error: error.substring(0, 500)
+        })
+        .where(eq(outboxEvents.id, eventId))
+        .returning();
+        
+      if (!result || result.length === 0) {
+        return Result.fail('Event not found');
+      }
+
+      return Result.ok();
+    } catch (err: any) {
+      return Result.fail(`Failed to mark outbox event as failed: ${err.message}`);
+    }
+  }
+}
+
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzlePasswordResetRepository.ts`
+```typescript
+import { Result } from '../../shared/kernel/Result';
+import { IPasswordResetRepository, PasswordReset } from '../../application/ports/output/IPasswordResetRepository';
+import { passwordResets } from '../../db/authentication/tables';
+import { eq } from 'drizzle-orm';
+
+export class DrizzlePasswordResetRepository implements IPasswordResetRepository {
+  constructor(private db: any) {}
+
+  async findByToken(tokenHash: string): Promise<Result<PasswordReset>> {
+    try {
+      const [reset] = await this.db
+        .select()
+        .from(passwordResets)
+        .where(eq(passwordResets.tokenHash, tokenHash))
+        .limit(1);
+
+      if (!reset) {
+        return Result.fail('PasswordResetNotFound');
+      }
+      return Result.ok(reset as PasswordReset);
+    } catch (e: any) {
+      return Result.fail(e.message);
+    }
+  }
+
+  async invalidate(id: number): Promise<Result<void>> {
+    try {
+      await this.db
+        .update(passwordResets)
+        .set({ usedAt: new Date() })
+        .where(eq(passwordResets.id, id));
+      return Result.ok();
+    } catch (e: any) {
+      return Result.fail(e.message);
+    }
+  }
+
+  async create(data: { userId: number; tokenHash: string; expiresAt: Date }): Promise<Result<void>> {
+    try {
+      await this.db.insert(passwordResets).values(data);
+      return Result.ok();
+    } catch (e: any) {
+      return Result.fail(e.message);
+    }
+  }
+
+  async consumeToken(tokenHash: string): Promise<Result<PasswordReset>> {
+    try {
+      const { and, isNull, sql } = await import('drizzle-orm');
+      
+      const [reset] = await this.db
+        .update(passwordResets)
+        .set({ usedAt: new Date() })
+        .where(and(
+          eq(passwordResets.tokenHash, tokenHash),
+          isNull(passwordResets.usedAt),
+          sql`${passwordResets.expiresAt} > ${new Date().getTime()}`
+        ))
+        .returning();
+
+      if (!reset) {
+        return Result.fail('PasswordResetNotFoundOrUsed');
+      }
+      return Result.ok(reset as PasswordReset);
+    } catch (e: any) {
+      return Result.fail(e.message);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleSessionRepository.ts`
+```typescript
+import { ISessionRepository } from '../../application/ports/output/ISessionRepository';
+import { eq } from 'drizzle-orm';
+import { userSessions } from '../../db/authentication/tables';
+
+export class DrizzleSessionRepository implements ISessionRepository {
+  constructor(private db: any) {}
+
+  async createSession(sessionData: {
+    id: string;
+    userId: number;
+    jti: string;
+    ip: string;
+    userAgent: string;
+    familyId?: string;
+    refreshTokenHash: string;
+    aal: number;
+    authEpoch: number;
+    createdAt: Date;
+    expiresAt: Date;
+    lastAuthenticatedAt?: Date;
+  }): Promise<void> {
+    await this.db.insert(userSessions).values(sessionData);
+  }
+
+  async rotateRefreshTokenAtomically(sessionId: string, oldRefreshTokenHash: string): Promise<boolean> {
+    const { sql } = await import('drizzle-orm');
+    const result = await this.db
+      .update(userSessions)
+      .set({ revokedAt: new Date(), revocationReason: 'Rotated' })
+      .where(sql`${userSessions.id} = ${sessionId} AND ${userSessions.revokedAt} IS NULL AND ${userSessions.refreshTokenHash} = ${oldRefreshTokenHash}`);
+    
+    return result.meta.changes > 0;
+  }
+
+  async revokeSession(sessionId: string): Promise<void> {
+    await this.db
+      .update(userSessions)
+      .set({ revokedAt: new Date(), revocationReason: 'User logout' })
+      .where(eq(userSessions.id, sessionId));
+  }
+
+  async revokeAllUserSessions(userId: number): Promise<void> {
+    await this.db.update(userSessions)
+      .set({ revokedAt: new Date(), revocationReason: 'Revoked all user sessions' })
+      .where(eq(userSessions.userId, userId));
+  }
+
+  async getSessionById(sessionId: string): Promise<any | null> {
+    const [session] = await this.db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.id, sessionId))
+      .limit(1);
+    return session || null;
+  }
+
+  async createRefreshTokenFamily(familyData: {
+    id: string;
+    userId: number;
+    createdAt: Date;
+  }): Promise<void> {
+    const { refreshTokenFamilies } = await import('../../db/authentication/tables');
+    await this.db.insert(refreshTokenFamilies).values(familyData);
+  }
+
+  async revokeFamily(familyId: string, reason?: string): Promise<void> {
+    const { refreshTokenFamilies, userSessions } = await import('../../db/authentication/tables');
+    
+    // Revoke the family
+    await this.db.update(refreshTokenFamilies)
+      .set({ revokedAt: new Date(), revocationReason: reason || 'Family revoked' })
+      .where(eq(refreshTokenFamilies.id, familyId));
+
+    // Revoke all sessions in the family
+    await this.db.update(userSessions)
+      .set({ revokedAt: new Date(), revocationReason: reason || 'Parent family revoked' })
+      .where(eq(userSessions.familyId, familyId));
+  }
+
+  async getSessionByRefreshTokenHash(refreshTokenHash: string): Promise<any | null> {
+    const [session] = await this.db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.refreshTokenHash, refreshTokenHash))
+      .limit(1);
+    return session || null;
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleSsiRepository.ts`
+```typescript
+import { eq, and, sql } from 'drizzle-orm';
+import { didIdentities, verifiableCredentials } from '../../db/ssi/tables';
+import { Result } from '../../shared/kernel/Result';
+import {
+  ISsiRepository,
+  DidIdentityRecord,
+  VerifiableCredentialRecord,
+} from '../../application/ports/output/ISsiRepository';
+
+export type { DidIdentityRecord, VerifiableCredentialRecord };
+
+export class DrizzleSsiRepository implements ISsiRepository {
+  constructor(private db: any) {}
+
+  async findDidByUserId(userId: number): Promise<Result<DidIdentityRecord>> {
+    try {
+      const result = await this.db
+        .select()
+        .from(didIdentities)
+        .where(and(eq(didIdentities.userId, userId), eq(didIdentities.status, 'active')))
+        .limit(1);
+
+      if (!result || result.length === 0) {
+        return Result.fail('DID identity not found');
+      }
+
+      return Result.ok({
+        id: result[0].id,
+        userId: result[0].userId,
+        did: result[0].did,
+        method: result[0].method,
+        controller: result[0].controller,
+        status: result[0].status,
+        version: result[0].version || 1,
+      });
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async saveDid(record: DidIdentityRecord): Promise<Result<DidIdentityRecord>> {
+    try {
+      const existing = await this.db
+        .select()
+        .from(didIdentities)
+        .where(eq(didIdentities.id, record.id))
+        .limit(1);
+
+      if (!existing || existing.length === 0) {
+        await this.db.insert(didIdentities).values({
+          id: record.id,
+          userId: record.userId,
+          did: record.did,
+          method: record.method,
+          controller: record.controller,
+          status: record.status || 'active',
+          version: 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        record.version = 1;
+      } else {
+        const currentVersion = record.version ?? existing[0].version ?? 1;
+
+        const updated = await this.db
+          .update(didIdentities)
+          .set({
+            status: record.status || 'active',
+            updatedAt: new Date(),
+            version: sql`${didIdentities.version} + 1`,
+          })
+          .where(
+            and(
+              eq(didIdentities.id, record.id),
+              eq(didIdentities.version, currentVersion)
+            )
+          )
+          .returning();
+
+        if (!updated || updated.length === 0) {
+          return Result.fail('CONCURRENT_MODIFICATION_ERROR: DID identity was modified by another process');
+        }
+
+        record.version = currentVersion + 1;
+      }
+      return Result.ok(record);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async saveVerifiableCredential(
+    record: VerifiableCredentialRecord
+  ): Promise<Result<VerifiableCredentialRecord>> {
+    try {
+      await this.db.insert(verifiableCredentials).values({
+        id: record.id,
+        holderUserId: record.holderUserId,
+        issuerDid: record.issuerDid,
+        subjectDid: record.subjectDid,
+        credentialType: record.credentialType,
+        credentialHash: record.credentialHash,
+        encryptedClaims: record.encryptedClaims,
+        proofType: record.proofType,
+        status: record.status || 'active',
+        issuanceDate: record.issuanceDate,
+        expirationDate: record.expirationDate || null,
+        version: 1,
+      });
+
+      return Result.ok(record);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async findVerifiableCredentialById(id: string): Promise<Result<VerifiableCredentialRecord>> {
+    try {
+      const [row] = await this.db
+        .select()
+        .from(verifiableCredentials)
+        .where(eq(verifiableCredentials.id, id))
+        .limit(1);
+
+      if (!row) return Result.fail('Verifiable Credential not found');
+
+      return Result.ok({
+        id: row.id,
+        holderUserId: row.holderUserId,
+        issuerDid: row.issuerDid,
+        subjectDid: row.subjectDid,
+        credentialType: row.credentialType as any,
+        credentialHash: row.credentialHash,
+        encryptedClaims: row.encryptedClaims,
+        proofType: row.proofType as any,
+        status: row.status as any,
+        issuanceDate: new Date(row.issuanceDate),
+        expirationDate: row.expirationDate ? new Date(row.expirationDate) : null,
+        revokedAt: row.revokedAt ? new Date(row.revokedAt) : null,
+        version: row.version,
+      });
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async listVerifiableCredentialsByUserId(
+    userId: number
+  ): Promise<Result<VerifiableCredentialRecord[]>> {
+    try {
+      const rows = await this.db
+        .select()
+        .from(verifiableCredentials)
+        .where(eq(verifiableCredentials.holderUserId, userId));
+
+      const credentials: VerifiableCredentialRecord[] = rows.map((row: any) => ({
+        id: row.id,
+        holderUserId: row.holderUserId,
+        issuerDid: row.issuerDid,
+        subjectDid: row.subjectDid,
+        credentialType: row.credentialType,
+        credentialHash: row.credentialHash,
+        encryptedClaims: row.encryptedClaims,
+        proofType: row.proofType,
+        status: row.status,
+        issuanceDate: new Date(row.issuanceDate),
+        expirationDate: row.expirationDate ? new Date(row.expirationDate) : null,
+        revokedAt: row.revokedAt ? new Date(row.revokedAt) : null,
+        version: row.version,
+      }));
+
+      return Result.ok(credentials);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async revokeVerifiableCredential(id: string): Promise<Result<void>> {
+    try {
+      await this.db
+        .update(verifiableCredentials)
+        .set({
+          status: 'revoked',
+          revokedAt: new Date(),
+        })
+        .where(eq(verifiableCredentials.id, id));
+
+      return Result.ok(undefined);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleUnitOfWork.ts`
+```typescript
+import { IUnitOfWork, IRepositoryFactory } from '../../application/ports/output/IUnitOfWork';
+import { IUserRepository } from '../../application/ports/output/IUserRepository';
+import { IAuthenticationRepository } from '../../application/ports/output/IAuthenticationRepository';
+import { IWeb3Repository } from '../../application/ports/output/IWeb3Repository';
+import { ICivilIdentityRepository } from '../../application/ports/output/ICivilIdentityRepository';
+import { ISessionRepository } from '../../application/ports/output/ISessionRepository';
+import { IOutboxRepository } from '../../application/ports/output/IOutboxRepository';
+import { IPasswordResetRepository } from '../../application/ports/output/IPasswordResetRepository';
+
+import { DrizzleUserRepositoryAdapter } from '../repositories/DrizzleUserRepositoryAdapter';
+import { DrizzleAuthenticationRepositoryAdapter } from '../repositories/DrizzleAuthenticationRepositoryAdapter';
+import { DrizzleWeb3RepositoryAdapter } from '../repositories/DrizzleWeb3RepositoryAdapter';
+import { DrizzleCivilIdentityRepositoryAdapter } from '../repositories/DrizzleCivilIdentityRepositoryAdapter';
+import { DrizzleSessionRepository } from './DrizzleSessionRepository';
+import { ISsiRepository } from '../../application/ports/output/ISsiRepository';
+import { DrizzleSsiRepository } from './DrizzleSsiRepository';
+import { DrizzleOutboxRepository } from './DrizzleOutboxRepository';
+import { DrizzlePasswordResetRepository } from './DrizzlePasswordResetRepository';
+import { IFinanceRepository } from '../../application/ports/output/IFinanceRepository';
+import { DrizzleFinanceRepository } from './DrizzleFinanceRepository';
+import { Result } from '../../shared/kernel/Result';
+import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
+import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
+
+class DrizzleRepositoryFactory implements IRepositoryFactory {
+  constructor(private tx: any, private db?: any) {}
+
+  getUserRepository(): IUserRepository {
+    return new DrizzleUserRepositoryAdapter(this.tx || this.db);
+  }
+
+  getAuthTransactionRepository(): IAuthTransactionRepository {
+    return new DrizzleAuthTransactionRepository(this.tx || this.db);
+  }
+
+  getAuthenticationRepository(): IAuthenticationRepository {
+    return new DrizzleAuthenticationRepositoryAdapter(this.tx);
+  }
+
+  getWeb3Repository(): IWeb3Repository {
+    return new DrizzleWeb3RepositoryAdapter(this.tx);
+  }
+
+  getSessionRepository(): ISessionRepository {
+    return new DrizzleSessionRepository(this.tx);
+  }
+
+  getCivilIdentityRepository(): ICivilIdentityRepository {
+    return new DrizzleCivilIdentityRepositoryAdapter(this.tx);
+  }
+
+  getSsiRepository(): ISsiRepository {
+    return new DrizzleSsiRepository(this.tx);
+  }
+
+  getOutboxRepository(): IOutboxRepository {
+    return new DrizzleOutboxRepository(this.tx);
+  }
+
+  getPasswordResetRepository(): IPasswordResetRepository {
+    return new DrizzlePasswordResetRepository(this.tx);
+  }
+
+  getFinanceRepository(): IFinanceRepository {
+    return new DrizzleFinanceRepository(this.tx);
+  }
+}
+
+
+export class DrizzleUnitOfWork implements IUnitOfWork {
+  constructor(private db: any) {}
+
+  async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
+    if (typeof this.db?.transaction === 'function') {
+      let result: Result<T> | null = null;
+      let workStarted = false;
+      try {
+        await this.db.transaction(async (tx: any) => {
+          workStarted = true;
+          const factory = new DrizzleRepositoryFactory(tx);
+          result = await work(factory);
+
+          if (result && result.isFailure && typeof tx.rollback === 'function') {
+            tx.rollback();
+          }
+        });
+        if (result) return result;
+      } catch (err: any) {
+        const errorMsg = err?.message || err?.toString() || '';
+        
+        // FAIL-CLOSED: No fallback to non-transactional execution for SECURITY_CRITICAL operations.
+        const failureResult = result as Result<T> | null;
+        if (failureResult && failureResult.isFailure) {
+          return failureResult;
+        }
+        return Result.fail(errorMsg || 'Transaction aborted or driver error');
+      }
+    }
+
+    const factory = new DrizzleRepositoryFactory(this.db);
+    return await work(factory);
+  }
+}
+
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleUserRepositoryAdapter.ts`
+```typescript
+import { eq, sql } from 'drizzle-orm';
+import { users } from '../../db/user/tables';
+import {
+  IUserRepository,
+  UserRecord,
+  CreateUserData,
+} from '../../application/ports/output/IUserRepository';
+
+export type { UserRecord, CreateUserData };
+
+export class DrizzleUserRepositoryAdapter implements IUserRepository {
+  constructor(private readonly db: any) {}
+
+  async findById(id: number): Promise<UserRecord | null> {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+
+    if (!user) return null;
+    return this.mapToRecord(user);
+  }
+
+  async findByEmail(email: string): Promise<UserRecord | null> {
+    const normalized = email.toLowerCase().trim();
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.emailNormalized, normalized))
+      .limit(1);
+
+    if (!user) return null;
+    return this.mapToRecord(user);
+  }
+
+  async create(data: CreateUserData): Promise<UserRecord> {
+    const email = data.email || '';
+    const normalized = (data.emailNormalized || email).toLowerCase().trim();
+    const subjectType = data.subjectType === 'citizen' || !data.subjectType ? 'human' : data.subjectType;
+
+    const [created] = await this.db
+      .insert(users)
+      .values({
+        email: email ? email.trim() : null,
+        emailNormalized: normalized || null,
+        subjectType,
+        status: data.status || 'active',
+        authEpoch: 1,
+      })
+      .returning();
+
+    if (!created) {
+      throw new Error('Falha ao criar usuário no D1.');
+    }
+    return this.mapToRecord(created);
+  }
+
+  async updateStatus(id: number, status: 'active' | 'suspended' | 'pending' | 'locked'): Promise<void> {
+    await this.db
+      .update(users)
+      .set({ status })
+      .where(eq(users.id, id));
+  }
+
+  async incrementAuthEpoch(userId: number): Promise<number> {
+    const [updated] = await this.db
+      .update(users)
+      .set({
+        authEpoch: sql`${users.authEpoch} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!updated) {
+      throw new Error('User not found to increment authEpoch');
+    }
+    return updated.authEpoch;
+  }
+
+  async incrementFailedLoginAttempts(userId: number, maxAttempts: number): Promise<void> {
+    const now = new Date();
+    await this.db
+      .update(users)
+      .set({
+        failedLoginAttempts: sql`${users.failedLoginAttempts} + 1`,
+        lastFailedLoginAt: now,
+        status: sql`CASE WHEN ${users.failedLoginAttempts} + 1 >= ${maxAttempts} THEN 'locked' ELSE ${users.status} END`,
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async resetFailedLoginAttempts(userId: number): Promise<void> {
+    await this.db
+      .update(users)
+      .set({
+        failedLoginAttempts: 0,
+        lastFailedLoginAt: null,
+      })
+      .where(eq(users.id, userId));
+  }
+
+  private mapToRecord(raw: any): UserRecord {
+    return {
+      id: raw.id,
+      publicId: raw.publicId || null,
+      email: raw.email || null,
+      emailNormalized: raw.emailNormalized || raw.email || null,
+      status: raw.status || 'active',
+      subjectType: raw.subjectType || 'human',
+      failedLoginAttempts: raw.failedLoginAttempts || 0,
+      lastFailedLoginAt: raw.lastFailedLoginAt instanceof Date ? raw.lastFailedLoginAt : (raw.lastFailedLoginAt ? new Date(raw.lastFailedLoginAt * 1000) : null),
+      authEpoch: raw.authEpoch || 1,
+      createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt ? raw.createdAt * 1000 : Date.now()),
+      updatedAt: raw.updatedAt instanceof Date ? raw.updatedAt : new Date(raw.updatedAt ? raw.updatedAt * 1000 : Date.now()),
+    };
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleWalletRepository.ts`
+```typescript
+import { eq } from 'drizzle-orm';
+import { wallets } from '../../db/web3/tables';
+import { Result } from '../../shared/kernel/Result';
+
+export interface WalletRecord {
+  id?: number;
+  userId: number;
+  provenance?: 'internal' | 'external';
+  networkId: string | number;
+  walletType?: 'eoa' | 'smart_account' | 'multisig';
+  controlMode?: 'external_user' | 'platform_key' | 'custodial' | 'mpc';
+  address: string;
+  addressNormalized?: string;
+  isPrimary?: boolean;
+  status?: 'active' | 'suspended' | 'revoked';
+  verificationStatus?: 'unverified' | 'verified';
+}
+
+export class DrizzleWalletRepository {
+  constructor(private db: any) {}
+
+  async findByAddress(address: string): Promise<Result<WalletRecord>> {
+    try {
+      const normalized = address.toLowerCase();
+      const result = await this.db
+        .select()
+        .from(wallets)
+        .where(eq(wallets.addressNormalized, normalized))
+        .limit(1);
+
+      if (!result || result.length === 0) {
+        return Result.fail('Wallet not found');
+      }
+
+      return Result.ok(result[0]);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async findByUserId(userId: number): Promise<Result<WalletRecord[]>> {
+    try {
+      const result = await this.db
+        .select()
+        .from(wallets)
+        .where(eq(wallets.userId, userId));
+
+      return Result.ok(result || []);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+
+  async save(wallet: WalletRecord): Promise<Result<WalletRecord>> {
+    try {
+      const provenance = wallet.provenance || 'external';
+      const walletType = wallet.walletType || 'eoa';
+      const controlMode =
+        wallet.controlMode ||
+        (provenance === 'internal' ? 'platform_key' : 'external_user');
+      const addressNormalized = wallet.addressNormalized || wallet.address.toLowerCase();
+
+      if (wallet.id) {
+        await this.db
+          .update(wallets)
+          .set({
+            isPrimary: wallet.isPrimary,
+            status: wallet.status,
+            verificationStatus: wallet.verificationStatus,
+            updatedAt: new Date(),
+          })
+          .where(eq(wallets.id, wallet.id));
+      } else {
+        const [inserted] = await this.db
+          .insert(wallets)
+          .values({
+            userId: wallet.userId,
+            provenance,
+            networkId: String(wallet.networkId),
+            walletType,
+            controlMode,
+            address: wallet.address,
+            addressNormalized,
+            isPrimary: wallet.isPrimary || false,
+            status: wallet.status || 'active',
+            verificationStatus: wallet.verificationStatus || 'verified',
+            linkedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+
+        wallet.id = inserted.id;
+      }
+      return Result.ok(wallet);
+    } catch (error: any) {
+      return Result.fail(error.message);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/repositories/DrizzleWeb3RepositoryAdapter.ts`
+```typescript
+import { eq, and, sql } from 'drizzle-orm';
+import { wallets } from '../../db/web3/tables';
+import {
+  IWeb3Repository,
+  WalletRecord,
+  LinkWalletData,
+} from '../../application/ports/output/IWeb3Repository';
+
+export type { WalletRecord, LinkWalletData };
+
+export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
+  constructor(private readonly db: any) {}
+
+  async findByAddress(address: string): Promise<WalletRecord | null> {
+    const normalized = address.toLowerCase().trim();
+    const [row] = await this.db
+      .select()
+      .from(wallets)
+      .where(eq(wallets.addressNormalized, normalized))
+      .limit(1);
+
+    if (!row) return null;
+    return this.mapToRecord(row);
+  }
+
+  async findByUserId(userId: number): Promise<WalletRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(wallets)
+      .where(eq(wallets.userId, userId));
+
+    return rows.map((r: any) => this.mapToRecord(r));
+  }
+
+  async findActiveByUserId(userId: number): Promise<WalletRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(wallets)
+      .where(and(eq(wallets.userId, userId), eq(wallets.status, 'active')))
+      .limit(1);
+
+    if (!row) return null;
+    return this.mapToRecord(row);
+  }
+
+  async linkExternalWallet(data: LinkWalletData): Promise<WalletRecord> {
+    const addressNormalized = data.address.toLowerCase().trim();
+    const existing = await this.findByAddress(addressNormalized);
+    if (existing) return existing;
+
+    const [newWallet] = await this.db
+      .insert(wallets)
+      .values({
+        userId: data.userId,
+        provenance: data.provenance || 'external',
+        networkId: data.networkId || 1, // Default mainnet network
+        walletType: data.walletType || 'eoa',
+        controlMode: data.controlMode || 'external_user',
+        address: data.address,
+        addressNormalized,
+        label: data.label || 'Web3 Wallet',
+        status: 'active',
+        verificationStatus: 'verified',
+        isPrimary: false,
+        version: 1,
+      })
+      .returning();
+
+    return this.mapToRecord(newWallet);
+  }
+
+  async updateWallet(wallet: WalletRecord): Promise<WalletRecord> {
+    const currentVersion = wallet.version ?? 1;
+
+    const result = await this.db
+      .update(wallets)
+      .set({
+        isPrimary: wallet.isPrimary,
+        status: wallet.status,
+        verificationStatus: wallet.verificationStatus,
+        label: wallet.label,
+        updatedAt: new Date(),
+        version: sql`${wallets.version} + 1`,
+      })
+      .where(
+        and(
+          eq(wallets.id, wallet.id),
+          eq(wallets.version, currentVersion)
+        )
+      )
+      .returning();
+
+    if (!result || result.length === 0) {
+      throw new Error('CONCURRENT_MODIFICATION_ERROR: Wallet was updated by another process');
+    }
+
+    return this.mapToRecord(result[0]);
+  }
+
+  async revokeWallet(userId: number, address: string): Promise<boolean> {
+    const addressNormalized = address.toLowerCase().trim();
+    
+    // Revocação atômica (AF-012)
+    const result = await this.db
+      .update(wallets)
+      .set({ 
+        status: 'revoked',
+        isPrimary: false,
+        updatedAt: new Date()
+      })
+      .where(
+        and(
+          eq(wallets.userId, userId),
+          eq(wallets.addressNormalized, addressNormalized),
+          eq(wallets.status, 'active') // Só revoga se estiver ativa
+        )
+      )
+      .returning();
+      
+    return result.length > 0;
+  }
+
+  private mapToRecord(raw: any): WalletRecord {
+    return {
+      id: raw.id,
+      userId: raw.userId,
+      provenance: raw.provenance,
+      networkId: raw.networkId,
+      walletType: raw.walletType,
+      controlMode: raw.controlMode,
+      address: raw.address,
+      addressNormalized: raw.addressNormalized,
+      label: raw.label || null,
+      status: raw.status,
+      verificationStatus: raw.verificationStatus,
+      isPrimary: Boolean(raw.isPrimary),
+      linkedAt: raw.linkedAt instanceof Date ? raw.linkedAt : new Date(raw.linkedAt || Date.now()),
+      version: raw.version || 1,
+    };
+  }
+}
+
+
+```
+
+---
+
+### `src/infrastructure/security/crypto/crypto.ts`
+```typescript
+/**
+ * CryptoCore & CryptoVault
+ * Web Crypto API utilities compatible with Cloudflare Workers.
+ */
+export class CryptoCore {
+  static async verify(
+    signature: Uint8Array,
+    message: Uint8Array,
+    publicKey: Uint8Array
+  ): Promise<boolean> {
+    try {
+      const algorithm = { name: 'Ed25519' };
+      const importedKey = await crypto.subtle.importKey('raw', publicKey, algorithm, false, [
+        'verify',
+      ]);
+      return await crypto.subtle.verify(algorithm, importedKey, signature, message);
+    } catch (e) {
+      console.error('CryptoCore Error:', e);
+      return false;
+    }
+  }
+}
+
+export class CryptoVault {
+  static async encrypt(text: string, secret: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secret.padEnd(32, '0').slice(0, 32));
+    const key = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['encrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(text));
+    const buffer = new Uint8Array(iv.length + encrypted.byteLength);
+    buffer.set(iv, 0);
+    buffer.set(new Uint8Array(encrypted), iv.length);
+    return btoa(String.fromCharCode(...buffer));
+  }
+
+  static async decrypt(encryptedBase64: string, secret: string): Promise<string> {
+    const binaryString = atob(encryptedBase64);
+    const buffer = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      buffer[i] = binaryString.charCodeAt(i);
+    }
+    const iv = buffer.slice(0, 12);
+    const data = buffer.slice(12);
+    
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secret.padEnd(32, '0').slice(0, 32));
+    const key = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['decrypt']);
+    
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+    return new TextDecoder().decode(decrypted);
+  }
+
+  static async generateEventHash(payload: any, prevHash = 'GENESIS'): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(JSON.stringify(payload) + prevHash);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/security/crypto/Eip4361Verifier.ts`
+```typescript
+import { SiweMessage } from 'siwe';
+import { ISiweVerifierPort, SiweVerificationInput, SiweVerificationOutput } from '../../../application/ports/security/ISiweVerifierPort';
+
+export class Eip4361Verifier implements ISiweVerifierPort {
+  async verify(input: SiweVerificationInput): Promise<SiweVerificationOutput> {
+    try {
+      const siweMessage = new SiweMessage(input.message);
+      const result = await siweMessage.verify({
+        signature: input.signature,
+        nonce: input.expectedNonce,
+        domain: input.expectedDomain,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error?.type || 'Assinatura SIWE EIP-4361 inválida.');
+      }
+
+      return {
+        address: result.data.address.toLowerCase(),
+        chainId: result.data.chainId,
+        nonce: result.data.nonce,
+        domain: result.data.domain,
+      };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha na verificação da assinatura SIWE.';
+      throw new Error(message);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/security/crypto/PBKDF2PasswordHasher.ts`
+```typescript
+import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
+
+export class PBKDF2PasswordHasher implements IPasswordHasher {
+  async hash(password: string, existingSaltB64?: string): Promise<string> {
+    const enc = new TextEncoder();
+    let salt: Uint8Array;
+
+    if (existingSaltB64) {
+      const rawString = atob(existingSaltB64);
+      salt = new Uint8Array(rawString.length);
+      for (let i = 0; i < rawString.length; i++) {
+        salt[i] = rawString.charCodeAt(i);
+      }
+    } else {
+      salt = crypto.getRandomValues(new Uint8Array(16));
+    }
+
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(password),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits']
+    );
+
+    const derivedBits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+      keyMaterial,
+      256
+    );
+
+    const hashArray = Array.from(new Uint8Array(derivedBits));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+
+    const finalSaltB64 = btoa(String.fromCharCode(...salt));
+    return `${finalSaltB64}:${hashHex}`;
+  }
+
+  private timingSafeEqual(a: string, b: string): boolean {
+    if (a.length !== b.length) {
+      let result = 0;
+      for (let i = 0; i < a.length; i++) {
+        result |= a.charCodeAt(i) ^ a.charCodeAt(i);
+      }
+      return false;
+    }
+    let result = 0;
+    for (let i = 0; i < a.length; i++) {
+      result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return result === 0;
+  }
+
+  async verify(password: string, storedHashText: string): Promise<boolean> {
+    const [saltB64, originalHex] = storedHashText.split(':');
+    if (!saltB64 || !originalHex) return false;
+
+    const newDigest = await this.hash(password, saltB64);
+    return this.timingSafeEqual(newDigest, storedHashText);
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/security/crypto/timing_safe.ts`
+```typescript
+/**
+ * Utilitário: Timing-Safe String Comparison
+ * Previne ataques de timing (side-channel) ao comparar strings secretas.
+ * Usa Web Crypto API (disponível em Cloudflare Workers).
+ */
+export function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aBytes = enc.encode(a);
+  const bBytes = enc.encode(b);
+
+  // Arrays devem ter o mesmo comprimento para a comparação ser segura.
+  // Paddinamos o array menor com zeros — a comparação final ainda retorna false.
+  const len = Math.max(aBytes.length, bBytes.length);
+  const aPadded = new Uint8Array(len);
+  const bPadded = new Uint8Array(len);
+  aPadded.set(aBytes);
+  bPadded.set(bBytes);
+
+  // XOR byte a byte — resultado != 0 significa strings diferentes
+  let diff = 0;
+  for (let i = 0; i < len; i++) {
+    diff |= aPadded[i] ^ bPadded[i];
+  }
+
+  // Também garante que os comprimentos originais são iguais
+  diff |= aBytes.length ^ bBytes.length;
+
+  return diff === 0;
+}
+
+```
+
+---
+
+### `src/infrastructure/security/jwt/JwtService.ts`
+```typescript
+import { IJwtService } from '../../../application/ports/security/IJwtService';
+
+const DEFAULT_EXPIRES_IN_SECONDS = 86400; // 24h
+
+export class JwtService implements IJwtService {
+  private base64UrlEncode(arr: Uint8Array): string {
+    const binString = String.fromCharCode(...arr);
+    return btoa(binString).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
+  private base64UrlDecode(str: string): Uint8Array {
+    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    const binString = atob(base64);
+    const bytes = new Uint8Array(binString.length);
+    for (let i = 0; i < binString.length; i++) {
+      bytes[i] = binString.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  private async getSigningKey(secretKey: string): Promise<CryptoKey> {
+    const enc = new TextEncoder();
+    const masterKey = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(secretKey),
+      { name: 'HKDF' },
+      false,
+      ['deriveKey']
+    );
+
+    return await crypto.subtle.deriveKey(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: enc.encode('ASPPIBRA-JWT'),
+        info: enc.encode('JWT-SIGNING'),
+      },
+      masterKey,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign', 'verify']
+    );
+  }
+
+  /**
+   * Assina o payload. Se `exp`/`iat` não forem fornecidos explicitamente,
+   * são preenchidos automaticamente (iat = agora, exp = agora + expiresInSeconds).
+   * Isso evita a emissão silenciosa de tokens perenes (sem expiração).
+   */
+  async sign(
+    payload: Record<string, any>,
+    secret: string,
+    kid: string = 'v1',
+    expiresInSeconds: number = DEFAULT_EXPIRES_IN_SECONDS
+  ): Promise<string> {
+    if (!secret) {
+      throw new Error('JWT secret ausente: assinatura recusada.');
+    }
+
+    const key = await this.getSigningKey(secret);
+    const header = { alg: 'HS256', typ: 'JWT', kid };
+    const enc = new TextEncoder();
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const fullPayload = {
+      iss: 'asppibra-identity',
+      aud: 'asppibra-ecosystem',
+      ...payload,
+      iat: typeof payload.iat === 'number' ? payload.iat : nowSeconds,
+      nbf: typeof payload.nbf === 'number' ? payload.nbf : nowSeconds,
+      exp: typeof payload.exp === 'number' ? payload.exp : nowSeconds + expiresInSeconds,
+    };
+
+    const encodedHeader = this.base64UrlEncode(enc.encode(JSON.stringify(header)));
+    const encodedPayload = this.base64UrlEncode(enc.encode(JSON.stringify(fullPayload)));
+
+    const signingInput = `${encodedHeader}.${encodedPayload}`;
+    const signatureBuffer = await crypto.subtle.sign({ name: 'HMAC' }, key, enc.encode(signingInput));
+
+    const encodedSignature = this.base64UrlEncode(new Uint8Array(signatureBuffer));
+    return `${signingInput}.${encodedSignature}`;
+  }
+
+  /**
+   * Verifica assinatura HMAC E claims temporais (exp obrigatório, nbf opcional).
+   * Tokens sem `exp` são rejeitados — não é permitido emitir/aceitar tokens perenes.
+   */
+  async verify(token: string, secret: string): Promise<any> {
+    if (!secret) {
+      throw new Error('JWT secret ausente: verificação recusada.');
+    }
+
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      throw new Error('Token JWT malformatado.');
+    }
+    const [headerB64, payloadB64, signatureB64] = parts;
+
+    const key = await this.getSigningKey(secret);
+    const enc = new TextEncoder();
+    const signingInput = `${headerB64}.${payloadB64}`;
+    const signatureBytes = this.base64UrlDecode(signatureB64);
+
+    const isValid = await crypto.subtle.verify(
+      { name: 'HMAC' },
+      key,
+      signatureBytes,
+      enc.encode(signingInput)
+    );
+
+    if (!isValid) {
+      throw new Error('Assinatura JWT inválida.');
+    }
+
+    const payloadStr = new TextDecoder().decode(this.base64UrlDecode(payloadB64));
+    const payload = JSON.parse(payloadStr);
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+
+    // Bloqueia tokens perenes: exp é obrigatório.
+    if (typeof payload.exp !== 'number') {
+      throw new Error('Token sem claim de expiração (exp). Rejeitado.');
+    }
+    if (payload.exp < nowSeconds) {
+      throw new Error('Token expirado.');
+    }
+    if (typeof payload.nbf === 'number' && payload.nbf > nowSeconds) {
+      throw new Error('Token ainda não é válido (nbf).');
+    }
+    if (payload.iss !== 'asppibra-identity') {
+      throw new Error('Token emitido por origem desconhecida (iss).');
+    }
+    if (payload.aud !== 'asppibra-ecosystem') {
+      throw new Error('Token não destinado a este ecosistema (aud).');
+    }
+
+    return payload;
+  }
+}
+
+```
+
+---
+
+### `src/infrastructure/security/SecurityAuditAdapter.ts`
+```typescript
+import { ISecurityAuditPort, SecurityAuditEvent } from '../../application/ports/output/ISecurityAuditPort';
+import { TransactionContext } from '../../application/dto/TransactionContext';
+import { securityEvents } from '../../db/security/tables';
+
+/**
+ * Adapter de Infraestrutura para Auditoria de Segurança.
+ * Grava registros imutáveis em security_events utilizando o mesmo cliente
+ * de transação Drizzle exposto através de TransactionContext.
+ */
+export class SecurityAuditAdapter implements ISecurityAuditPort {
+  constructor(private readonly db: any) {}
+
+  public async logEvent(event: SecurityAuditEvent, txCtx?: TransactionContext): Promise<void> {
+    const executor = (txCtx?.nativeTx as any) || this.db;
+
+    // Mapear eventos de alto nível para os enums de securityEvents
+    const eventType =
+      event.event === 'identity_linked'
+        ? 'credential_created'
+        : event.event === 'identity_unlinked'
+        ? 'credential_revoked'
+        : event.event === 'authentication_succeeded'
+        ? 'authentication_succeeded'
+        : 'authentication_failed';
+
+    await executor.insert(securityEvents).values({
+      id: crypto.randomUUID(),
+      userId: event.userId,
+      event: eventType,
+      result: event.event.includes('failed') ? 'failure' : 'success',
+      source: 'api',
+      metadata: event.metadata,
+      createdAt: event.timestamp || new Date(),
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/AuthenticateAccountUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { Result } from '../../../shared/kernel/Result';
+import {
+  AuthenticateAccountDTO,
+  AuthenticateAccountResult,
+} from '../../../application/dto/identity/AuthenticateAccountDTO';
+
+// Re-exportado para não quebrar imports existentes que ainda apontam para este arquivo.
+export type { AuthenticateAccountDTO, AuthenticateAccountResult };
+
+// In-memory brute-force tracker for failed login attempts (keyed by userId)
+//
+// ⚠️ ACHADO ADICIONAL (não coberto pelo relatório de auditoria):
+// Este Map vive na memória do módulo/isolate. Em runtime edge (Cloudflare
+// Workers) isso NÃO é confiável como mecanismo de rate-limit: isolates são
+// reciclados e não compartilham memória entre si. Um atacante distribuído,
+// ou aguardando um cold-start, reseta o contador. Deve ser substituído por
+// um contador persistido (D1/KV) antes de produção. Mantido aqui apenas
+// para não quebrar o comportamento atual sem acesso ao schema/repositório.
+const failedAttemptsMap = new Map<number, { count: number; lastAttempt: Date }>();
+const MAX_FAILED_ATTEMPTS = 5;
+
+// Mensagem única para TODAS as falhas de autenticação (item 3.1: anti-enumeration).
+// Nunca deve revelar se o e-mail existe, se a conta está bloqueada, suspensa,
+// ou se a senha está incorreta — todas as causas produzem exatamente a mesma
+// resposta (mesma string + mesmo HTTP status na camada de controller).
+const GENERIC_AUTH_FAILURE_MESSAGE =
+  'Não foi possível autenticar com as credenciais fornecidas. Se você esqueceu sua senha, solicite a redefinição.';
+
+// Hash "isca" usado para equalizar o tempo de resposta quando o usuário não
+// existe, evitando que a ausência de chamada ao hasher.verify() vaze a
+// existência da conta por timing side-channel (achado adicional, item B).
+// Deve ter o mesmo formato dos hashes reais gerados pelo IPasswordHasher em uso.
+const DUMMY_PASSWORD_HASH =
+  '$pbkdf2$iterations=100000$salt=0000000000000000000000000000000000000000000000000000000000000000$hash=0000000000000000000000000000000000000000000000000000000000000000';
+
+export class AuthenticateAccountUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly hasher: IPasswordHasher,
+    private readonly auditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(dto: AuthenticateAccountDTO): Promise<Result<AuthenticateAccountResult>> {
+    if (!dto.email || !dto.password) {
+      // Validação de entrada: não há conta envolvida ainda, então esta
+      // mensagem específica não vaza nada sobre existência de contas.
+      return Result.fail<AuthenticateAccountResult>('Email e senha são obrigatórios.');
+    }
+
+    const emailNormalized = dto.email.trim().toLowerCase();
+
+    return await this.uow.execute(async (factory) => {
+      const userRepo = factory.getUserRepository();
+      const authRepo = factory.getAuthenticationRepository();
+
+      const userRecord = await userRepo.findByEmail(emailNormalized);
+
+      if (!userRecord) {
+        // Achado adicional (B): equaliza o tempo de resposta executando um
+        // hash "isca" com o mesmo custo computacional do hasher real, para
+        // que "usuário inexistente" e "senha incorreta" fiquem indistinguíveis
+        // por tempo de resposta.
+        await this.hasher.verify(dto.password, DUMMY_PASSWORD_HASH).catch(() => undefined);
+        return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
+      }
+
+      const { User } = await import('../../../domains/identity/entities/User');
+      const user = new User(userRecord as any);
+
+      // 1. Conta bloqueada ou suspensa — mesma mensagem genérica (item 3.1).
+      if (!user.canAuthenticate()) {
+        if (this.auditPort) {
+          await this.auditPort.logEvent({
+            event: 'identity_login_blocked',
+            userId: user.id,
+            metadata: { email: emailNormalized, reason: `Account status: ${user.status}, subject: ${user.subjectType}` },
+          });
+        }
+        return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
+      }
+
+      // 2. Buscar credencial de senha
+      const credential = await authRepo.findPasswordCredentialByUserId(user.id);
+      if (!credential) {
+        // Equaliza tempo de resposta com hash isca
+        await this.hasher.verify(dto.password, DUMMY_PASSWORD_HASH).catch(() => undefined);
+        if (this.auditPort) {
+          await this.auditPort.logEvent({
+            event: 'identity_login_failed',
+            userId: user.id,
+            metadata: { email: emailNormalized, reason: 'Missing credential' },
+          });
+        }
+        return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
+      }
+
+      // 3. Verificar senha
+      const isPasswordValid = await this.hasher.verify(dto.password, credential.passwordHash);
+      if (!isPasswordValid) {
+        // Rate-Limit Persistente no D1
+        user.registerFailedLogin();
+        await userRepo.incrementFailedLoginAttempts(user.id, User.MAX_FAILED_ATTEMPTS);
+
+        if (this.auditPort) {
+          await this.auditPort.logEvent({
+            event: 'identity_login_failed',
+            userId: user.id,
+            metadata: { email: emailNormalized, reason: 'Invalid password', attemptCount: user.failedLoginAttempts },
+          });
+        }
+
+        if (user.status === 'locked') {
+          if (this.auditPort) {
+            await this.auditPort.logEvent({
+              event: 'identity_account_locked',
+              userId: user.id,
+              metadata: { email: emailNormalized, reason: 'Max failed attempts reached' },
+            });
+          }
+        }
+
+        return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
+      }
+
+      // Sucesso: resetar tentativas no banco
+      await userRepo.resetFailedLoginAttempts(user.id);
+
+      if (this.auditPort) {
+        await this.auditPort.logEvent({
+          event: 'authentication_succeeded',
+          userId: user.id,
+          metadata: { email: user.email || '' },
+        });
+      }
+
+      return Result.ok<AuthenticateAccountResult>({
+        userId: user.id,
+        email: user.email || '',
+        publicId: userRecord.publicId,
+        status: user.status,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/AuthenticateTotpUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { Result } from '../../../shared/kernel/Result';
+import { AuthenticateTotpDTO } from '../../../application/dto/identity/AuthenticateTotpDTO';
+import { authenticator } from 'otplib';
+import { CryptoVault } from '../../../infrastructure/security/crypto/crypto';
+
+export class AuthenticateTotpUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly auditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(dto: AuthenticateTotpDTO): Promise<Result<{ verified: boolean; aal: number }>> {
+    if (!dto.transactionId || !dto.code || !dto.encryptionKey) {
+      return Result.fail<{ verified: boolean; aal: number }>('Transação, chave e código são obrigatórios.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+      const transaction = await authTxRepo.getTransactionById(dto.transactionId);
+      const userRepo = factory.getUserRepository();
+      const user = await userRepo.findById(transaction?.userId || 0);
+      if (!user) {
+        return Result.fail<{ verified: boolean; aal: number }>('Usuário não encontrado.');
+      }
+      
+      if (!transaction || !transaction.isValid(user.authEpoch || 1)) {
+        return Result.fail<{ verified: boolean; aal: number }>('Transação inválida ou expirada (Epoch revogado).');
+      }
+
+      if (transaction.context !== 'login' && transaction.context !== 'mfa_setup' && transaction.context !== 'sensitive_operation') {
+        return Result.fail<{ verified: boolean; aal: number }>('Transação não permite TOTP verification neste contexto.');
+      }
+
+      const authRepo = factory.getAuthenticationRepository();
+      const totpRecord = await authRepo.findTotpCredentialByUserId(transaction.userId);
+
+      if (!totpRecord) {
+        return Result.fail<{ verified: boolean; aal: number }>('Segredo 2FA não configurado.');
+      }
+
+      let secret = '';
+      try {
+        secret = await CryptoVault.decrypt(totpRecord.encryptedTotpSecret, dto.encryptionKey);
+      } catch (e) {
+        return Result.fail<{ verified: boolean; aal: number }>('Falha ao descriptografar TOTP Secret.');
+      }
+
+      const isValid = authenticator.verify({
+        token: dto.code.trim(),
+        secret,
+      });
+
+      if (!isValid) {
+        const recorded = await authTxRepo.recordFailedAttemptAtomically(transaction.id, 5);
+        if (!recorded) {
+          return Result.fail<{ verified: boolean; aal: number }>('Falha ao registrar tentativa (transação expirada ou finalizada).');
+        }
+
+        if (this.auditPort) {
+          await this.auditPort.logEvent({
+            event: 'totp_verification_failed',
+            userId: transaction.userId,
+            metadata: { reason: 'Invalid OTP token', transactionId: transaction.id },
+          });
+        }
+        return Result.fail<{ verified: boolean; aal: number }>('Código 2FA inválido.');
+      }
+
+      if (!totpRecord.verified) {
+        await authRepo.verifyTotpAuthenticator(totpRecord.authenticatorId);
+      }
+
+      const completed = await authTxRepo.completeFactorAtomically(transaction.id, 2, transaction.authEpochAtStart, 'totp');
+      if (!completed) {
+        return Result.fail<{ verified: boolean; aal: number }>('Falha de concorrência ou transação inválida no D1.');
+      }
+
+      if (this.auditPort) {
+        await this.auditPort.logEvent({
+          event: 'totp_verification_succeeded',
+          userId: transaction.userId,
+          metadata: { aal: 2, transactionId: transaction.id },
+        });
+      }
+
+      return Result.ok<{ verified: boolean; aal: number }>({
+        verified: true,
+        aal: 2,
+      });
+    });
+  }
+}
+
+
+```
+
+---
+
+### `src/application/use-cases/identity/ConfirmPasswordResetUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { Result } from '../../../shared/kernel/Result';
+import { ConfirmPasswordResetDTO } from '../../../application/dto/identity/ConfirmPasswordResetDTO';
+
+export class ConfirmPasswordResetUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly hasher: IPasswordHasher,
+    private readonly auditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(dto: ConfirmPasswordResetDTO): Promise<Result<void>> {
+    if (!dto.token || !dto.newPassword) {
+      return Result.fail<void>('Token e nova senha são obrigatórios.');
+    }
+
+    if (dto.newPassword.length < 8) {
+      return Result.fail<void>('A senha deve ter no mínimo 8 caracteres.');
+    }
+
+    // Compute hash of provided raw token
+    const tokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(dto.token.trim()));
+    const tokenHash = Array.from(new Uint8Array(tokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return await this.uow.execute(async (factory) => {
+      const resetRepo = factory.getPasswordResetRepository();
+      const authRepo = factory.getAuthenticationRepository();
+      const userRepo = factory.getUserRepository();
+      const sessionRepo = factory.getSessionRepository();
+
+      // Atomic consume: updates usedAt if it's null, preventing race conditions
+      const resetResult = await resetRepo.consumeToken(tokenHash);
+      if (resetResult.isFailure || !resetResult.getValue()) {
+        return Result.fail<void>('Token de redefinição inválido, expirado ou já utilizado.');
+      }
+
+      const resetRecord = resetResult.getValue();
+      if (new Date(resetRecord.expiresAt) < new Date()) {
+        return Result.fail<void>('Token de redefinição expirado.');
+      }
+
+      const newPasswordHash = await this.hasher.hash(dto.newPassword);
+      await authRepo.savePasswordCredential(resetRecord.userId, newPasswordHash);
+
+      // AF-008: Increment authEpoch to revoke all active user sessions globally
+      if (typeof userRepo.incrementAuthEpoch === 'function') {
+        await userRepo.incrementAuthEpoch(resetRecord.userId);
+      }
+      await sessionRepo.revokeAllUserSessions(resetRecord.userId);
+
+      if (this.auditPort) {
+        await this.auditPort.logEvent({
+          event: 'password_reset_confirmed',
+          userId: resetRecord.userId,
+          metadata: { revokedAllSessions: true },
+        });
+      }
+
+      return Result.ok();
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/GeneratePasskeyChallengeUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
+import { generateRegistrationOptions, generateAuthenticationOptions } from '@simplewebauthn/server';
+
+export interface GeneratePasskeyChallengeDTO {
+  context: 'login' | 'credential_link';
+  transactionId?: string;
+  userId?: number;
+  userName?: string;
+  rpID: string;
+  rpName: string;
+}
+
+export class GeneratePasskeyChallengeUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: GeneratePasskeyChallengeDTO): Promise<Result<{ challengeId: string; options: any }>> {
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+
+      let options: any;
+
+      if (dto.context === 'credential_link') {
+        if (!dto.userId || !dto.userName) {
+          return Result.fail<{ challengeId: string; options: any }>('UserId e UserName são obrigatórios para credential_link');
+        }
+
+        const authRepo = factory.getAuthenticationRepository();
+        const existingPasskeys = await authRepo.findAllWebAuthnCredentialsByUserId(dto.userId);
+
+        options = await generateRegistrationOptions({
+          rpName: dto.rpName,
+          rpID: dto.rpID,
+          userID: Uint8Array.from(dto.userId.toString(), c => c.charCodeAt(0)),
+          userName: dto.userName,
+          attestationType: 'none',
+          excludeCredentials: existingPasskeys.map(key => ({
+            id: Uint8Array.from(atob(key.credentialId), c => c.charCodeAt(0)),
+            type: 'public-key',
+            transports: ['internal', 'hybrid', 'usb', 'ble', 'nfc'],
+          })),
+          authenticatorSelection: {
+            residentKey: 'required',
+            userVerification: 'preferred',
+          }
+        });
+      } else {
+        options = await generateAuthenticationOptions({
+          rpID: dto.rpID,
+          userVerification: 'preferred',
+        });
+      }
+
+      const challengeId = crypto.randomUUID();
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutes
+
+      const challenge = new AuthenticationChallenge({
+        id: challengeId,
+        transactionId: dto.transactionId || null,
+        userId: dto.userId || null,
+        challengeHash: options.challenge, // We store the plain challenge here for simplewebauthn
+        challengeType: 'webauthn',
+        context: dto.context,
+        createdAt: now,
+        expiresAt,
+      });
+
+      await authTxRepo.createChallenge(challenge);
+
+      return Result.ok({
+        challengeId,
+        options,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/GenerateWeb3ChallengeUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
+import { CryptoVault } from '../../../infrastructure/security/crypto/crypto';
+
+export interface GenerateWeb3ChallengeDTO {
+  context: 'login' | 'credential_link';
+  transactionId?: string;
+  domain: string;
+}
+
+export class GenerateWeb3ChallengeUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: GenerateWeb3ChallengeDTO): Promise<Result<{ challengeId: string; nonce: string; domain: string }>> {
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+
+      const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      const challengeId = crypto.randomUUID();
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutes
+
+      const challenge = new AuthenticationChallenge({
+        id: challengeId,
+        transactionId: dto.transactionId || null,
+        challengeHash: nonce, // Para SIWE, o hash é o nonce
+        challengeType: 'siwe',
+        context: dto.context,
+        createdAt: now,
+        expiresAt,
+      });
+
+      await authTxRepo.createChallenge(challenge);
+
+      return Result.ok({
+        challengeId,
+        nonce,
+        domain: dto.domain,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/LinkExternalIdentityUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { LinkExternalIdentityInputDTO, LinkExternalIdentityOutputDTO } from '../../../application/dto/identity/LinkExternalIdentityDTO';
+import { Result } from '../../../shared/kernel/Result';
+
+export class LinkExternalIdentityUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly securityAuditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(input: LinkExternalIdentityInputDTO): Promise<Result<LinkExternalIdentityOutputDTO>> {
+    // Exigência AAL2+ (AF-007)
+    if (input.sessionAal < 2) {
+      return Result.fail<LinkExternalIdentityOutputDTO>(
+        'Nível de autenticação insuficiente (AAL2+ obrigatório para vincular credenciais).'
+      );
+    }
+
+    const { assertion, userId } = input;
+    const now = new Date();
+
+    return this.uow.execute(async (factory) => {
+      if (assertion.type === 'web3_wallet') {
+        const web3Repo = factory.getWeb3Repository();
+        const existing = await web3Repo.findByAddress(assertion.subjectId);
+
+        if (existing) {
+          if (existing.userId === userId) {
+            return Result.ok<LinkExternalIdentityOutputDTO>({
+              success: true,
+              provider: 'evm',
+              subjectId: assertion.subjectId,
+              linkedAt: existing.linkedAt || now,
+            });
+          }
+          return Result.fail<LinkExternalIdentityOutputDTO>('Esta carteira Web3 já está vinculada a outra conta.');
+        }
+
+        await web3Repo.linkExternalWallet({
+          userId,
+          address: assertion.subjectId,
+          provenance: 'external',
+          networkId: assertion.networkId || 1,
+          walletType: 'eoa',
+          controlMode: 'external_user',
+        });
+      }
+
+      if (this.securityAuditPort) {
+        await this.securityAuditPort.logEvent({
+          event: 'identity_linked',
+          userId,
+          metadata: { type: assertion.type, provider: assertion.provider, subjectId: assertion.subjectId },
+        });
+      }
+
+      return Result.ok<LinkExternalIdentityOutputDTO>({
+        success: true,
+        provider: assertion.provider,
+        subjectId: assertion.subjectId,
+        linkedAt: now,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/RefreshTokenUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { Result } from '../../../shared/kernel/Result';
+import { RefreshTokenDTO, RefreshTokenResult } from '../../../application/dto/identity/RefreshTokenDTO';
+
+export interface ITokenService {
+  generateAccessToken(payload: { userId: number; email: string; authEpoch: number }): Promise<string>;
+  generateRefreshToken(): Promise<string>;
+}
+
+export class RefreshTokenUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly tokenService: ITokenService,
+    private readonly auditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(dto: RefreshTokenDTO): Promise<Result<RefreshTokenResult>> {
+    if (!dto.refreshToken) {
+      return Result.fail<RefreshTokenResult>('Refresh token é obrigatório.');
+    }
+
+    const tokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(dto.refreshToken.trim()));
+    const tokenHash = Array.from(new Uint8Array(tokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return await this.uow.execute(async (factory) => {
+      const sessionRepo = factory.getSessionRepository();
+      const userRepo = factory.getUserRepository();
+
+      const session = await sessionRepo.getSessionByRefreshTokenHash(tokenHash);
+      if (!session) {
+        return Result.fail<RefreshTokenResult>('Sessão ou refresh token inválido.');
+      }
+
+      if (session.revokedAt) {
+        // MALICIOUS REUSE DETECTED: Revoke the entire family!
+        if (session.familyId) {
+          await sessionRepo.revokeFamily(session.familyId, 'Malicious refresh token reuse detected');
+        } else {
+          await sessionRepo.revokeAllUserSessions(session.userId);
+        }
+
+        if (typeof userRepo.incrementAuthEpoch === 'function') {
+          await userRepo.incrementAuthEpoch(session.userId);
+        }
+
+        if (this.auditPort) {
+          await this.auditPort.logEvent({
+            event: 'refresh_token_reuse_detected',
+            userId: session.userId,
+            metadata: { sessionId: session.id, familyId: session.familyId },
+          });
+        }
+
+        return Result.fail<RefreshTokenResult>('Refresh token reutilizado. Por razões de segurança, todas as sessões relacionadas foram encerradas.');
+      }
+
+      if (new Date(session.expiresAt) < new Date()) {
+        return Result.fail<RefreshTokenResult>('Refresh token expirado. Faça login novamente.');
+      }
+
+      const user = await userRepo.findById(session.userId);
+      if (!user || user.status !== 'active') {
+        return Result.fail<RefreshTokenResult>('Usuário inativo ou não encontrado.');
+      }
+
+      // 1. Revoke the current session as it's been consumed (Single-use ATOMICALLY)
+      const rotated = await sessionRepo.rotateRefreshTokenAtomically(session.id, tokenHash);
+      if (!rotated) {
+        return Result.fail<RefreshTokenResult>('Falha de concorrência ou sessão revogada por outra requisição (Race Condition).');
+      }
+
+      const newAccessToken = await this.tokenService.generateAccessToken({
+        userId: user.id,
+        email: user.email || '',
+        authEpoch: user.authEpoch || 1,
+      });
+
+      const newRefreshToken = await this.tokenService.generateRefreshToken();
+
+      // Create new session in the same family
+      const newSessionId = crypto.randomUUID();
+      const newJti = crypto.randomUUID();
+      const newRefreshTokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(newRefreshToken));
+      const newRefreshTokenHash = Array.from(new Uint8Array(newRefreshTokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 86400 * 1000 * 30); // 30 days for refresh session TTL
+
+      await sessionRepo.createSession({
+        id: newSessionId,
+        userId: user.id,
+        jti: newJti,
+        ip: session.ip, // Inherit IP from previous session or update from request if possible
+        userAgent: session.userAgent,
+        familyId: session.familyId, // Inherit the family
+        refreshTokenHash: newRefreshTokenHash,
+        aal: session.aal,
+        authEpoch: user.authEpoch || 1,
+        createdAt: now,
+        expiresAt,
+        lastAuthenticatedAt: session.lastAuthenticatedAt ? new Date(session.lastAuthenticatedAt) : undefined,
+      });
+
+      return Result.ok<RefreshTokenResult>({
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        expiresIn: 3600, // 1 hour access token
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/RegisterAccountUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { RegisterAccountInputDTO, RegisterAccountOutputDTO } from '../../../application/dto/identity/RegisterAccountDTO';
+import { Result } from '../../../shared/kernel/Result';
+
+export class RegisterAccountUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly passwordHasher: IPasswordHasher,
+    private readonly securityAuditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(input: RegisterAccountInputDTO): Promise<Result<RegisterAccountOutputDTO>> {
+    if (!input.email || !input.password) {
+      return Result.fail<RegisterAccountOutputDTO>('Email e senha são obrigatórios para cadastro.');
+    }
+
+    const emailNormalized = input.email.trim().toLowerCase();
+
+    return this.uow.execute(async (factory) => {
+      const userRepo = factory.getUserRepository();
+      const authRepo = factory.getAuthenticationRepository();
+
+      // 1. Verificar se o e-mail já existe
+      const existingUser = await userRepo.findByEmail(emailNormalized);
+      if (existingUser) {
+        return Result.fail<RegisterAccountOutputDTO>('E-mail já cadastrado no sistema.');
+      }
+
+      // 2. Hash da senha com PBKDF2
+      const passwordHash = await this.passwordHasher.hash(input.password);
+
+      // 3. Criar registro mestre do usuário
+      const newUser = await userRepo.create({
+        email: input.email.trim(),
+        emailNormalized,
+        subjectType: 'citizen',
+        status: 'active',
+      });
+
+      // 4. Salvar credencial de senha no repositório de autenticação
+      await authRepo.savePasswordCredential(newUser.id, passwordHash);
+
+      // 5. Auditoria Transacional ACID
+      if (this.securityAuditPort) {
+        await this.securityAuditPort.logEvent({
+          event: 'account_created',
+          userId: newUser.id,
+          metadata: { email: emailNormalized },
+        });
+      }
+
+      return Result.ok<RegisterAccountOutputDTO>({
+        userId: newUser.id,
+        email: newUser.email || '',
+        status: newUser.status,
+        createdAt: newUser.createdAt,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/RequestPasswordResetUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { Result } from '../../../shared/kernel/Result';
+import { RequestPasswordResetDTO } from '../../../application/dto/identity/RequestPasswordResetDTO';
+import { IDomainEvent } from '../../../shared/kernel/DomainEvent';
+
+export class PasswordResetRequestedEvent implements IDomainEvent {
+  dateTimeOccurred: Date = new Date();
+  constructor(
+    public readonly userId: number,
+    public readonly email: string
+    // rawToken removido por segurança (FASE 5)
+  ) {}
+
+  getAggregateId(): string {
+    return String(this.userId);
+  }
+}
+
+export class RequestPasswordResetUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly auditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(dto: RequestPasswordResetDTO): Promise<Result<{ rawToken: string | null }>> {
+    if (!dto.email) {
+      return Result.fail<{ rawToken: string | null }>('E-mail é obrigatório.');
+    }
+
+    const normalizedEmail = dto.email.trim().toLowerCase();
+
+    // Use variable to extract rawToken out of the UoW closure
+    let generatedRawToken: string | null = null;
+
+    await this.uow.execute(async (factory) => {
+      const userRepo = factory.getUserRepository();
+      const resetRepo = factory.getPasswordResetRepository();
+      const outboxRepo = factory.getOutboxRepository();
+
+      const user = await userRepo.findByEmail(normalizedEmail);
+      if (!user) {
+        // Anti-user enumeration: Return success even if user not found
+        // But do not generate a token.
+        return Result.ok();
+      }
+
+      // Generate secure random token
+      const rawTokenBytes = new Uint8Array(32);
+      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        crypto.getRandomValues(rawTokenBytes);
+      } else {
+        for (let i = 0; i < 32; i++) rawTokenBytes[i] = Math.floor(Math.random() * 256);
+      }
+      const rawToken = Array.from(rawTokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      generatedRawToken = rawToken;
+
+      // Create token hash for DB storage
+      const tokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawToken));
+      const tokenHash = Array.from(new Uint8Array(tokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const expiresAt = new Date(Date.now() + 3600 * 1000); // 1 hour expiration
+
+      await resetRepo.create({
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      });
+
+      // Salva evento de auditoria no Outbox SEM o rawToken
+      const event = new PasswordResetRequestedEvent(user.id, user.email || '');
+      await outboxRepo.saveEvent(event, user.id, 'User', 1);
+
+      if (this.auditPort) {
+        await this.auditPort.logEvent({
+          event: 'password_reset_requested',
+          userId: user.id,
+          metadata: { email: user.email },
+        });
+      }
+
+      return Result.ok();
+    });
+
+    return Result.ok({ rawToken: generatedRawToken });
+  }
+}
+
+
+```
+
+---
+
+### `src/application/use-cases/identity/SetupTotpUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { SetupTotpDTO, SetupTotpResult } from '../../../application/dto/identity/SetupTotpDTO';
+import { authenticator } from 'otplib';
+import { CryptoVault } from '../../../infrastructure/security/crypto/crypto';
+import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
+
+export class SetupTotpUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: SetupTotpDTO): Promise<Result<SetupTotpResult>> {
+    if (!dto.transactionId || !dto.encryptionKey) {
+      return Result.fail<SetupTotpResult>('ID da transação e chave de encriptação são obrigatórios.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+      const transaction = await authTxRepo.getTransactionById(dto.transactionId);
+      const userRepo = factory.getUserRepository();
+      const user = await userRepo.findById(transaction.userId);
+      if (!user) {
+        return Result.fail<SetupTotpResult>('Usuário não encontrado.');
+      }
+      
+      if (!transaction || !transaction.isValid(user.authEpoch || 1)) {
+        return Result.fail<SetupTotpResult>('Transação inválida ou expirada (Epoch revogado).');
+      }
+
+      if (transaction.context !== 'mfa_setup') {
+        return Result.fail<SetupTotpResult>('Transação não é de setup de MFA.');
+      }
+
+      const authRepo = factory.getAuthenticationRepository();
+
+      // Verifica se já tem TOTP
+      const existingTotp = await authRepo.findTotpCredentialByUserId(user.id);
+      if (existingTotp) {
+        // Se já tiver e estiver verificado, não deixa configurar outro direto sem remover.
+        if (existingTotp.verified) {
+          return Result.fail<SetupTotpResult>('Usuário já possui TOTP ativo.');
+        }
+      }
+
+      const secret = authenticator.generateSecret();
+      const otpauthUrl = authenticator.keyuri(user.email || 'unknown', 'ASPPIBRA DAO', secret);
+
+      // Criptografa o secret em repouso
+      const encryptedSecret = await CryptoVault.encrypt(secret, dto.encryptionKey);
+
+      await authRepo.saveTotpSecret(user.id, encryptedSecret);
+
+      return Result.ok<SetupTotpResult>({
+        secret,
+        otpauthUrl,
+      });
+    });
+  }
+}
+
+
+```
+
+---
+
+### `src/application/use-cases/identity/UnlinkExternalIdentityUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { UnlinkExternalIdentityInputDTO, UnlinkExternalIdentityOutputDTO } from '../../../application/dto/identity/UnlinkExternalIdentityDTO';
+import { AntiLockoutViolationError } from '../../../domains/identity/errors/AntiLockoutViolationError';
+import { Result } from '../../../shared/kernel/Result';
+
+export class UnlinkExternalIdentityUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly securityAuditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(input: UnlinkExternalIdentityInputDTO): Promise<Result<UnlinkExternalIdentityOutputDTO>> {
+    const { userId, provider, subjectId } = input;
+    const now = new Date();
+
+    return this.uow.execute(async (factory) => {
+      const authRepo = factory.getAuthenticationRepository();
+      const web3Repo = factory.getWeb3Repository();
+
+      const passwordCredential = await authRepo.findPasswordCredentialByUserId(userId);
+      const userWallets = await web3Repo.findByUserId(userId);
+
+      const totalMethods = (passwordCredential ? 1 : 0) + userWallets.length;
+
+      // Trava Anti-Lockout (AF-008)
+      if (totalMethods <= 1) {
+        return Result.fail<UnlinkExternalIdentityOutputDTO>(new AntiLockoutViolationError().message);
+      }
+
+      if (provider === 'web3_wallet') {
+        const revoked = await web3Repo.revokeWallet(userId, subjectId);
+        if (!revoked) {
+          return Result.fail<UnlinkExternalIdentityOutputDTO>('Carteira não encontrada, já revogada ou indisponível.');
+        }
+      } else {
+        return Result.fail<UnlinkExternalIdentityOutputDTO>(`Revogação não implementada para o provedor: ${provider}`);
+      }
+
+      if (this.securityAuditPort) {
+        await this.securityAuditPort.logEvent({
+          event: 'identity_unlinked',
+          userId,
+          metadata: { provider, subjectId, action: 'revoked' },
+        });
+      }
+
+      return Result.ok<UnlinkExternalIdentityOutputDTO>({
+        success: true,
+        unlinkedAt: now,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/VerifyPasskeyIdentityUseCase.ts`
+```typescript
+import { IIdentityResolverPort } from '../../../application/ports/output/IIdentityResolverPort';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { VerifyPasskeyIdentityInputDTO, VerifyPasskeyIdentityOutputDTO } from '../../../application/dto/identity/VerifyPasskeyIdentityDTO';
+import { Result } from '../../../shared/kernel/Result';
+import { verifyAuthenticationResponse } from '@simplewebauthn/server';
+
+export class VerifyPasskeyIdentityUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly identityResolver: IIdentityResolverPort,
+    private readonly securityAuditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(input: VerifyPasskeyIdentityInputDTO): Promise<Result<VerifyPasskeyIdentityOutputDTO>> {
+    if (!input.challengeId || !input.responseJSON || !input.expectedOrigin || !input.expectedRPID) {
+      return Result.fail<VerifyPasskeyIdentityOutputDTO>('Parâmetros de autenticação Passkey ausentes.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+      const authRepo = factory.getAuthenticationRepository();
+
+      const challenge = await authTxRepo.getChallengeById(input.challengeId);
+      if (!challenge || !challenge.isValid()) {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Challenge inválido, expirado ou já utilizado.');
+      }
+
+      if (challenge.context !== 'login') {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Contexto do challenge não permite login via Passkey.');
+      }
+
+      const expectedChallenge = challenge.challengeHash;
+
+
+      const passkeyRecord = await authRepo.findWebAuthnCredentialById(input.responseJSON.id);
+      if (!passkeyRecord) {
+        if (this.securityAuditPort) {
+          await this.securityAuditPort.logEvent({
+            event: 'authentication_failed',
+            metadata: { provider: 'webauthn', credentialId: input.responseJSON.id, reason: 'Passkey record not found in DB' },
+          });
+        }
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Passkey não encontrada no sistema.');
+      }
+
+      const credentialID = Uint8Array.from(atob(passkeyRecord.credentialId), c => c.charCodeAt(0));
+      const credentialPublicKey = Uint8Array.from(atob(passkeyRecord.publicKeyCose), c => c.charCodeAt(0));
+
+      let verification;
+      try {
+        verification = await verifyAuthenticationResponse({
+          response: input.responseJSON,
+          expectedChallenge,
+          expectedOrigin: input.expectedOrigin,
+          expectedRPID: input.expectedRPID,
+          authenticator: {
+            credentialID,
+            credentialPublicKey,
+            counter: passkeyRecord.signCount,
+            transports: ['internal', 'hybrid', 'usb', 'ble', 'nfc'],
+          },
+          requireUserVerification: true, // as required for high assurance (AAL2)
+        });
+      } catch (error: any) {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>(`Falha na verificação da passkey: ${error.message}`);
+      }
+
+      if (!verification.verified || !verification.authenticationInfo) {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Assinatura do Passkey não verificada.');
+      }
+
+      // Atomic challenge consumption AFTER successful verification
+      const consumed = await authTxRepo.consumeChallengeAtomically(challenge.id);
+      if (!consumed) {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Falha de concorrência ou challenge expirado (replay attack).');
+      }
+
+      // Update signCount to prevent counter regression attacks
+      await authRepo.updateWebAuthnSignCount(passkeyRecord.credentialId, verification.authenticationInfo.newCounter);
+
+
+      // 1. Resolver a identidade via CanonicalIdentityResolver (AF-013)
+      const resolution = await this.identityResolver.resolve({
+        type: 'passkey',
+        provider: 'webauthn',
+        subjectId: passkeyRecord.credentialId,
+        verifiedAt: new Date(),
+      });
+
+      // 2. Aplicar regra anti-shadow account (AF-009 & AF-012)
+      if (resolution.status === 'not_linked') {
+        if (this.securityAuditPort) {
+          await this.securityAuditPort.logEvent({
+            event: 'authentication_failed',
+            metadata: { provider: 'webauthn', credentialId: passkeyRecord.credentialId, reason: 'Passkey not linked' },
+          });
+        }
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>(
+          'Passkey não vinculada a nenhuma conta existente. Efetue login e vincule a passkey nas configurações.'
+        );
+      }
+
+      // 3. Auditoria de sucesso
+      if (this.securityAuditPort) {
+        await this.securityAuditPort.logEvent({
+          event: 'authentication_succeeded',
+          userId: resolution.userId || 0,
+          metadata: { provider: 'webauthn', credentialId: passkeyRecord.credentialId },
+        });
+      }
+
+      return Result.ok<VerifyPasskeyIdentityOutputDTO>({
+        userId: resolution.userId || 0,
+        credentialId: passkeyRecord.credentialId,
+        bindingType: 'passkey',
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/VerifyPasskeyRegistrationUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { verifyRegistrationResponse } from '@simplewebauthn/server';
+import type { RegistrationResponseJSON } from '@simplewebauthn/types';
+
+export interface VerifyPasskeyRegistrationDTO {
+  challengeId: string;
+  responseJSON: RegistrationResponseJSON;
+  expectedOrigin: string;
+  expectedRPID: string;
+}
+
+export class VerifyPasskeyRegistrationUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: VerifyPasskeyRegistrationDTO): Promise<Result<{ authenticatorId: string }>> {
+    return await this.uow.execute(async (factory) => {
+      const authTxRepo = factory.getAuthTransactionRepository();
+      const authRepo = factory.getAuthenticationRepository();
+
+      const challenge = await authTxRepo.getChallengeById(dto.challengeId);
+      if (!challenge || !challenge.isValid()) {
+        return Result.fail<{ authenticatorId: string }>('Challenge inválido, expirado ou já utilizado.');
+      }
+
+      if (challenge.context !== 'credential_link') {
+        return Result.fail<{ authenticatorId: string }>('Contexto do challenge não permite registro de Passkey.');
+      }
+
+      if (!challenge.userId) {
+        return Result.fail<{ authenticatorId: string }>('Challenge não está associado a um usuário.');
+      }
+
+      const expectedChallenge = challenge.challengeHash;
+
+
+      let verification;
+      try {
+        verification = await verifyRegistrationResponse({
+          response: dto.responseJSON,
+          expectedChallenge,
+          expectedOrigin: dto.expectedOrigin,
+          expectedRPID: dto.expectedRPID,
+        });
+      } catch (error: any) {
+        return Result.fail<{ authenticatorId: string }>(`Falha na verificação da passkey: ${error.message}`);
+      }
+
+      const { verified, registrationInfo } = verification;
+
+      if (!verified || !registrationInfo) {
+        return Result.fail<{ authenticatorId: string }>('Registro de Passkey não verificado.');
+      }
+
+      // Atomic challenge consumption AFTER successful verification
+      const consumed = await authTxRepo.consumeChallengeAtomically(challenge.id);
+      if (!consumed) {
+        return Result.fail<{ authenticatorId: string }>('Falha de concorrência ou challenge expirado (replay attack).');
+      }
+
+      const { credentialID, credentialPublicKey } = registrationInfo;
+
+      const credentialIdStr = btoa(String.fromCharCode(...credentialID));
+      const publicKeyStr = btoa(String.fromCharCode(...credentialPublicKey));
+
+      const authenticatorId = await authRepo.saveWebAuthnCredential(
+        challenge.userId,
+        credentialIdStr,
+        publicKeyStr,
+        dto.expectedRPID
+      );
+
+      return Result.ok({
+        authenticatorId,
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/application/use-cases/identity/VerifyWalletIdentityUseCase.ts`
+```typescript
+import { ISiweVerifierPort } from '../../../application/ports/security/ISiweVerifierPort';
+import { IIdentityResolverPort } from '../../../application/ports/output/IIdentityResolverPort';
+import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { VerifyWalletIdentityInputDTO, VerifyWalletIdentityOutputDTO } from '../../../application/dto/identity/VerifyWalletIdentityDTO';
+import { Result } from '../../../shared/kernel/Result';
+
+export class VerifyWalletIdentityUseCase {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly siweVerifier: ISiweVerifierPort,
+    private readonly identityResolver: IIdentityResolverPort,
+    private readonly securityAuditPort?: ISecurityAuditPort
+  ) {}
+
+  async execute(input: VerifyWalletIdentityInputDTO): Promise<Result<VerifyWalletIdentityOutputDTO>> {
+    try {
+      if (!input.challengeId) {
+        return Result.fail<VerifyWalletIdentityOutputDTO>('ID do Challenge é obrigatório.');
+      }
+
+      return await this.uow.execute(async (factory) => {
+        const authTxRepo = factory.getAuthTransactionRepository();
+        
+        // Load Challenge
+        const challenge = await authTxRepo.getChallengeById(input.challengeId);
+        if (!challenge || !challenge.isValid()) {
+          return Result.fail<VerifyWalletIdentityOutputDTO>('Challenge inválido, expirado ou já utilizado.');
+        }
+
+        if (challenge.context !== 'login' && challenge.context !== 'credential_link') {
+          return Result.fail<VerifyWalletIdentityOutputDTO>('Contexto do challenge não permite autenticação SIWE aqui.');
+        }
+
+        // 1. Verificar a assinatura EIP-4361 usando o nonce atrelado ao challenge
+        const verifiedData = await this.siweVerifier.verify({
+          message: input.message,
+          signature: input.signature,
+          expectedNonce: challenge.challengeHash,
+          expectedDomain: input.expectedDomain, // Este valor agora será o env do server
+        });
+
+        // Atomic challenge consumption AFTER successful verification
+        const consumed = await authTxRepo.consumeChallengeAtomically(challenge.id);
+        if (!consumed) {
+          return Result.fail<VerifyWalletIdentityOutputDTO>('Falha de concorrência ou challenge expirado (replay attack).');
+        }
+
+        // 2. Resolver a identidade via CanonicalIdentityResolver (AF-013)
+        const resolution = await this.identityResolver.resolve({
+          type: 'web3_wallet',
+          provider: 'evm',
+          subjectId: verifiedData.address,
+          networkId: verifiedData.chainId,
+          verifiedAt: new Date(),
+        });
+
+        // 3. Aplicar regra anti-shadow account (AF-010 & AF-012)
+        if (resolution.status === 'not_linked' && challenge.context === 'login') {
+          if (this.securityAuditPort) {
+            await this.securityAuditPort.logEvent({
+              event: 'authentication_failed',
+              metadata: { provider: 'evm', address: verifiedData.address, reason: 'Identity not linked' },
+            });
+          }
+          return Result.fail<VerifyWalletIdentityOutputDTO>(
+            'Carteira Web3 não vinculada a nenhuma conta existente. Efetue login e vincule a carteira nas configurações.'
+          );
+        }
+
+        // 4. Auditoria de sucesso
+        if (this.securityAuditPort) {
+          await this.securityAuditPort.logEvent({
+            event: 'authentication_succeeded',
+            userId: resolution.userId || 0,
+            metadata: { provider: 'evm', address: verifiedData.address },
+          });
+        }
+
+        return Result.ok<VerifyWalletIdentityOutputDTO>({
+          userId: resolution.userId || 0,
+          address: verifiedData.address,
+          chainId: verifiedData.chainId,
+          bindingType: 'web3_wallet',
+        });
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao autenticar carteira Web3.';
+      return Result.fail<VerifyWalletIdentityOutputDTO>(message);
+    }
+  }
+}
+
+
+```
+
+---
+
+### `src/application/ports/output/IAuthenticationRepository.ts`
+```typescript
+export interface PasswordCredentialRecord {
+  authenticatorId: string;
+  userId: number;
+  passwordHash: string;
+}
+
+export interface TotpCredentialRecord {
+  authenticatorId: string;
+  userId: number;
+  encryptedTotpSecret: string;
+  verified: boolean;
+}
+
+export interface WebAuthnCredentialRecord {
+  authenticatorId: string;
+  userId: number;
+  credentialId: string;
+  publicKeyCose: string;
+  signCount: number;
+}
+
+export interface IAuthenticationRepository {
+  findPasswordCredentialByUserId(userId: number): Promise<PasswordCredentialRecord | null>;
+  savePasswordCredential(userId: number, passwordHash: string): Promise<string>;
+  findTotpCredentialByUserId(userId: number): Promise<TotpCredentialRecord | null>;
+  saveTotpSecret(userId: number, encryptedTotpSecret: string): Promise<string>;
+  verifyTotpAuthenticator(authenticatorId: string): Promise<void>;
+  findAllWebAuthnCredentialsByUserId(userId: number): Promise<WebAuthnCredentialRecord[]>;
+  findWebAuthnCredentialById(credentialId: string): Promise<WebAuthnCredentialRecord | null>;
+  saveWebAuthnCredential(
+    userId: number,
+    credentialId: string,
+    publicKeyCose: string,
+    rpId?: string
+  ): Promise<string>;
+  updateWebAuthnSignCount(credentialId: string, newSignCount: number): Promise<void>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IAuthTransactionRepository.ts`
+```typescript
+import { AuthenticationTransaction } from '../../../domains/identity/entities/AuthenticationTransaction';
+import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
+
+export interface IAuthTransactionRepository {
+  createTransaction(transaction: AuthenticationTransaction): Promise<void>;
+  getTransactionById(id: string): Promise<AuthenticationTransaction | null>;
+  updateTransaction(transaction: AuthenticationTransaction): Promise<void>;
+  
+  createChallenge(challenge: AuthenticationChallenge): Promise<void>;
+  getChallengeById(id: string): Promise<AuthenticationChallenge | null>;
+  getChallengeByHash(hash: string): Promise<AuthenticationChallenge | null>;
+  updateChallenge(challenge: AuthenticationChallenge): Promise<void>;
+  
+  // Atomic Operations
+  completeFactorAtomically(txId: string, aal: number, authEpochAtStart: number, method: string): Promise<boolean>;
+  recordFailedAttemptAtomically(txId: string, maxAttempts: number): Promise<boolean>;
+  consumeChallengeAtomically(challengeId: string): Promise<boolean>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IChallengeStorePort.ts`
+```typescript
+export interface IChallengeStorePort {
+  saveNonce(username: string, nonce: string, ttlSeconds: number): Promise<void>;
+  getNonce(username: string): Promise<string | null>;
+  deleteNonce(username: string): Promise<void>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/ICivilIdentityRepository.ts`
+```typescript
+export interface CitizenRecord {
+  userId: number;
+  username: string | null;
+  legalFirstName: string | null;
+  legalLastName: string | null;
+  nationalityCode: string | null;
+  birthDate: string | null;
+  maritalStatus: string | null;
+  civilStatus: 'pending' | 'verified' | 'suspended' | 'revoked';
+  status?: string;
+  publicKey?: string;
+  did?: string;
+  verifiedAt?: Date | null;
+  verifiedBy?: number | null;
+  version?: number;
+}
+
+
+export interface IdentityDocumentRecord {
+  id?: number;
+  userId: number;
+  documentType: 'cpf' | 'rg' | 'passport' | 'cnh';
+  countryCode: string;
+  numberLookupHash: string;
+  encryptedNumber: string;
+  last4?: string | null;
+  source: 'government' | 'manual_upload' | 'kyc_provider' | 'admin' | 'import';
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+  verifiedAt?: Date | null;
+  verifiedBy?: number | null;
+  version?: number;
+}
+
+export interface KycVerificationRecord {
+  id?: number;
+  userId: number;
+  verificationLevel: 'basic' | 'enhanced' | 'institutional';
+  status: 'submitted' | 'under_review' | 'approved' | 'rejected' | 'expired';
+  provider: string;
+  riskScore?: number | null;
+  rejectionReason?: string | null;
+  startedAt: Date;
+  completedAt?: Date | null;
+  expiresAt?: Date | null;
+  version?: number;
+}
+
+export interface ICivilIdentityRepository {
+  findByDid(did: string): Promise<CitizenRecord | null>;
+  createCitizen(data: Partial<CitizenRecord> & { userId: number }): Promise<CitizenRecord>;
+  findCitizenByUserId(userId: number): Promise<CitizenRecord | null>;
+  updateCivilStatus(userId: number, civilStatus: 'pending' | 'verified' | 'suspended' | 'revoked', verifiedBy?: number): Promise<void>;
+  createIdentityDocument(data: IdentityDocumentRecord): Promise<IdentityDocumentRecord>;
+  findDocumentsByUserId(userId: number): Promise<IdentityDocumentRecord[]>;
+  createKycVerification(data: KycVerificationRecord): Promise<KycVerificationRecord>;
+  getLatestKycByUserId(userId: number): Promise<KycVerificationRecord | null>;
+}
+
+
+```
+
+---
+
+### `src/application/ports/output/IFinanceRepository.ts`
+```typescript
+import { Result } from '../../../shared/kernel/Result';
+
+export interface FinancialAccountRecord {
+  id: number;
+  userId: number | null;
+  accountType: 'user_available' | 'treasury' | 'operating' | 'reserve' | 'fees' | 'escrow';
+  status: 'active' | 'inactive' | 'suspended';
+  name: string;
+  version: number;
+}
+
+export interface AccountBalanceRecord {
+  id: number;
+  accountId: number;
+  assetId: number;
+  availableBaseUnits: string;
+  lockedBaseUnits: string;
+  version: number;
+}
+
+export interface FinancialTransactionRecord {
+  id: number;
+  userId: number | null;
+  type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
+  category: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'reversed' | 'refunded';
+  description: string;
+  createdAt: Date;
+  completedAt?: Date | null;
+}
+
+export interface IFinanceRepository {
+  getTreasuryAccount(): Promise<Result<FinancialAccountRecord>>;
+  getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>>;
+  createTransaction(data: {
+    userId?: number | null;
+    type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
+    category?: string;
+    description: string;
+    amountBaseUnits: string;
+    assetId: number;
+  }): Promise<Result<FinancialTransactionRecord>>;
+  listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IIdentityResolverPort.ts`
+```typescript
+import { IdentityAssertion } from '../../dto/IdentityAssertion';
+import { IdentityResolutionResult } from '../../dto/IdentityResolutionResult';
+
+/**
+ * Porta de saída para Resolução Canônica de Identidade.
+ * O orquestrador central (CanonicalIdentityResolver) implementa esta interface
+ * para isolar os Use Cases de infraestrutura e persistência concreta.
+ */
+export interface IIdentityResolverPort {
+  resolve(assertion: IdentityAssertion): Promise<IdentityResolutionResult>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IOutboxRepository.ts`
+```typescript
+import { IDomainEvent } from '../../../shared/kernel/DomainEvent';
+import { Result } from '../../../shared/kernel/Result';
+
+export interface OutboxEventRecord {
+  id: string; // UUID
+  aggregateId: number;
+  aggregateType: string;
+  aggregateVersion: number;
+  eventName: string;
+  payload: string; // JSON
+  metadata?: string; // JSON
+  attempts: number;
+  published: boolean;
+  publishedAt?: Date;
+  error?: string;
+  createdAt: Date;
+}
+
+export interface IOutboxRepository {
+  /**
+   * Persiste um evento de domínio no Outbox.
+   * IMPORTANTE: Deve ser chamado dentro da mesma transação do banco (UoW).
+   */
+  saveEvent(event: IDomainEvent, aggregateId: number, aggregateType: string, aggregateVersion: number): Promise<Result<void>>;
+  
+  /**
+   * Busca eventos pendentes para publicação (published = false) limitando a quantidade.
+   */
+  getPendingEvents(limit: number): Promise<Result<OutboxEventRecord[]>>;
+  
+  /**
+   * Marca um evento como publicado (sucesso).
+   */
+  markAsPublished(eventId: string): Promise<Result<void>>;
+  
+  /**
+   * Registra uma falha de tentativa de publicação. Incrementa attempts e salva o erro.
+   */
+  markAsFailed(eventId: string, error: string): Promise<Result<void>>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IPasswordResetRepository.ts`
+```typescript
+import { Result } from '../../../shared/kernel/Result';
+
+export interface PasswordReset {
+  id: number;
+  userId: number;
+  tokenHash: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface IPasswordResetRepository {
+  findByToken(tokenHash: string): Promise<Result<PasswordReset>>;
+  invalidate(id: number): Promise<Result<void>>;
+  create(data: { userId: number; tokenHash: string; expiresAt: Date }): Promise<Result<void>>;
+  consumeToken(tokenHash: string): Promise<Result<PasswordReset>>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/ISecurityAuditPort.ts`
+```typescript
+import { TransactionContext } from '../../dto/TransactionContext';
+
+export interface SecurityAuditEvent {
+  readonly event:
+    | 'identity_linked'
+    | 'identity_unlinked'
+    | 'identity_login_failed'
+    | 'identity_login_blocked'
+    | 'identity_account_locked'
+    | 'identity_resolution_failed'
+    | 'authentication_succeeded'
+    | 'authentication_failed'
+    | 'account_created'
+    | 'totp_verification_failed'
+    | 'totp_verification_succeeded'
+    | 'password_reset_requested'
+    | 'password_reset_confirmed'
+    | 'refresh_token_reuse_detected';
+  readonly userId?: number;
+  readonly metadata: Record<string, unknown>;
+  readonly timestamp?: Date;
+}
+
+/**
+ * Porta de Saída de Auditoria de Segurança.
+ * Desacopla Use Cases da tabela security_events e aceita TransactionContext
+ * para garantir execução na mesma transação atômica D1/Drizzle.
+ */
+export interface ISecurityAuditPort {
+  logEvent(event: SecurityAuditEvent, txCtx?: TransactionContext): Promise<void>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/ISessionRepository.ts`
+```typescript
+export interface ISessionRepository {
+  createSession(sessionData: {
+    id: string;
+    userId: number;
+    jti: string;
+    ip: string;
+    userAgent: string;
+    familyId?: string;
+    refreshTokenHash: string;
+    aal: number;
+    authEpoch: number;
+    createdAt: Date;
+    expiresAt: Date;
+    lastAuthenticatedAt?: Date;
+  }): Promise<void>;
+
+  rotateRefreshTokenAtomically(sessionId: string, oldRefreshTokenHash: string): Promise<boolean>;
+
+  revokeSession(sessionId: string): Promise<void>;
+
+  revokeAllUserSessions(userId: number): Promise<void>;
+
+  getSessionById(sessionId: string): Promise<any | null>;
+
+  createRefreshTokenFamily(familyData: {
+    id: string;
+    userId: number;
+    createdAt: Date;
+  }): Promise<void>;
+
+  revokeFamily(familyId: string, reason?: string): Promise<void>;
+
+  getSessionByRefreshTokenHash(refreshTokenHash: string): Promise<any | null>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/ISsiRepository.ts`
+```typescript
+import { Result } from '../../../shared/kernel/Result';
+
+export interface DidIdentityRecord {
+  id: string; // UUID v4
+  userId: number;
+  did: string;
+  method: 'key' | 'ion' | 'polygonid' | 'web' | 'cheqd' | 'pkh';
+  controller: string;
+  status?: 'active' | 'suspended' | 'revoked';
+  version?: number;
+}
+
+export interface VerifiableCredentialRecord {
+  id: string;
+  holderUserId: number;
+  issuerDid: string;
+  subjectDid: string;
+  credentialType: 'CivicIdentityCredential' | 'MembershipCredential' | 'KycVerificationCredential' | 'ReputationCredential';
+  credentialHash: string;
+  encryptedClaims: string;
+  proofType: 'Ed25519Signature2020' | 'BbsBlsSignature2020' | 'JsonWebSignature2020';
+  status: 'active' | 'suspended' | 'revoked' | 'expired';
+  issuanceDate: Date;
+  expirationDate?: Date | null;
+  revokedAt?: Date | null;
+  version?: number;
+}
+
+export interface ISsiRepository {
+  findDidByUserId(userId: number): Promise<Result<DidIdentityRecord>>;
+  saveDid(record: DidIdentityRecord): Promise<Result<DidIdentityRecord>>;
+  saveVerifiableCredential(record: VerifiableCredentialRecord): Promise<Result<VerifiableCredentialRecord>>;
+  findVerifiableCredentialById(id: string): Promise<Result<VerifiableCredentialRecord>>;
+  listVerifiableCredentialsByUserId(userId: number): Promise<Result<VerifiableCredentialRecord[]>>;
+  revokeVerifiableCredential(id: string): Promise<Result<void>>;
+}
+
+
+```
+
+---
+
+### `src/application/ports/output/IUnitOfWork.ts`
+```typescript
+import { Result } from '../../../shared/kernel/Result';
+import { IUserRepository } from './IUserRepository';
+import { IAuthenticationRepository } from './IAuthenticationRepository';
+import { IWeb3Repository } from './IWeb3Repository';
+import { ICivilIdentityRepository } from './ICivilIdentityRepository';
+import { ISessionRepository } from './ISessionRepository';
+import { IOutboxRepository } from './IOutboxRepository';
+import { IPasswordResetRepository } from './IPasswordResetRepository';
+import { ISsiRepository } from './ISsiRepository';
+import { IFinanceRepository } from './IFinanceRepository';
+
+export interface IRepositoryFactory {
+  getUserRepository(): IUserRepository;
+  getAuthTransactionRepository(): import('./IAuthTransactionRepository').IAuthTransactionRepository;
+  getAuthenticationRepository(): IAuthenticationRepository;
+  getWeb3Repository(): IWeb3Repository;
+  getSessionRepository(): ISessionRepository;
+  getCivilIdentityRepository(): ICivilIdentityRepository;
+  getSsiRepository(): ISsiRepository;
+  getOutboxRepository(): IOutboxRepository;
+  getPasswordResetRepository(): IPasswordResetRepository;
+  getFinanceRepository(): IFinanceRepository;
+}
+
+
+export interface IUnitOfWork {
+  execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>>;
+}
+
+
+```
+
+---
+
+### `src/application/ports/output/IUserRepository.ts`
+```typescript
+export interface UserRecord {
+  id: number;
+  publicId: string | null;
+  email: string | null;
+  emailNormalized: string | null;
+  status: string;
+  subjectType: string;
+  failedLoginAttempts: number;
+  lastFailedLoginAt: Date | null;
+  authEpoch: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateUserData {
+  email?: string;
+  emailNormalized?: string;
+  subjectType?: 'citizen' | 'organization' | 'system' | 'service';
+  status?: 'active' | 'suspended' | 'pending' | 'locked';
+}
+
+export interface IUserRepository {
+  findById(id: number): Promise<UserRecord | null>;
+  findByEmail(email: string): Promise<UserRecord | null>;
+  create(data: CreateUserData): Promise<UserRecord>;
+  updateStatus(id: number, status: 'active' | 'suspended' | 'pending' | 'locked'): Promise<void>;
+  incrementAuthEpoch?(userId: number): Promise<number>;
+  incrementFailedLoginAttempts(userId: number, maxAttempts: number): Promise<void>;
+  resetFailedLoginAttempts(userId: number): Promise<void>;
+}
+
+```
+
+---
+
+### `src/application/ports/output/IWeb3Repository.ts`
+```typescript
+export interface WalletRecord {
+  id: number;
+  userId: number;
+  provenance: 'internal' | 'external';
+  networkId: number;
+  walletType: 'eoa' | 'smart_contract';
+  controlMode: 'platform_key' | 'external_user' | 'contract_controller';
+  address: string;
+  addressNormalized: string;
+  label: string | null;
+  status: 'pending' | 'active' | 'suspended' | 'revoked' | 'unlinked';
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+  isPrimary: boolean;
+  linkedAt: Date;
+  version?: number;
+}
+
+export interface LinkWalletData {
+  userId: number;
+  address: string;
+  provenance?: 'internal' | 'external';
+  networkId?: number;
+  walletType?: 'eoa' | 'smart_contract';
+  controlMode?: 'platform_key' | 'external_user' | 'contract_controller';
+  label?: string;
+}
+
+export interface IWeb3Repository {
+  findByAddress(address: string): Promise<WalletRecord | null>;
+  findByUserId(userId: number): Promise<WalletRecord[]>;
+  findActiveByUserId(userId: number): Promise<WalletRecord | null>;
+  linkExternalWallet(data: LinkWalletData): Promise<WalletRecord>;
+  updateWallet(wallet: WalletRecord): Promise<WalletRecord>;
+  revokeWallet(userId: number, address: string): Promise<boolean>;
+}
+
+
+```
+
+---
+
+### `src/application/dto/identity/AuthenticateAccountDTO.ts`
+```typescript
+export interface AuthenticateAccountDTO {
+  email: string;
+  password: string;
+}
+
+export interface AuthenticateAccountResult {
+  userId: number;
+  email: string;
+  publicId: string | null;
+  status: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/AuthenticateTotpDTO.ts`
+```typescript
+export interface AuthenticateTotpDTO {
+  transactionId: string;
+  code: string;
+  encryptionKey: string;
+  sessionId?: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/ConfirmPasswordResetDTO.ts`
+```typescript
+export interface ConfirmPasswordResetDTO {
+  token: string;
+  newPassword: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/LinkExternalIdentityDTO.ts`
+```typescript
+import { IdentityAssertion } from '../IdentityAssertion';
+
+export interface LinkExternalIdentityInputDTO {
+  readonly userId: number;
+  readonly sessionAal: number; // AAL2+ obrigatório (AF-007)
+  readonly assertion: IdentityAssertion;
+}
+
+export interface LinkExternalIdentityOutputDTO {
+  readonly success: boolean;
+  readonly provider: string;
+  readonly subjectId: string;
+  readonly linkedAt: Date;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/RefreshTokenDTO.ts`
+```typescript
+export interface RefreshTokenDTO {
+  refreshToken: string;
+}
+
+export interface RefreshTokenResult {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/RegisterAccountDTO.ts`
+```typescript
+export interface RegisterAccountInputDTO {
+  readonly email: string;
+  readonly password: string;
+  readonly displayName?: string;
+  readonly username?: string;
+}
+
+export interface RegisterAccountOutputDTO {
+  readonly userId: number;
+  readonly email: string;
+  readonly status: string;
+  readonly createdAt: Date;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/RequestPasswordResetDTO.ts`
+```typescript
+export interface RequestPasswordResetDTO {
+  email: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/SetupTotpDTO.ts`
+```typescript
+export interface SetupTotpDTO {
+  transactionId: string;
+  encryptionKey: string;
+}
+
+export interface SetupTotpResult {
+  secret: string;
+  otpauthUrl: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/UnlinkExternalIdentityDTO.ts`
+```typescript
+export interface UnlinkExternalIdentityInputDTO {
+  readonly userId: number;
+  readonly sessionAal: number;
+  readonly provider: string;
+  readonly subjectId: string;
+}
+
+export interface UnlinkExternalIdentityOutputDTO {
+  readonly success: boolean;
+  readonly unlinkedAt: Date;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/VerifyPasskeyIdentityDTO.ts`
+```typescript
+import type { AuthenticationResponseJSON } from '@simplewebauthn/types';
+
+export interface VerifyPasskeyIdentityInputDTO {
+  readonly challengeId: string;
+  readonly responseJSON: AuthenticationResponseJSON;
+  readonly expectedOrigin: string;
+  readonly expectedRPID: string;
+}
+
+export interface VerifyPasskeyIdentityOutputDTO {
+  readonly userId: number;
+  readonly credentialId: string;
+  readonly bindingType: string;
+}
+
+```
+
+---
+
+### `src/application/dto/identity/VerifyWalletIdentityDTO.ts`
+```typescript
+export interface VerifyWalletIdentityInputDTO {
+  readonly challengeId: string;
+  readonly message: string;
+  readonly signature: string;
+  readonly expectedDomain?: string;
+}
+
+export interface VerifyWalletIdentityOutputDTO {
+  readonly userId: number;
+  readonly address: string;
+  readonly chainId: number;
+  readonly bindingType: string;
+}
+
+```
+
+---
+
+### `src/application/dto/IdentityAssertion.ts`
+```typescript
+/**
+ * DTO Canônico de Afirmação de Identidade Externa (Discriminated Union).
+ * Garante em tempo de compilação que provedores e mecanismos não sofram combinações inválidas.
+ */
+export type IdentityAssertion =
+  | {
+      readonly type: 'oauth';
+      readonly provider: 'google' | 'github' | 'discord' | 'apple';
+      readonly subjectId: string;
+      readonly emailSnapshot?: string;
+      readonly verifiedAt: Date;
+    }
+  | {
+      readonly type: 'web3_wallet';
+      readonly provider: 'evm';
+      readonly subjectId: string; // Endereço EVM normalizado em minúsculas
+      readonly networkId: number;
+      readonly verifiedAt: Date;
+    }
+  | {
+      readonly type: 'passkey';
+      readonly provider: 'webauthn';
+      readonly subjectId: string; // Passkey Credential ID
+      readonly verifiedAt: Date;
+    }
+  | {
+      readonly type: 'ssi_did';
+      readonly provider: 'polygonid';
+      readonly subjectId: string; // W3C DID string
+      readonly verifiedAt: Date;
+    };
+
+```
+
+---
+
+### `src/application/dto/IdentityResolutionResult.ts`
+```typescript
+/**
+ * DTO Canônico do Resultado de Resolução de Identidade.
+ */
+export type IdentityResolutionResult =
+  | {
+      readonly status: 'resolved';
+      readonly userId: number;
+      readonly bindingType: 'oauth' | 'web3_wallet' | 'passkey' | 'ssi_did';
+      readonly provider: 'google' | 'github' | 'discord' | 'apple' | 'evm' | 'webauthn' | 'polygonid';
+    }
+  | {
+      readonly status: 'not_linked';
+      readonly code: 'IDENTITY_NOT_LINKED';
+      readonly message: string;
+    };
+
+```
+
+---
+
+### `src/domains/identity/entities/AuthenticationChallenge.ts`
+```typescript
+import { AuthContext } from './AuthenticationTransaction';
+
+export interface AuthenticationChallengeProps {
+  id: string;
+  transactionId?: string | null;
+  userId?: number | null;
+  challengeHash: string;
+  challengeType: string;
+  context: AuthContext;
+  usedAt?: Date | null;
+  createdAt: Date;
+  expiresAt: Date;
+}
+
+export class AuthenticationChallenge {
+  private props: AuthenticationChallengeProps;
+
+  constructor(props: AuthenticationChallengeProps) {
+    this.props = { ...props };
+  }
+
+  get id(): string { return this.props.id; }
+  get transactionId(): string | null { return this.props.transactionId || null; }
+  get challengeHash(): string { return this.props.challengeHash; }
+  get context(): AuthContext { return this.props.context; }
+
+  public isExpired(now: Date = new Date()): boolean {
+    return now.getTime() > this.props.expiresAt.getTime();
+  }
+
+  public isUsed(): boolean {
+    return this.props.usedAt !== null && this.props.usedAt !== undefined;
+  }
+
+  public isValid(): boolean {
+    return !this.isExpired() && !this.isUsed();
+  }
+
+  public markAsUsed(): void {
+    if (this.isUsed()) {
+      throw new Error('Challenge already used (Replay detected)');
+    }
+    this.props.usedAt = new Date();
+  }
+
+  public toPersistence(): any {
+    return { ...this.props };
+  }
+
+  public static fromPersistence(record: any): AuthenticationChallenge {
+    return new AuthenticationChallenge({
+      id: record.id,
+      transactionId: record.transactionId,
+      userId: record.userId,
+      challengeHash: record.challengeHash,
+      challengeType: record.challengeType,
+      context: record.context as AuthContext,
+      usedAt: record.usedAt ? new Date(record.usedAt) : null,
+      createdAt: new Date(record.createdAt),
+      expiresAt: new Date(record.expiresAt),
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/entities/AuthenticationTransaction.ts`
+```typescript
+export type AuthTransactionStatus =
+  | 'created'
+  | 'awaiting_factor'
+  | 'verified'
+  | 'completed'
+  | 'expired'
+  | 'cancelled'
+  | 'failed'
+  | 'replayed'
+  | 'locked';
+
+export type AuthContext =
+  | 'login'
+  | 'mfa_setup'
+  | 'mfa_change'
+  | 'credential_link'
+  | 'credential_unlink'
+  | 'sensitive_operation'
+  | 'password_change'
+  | 'recovery';
+
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export interface AuthenticationTransactionProps {
+  id: string;
+  userId: number;
+  status: AuthTransactionStatus;
+  initialAal: number;
+  currentAal: number;
+  targetAal: number;
+  method: string;
+  challengeHash?: string | null;
+  context: AuthContext;
+  ip?: string | null;
+  userAgent?: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+  completedAt?: Date | null;
+  consumedAt?: Date | null;
+  failureCount: number;
+  authEpochAtStart: number;
+  lastAuthenticatedAt?: Date | null;
+  assuranceMethod?: string | null;
+  riskLevel: RiskLevel;
+}
+
+export class AuthenticationTransaction {
+  private props: AuthenticationTransactionProps;
+
+  constructor(props: AuthenticationTransactionProps) {
+    this.props = { ...props };
+  }
+
+  get id(): string { return this.props.id; }
+  get userId(): number { return this.props.userId; }
+  get status(): AuthTransactionStatus { return this.props.status; }
+  get targetAal(): number { return this.props.targetAal; }
+  get currentAal(): number { return this.props.currentAal; }
+  get context(): AuthContext { return this.props.context; }
+  get authEpochAtStart(): number { return this.props.authEpochAtStart; }
+  get expiresAt(): Date { return this.props.expiresAt; }
+  get failureCount(): number { return this.props.failureCount; }
+
+  public isExpired(now: Date = new Date()): boolean {
+    return now.getTime() > this.props.expiresAt.getTime();
+  }
+
+  public isValid(currentAuthEpoch: number): boolean {
+    if (this.isExpired()) return false;
+    if (this.props.status === 'expired' || this.props.status === 'cancelled' || this.props.status === 'failed' || this.props.status === 'locked' || this.props.status === 'completed') {
+      return false;
+    }
+    // AuthEpoch must match the one at the start of the transaction
+    if (currentAuthEpoch !== this.props.authEpochAtStart) {
+      return false;
+    }
+    return true;
+  }
+
+  public recordFailedAttempt(maxAttempts: number = 5): void {
+    this.props.failureCount += 1;
+    if (this.props.failureCount >= maxAttempts) {
+      this.props.status = 'locked';
+    }
+  }
+
+  public verifyFactor(method: string, newAal: number): void {
+    if (this.props.status !== 'created' && this.props.status !== 'awaiting_factor') {
+      throw new Error(`Cannot verify factor in status ${this.props.status}`);
+    }
+    this.props.method = method;
+    this.props.currentAal = newAal;
+    this.props.status = 'verified';
+    this.props.assuranceMethod = method;
+  }
+
+  public complete(): void {
+    if (this.props.status !== 'verified') {
+      throw new Error('Transaction must be verified before completion');
+    }
+    this.props.status = 'completed';
+    this.props.completedAt = new Date();
+  }
+
+  public toPersistence(): any {
+    return { ...this.props };
+  }
+
+  public static fromPersistence(record: any): AuthenticationTransaction {
+    return new AuthenticationTransaction({
+      id: record.id,
+      userId: record.userId,
+      status: record.status,
+      initialAal: record.initialAal,
+      currentAal: record.currentAal,
+      targetAal: record.targetAal,
+      method: record.method,
+      challengeHash: record.challengeHash,
+      context: record.context,
+      ip: record.ip,
+      userAgent: record.userAgent,
+      createdAt: new Date(record.createdAt),
+      expiresAt: new Date(record.expiresAt),
+      completedAt: record.completedAt ? new Date(record.completedAt) : null,
+      consumedAt: record.consumedAt ? new Date(record.consumedAt) : null,
+      failureCount: record.failureCount,
+      authEpochAtStart: record.authEpochAtStart,
+      lastAuthenticatedAt: record.lastAuthenticatedAt ? new Date(record.lastAuthenticatedAt) : null,
+      assuranceMethod: record.assuranceMethod,
+      riskLevel: record.riskLevel,
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/entities/Session.ts`
+```typescript
+export interface SessionProps {
+  id: string;
+  userId: number;
+  jti: string;
+  ip: string | null;
+  userAgent: string | null;
+  refreshTokenHash: string;
+  aal: number;
+  authEpoch: number;
+  lastActivityAt: Date | null;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  revocationReason: string | null;
+}
+
+export class Session {
+  private props: SessionProps;
+
+  private constructor(props: SessionProps) {
+    this.props = { ...props };
+  }
+
+  public static fromPersistence(props: SessionProps): Session {
+    return new Session(props);
+  }
+
+  get id(): string {
+    return this.props.id;
+  }
+
+  get userId(): number {
+    return this.props.userId;
+  }
+
+  get authEpoch(): number {
+    return this.props.authEpoch;
+  }
+  
+  get aal(): number {
+    return this.props.aal;
+  }
+
+  get createdAt(): Date {
+    return this.props.createdAt;
+  }
+
+  get lastActivityAt(): Date | null {
+    return this.props.lastActivityAt;
+  }
+
+  get isRevoked(): boolean {
+    return this.props.revokedAt !== null;
+  }
+
+  get isExpired(): boolean {
+    return new Date() > this.props.expiresAt;
+  }
+
+  public isValid(): boolean {
+    return !this.isRevoked && !this.isExpired;
+  }
+
+  public matchesUserEpoch(userAuthEpoch: number): boolean {
+    return this.props.authEpoch === userAuthEpoch;
+  }
+
+  public revoke(reason: string): void {
+    if (!this.isRevoked) {
+      this.props.revokedAt = new Date();
+      this.props.revocationReason = reason;
+    }
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/entities/User.ts`
+```typescript
+export type UserStatus = 'active' | 'suspended' | 'pending_setup' | 'locked';
+export type SubjectType = 'human' | 'service' | 'system' | 'citizen';
+
+export interface UserProps {
+  id: number;
+  publicId?: string | null;
+  email?: string | null;
+  emailNormalized?: string | null;
+  status: UserStatus;
+  subjectType: SubjectType;
+  failedLoginAttempts: number;
+  lastFailedLoginAt: Date | null;
+  authEpoch: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export class User {
+  public static readonly MAX_FAILED_ATTEMPTS = 5;
+
+  private props: UserProps;
+
+  constructor(props: UserProps) {
+    this.props = { ...props };
+  }
+
+  get id(): number {
+    return this.props.id;
+  }
+
+  get email(): string | null {
+    return this.props.email || null;
+  }
+
+  get status(): UserStatus {
+    return this.props.status;
+  }
+
+  get subjectType(): SubjectType {
+    return this.props.subjectType;
+  }
+
+  get failedLoginAttempts(): number {
+    return this.props.failedLoginAttempts;
+  }
+
+  get authEpoch(): number {
+    return this.props.authEpoch;
+  }
+
+  public canAuthenticate(): boolean {
+    if (this.props.status === 'suspended' || this.props.status === 'locked' || this.props.status === 'pending_setup') {
+      return false;
+    }
+    
+    // Only humans (or citizens, depending on legacy naming) can authenticate via standard login forms
+    if (this.props.subjectType !== 'human' && this.props.subjectType !== 'citizen') {
+      return false;
+    }
+    
+    return true;
+  }
+
+  public registerFailedLogin(): void {
+    this.props.failedLoginAttempts += 1;
+    this.props.lastFailedLoginAt = new Date();
+    
+    if (this.props.failedLoginAttempts >= User.MAX_FAILED_ATTEMPTS) {
+      this.props.status = 'locked';
+    }
+  }
+
+  public resetFailedLogins(): void {
+    this.props.failedLoginAttempts = 0;
+    this.props.lastFailedLoginAt = null;
+    
+    if (this.props.status === 'locked') {
+      this.props.status = 'active';
+    }
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/errors/AntiLockoutViolationError.ts`
+```typescript
+export class AntiLockoutViolationError extends Error {
+  readonly code = 'ANTI_LOCKOUT_VIOLATION';
+
+  constructor(message: string = 'Não é possível remover a última credencial de autenticação da conta.') {
+    super(message);
+    this.name = 'AntiLockoutViolationError';
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/errors/IdentityNotLinkedError.ts`
+```typescript
+export class IdentityNotLinkedError extends Error {
+  readonly code = 'IDENTITY_NOT_LINKED';
+
+  constructor(message: string = 'Identidade não vinculada a nenhuma conta existente.') {
+    super(message);
+    this.name = 'IdentityNotLinkedError';
+  }
+}
+
+```
+
+---
+
+### `src/domains/identity/services/CanonicalIdentityResolver.ts`
+```typescript
+import { IIdentityResolverPort } from '../../../application/ports/output/IIdentityResolverPort';
+import { IdentityAssertion } from '../../../application/dto/IdentityAssertion';
+import { IdentityResolutionResult } from '../../../application/dto/IdentityResolutionResult';
+
+export class CanonicalIdentityResolver implements IIdentityResolverPort {
+  constructor(private readonly resolverAdapter: IIdentityResolverPort) {}
+
+  async resolve(assertion: IdentityAssertion): Promise<IdentityResolutionResult> {
+    return this.resolverAdapter.resolve(assertion);
+  }
+}
+
+```
+
+---
+
+### `src/domains/ssi/use-cases/CreateDidUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { DidIdentityRecord } from '../../../application/ports/output/ISsiRepository';
+
+export interface CreateDidDTO {
+  userId: number;
+  method?: 'key' | 'ion' | 'polygonid' | 'web' | 'cheqd' | 'pkh';
+}
+
+export class CreateDidUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: CreateDidDTO): Promise<Result<DidIdentityRecord>> {
+    if (!dto.userId) {
+      return Result.fail<DidIdentityRecord>('ID do usuário é obrigatório para geração de DID.');
+    }
+
+    const method = dto.method || 'key';
+
+    return await this.uow.execute(async (factory) => {
+      const ssiRepo = factory.getSsiRepository();
+      const existingRes = await ssiRepo.findDidByUserId(dto.userId);
+
+      if (existingRes.isSuccess) {
+        return existingRes;
+      }
+
+      const id = crypto.randomUUID();
+      const did = `did:${method}:${id}`;
+      const record: DidIdentityRecord = {
+        id,
+        userId: dto.userId,
+        did,
+        method,
+        controller: did,
+        status: 'active',
+        version: 1,
+      };
+
+      return await ssiRepo.saveDid(record);
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/ssi/use-cases/IssueVerifiableCredentialUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { VerifiableCredentialRecord } from '../../../application/ports/output/ISsiRepository';
+
+export interface IssueVerifiableCredentialDTO {
+  holderUserId: number;
+  credentialType: 'CivicIdentityCredential' | 'MembershipCredential' | 'KycVerificationCredential' | 'ReputationCredential';
+  claims: Record<string, any>;
+  expirationDays?: number;
+}
+
+export class IssueVerifiableCredentialUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: IssueVerifiableCredentialDTO): Promise<Result<VerifiableCredentialRecord>> {
+    if (!dto.holderUserId || !dto.credentialType) {
+      return Result.fail<VerifiableCredentialRecord>('HolderUserId e credentialType são obrigatórios.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const ssiRepo = factory.getSsiRepository();
+      const didRes = await ssiRepo.findDidByUserId(dto.holderUserId);
+
+      if (didRes.isFailure) {
+        return Result.fail<VerifiableCredentialRecord>('DID não encontrado para o cidadão informado. Crie o DID primeiro.');
+      }
+
+      const subjectDid = didRes.getValue().did;
+      const issuerDid = 'did:key:asppibra-dao-root-issuer';
+      const id = crypto.randomUUID();
+      const claimsStr = JSON.stringify(dto.claims);
+
+      const encoder = new TextEncoder();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(id + subjectDid + claimsStr));
+      const credentialHash = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      const issuanceDate = new Date();
+      const expirationDate = dto.expirationDays
+        ? new Date(Date.now() + dto.expirationDays * 86400 * 1000)
+        : null;
+
+      const record: VerifiableCredentialRecord = {
+        id,
+        holderUserId: dto.holderUserId,
+        issuerDid,
+        subjectDid,
+        credentialType: dto.credentialType,
+        credentialHash,
+        encryptedClaims: `enc_${claimsStr}`, // Simulação KMS / Vault
+        proofType: 'Ed25519Signature2020',
+        status: 'active',
+        issuanceDate,
+        expirationDate,
+        version: 1,
+      };
+
+      return await ssiRepo.saveVerifiableCredential(record);
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/ssi/use-cases/RevokeCredentialUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+
+export interface RevokeCredentialDTO {
+  credentialId: string;
+}
+
+export class RevokeCredentialUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: RevokeCredentialDTO): Promise<Result<void>> {
+    if (!dto.credentialId) {
+      return Result.fail<void>('CredentialId é obrigatório para revogação.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const ssiRepo = factory.getSsiRepository();
+      const vcRes = await ssiRepo.findVerifiableCredentialById(dto.credentialId);
+
+      if (vcRes.isFailure) {
+        return Result.fail<void>('Credencial Verificável não encontrada.');
+      }
+
+      return await ssiRepo.revokeVerifiableCredential(dto.credentialId);
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/finance/use-cases/GetTreasuryBalanceUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { AccountBalanceRecord } from '../../../application/ports/output/IFinanceRepository';
+
+export class GetTreasuryBalanceUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(): Promise<Result<AccountBalanceRecord[]>> {
+    return await this.uow.execute(async (factory) => {
+      const financeRepo = factory.getFinanceRepository();
+      return await financeRepo.getTreasuryBalance();
+    });
+  }
+}
+
+```
+
+---
+
+### `src/domains/finance/use-cases/RecordTreasuryTransactionUseCase.ts`
+```typescript
+import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { FinancialTransactionRecord } from '../../../application/ports/output/IFinanceRepository';
+
+export interface RecordTreasuryTransactionDTO {
+  userId?: number | null;
+  type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
+  category?: string;
+  description: string;
+  amountBaseUnits: string;
+  assetId?: number;
+}
+
+export class RecordTreasuryTransactionUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: RecordTreasuryTransactionDTO): Promise<Result<FinancialTransactionRecord>> {
+    if (!dto.description || !dto.amountBaseUnits) {
+      return Result.fail<FinancialTransactionRecord>('Descrição e valor são obrigatórios.');
+    }
+
+    return await this.uow.execute(async (factory) => {
+      const financeRepo = factory.getFinanceRepository();
+      return await financeRepo.createTransaction({
+        userId: dto.userId || null,
+        type: dto.type,
+        category: dto.category || 'operational',
+        description: dto.description,
+        amountBaseUnits: dto.amountBaseUnits,
+        assetId: dto.assetId || 1, // 1 = BRL / Native asset
+      });
+    });
+  }
+}
+
+```
+
+---
+
+### `src/interfaces/http/routes/identity/identity.routes.ts`
+```typescript
+import { Hono } from 'hono';
+import { Bindings, Variables } from '../../../../types/bindings';
+import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
+import { PBKDF2PasswordHasher } from '../../../../infrastructure/security/crypto/PBKDF2PasswordHasher';
+import { JwtService } from '../../../../infrastructure/security/jwt/JwtService';
+import { SecurityAuditAdapter } from '../../../../infrastructure/security/SecurityAuditAdapter';
+import { DrizzleSessionRepository } from '../../../../infrastructure/repositories/DrizzleSessionRepository';
+import { DrizzleIdentityResolverAdapter } from '../../../../infrastructure/repositories/DrizzleIdentityResolverAdapter';
+import { Eip4361Verifier } from '../../../../infrastructure/security/crypto/Eip4361Verifier';
+
+import { AuthenticateAccountUseCase } from '../../../../application/use-cases/identity/AuthenticateAccountUseCase';
+import { RegisterAccountUseCase } from '../../../../application/use-cases/identity/RegisterAccountUseCase';
+import { VerifyWalletIdentityUseCase } from '../../../../application/use-cases/identity/VerifyWalletIdentityUseCase';
+import { VerifyPasskeyIdentityUseCase } from '../../../../application/use-cases/identity/VerifyPasskeyIdentityUseCase';
+import { LinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/LinkExternalIdentityUseCase';
+import { UnlinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/UnlinkExternalIdentityUseCase';
+
+import { SetupTotpUseCase } from '../../../../application/use-cases/identity/SetupTotpUseCase';
+import { AuthenticateTotpUseCase } from '../../../../application/use-cases/identity/AuthenticateTotpUseCase';
+import { RequestPasswordResetUseCase } from '../../../../application/use-cases/identity/RequestPasswordResetUseCase';
+import { ConfirmPasswordResetUseCase } from '../../../../application/use-cases/identity/ConfirmPasswordResetUseCase';
+import { RefreshTokenUseCase } from '../../../../application/use-cases/identity/RefreshTokenUseCase';
+
+import { IdentityController } from '../../controllers/identity/IdentityController';
+import { ExternalIdentityController } from '../../controllers/identity/ExternalIdentityController';
+import { AuthAuxiliaryController } from '../../controllers/identity/AuthAuxiliaryController';
+import { rateLimit } from '../../middlewares/rate_limit';
+import { sessionGuard } from '../../middlewares/session_guard';
+
+type AppType = {
+  Bindings: Bindings;
+  Variables: Variables;
+};
+
+const identityRouter = new Hono<AppType>();
+
+// ----------------------------------------------------------------------------
+// 1. CANONICAL REGISTER & LOGIN (LOCAL, WEB3 SIWE, PASSKEY, LOGOUT)
+// ----------------------------------------------------------------------------
+identityRouter.post('/logout', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const jwtService = new JwtService();
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.logout(c);
+});
+
+identityRouter.post('/logout-all', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const jwtService = new JwtService();
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.logoutAll(c);
+});
+
+identityRouter.post(
+  '/register',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const hasher = new PBKDF2PasswordHasher();
+    const jwtService = new JwtService();
+    const auditAdapter = new SecurityAuditAdapter(db);
+    const sessionRepo = new DrizzleSessionRepository(db);
+
+    const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
+    const registerUseCase = new RegisterAccountUseCase(uow, hasher, auditAdapter);
+    const controller = new IdentityController(authenticateUseCase, jwtService, sessionRepo, registerUseCase);
+
+    return controller.register(c);
+  }
+);
+
+identityRouter.post(
+  '/login/local',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const hasher = new PBKDF2PasswordHasher();
+    const jwtService = new JwtService();
+    const auditAdapter = new SecurityAuditAdapter(db);
+    const sessionRepo = new DrizzleSessionRepository(db);
+
+    const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
+    const controller = new IdentityController(authenticateUseCase, jwtService, sessionRepo);
+
+    return controller.loginLocal(c);
+  }
+);
+
+identityRouter.post('/web3/challenge', async (c) => {
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.generateWeb3Challenge(c);
+});
+
+identityRouter.post(
+  '/login/web3',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const hasher = new PBKDF2PasswordHasher();
+    const jwtService = new JwtService();
+    const auditAdapter = new SecurityAuditAdapter(db);
+    const sessionRepo = new DrizzleSessionRepository(db);
+    const resolverAdapter = new DrizzleIdentityResolverAdapter(db);
+    const siweVerifier = new Eip4361Verifier();
+
+    const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
+    const verifyWalletUseCase = new VerifyWalletIdentityUseCase(siweVerifier, resolverAdapter, auditAdapter);
+    const controller = new IdentityController(
+      authenticateUseCase,
+      jwtService,
+      sessionRepo,
+      undefined,
+      verifyWalletUseCase
+    );
+
+    return controller.loginWeb3(c);
+  }
+);
+
+identityRouter.post('/login/passkey/challenge', async (c) => {
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.generatePasskeyChallenge(c);
+});
+
+identityRouter.post('/registration/passkey/challenge', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.generatePasskeyChallenge(c);
+});
+
+identityRouter.post(
+  '/login/passkey',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const jwtService = new JwtService();
+    const sessionRepo = new DrizzleSessionRepository(db);
+    const resolverAdapter = new DrizzleIdentityResolverAdapter(db);
+    const auditAdapter = new SecurityAuditAdapter(db);
+
+    const verifyPasskeyUseCase = new VerifyPasskeyIdentityUseCase(uow, resolverAdapter, auditAdapter);
+    const controller = new IdentityController(
+      undefined as any,
+      jwtService,
+      sessionRepo,
+      undefined,
+      undefined,
+      verifyPasskeyUseCase
+    );
+
+    return controller.loginPasskey(c);
+  }
+);
+
+// ----------------------------------------------------------------------------
+// 2. AUXILIARY AUTHENTICATION (2FA / TOTP, PASSWORD RESET, REFRESH SESSION)
+// ----------------------------------------------------------------------------
+identityRouter.post('/totp/setup', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const setupTotpUseCase = new SetupTotpUseCase(uow);
+  const controller = new AuthAuxiliaryController(setupTotpUseCase);
+  return controller.setupTotp(c);
+});
+
+identityRouter.post('/totp/verify', rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+  const authTotpUseCase = new AuthenticateTotpUseCase(uow, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, authTotpUseCase);
+  return controller.verifyTotp(c);
+});
+
+identityRouter.post('/password-reset/request', rateLimit({ windowMs: 60 * 1000, maxRequests: 3 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+  const requestResetUseCase = new RequestPasswordResetUseCase(uow, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, undefined, requestResetUseCase);
+  return controller.requestPasswordReset(c);
+});
+
+identityRouter.post('/password-reset/confirm', rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const hasher = new PBKDF2PasswordHasher();
+  const auditAdapter = new SecurityAuditAdapter(db);
+  const confirmResetUseCase = new ConfirmPasswordResetUseCase(uow, hasher, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, undefined, undefined, confirmResetUseCase);
+  return controller.confirmPasswordReset(c);
+});
+
+identityRouter.post('/refresh', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const jwtService = new JwtService();
+  const auditAdapter = new SecurityAuditAdapter(db);
+
+  const secret = c.env?.JWT_SECRET;
+  if (!secret) {
+    return c.json({ success: false, message: 'Erro de configuração do servidor (JWT_SECRET ausente).' }, 500);
+  }
+
+  const tokenService = {
+    generateAccessToken: async (payload: { userId: number; email: string; authEpoch: number }) => {
+      return await jwtService.sign(
+        { sub: String(payload.userId), userId: payload.userId, email: payload.email, authEpoch: payload.authEpoch },
+        secret
+      );
+    },
+    generateRefreshToken: async () => crypto.randomUUID(),
+  };
+
+  const refreshUseCase = new RefreshTokenUseCase(uow, tokenService, auditAdapter);
+  const controller = new AuthAuxiliaryController(undefined, undefined, undefined, undefined, refreshUseCase);
+  return controller.refreshSession(c);
+});
+
+// ----------------------------------------------------------------------------
+// 3. EXTERNAL IDENTITIES (GET, POST /link, POST /unlink)
+// ----------------------------------------------------------------------------
+identityRouter.get('/external-identities', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+
+  const linkUseCase = new LinkExternalIdentityUseCase(uow, auditAdapter);
+  const unlinkUseCase = new UnlinkExternalIdentityUseCase(uow, auditAdapter);
+  const controller = new ExternalIdentityController(linkUseCase, unlinkUseCase);
+
+  return controller.list(c);
+});
+
+identityRouter.post('/external-identities/link', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+
+  const linkUseCase = new LinkExternalIdentityUseCase(uow, auditAdapter);
+  const unlinkUseCase = new UnlinkExternalIdentityUseCase(uow, auditAdapter);
+  const controller = new ExternalIdentityController(linkUseCase, unlinkUseCase);
+
+  return controller.link(c);
+});
+
+identityRouter.post('/external-identities/unlink', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const auditAdapter = new SecurityAuditAdapter(db);
+
+  const linkUseCase = new LinkExternalIdentityUseCase(uow, auditAdapter);
+  const unlinkUseCase = new UnlinkExternalIdentityUseCase(uow, auditAdapter);
+  const controller = new ExternalIdentityController(linkUseCase, unlinkUseCase);
+
+  return controller.unlink(c);
+});
+
+export default identityRouter;
+
+
+```
+
+---
+
+### `src/interfaces/http/routes/ssi/ssi.routes.ts`
+```typescript
+import { Hono } from 'hono';
+import { Bindings, Variables } from '../../../../types/bindings';
+import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
+import { DrizzleSsiRepository } from '../../../../infrastructure/repositories/DrizzleSsiRepository';
+import { CreateDidUseCase } from '../../../../domains/ssi/use-cases/CreateDidUseCase';
+import { IssueVerifiableCredentialUseCase } from '../../../../domains/ssi/use-cases/IssueVerifiableCredentialUseCase';
+import { RevokeCredentialUseCase } from '../../../../domains/ssi/use-cases/RevokeCredentialUseCase';
+import { SsiController } from '../../controllers/ssi/SsiController';
+import { sessionGuard } from '../../middlewares/session_guard';
+
+type AppType = {
+  Bindings: Bindings;
+  Variables: Variables;
+};
+
+export const ssiRouter = new Hono<AppType>();
+
+ssiRouter.use('*', sessionGuard);
+
+ssiRouter.post('/did', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const ssiRepo = new DrizzleSsiRepository(db);
+  const createDidUseCase = new CreateDidUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+
+  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
+  return controller.createDid(c);
+});
+
+ssiRouter.post('/credentials/issue', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const ssiRepo = new DrizzleSsiRepository(db);
+  const createDidUseCase = new CreateDidUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+
+  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
+  return controller.issueCredential(c);
+});
+
+ssiRouter.post('/credentials/revoke', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const ssiRepo = new DrizzleSsiRepository(db);
+  const createDidUseCase = new CreateDidUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+
+  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
+  return controller.revokeCredential(c);
+});
+
+ssiRouter.get('/credentials', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const ssiRepo = new DrizzleSsiRepository(db);
+  const createDidUseCase = new CreateDidUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+
+  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
+  return controller.listMyCredentials(c);
+});
+
+```
+
+---
+
+### `src/interfaces/http/routes/finance/finance.routes.ts`
+```typescript
+import { Hono } from 'hono';
+import { Bindings, Variables } from '../../../../types/bindings';
+import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
+import { DrizzleFinanceRepository } from '../../../../infrastructure/repositories/DrizzleFinanceRepository';
+import { GetTreasuryBalanceUseCase } from '../../../../domains/finance/use-cases/GetTreasuryBalanceUseCase';
+import { RecordTreasuryTransactionUseCase } from '../../../../domains/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { FinanceController } from '../../controllers/finance/FinanceController';
+import { sessionGuard } from '../../middlewares/session_guard';
+
+type AppType = {
+  Bindings: Bindings;
+  Variables: Variables;
+};
+
+export const financeRouter = new Hono<AppType>();
+
+financeRouter.use('*', sessionGuard);
+
+financeRouter.get('/treasury/balance', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const financeRepo = new DrizzleFinanceRepository(db);
+  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
+
+  const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+  return controller.getBalance(c);
+});
+
+financeRouter.post('/transactions', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const financeRepo = new DrizzleFinanceRepository(db);
+  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
+
+  const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+  return controller.recordTransaction(c);
+});
+
+financeRouter.get('/transactions', async (c) => {
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const financeRepo = new DrizzleFinanceRepository(db);
+  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
+
+  const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+  return controller.listTransactions(c);
+});
+
+```
+
+---
+
+### `src/interfaces/http/controllers/identity/AuthAuxiliaryController.ts`
+```typescript
+import { Context } from 'hono';
+import { SetupTotpUseCase } from '../../../../application/use-cases/identity/SetupTotpUseCase';
+import { AuthenticateTotpUseCase } from '../../../../application/use-cases/identity/AuthenticateTotpUseCase';
+import { RequestPasswordResetUseCase } from '../../../../application/use-cases/identity/RequestPasswordResetUseCase';
+import { ConfirmPasswordResetUseCase } from '../../../../application/use-cases/identity/ConfirmPasswordResetUseCase';
+import { RefreshTokenUseCase } from '../../../../application/use-cases/identity/RefreshTokenUseCase';
+import { error, success } from '../../helpers/response';
+
+export class AuthAuxiliaryController {
+  constructor(
+    private readonly setupTotpUseCase?: SetupTotpUseCase,
+    private readonly authenticateTotpUseCase?: AuthenticateTotpUseCase,
+    private readonly requestPasswordResetUseCase?: RequestPasswordResetUseCase,
+    private readonly confirmPasswordResetUseCase?: ConfirmPasswordResetUseCase,
+    private readonly refreshTokenUseCase?: RefreshTokenUseCase
+  ) {}
+
+  async setupTotp(c: Context): Promise<Response> {
+    try {
+      if (!this.setupTotpUseCase) {
+        return error(c, 'Caso de uso SetupTotp não configurado', null, 500);
+      }
+      const body = await c.req.json().catch(() => ({}));
+      const transactionId = body?.transactionId;
+
+      const encryptionKey = c.env.TOTP_ENCRYPTION_KEY;
+      if (!encryptionKey) {
+        return error(c, 'Configuração do servidor incorreta (TOTP_ENCRYPTION_KEY ausente)', null, 500);
+      }
+
+      if (!transactionId) {
+        return error(c, 'ID da transação é obrigatório', null, 400);
+      }
+
+      const result = await this.setupTotpUseCase.execute({ transactionId, encryptionKey });
+      if (result.isFailure) {
+        return error(c, result.error || 'Erro ao configurar 2FA', null, 400);
+      }
+
+      return success(c, 'Configuração 2FA gerada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao configurar 2FA', message, 500);
+    }
+  }
+
+  async verifyTotp(c: Context): Promise<Response> {
+    try {
+      if (!this.authenticateTotpUseCase) {
+        return error(c, 'Caso de uso AuthenticateTotp não configurado', null, 500);
+      }
+      const body = await c.req.json().catch(() => ({}));
+      const { code, transactionId } = body || {};
+
+      const encryptionKey = c.env.TOTP_ENCRYPTION_KEY;
+      if (!encryptionKey) {
+        return error(c, 'Configuração do servidor incorreta (TOTP_ENCRYPTION_KEY ausente)', null, 500);
+      }
+
+      if (!transactionId || !code) {
+        return error(c, 'ID da transação e código 2FA são obrigatórios', null, 400);
+      }
+
+      const result = await this.authenticateTotpUseCase.execute({ transactionId, code, encryptionKey });
+      if (result.isFailure) {
+        return error(c, result.error || 'Código 2FA inválido', null, 400);
+      }
+
+      return success(c, 'Autenticação 2FA validada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao validar 2FA', message, 500);
+    }
+  }
+
+  async requestPasswordReset(c: Context): Promise<Response> {
+    try {
+      if (!this.requestPasswordResetUseCase) {
+        return error(c, 'Caso de uso RequestPasswordReset não configurado', null, 500);
+      }
+      const body = await c.req.json().catch(() => ({}));
+      const { email } = body || {};
+
+      if (!email) {
+        return error(c, 'E-mail é obrigatório para redefinição de senha', null, 400);
+      }
+
+      const result = await this.requestPasswordResetUseCase.execute({ email });
+      if (result.isFailure) {
+        return error(c, result.error || 'Erro ao solicitar redefinição de senha', null, 400);
+      }
+
+      // Canal protegido: Envia direto para a fila usando Cloudflare Queues
+      // Garantindo que o rawToken NUNCA vá para o banco (Outbox) em texto plano.
+      const payload = result.getValue();
+      if (payload?.rawToken && c.env.EMAIL_PIPELINE_QUEUE) {
+        const rawToken = payload.rawToken;
+        
+        // HKDF to derive a specific encryption key from JWT_SECRET
+        const enc = new TextEncoder();
+        const baseKey = await crypto.subtle.importKey(
+          'raw',
+          enc.encode(c.env.JWT_SECRET),
+          { name: 'HKDF' },
+          false,
+          ['deriveKey']
+        );
+        const encryptionKey = await crypto.subtle.deriveKey(
+          {
+            name: 'HKDF',
+            hash: 'SHA-256',
+            salt: enc.encode('asppibra-queue-salt'),
+            info: enc.encode('email-queue-encryption')
+          },
+          baseKey,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['encrypt']
+        );
+        
+        // Encrypt rawToken using AES-GCM
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const aad = enc.encode('password-reset-v1');
+        const ciphertextBuffer = await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv, additionalData: aad },
+          encryptionKey,
+          enc.encode(rawToken)
+        );
+        
+        const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
+        const ciphertextHex = Array.from(new Uint8Array(ciphertextBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        const envelope = {
+          version: 1,
+          alg: 'A256GCM',
+          kid: 'email-v1',
+          iv: ivHex,
+          ciphertext: ciphertextHex,
+          aad: 'password-reset-v1'
+        };
+        
+        await c.env.EMAIL_PIPELINE_QUEUE.send({
+          type: 'password_reset',
+          email,
+          tokenEnvelope: envelope,
+          timestamp: Date.now()
+        });
+      }
+
+      return success(c, 'Se o e-mail estiver cadastrado, as instruções de redefinição foram enviadas com sucesso.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao solicitar redefinição de senha', message, 500);
+    }
+  }
+
+  async confirmPasswordReset(c: Context): Promise<Response> {
+    try {
+      if (!this.confirmPasswordResetUseCase) {
+        return error(c, 'Caso de uso ConfirmPasswordReset não configurado', null, 500);
+      }
+      const body = await c.req.json().catch(() => ({}));
+      const { token, newPassword } = body || {};
+
+      if (!token || !newPassword) {
+        return error(c, 'Token e nova senha são obrigatórios', null, 400);
+      }
+
+      const result = await this.confirmPasswordResetUseCase.execute({ token, newPassword });
+      if (result.isFailure) {
+        return error(c, result.error || 'Erro ao confirmar redefinição de senha', null, 400);
+      }
+
+      return success(c, 'Senha redefinida com sucesso. Todas as sessões anteriores foram encerradas.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao confirmar redefinição de senha', message, 500);
+    }
+  }
+
+  async refreshSession(c: Context): Promise<Response> {
+    try {
+      if (!this.refreshTokenUseCase) {
+        return error(c, 'Caso de uso RefreshToken não configurado', null, 500);
+      }
+      const body = await c.req.json().catch(() => ({}));
+      const { refreshToken } = body || {};
+
+      if (!refreshToken) {
+        return error(c, 'Refresh token é obrigatório', null, 400);
+      }
+
+      const result = await this.refreshTokenUseCase.execute({ refreshToken });
+      if (result.isFailure) {
+        return error(c, result.error || 'Sessão ou refresh token inválido', null, 401);
+      }
+
+      return success(c, 'Sessão renovada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao renovar sessão', message, 500);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/interfaces/http/controllers/identity/ExternalIdentityController.ts`
+```typescript
+import { Context } from 'hono';
+import { LinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/LinkExternalIdentityUseCase';
+import { UnlinkExternalIdentityUseCase } from '../../../../application/use-cases/identity/UnlinkExternalIdentityUseCase';
+import { error, success } from '../../helpers/response';
+
+export interface IExternalIdentityQueryPort {
+  listUserIdentities(userId: number): Promise<{ oauth: any[]; wallets: any[] }>;
+}
+
+export class ExternalIdentityController {
+  constructor(
+    private readonly linkUseCase: LinkExternalIdentityUseCase,
+    private readonly unlinkUseCase: UnlinkExternalIdentityUseCase,
+    private readonly queryPort?: IExternalIdentityQueryPort
+  ) {}
+
+  async list(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId');
+
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      if (!this.queryPort) {
+        return success(c, 'Identidades externas carregadas com sucesso', { oauth: [], wallets: [] });
+      }
+
+      const data = await this.queryPort.listUserIdentities(userId);
+      return success(c, 'Identidades externas carregadas com sucesso', data);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao listar identidades externas', message, 500);
+    }
+  }
+
+  async link(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId');
+      const sessionAal = c.get('sessionAal') || 1;
+
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { type, challengeId, signature, message } = body || {};
+
+      if (!type) {
+        return error(c, 'Tipo de identidade não especificado.', null, 400);
+      }
+
+      let assertion: any = null;
+
+      if (type === 'web3_wallet') {
+        if (!challengeId || !signature || !message) {
+          return error(c, 'Challenge ID, Mensagem e Assinatura são obrigatórios para vincular carteira.', null, 400);
+        }
+
+        // 1. Instanciar VerifyWalletIdentityUseCase para validar a assinatura e o challenge
+        const db = c.get('db');
+        const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+        const { Eip4361Verifier } = await import('../../../../infrastructure/security/crypto/Eip4361Verifier');
+        const { DrizzleIdentityResolverAdapter } = await import('../../../../infrastructure/repositories/DrizzleIdentityResolverAdapter');
+        const { VerifyWalletIdentityUseCase } = await import('../../../../application/use-cases/identity/VerifyWalletIdentityUseCase');
+
+        const uow = new DrizzleUnitOfWork(db);
+        const siweVerifier = new Eip4361Verifier();
+        const resolver = new DrizzleIdentityResolverAdapter(db);
+        const verifyWallet = new VerifyWalletIdentityUseCase(uow, siweVerifier, resolver);
+
+        const domain = c.req.header('host') || 'w3.app';
+
+        const verifyResult = await verifyWallet.execute({
+          challengeId,
+          message,
+          signature,
+          expectedDomain: domain,
+        });
+
+        if (verifyResult.isFailure) {
+          return error(c, verifyResult.error || 'Falha ao verificar assinatura da carteira.', null, 400);
+        }
+
+        assertion = {
+          type: 'web3_wallet',
+          provider: 'evm',
+          subjectId: verifyResult.getValue().address,
+          networkId: verifyResult.getValue().chainId,
+          verifiedAt: new Date()
+        };
+      } else if (type === 'passkey') {
+        const { responseJSON } = body || {};
+
+        if (!challengeId || !responseJSON) {
+          return error(c, 'Challenge ID e resposta WebAuthn são obrigatórios para vincular passkey.', null, 400);
+        }
+
+        const db = c.get('db');
+        const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+        const { VerifyPasskeyRegistrationUseCase } = await import('../../../../application/use-cases/identity/VerifyPasskeyRegistrationUseCase');
+
+        const uow = new DrizzleUnitOfWork(db);
+        const verifyRegistration = new VerifyPasskeyRegistrationUseCase(uow);
+
+        const origin = c.req.header('origin') || `https://${c.req.header('host')}`;
+        const rpID = c.req.header('host') || 'w3.app';
+
+        const verifyResult = await verifyRegistration.execute({
+          challengeId,
+          responseJSON,
+          expectedOrigin: origin,
+          expectedRPID: rpID,
+        });
+
+        if (verifyResult.isFailure) {
+          return error(c, verifyResult.error || 'Falha ao verificar registro da Passkey.', null, 400);
+        }
+
+        assertion = {
+          type: 'passkey',
+          provider: 'webauthn',
+          subjectId: verifyResult.getValue().authenticatorId,
+          verifiedAt: new Date()
+        };
+      } else {
+        return error(c, 'Tipo de identidade não suportado para vinculação no momento.', null, 400);
+      }
+
+      const result = await this.linkUseCase.execute({
+        userId,
+        sessionAal,
+        assertion,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Erro ao vincular identidade', null, 400);
+      }
+
+      return success(c, 'Identidade vinculada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao vincular identidade externa', message, 500);
+    }
+  }
+
+  async unlink(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId');
+      const sessionAal = c.get('sessionAal') || 1;
+
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { provider, subjectId } = body || {};
+
+      if (!provider || !subjectId) {
+        return error(c, 'Provider e subjectId são obrigatórios para desvínculo.', null, 400);
+      }
+
+      const result = await this.unlinkUseCase.execute({
+        userId,
+        sessionAal,
+        provider,
+        subjectId,
+      });
+
+      if (result.isFailure) {
+        const errStr = result.error || 'Erro ao desvincular identidade';
+        const statusCode = errStr.includes('última credencial') ? 409 : 400;
+        return error(c, errStr, null, statusCode);
+      }
+
+      return success(c, 'Identidade desvinculada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao desvincular identidade externa', message, 500);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/interfaces/http/controllers/identity/IdentityController.ts`
+```typescript
+import { Context } from 'hono';
+import { AuthenticateAccountUseCase } from '../../../../application/use-cases/identity/AuthenticateAccountUseCase';
+import { RegisterAccountUseCase } from '../../../../application/use-cases/identity/RegisterAccountUseCase';
+import { VerifyWalletIdentityUseCase } from '../../../../application/use-cases/identity/VerifyWalletIdentityUseCase';
+import { VerifyPasskeyIdentityUseCase } from '../../../../application/use-cases/identity/VerifyPasskeyIdentityUseCase';
+import { IJwtService } from '../../../../application/ports/security/IJwtService';
+import { ISessionRepository } from '../../../../application/ports/output/ISessionRepository';
+import { error, success } from '../../helpers/response';
+
+export class IdentityController {
+  constructor(
+    private readonly authenticateUseCase: AuthenticateAccountUseCase,
+    private readonly jwtService: IJwtService,
+    private readonly sessionRepo: ISessionRepository,
+    private readonly registerUseCase?: RegisterAccountUseCase,
+    private readonly verifyWalletUseCase?: VerifyWalletIdentityUseCase,
+    private readonly verifyPasskeyUseCase?: VerifyPasskeyIdentityUseCase
+  ) {}
+
+  async register(c: Context): Promise<Response> {
+    try {
+      if (!this.registerUseCase) {
+        return error(c, 'Caso de uso de registro não configurado.', null, 500);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { email, password, displayName, username } = body || {};
+
+      if (!email || !password) {
+        return error(c, 'Email e senha são obrigatórios para cadastro.', null, 400);
+      }
+
+      const result = await this.registerUseCase.execute({ email, password, displayName, username });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha ao registrar conta', null, 400);
+      }
+
+      const registeredUser = result.getValue();
+      return success(c, 'Conta registrada com sucesso', registeredUser, 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao processar cadastro de conta', message, 500);
+    }
+  }
+
+  async loginLocal(c: Context): Promise<Response> {
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const { email, password } = body || {};
+
+      if (!email || !password) {
+        return error(c, 'Email e senha são obrigatórios', null, 400);
+      }
+
+      const result = await this.authenticateUseCase.execute({ email, password });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Credenciais inválidas', null, 401);
+      }
+
+      const user = result.getValue();
+      return this.issueSessionResponse(c, user.userId, user.email, user.publicId, user.status, 1, new Date(), 'password');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno no servidor ao processar autenticação', message, 500);
+    }
+  }
+
+  async generateWeb3Challenge(c: Context): Promise<Response> {
+    try {
+      const db = c.get('db');
+      const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+      const { GenerateWeb3ChallengeUseCase } = await import('../../../../application/use-cases/identity/GenerateWeb3ChallengeUseCase');
+      
+      const uow = new DrizzleUnitOfWork(db);
+      const generateWeb3ChallengeUseCase = new GenerateWeb3ChallengeUseCase(uow);
+
+      const body = await c.req.json().catch(() => ({}));
+      const { transactionId, context } = body || {};
+
+      const domain = c.req.header('host') || 'w3.app'; // Em prod, pegar env.EXPECTED_DOMAIN
+
+      const result = await generateWeb3ChallengeUseCase.execute({
+        context: context || 'login',
+        transactionId,
+        domain,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha ao gerar challenge Web3', null, 400);
+      }
+
+      return success(c, 'Challenge gerado com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao gerar challenge Web3', message, 500);
+    }
+  }
+
+  async loginWeb3(c: Context): Promise<Response> {
+    try {
+      if (!this.verifyWalletUseCase) {
+        return error(c, 'Autenticação Web3 não configurada.', null, 500);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { challengeId, message, signature } = body || {};
+
+      if (!challengeId || !message || !signature) {
+        return error(c, 'Challenge ID, Mensagem SIWE e assinatura são obrigatórios.', null, 400);
+      }
+
+      // SECURITY ENFORCEMENT: Domain must come from strict server environment, not client headers.
+      const domain = c.env.SIWE_ALLOWED_DOMAIN || 'w3.app';
+
+      const result = await this.verifyWalletUseCase.execute({
+        challengeId,
+        message,
+        signature,
+        expectedDomain: domain,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha na autenticação Web3', null, 401);
+      }
+
+      const walletAuth = result.getValue();
+      return this.issueSessionResponse(c, walletAuth.userId, `wallet_${walletAuth.address}@w3.app`, null, 'active', 2, new Date(), 'web3_wallet');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao processar autenticação Web3 SIWE', message, 500);
+    }
+  }
+
+  async generatePasskeyChallenge(c: Context): Promise<Response> {
+    try {
+      const db = c.get('db');
+      const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+      const { GeneratePasskeyChallengeUseCase } = await import('../../../../application/use-cases/identity/GeneratePasskeyChallengeUseCase');
+      
+      const uow = new DrizzleUnitOfWork(db);
+      const generatePasskeyChallengeUseCase = new GeneratePasskeyChallengeUseCase(uow);
+
+      const body = await c.req.json().catch(() => ({}));
+      let { transactionId, context, userId, userName } = body || {};
+
+      if (context === 'credential_link') {
+        const sessionUser = c.get('user');
+        if (!sessionUser || !sessionUser.userId) {
+          return error(c, 'Sessão ativa necessária para registrar Passkey', null, 401);
+        }
+        userId = sessionUser.userId;
+      }
+
+      const rpID = c.env.WEBAUTHN_RP_ID || 'w3.app';
+      const rpName = 'ASPPIBRA W3';
+
+      const result = await generatePasskeyChallengeUseCase.execute({
+        context: context || 'login',
+        transactionId,
+        userId,
+        userName,
+        rpID,
+        rpName,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha ao gerar challenge Passkey', null, 400);
+      }
+
+      return success(c, 'Challenge gerado com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao gerar challenge Passkey', message, 500);
+    }
+  }
+
+  async loginPasskey(c: Context): Promise<Response> {
+    try {
+      if (!this.verifyPasskeyUseCase) {
+        return error(c, 'Autenticação Passkey não configurada.', null, 500);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { challengeId, responseJSON } = body || {};
+
+      if (!challengeId || !responseJSON) {
+        return error(c, 'Challenge ID e resposta WebAuthn são obrigatórios.', null, 400);
+      }
+
+      // SECURITY ENFORCEMENT: Origin and RP_ID must come from strict server environment, not client headers.
+      const origin = c.env.WEBAUTHN_ALLOWED_ORIGINS || 'https://w3.app';
+      const rpID = c.env.WEBAUTHN_RP_ID || 'w3.app';
+
+      const result = await this.verifyPasskeyUseCase.execute({
+        challengeId,
+        responseJSON,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha na autenticação Passkey', null, 401);
+      }
+
+      const passkeyAuth = result.getValue();
+      return this.issueSessionResponse(c, passkeyAuth.userId, `passkey_${passkeyAuth.credentialId}@w3.app`, null, 'active', 2, new Date(), 'passkey');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao processar autenticação Passkey', message, 500);
+    }
+  }
+
+  public async issueSessionResponse(
+    c: Context,
+    userId: number,
+    email: string,
+    publicId: string | null,
+    status: string,
+    effectiveAal: number,
+    authTime: Date,
+    authMethod: string
+  ): Promise<Response> {
+    const jwtSecret = c.env?.JWT_SECRET;
+    if (!jwtSecret) {
+      return error(c, 'Erro de configuração do servidor (JWT_SECRET ausente).', null, 500);
+    }
+
+    const sessionId = crypto.randomUUID();
+    const familyId = crypto.randomUUID();
+    const jti = crypto.randomUUID();
+    
+    // Generate secure refresh token
+    const rawRefreshToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+    const refreshTokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawRefreshToken));
+    const refreshTokenHash = Array.from(new Uint8Array(refreshTokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+    const userAgent = c.req.header('user-agent') || 'unknown';
+    
+    const now = new Date();
+    const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 3600 * 1000); // 30 days for refresh session
+    const jwtExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 mins for access token
+
+    // Create the token family first
+    if (this.sessionRepo.createRefreshTokenFamily) {
+      await this.sessionRepo.createRefreshTokenFamily({
+        id: familyId,
+        userId,
+        createdAt: now,
+      });
+    }
+
+    // Get actual user authEpoch instead of hardcoding 1
+    const db = c.get('db');
+    const userRepo = new (await import('../../../../infrastructure/repositories/DrizzleUserRepositoryAdapter')).DrizzleUserRepositoryAdapter(db);
+    const user = await userRepo.findById(userId);
+    const userAuthEpoch = user?.authEpoch || 1;
+
+    await this.sessionRepo.createSession({
+      id: sessionId,
+      userId,
+      jti,
+      ip,
+      userAgent,
+      familyId,
+      refreshTokenHash,
+      aal: effectiveAal,
+      authEpoch: userAuthEpoch,
+      createdAt: now,
+      expiresAt: sessionExpiresAt,
+      lastAuthenticatedAt: authTime,
+    } as any); // Type cast due to possible interface mismatches, since we added lastAuthenticatedAt
+
+    const token = await this.jwtService.sign(
+      {
+        sub: publicId || String(userId),
+        userId,
+        email,
+        publicId,
+        sid: sessionId,
+        jti,
+        aal: effectiveAal,
+        auth_time: Math.floor(authTime.getTime() / 1000),
+        exp: Math.floor(jwtExpiresAt.getTime() / 1000), 
+      },
+      jwtSecret
+    );
+
+    return success(c, 'Autenticação realizada com sucesso', {
+      token, // Access Token
+      refreshToken: rawRefreshToken, // Send back for the client to store securely
+      expiresIn: 15 * 60, // 15 minutes
+      user: {
+        id: userId,
+        email,
+        publicId,
+        status,
+      },
+      session: {
+        id: sessionId,
+        aal: effectiveAal,
+        auth_time: authTime.toISOString(),
+        expiresAt: sessionExpiresAt,
+      },
+    });
+  }
+
+  async logout(c: Context): Promise<Response> {
+    try {
+      const sessionId = c.get('sessionId') || c.get('user')?.sessionId;
+      if (!sessionId) {
+        return error(c, 'Sessão ativa não encontrada', null, 400);
+      }
+
+      await this.sessionRepo.revokeSession(sessionId);
+      return success(c, 'Sessão encerrada com sucesso');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao realizar logout', message, 500);
+    }
+  }
+
+  async logoutAll(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      await this.sessionRepo.revokeAllUserSessions(userId);
+      return success(c, 'Todas as sessões ativas foram encerradas com sucesso.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao realizar logout global', message, 500);
+    }
+  }
+}
+
+
+```
+
+---
+
+### `src/interfaces/http/controllers/ssi/SsiController.ts`
+```typescript
+import { Context } from 'hono';
+import { CreateDidUseCase } from '../../../../domains/ssi/use-cases/CreateDidUseCase';
+import { IssueVerifiableCredentialUseCase } from '../../../../domains/ssi/use-cases/IssueVerifiableCredentialUseCase';
+import { RevokeCredentialUseCase } from '../../../../domains/ssi/use-cases/RevokeCredentialUseCase';
+import { ISsiRepository } from '../../../../application/ports/output/ISsiRepository';
+
+export class SsiController {
+  constructor(
+    private readonly createDidUseCase: CreateDidUseCase,
+    private readonly issueVcUseCase: IssueVerifiableCredentialUseCase,
+    private readonly revokeVcUseCase: RevokeCredentialUseCase,
+    private readonly ssiRepo: ISsiRepository
+  ) {}
+
+  async createDid(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return c.json({ success: false, message: 'Usuário não autenticado' }, 401);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const result = await this.createDidUseCase.execute({
+        userId,
+        method: body.method || 'key',
+      });
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, message: 'DID gerado com sucesso', data: result.getValue() }, 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async issueCredential(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return c.json({ success: false, message: 'Usuário não autenticado' }, 401);
+      }
+
+      const body = await c.req.json();
+      const result = await this.issueVcUseCase.execute({
+        holderUserId: userId,
+        credentialType: body.credentialType || 'CivicIdentityCredential',
+        claims: body.claims || {},
+        expirationDays: body.expirationDays || 365,
+      });
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, message: 'Credencial Verificável emitida com sucesso', data: result.getValue() }, 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async revokeCredential(c: Context): Promise<Response> {
+    try {
+      const body = await c.req.json();
+      const result = await this.revokeVcUseCase.execute({ credentialId: body.credentialId });
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, message: 'Credencial Verificável revogada com sucesso' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async listMyCredentials(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return c.json({ success: false, message: 'Usuário não autenticado' }, 401);
+      }
+
+      const didRes = await this.ssiRepo.findDidByUserId(userId);
+      const vcsRes = await this.ssiRepo.listVerifiableCredentialsByUserId(userId);
+
+      return c.json({
+        success: true,
+        data: {
+          did: didRes.isSuccess ? didRes.getValue() : null,
+          credentials: vcsRes.isSuccess ? vcsRes.getValue() : [],
+        },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/interfaces/http/controllers/finance/FinanceController.ts`
+```typescript
+import { Context } from 'hono';
+import { GetTreasuryBalanceUseCase } from '../../../../domains/finance/use-cases/GetTreasuryBalanceUseCase';
+import { RecordTreasuryTransactionUseCase } from '../../../../domains/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { IFinanceRepository } from '../../../../application/ports/output/IFinanceRepository';
+
+export class FinanceController {
+  constructor(
+    private readonly getTreasuryBalanceUseCase: GetTreasuryBalanceUseCase,
+    private readonly recordTxUseCase: RecordTreasuryTransactionUseCase,
+    private readonly financeRepo: IFinanceRepository
+  ) {}
+
+  async getBalance(c: Context): Promise<Response> {
+    try {
+      const result = await this.getTreasuryBalanceUseCase.execute();
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, data: result.getValue() });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async recordTransaction(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      const body = await c.req.json();
+
+      const result = await this.recordTxUseCase.execute({
+        userId,
+        type: body.type || 'deposit',
+        category: body.category,
+        description: body.description,
+        amountBaseUnits: body.amountBaseUnits,
+        assetId: body.assetId,
+      });
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, message: 'Transação registrada com sucesso', data: result.getValue() }, 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async listTransactions(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      const result = await this.financeRepo.listTransactions(userId);
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, data: result.getValue() });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+}
+
+```
+
+---
+
+### `src/interfaces/http/middlewares/auth_signature.ts`
+```typescript
+import { Context, Next } from 'hono';
+import { CryptoCore } from '../../../infrastructure/security/crypto/crypto';
+import { JwtService } from '../../../infrastructure/security/jwt/JwtService';
+import { DrizzleUnitOfWork } from '../../../infrastructure/repositories/DrizzleUnitOfWork';
+import { CitizenRecord } from '../../../application/ports/output/ICivilIdentityRepository';
+import { Result } from '../../../shared/kernel/Result';
+
+const jwtService = new JwtService();
+
+function requireJwtSecret(c: Context): string {
+  const secret = c.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET não configurado no ambiente.');
+  }
+  return secret;
+}
+
+/**
+ * Zero-Trust Signature Middleware
+ * Requer o header X-Identity-Signature: Base64(Ed25519_Sign(Timestamp + Body))
+ * E o header X-Identity-DID: did:dao:asppibra:<username>
+ *
+ * FALLBACK: Aceita JWT Bearer token se os headers de Zero-Trust estiverem ausentes.
+ */
+export const authSignature = async (c: Context, next: Next) => {
+  const path = c.req.path;
+  if (path.includes('/webhook')) {
+    return next();
+  }
+
+  const signature = c.req.header('X-Identity-Signature');
+  const did = c.req.header('X-Identity-DID');
+  const timestamp = c.req.header('X-Identity-Timestamp');
+
+  const hasAnyZeroTrustHeader = signature || did || timestamp;
+
+  // --- FALLBACK JWT (Para sessões padrão de Cidadão via Web2/Social) ---
+  if (!signature || !did || !timestamp) {
+    if (hasAnyZeroTrustHeader) {
+      return c.json({ success: false, message: 'Missing Zero-Trust credentials.' }, 401);
+    }
+
+    const authHeader = c.req.header('Authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+    if (token) {
+      let secret: string;
+      try {
+        secret = requireJwtSecret(c);
+      } catch (err) {
+        console.error('[SECURITY] JWT_SECRET ausente — recusando autenticação.', err);
+        return c.json({ success: false, message: 'Erro de configuração do servidor.' }, 500);
+      }
+
+      try {
+        const payload = await jwtService.verify(token, secret);
+
+        // Correção 1.2: sid é OBRIGATÓRIO. Sem sid, não há como validar a sessão
+        // no D1 (revogação/expiração), então o token NUNCA é aceito silenciosamente.
+        if (!payload.sid) {
+          return c.json({ success: false, message: 'Invalid session payload (sid missing).' }, 401);
+        }
+
+        const db = c.get('db');
+        if (!db) {
+          return c.json({ success: false, message: 'Database context unavailable.' }, 500);
+        }
+
+        const { DrizzleSessionRepository } = await import('../../../infrastructure/repositories/DrizzleSessionRepository');
+        const sessionRepo = new DrizzleSessionRepository(db);
+        const sessionRecord = await sessionRepo.getSessionById(payload.sid);
+
+        const { Session } = await import('../../../domains/identity/entities/Session');
+        const session = sessionRecord ? Session.fromPersistence(sessionRecord as any) : null;
+
+        if (!session || !session.isValid()) {
+          return c.json({ success: false, message: 'Session revoked, inactive or expired.' }, 401);
+        }
+
+        c.set('user', {
+          userId: session.userId,
+          sessionId: session.id,
+          sessionAal: session.aal,
+          role: payload.role || 'citizen',
+        });
+
+        return await next();
+      } catch (err) {
+        return c.json({ success: false, message: 'Invalid or expired session token.' }, 401);
+      }
+    }
+    return c.json({ success: false, message: 'Authentication required (Zero-Trust or JWT).' }, 401);
+  }
+
+  // 1. Verificar expiração do Timestamp (máximo 5 min)
+  const now = Date.now();
+  if (Math.abs(now - parseInt(timestamp)) > 300000) {
+    return c.json({ success: false, message: 'Request signature expired.' }, 401);
+  }
+
+  // 2. Buscar Cidadão via UnitOfWork & Repositório Canônico
+  const username = did.split(':').pop();
+  if (!username) {
+    return c.json({ success: false, message: 'Invalid DID format.' }, 401);
+  }
+
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+
+  const repoResult = await uow.execute<CitizenRecord | null>(async (factory) => {
+    const citizenRepo = factory.getCivilIdentityRepository();
+    const record = await citizenRepo.findByDid(did);
+    return Result.ok<CitizenRecord | null>(record);
+  });
+
+  const activeCitizen: CitizenRecord | null = repoResult.isSuccess ? repoResult.getValue() : null;
+
+  if (!activeCitizen || activeCitizen.status === 'revoked' || activeCitizen.civilStatus === 'revoked') {
+    return c.json({ success: false, message: 'Citizen not found or revoked.' }, 401);
+  }
+
+  // 3. Verificar Assinatura
+  if (!activeCitizen.publicKey) {
+    return c.json({ success: false, message: 'Public key missing for citizen.' }, 401);
+  }
+
+  const publicKey = Uint8Array.from(JSON.parse(activeCitizen.publicKey));
+  const bodyText = await c.req.raw.clone().text();
+  const msg = new TextEncoder().encode(timestamp + bodyText);
+
+  try {
+    const isValid = await CryptoCore.verify(
+      Uint8Array.from(
+        atob(signature)
+          .split('')
+          .map((char) => char.charCodeAt(0))
+      ),
+      msg,
+      publicKey
+    );
+
+    if (!isValid) {
+      return c.json({ success: false, message: 'Invalid Zero-Trust signature.' }, 401);
+    }
+
+    if (!activeCitizen.userId) {
+      return c.json({ success: false, message: 'Citizen is not linked to a User account.' }, 403);
+    }
+
+    c.set('user', { userId: activeCitizen.userId, role: 'citizen' });
+  } catch (e) {
+    return c.json({ success: false, message: 'Signature verification failed.' }, 401);
+  }
+
+  await next();
+};
+
+```
+
+---
+
+### `src/interfaces/http/middlewares/correlation_id.ts`
+```typescript
+import { MiddlewareHandler } from 'hono';
+
+export const correlationIdMiddleware = (): MiddlewareHandler => {
+  return async (c, next) => {
+    let correlationId = c.req.header('X-Correlation-ID');
+    if (!correlationId) {
+      correlationId = crypto.randomUUID();
+    }
+    c.set('correlationId', correlationId);
+    c.header('X-Correlation-ID', correlationId);
+    await next();
+  };
+};
+
+```
+
+---
+
+### `src/interfaces/http/middlewares/rate_limit.ts`
+```typescript
+import { Context, Next } from 'hono';
+
+interface RateLimitConfig {
+  windowMs: number;
+  maxRequests: number;
+}
+
+// In-memory store (funciona por isolate no Cloudflare Workers)
+// Para uma solução distribuída real, usar KV, Durable Objects ou Redis.
+const store = new Map<string, { count: number; resetTime: number }>();
+
+export interface RateLimiterProvider {
+  isAllowed(
+    ip: string,
+    config: RateLimitConfig
+  ): Promise<{ allowed: boolean; retryAfter?: number }>;
+}
+
+class MemoryProvider implements RateLimiterProvider {
+  private store = new Map<string, { count: number; resetTime: number }>();
+
+  async isAllowed(ip: string, config: RateLimitConfig) {
+    const now = Date.now();
+    let record = this.store.get(ip);
+
+    if (!record || record.resetTime < now) {
+      record = { count: 1, resetTime: now + config.windowMs };
+      this.store.set(ip, record);
+    } else {
+      record.count++;
+    }
+
+    if (record.count > config.maxRequests) {
+      return { allowed: false, retryAfter: Math.ceil((record.resetTime - now) / 1000) };
+    }
+    return { allowed: true };
+  }
+}
+
+class KVProvider implements RateLimiterProvider {
+  constructor(private kv: any) {}
+
+  async isAllowed(ip: string, config: RateLimitConfig) {
+    const now = Date.now();
+    const key = `ratelimit:${ip}`;
+
+    const data = await this.kv.get(key, 'json');
+    let record = data ? (data as { count: number; resetTime: number }) : null;
+
+    if (!record || record.resetTime < now) {
+      record = { count: 1, resetTime: now + config.windowMs };
+    } else {
+      record.count++;
+    }
+
+    if (record.count > config.maxRequests) {
+      return { allowed: false, retryAfter: Math.ceil((record.resetTime - now) / 1000) };
+    }
+
+    // TTL for KV
+    await this.kv.put(key, JSON.stringify(record), {
+      expirationTtl: Math.ceil(config.windowMs / 1000),
+    });
+    return { allowed: true };
+  }
+}
+
+const memoryProvider = new MemoryProvider();
+
+export const rateLimit = (config: RateLimitConfig) => {
+  return async (c: Context, next: Next) => {
+    const ip = c.req.header('cf-connecting-ip') || 'unknown';
+
+    // Use KV if available, else Memory
+    const provider = c.env.KV_CACHE ? new KVProvider(c.env.KV_CACHE) : memoryProvider;
+
+    const result = await provider.isAllowed(ip, config);
+
+    if (!result.allowed) {
+      return c.json(
+        {
+          success: false,
+          message: 'Too Many Requests',
+          retryAfter: result.retryAfter,
+        },
+        429
+      );
+    }
+
+    await next();
+  };
+};
+
+export const idempotency = () => {
+  return async (c: Context, next: Next) => {
+    const idempotencyKey = c.req.header('Idempotency-Key');
+    if (idempotencyKey && c.env.KV_CACHE) {
+      const key = `idempotency:${idempotencyKey}`;
+      const exists = await c.env.KV_CACHE.get(key);
+      if (exists) {
+        return c.json({ success: true, message: 'Request already processed (Idempotency)' }, 200);
+      }
+      await c.env.KV_CACHE.put(key, '1', { expirationTtl: 86400 }); // 24 hours
+    }
+    await next();
+  };
+};
+
+```
+
+---
+
+### `src/interfaces/http/middlewares/rbac.ts`
+```typescript
+import { Context, Next } from 'hono';
+import { error } from '../helpers/response';
+import { eq, and, isNull, sql } from 'drizzle-orm';
+
+/**
+ * verifyRole - Middleware para Role-Based Access Control (RBAC)
+ * Verifica diretamente no banco de dados, ignorando a claim do JWT.
+ * @param allowedRoles Lista de cargos permitidos (ex: ['admin', 'partner'])
+ */
+export const verifyRole = (allowedRoles: string[]) => {
+  return async (c: Context, next: Next) => {
+    try {
+      // GARANTIA FASE 0: RBAC nunca deve rodar sem sessionGuard
+      const sessionUserId = c.get('userId');
+      if (!sessionUserId) {
+        return error(c, 'Erro Interno: Acesso negado. RBAC executado sem sessionGuard anterior.', null, 500);
+      }
+
+      const db = c.get('db');
+      if (!db) {
+        return error(c, 'Erro Interno: Conexão com banco de dados não encontrada.', null, 500);
+      }
+
+      const { userRoles, roles } = await import('../../../../db/authorization/tables');
+
+      // Query para verificar se o usuário possui algum dos roles permitidos
+      const userRolesData = await db
+        .select({ roleKey: roles.key })
+        .from(userRoles)
+        .innerJoin(roles, eq(userRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userRoles.userId, sessionUserId),
+            isNull(userRoles.revokedAt), // A role não deve estar revogada
+            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${new Date().getTime()}`,
+            eq(roles.status, 'active') // A role deve estar ativa no sistema
+          )
+        );
+
+      const userRoleKeys = userRolesData.map((r: any) => r.roleKey);
+      
+      // The system should not grant implicit roles. All roles must be recorded in the DB.
+
+      const hasRole = userRoleKeys.some((role: string) => allowedRoles.includes(role));
+
+      if (!hasRole) {
+        return error(
+          c,
+          `Acesso negado: Você não tem permissão para realizar esta ação. Requerido um dos: [${allowedRoles.join(', ')}]`,
+          null,
+          403
+        );
+      }
+
+      await next();
+    } catch (err: unknown) {
+      console.error('🚨 RBAC Auth Error:', err);
+      return error(c, 'Erro ao verificar permissões de acesso.', null, 500);
+    }
+  };
+};
+
+/**
+ * verifyPermission - Middleware para verificar Permissões Granulares (FASE 4)
+ * Verifica se as roles do usuário concedem a permissão requerida.
+ * @param requiredPermission Permissão granular (ex: 'user.read')
+ */
+export const verifyPermission = (requiredPermission: string) => {
+  return async (c: Context, next: Next) => {
+    try {
+      const sessionUserId = c.get('userId');
+      if (!sessionUserId) {
+        return error(c, 'Erro Interno: Acesso negado. RBAC executado sem sessionGuard anterior.', null, 500);
+      }
+
+      const db = c.get('db');
+      const { userRoles, roles, rolePermissions, permissions } = await import('../../../../db/authorization/tables');
+
+      const userPerms = await db
+        .select({ permKey: permissions.key })
+        .from(userRoles)
+        .innerJoin(roles, eq(userRoles.roleId, roles.id))
+        .innerJoin(rolePermissions, eq(roles.id, rolePermissions.roleId))
+        .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+        .where(
+          and(
+            eq(userRoles.userId, sessionUserId),
+            isNull(userRoles.revokedAt),
+            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${new Date().getTime()}`,
+            eq(roles.status, 'active'),
+            eq(permissions.key, requiredPermission)
+          )
+        )
+        .limit(1);
+
+      if (userPerms.length === 0) {
+        return error(
+          c,
+          `Acesso negado: Permissão '${requiredPermission}' necessária para esta ação.`,
+          null,
+          403
+        );
+      }
+
+      await next();
+    } catch (err: unknown) {
+      console.error('🚨 Permission Auth Error:', err);
+      return error(c, 'Erro ao verificar permissões de acesso.', null, 500);
+    }
+  };
+};
+
+
+```
+
+---
+
+### `src/interfaces/http/middlewares/session_guard.ts`
+```typescript
+import { Context, Next } from 'hono';
+import { JwtService } from '../../../infrastructure/security/jwt/JwtService';
+import { DrizzleSessionRepository } from '../../../infrastructure/repositories/DrizzleSessionRepository';
+import { DrizzleUserRepositoryAdapter } from '../../../infrastructure/repositories/DrizzleUserRepositoryAdapter';
+import { IJwtService } from '../../../application/ports/security/IJwtService';
+
+function resolveJwtService(c: Context): IJwtService {
+  const service = c.get('jwtService') as IJwtService | undefined;
+  if (!service) {
+    throw new Error('IJwtService was not provided in the Hono context (Dependency Injection missing).');
+  }
+  return service;
+}
+
+/**
+ * Stateful Session Guard Middleware
+ * 1. Extrai o Bearer token do header Authorization.
+ * 2. Valida a assinatura criptográfica e as claims temporais do JWT.
+ * 3. Extrai o sid (Session ID) do payload.
+ * 4. Realiza o lookup físico no D1 (user_sessions).
+ * 5. Bloqueia (HTTP 401) se a sessão não existir, estiver revogada ou expirada.
+ * 6. Injeta no contexto do Hono (c.set('user', ...)) o userId, sessionId e sessionAal.
+ */
+export const sessionGuard = async (c: Context, next: Next) => {
+  const authHeader = c.req.header('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+  if (!token) {
+    return c.json({ success: false, message: 'Authentication required (Bearer token missing).' }, 401);
+  }
+
+  const secret = c.env.JWT_SECRET;
+  if (!secret) {
+    console.error('[SECURITY] JWT_SECRET ausente — recusando autenticação.');
+    return c.json({ success: false, message: 'Erro de configuração do servidor.' }, 500);
+  }
+
+  try {
+    const jwtService = resolveJwtService(c);
+    const payload = await jwtService.verify(token, secret);
+
+    if (!payload.sid) {
+      return c.json({ success: false, message: 'Invalid session payload (sid missing).' }, 401);
+    }
+
+    const db = c.get('db');
+    if (!db) {
+      return c.json({ success: false, message: 'Database context unavailable.' }, 500);
+    }
+
+    const sessionRepo = new DrizzleSessionRepository(db);
+    const sessionRecord = await sessionRepo.getSessionById(payload.sid);
+
+    if (!sessionRecord) {
+      return c.json({ success: false, message: 'Session not found.' }, 401);
+    }
+
+    const { Session } = await import('../../../domains/identity/entities/Session');
+    const session = Session.fromPersistence(sessionRecord as any);
+
+    if (!session.isValid()) {
+      return c.json({ success: false, message: session.isRevoked ? 'Session has been revoked.' : 'Session has expired.' }, 401);
+    }
+
+    const userRepo = new DrizzleUserRepositoryAdapter(db);
+    const userRecord = await userRepo.findById(session.userId);
+
+    if (!userRecord) {
+      return c.json({ success: false, message: 'User account not found.' }, 401);
+    }
+
+    const { User } = await import('../../../domains/identity/entities/User');
+    const user = new User(userRecord as any);
+
+    if (!user.canAuthenticate()) {
+      return c.json({ success: false, message: `User account is not eligible for authentication.` }, 403);
+    }
+
+    // AF-008: Validar authEpoch da entidade Session contra o authEpoch atual do usuário (D1 -> D1)
+    if (!session.matchesUserEpoch(user.authEpoch)) {
+      return c.json(
+        {
+          success: false,
+          message: 'Session invalidated due to password reset or security revocation (authEpoch mismatch).',
+        },
+        401
+      );
+    }
+
+    c.set('user', {
+      userId: session.userId,
+      sessionId: session.id,
+      sessionAal: session.aal,
+    });
+    c.set('userId', session.userId);
+    c.set('sessionId', session.id);
+    c.set('sessionAal', session.aal);
+    c.set('lastAuthenticatedAt', session.lastAuthenticatedAt);
+
+    await next();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Token inválido';
+    return c.json({ success: false, message: 'Invalid or expired session token.', error: message }, 401);
+  }
+};
+
+/**
+ * Middleware para impor Nível de Garantia de Autenticação (AAL) e Recent Auth.
+ * Deve ser usado APÓS o sessionGuard na cadeia de middlewares da rota.
+ * 
+ * @param minAal O AAL mínimo necessário (1, 2, ou 3).
+ * @param maxAgeMinutes O tempo máximo permitido desde a autenticação (opcional).
+ */
+export const requireAal = (minAal: number, maxAgeMinutes?: number) => {
+  return async (c: Context, next: Next) => {
+    const sessionAal = c.get('sessionAal') as number | undefined;
+    const lastAuthenticatedAt = c.get('lastAuthenticatedAt') as Date | undefined;
+
+    if (!sessionAal) {
+      return c.json({ success: false, message: 'Authentication level not found in context. sessionGuard is required.' }, 500);
+    }
+
+    if (sessionAal < minAal) {
+      return c.json({ 
+        success: false, 
+        message: 'Insufficient authentication level.', 
+        code: 'AAL_INSUFFICIENT',
+        requiredAal: minAal 
+      }, 403);
+    }
+
+    if (maxAgeMinutes && lastAuthenticatedAt) {
+      const now = new Date();
+      const diffMinutes = (now.getTime() - lastAuthenticatedAt.getTime()) / (1000 * 60);
+      if (diffMinutes > maxAgeMinutes) {
+        return c.json({ 
+          success: false, 
+          message: 'Recent authentication required.', 
+          code: 'RECENT_AUTH_REQUIRED',
+          maxAgeMinutes 
+        }, 403);
+      }
+    }
+
+    await next();
+  };
+};
+
+```
+
+---
+
+## 2. Gaps de Arquitetura Limpa (Missing DDD Components)
+
+Comparando a estrutura presente com o nosso Master Architecture Contract (Clean Architecture rigorosa), identifiquei ausências críticas na segregação das camadas de Domínio e Aplicação:
+
+### 🔴 Módulo Financeiro
+- **Missing Domain Entities:** `src/domains/finance/entities/` está totalmente ausente. Não existem as entidades `LedgerEntry.ts`, `FinancialTransaction.ts`, `FinancialAccount.ts` ou `AccountBalance.ts` que deveriam encapsular as regras de partida dobrada (Double-Entry).
+- **Missing Domain Services:** Falta o `DoubleEntryLedgerService.ts` para garantir que `Debit = Credit` na camada de Domínio, evitando que a infraestrutura cuide dessas regras de negócio vitais.
+- **Missing Application DTOs:** Faltam os DTOs do Financeiro (ex: `TransferFundsDTO.ts`, `GetBalanceDTO.ts`). Hoje, os UseCases misturam as validações com os tipos de repositório.
+
+### 🔴 Módulo SSI (Verifiable Credentials)
+- **Missing Domain Entities:** `src/domains/ssi/entities/` está ausente. Entidades obrigatórias como `VerifiableCredential.ts` (estado de ativação/revogação) e `DIDDocument.ts` (métodos de verificação) deveriam ditar as regras de expiração e validade.
+- **Missing Application DTOs:** Os DTOs de `CreateDidDTO.ts` e `IssueVerifiableCredentialDTO.ts` não estão no diretório de `src/application/dto/ssi/` (na verdade, eles estão misturados nos arquivos de UseCase em `src/domains/ssi/use-cases/`, quebrando a inversão de dependência). O Domain não deve conter DTOs de HTTP/Application.
+
+### 🟡 Módulo Identity
+- A estrutura de Domínio é a mais madura (`Session`, `AuthenticationTransaction`, `User` existem e contêm regras), mas há DTOs globais (`IdentityAssertion.ts` e `IdentityResolutionResult.ts`) soltos na raiz de `src/application/dto/` em vez de ficarem agrupados no contexto correto (e.g., `identity/` ou `core/`).
+
+---
+
+## 3. Auditoria Rigorosa de Segurança (SecOps 10/10)
+
+Esta seção documenta as correções iminentes necessárias para atestar a segurança (grau P0/Crítico) e liberar o uso financeiro do sistema.
+
+### 1. Timing Attacks (Código Morto e Inseguro)
+- **Problema:** Em `src/infrastructure/security/crypto/PBKDF2PasswordHasher.ts`, o método `timingSafeEqual` contém uma bifurcação morta que efetua `a.charCodeAt(i) ^ a.charCodeAt(i)` (resultado sempre zero) quando os tamanhos das strings diferem. Embora retorne `false` rapidamente logo a seguir, é um erro matemático gravíssimo para um arquivo de segurança que pode levar a um vazamento de side-channel se copiado ou alterado no futuro.
+- **Solução:** Substituir a implementação local pelo import oficial `timingSafeEqual` de `src/infrastructure/security/crypto/timing_safe.ts`, que já lida com tamanhos assimétricos corretamente via preenchimento de bytes (`padding`).
+
+### 2. Shadow Accounts & Identidade Canônica (OAuth Leakage)
+- **Problema:** Em `DrizzleIdentityResolverAdapter.ts`, no case `oauth`, o `subjectId` (ID que vem da Google/Github) está sendo checado como se fosse o ID sequencial de `userAuthenticators.id`. Isso causa um "OAuth Leak", que impede logins ou, em piores casos de colisão, vincula erroneamente ao usuário com `id` igual ao identificador externo da rede. Além disso, não há rotas reais para `/oauth/google` em `identity.routes.ts`.
+- **Solução:** O lookup precisa bater contra um identificador OAuth persistido corretamente em `external_identities` (ou tabelas correlatas de web3), assegurando o princípio AF-009. E as rotas que não existem devem ser limpas da documentação para não acusarem Shadow APIs em auditoria de terceiros.
+
+### 3. AAL & Session Assurance (Bypass de Middlewares)
+- **Problema:** Foi identificado um risco real de bypass (Privilege Escalation). O middleware `session_guard.ts` audita a chave `canAuthenticate()` e valida mudanças de `authEpoch` (invalidando tokens de usuários bloqueados ou de resets de senhas passados). Porém, o `auth_signature.ts` (usado muitas vezes como fallback) NÃO verifica essas propriedades AF-008. Se um usuário sofrer lockout mas possuir um JWT assinado válido aceito pelo `auth_signature`, ele continuará transitando pela API impunemente.
+- **Solução:** Unificar as políticas. O `auth_signature.ts` DEVE utilizar o mesmíssimo código de verificação temporal e de status que existe no `sessionGuard`, barrando peremptoriamente epochs desatualizados.
+
+### 4. Anti-Lockout Enforced
+- O sistema apresenta robustez em sua tese (ex: `AntiLockoutViolationError.ts`), porém isso precisa ser atestado e defendido no `UnlinkExternalIdentityUseCase.ts`. Conforme revisto anteriormente, a revogação agora acontece ativamente no banco, mas os testes de E2E precisam bater nessa rota repetidamente com usuários que possuem 1 e 2 métodos de autenticação para provar a inviabilidade da autossabotagem em produção.
+
+---
+
+### Veredito Final
+A fundação de tabelas D1 (Fase 1) e o roteamento Hono (Fase 2) estão consolidados. Para elevar a certificação de 6.5/10 para 10/10, o plano agora é refatorar os bugs críticos, preencher o vácuo de Domain Entities no Financeiro/SSI, e arrancar pelas raízes as inconsistências dos algoritmos de segurança (`PBKDF2PasswordHasher` e `auth_signature`).
+

@@ -31,7 +31,13 @@ export interface IAuthenticationRepository {
     userId: number,
     credentialId: string,
     publicKeyCose: string,
-    rpId?: string
+    rpId: string,
+    backupEligible: boolean,
+    backupState: boolean,
+    uvInitialized: boolean,
+    aaguid?: string,
+    attestationFormat?: string,
+    attestationObject?: string
   ): Promise<string>;
   updateWebAuthnSignCount(credentialId: string, newSignCount: number): Promise<void>;
 }

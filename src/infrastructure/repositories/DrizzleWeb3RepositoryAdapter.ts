@@ -97,6 +97,29 @@ export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
     return this.mapToRecord(result[0]);
   }
 
+  async revokeWallet(userId: number, address: string): Promise<boolean> {
+    const addressNormalized = address.toLowerCase().trim();
+    
+    // Revocação atômica (AF-012)
+    const result = await this.db
+      .update(wallets)
+      .set({ 
+        status: 'revoked',
+        isPrimary: false,
+        updatedAt: new Date()
+      })
+      .where(
+        and(
+          eq(wallets.userId, userId),
+          eq(wallets.addressNormalized, addressNormalized),
+          eq(wallets.status, 'active') // Só revoga se estiver ativa
+        )
+      )
+      .returning();
+      
+    return result.length > 0;
+  }
+
   private mapToRecord(raw: any): WalletRecord {
     return {
       id: raw.id,

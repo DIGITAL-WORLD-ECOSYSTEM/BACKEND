@@ -401,3 +401,31 @@ export const walletAuthenticators = sqliteTable(
     ),
   })
 );
+
+// ----------------------------------------------------------------------
+// Entity: oauthIdentities
+// ----------------------------------------------------------------------
+export const oauthIdentities = sqliteTable(
+  'oauth_identities',
+  {
+    id: text('id').primaryKey(), // UUID v4
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(), // ex: 'google', 'govbr'
+    subjectId: text('subject_id').notNull(),
+    status: text('status', { enum: ['active', 'revoked'] })
+      .notNull()
+      .default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull()
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    providerSubjectUnique: index('idx_oauth_identities_provider_subject').on(table.provider, table.subjectId),
+  })
+);

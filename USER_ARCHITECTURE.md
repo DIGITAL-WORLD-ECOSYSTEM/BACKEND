@@ -59,25 +59,36 @@
 ### 📊 Visual Module Progress Dashboard (Real Code Audit Baseline)
 
 ```text
-REAL CODEBASE MATURITY BASELINE: [███████░░░ ~70%]
-(Note: Maturity percentages are directional engineering metrics, not normative architecture scores, unless calculated by the documented maturity formula.)
+REAL CODEBASE MATURITY BASELINE: [██████░░░░ ~63%]
+(Note: Maturity percentages distinguish between target architecture vs. current structural implementation vs. security certification.)
 
-┌──────────────────────┬────────────────────────┬───────┬────────────────────────────────────────────────────────┐
-│ Bounded Context      │ DB Layer (src/db/)     │ Nota  │ Real Code Maturity (Domain/App/Infra/HTTP/Tests)        │
-├──────────────────────┼────────────────────────┼───────┼────────────────────────────────────────────────────────┤
-│ USER Module          │ tables+relations: 100% │ 10.0  │ 60% — DB Schema 100%, Repos 100%, Seed Live Certified  │
-│ AUTHENTICATION/ID    │ tables+relations: 100% │ 10.0  │ 100% — DB 100%, Repos 100%, Hardening (authEpoch/2FA)  │
-│ WEB3 Module          │ tables+relations: 100% │ 10.0  │ 50% — DB Schema 100%, Repos Port+Adapter 100%          │
-│ CIVIL-IDENTITY Module│ tables+relations: 100% │ 10.0  │ 90% — DB Schema 100%, UseCases 100%, HTTP Routes 100%  │
-│ SSI Module            │ tables+relations: 100% │ 10.0  │ 85% — DB Schema 100%, DID/VC UseCases 100%, Routes 100%│
-│ FINANCE Module        │ tables+relations: 100% │ 10.0  │ 85% — DB Schema 100%, Ledger Adapter & UseCases 100%  │
-│ SECURITY Module       │ tables+relations: 100% │ 10.0  │ 60% — DB Schema 100%, Security Infra 90%               │
-│ AUTHORIZATION Module  │ tables+relations: 100% │ 10.0  │ 30% — DB Schema 100%, Adapters 0%, App 0%, Routes 0%   │
-│ COMPLIANCE Module     │ tables+relations: 100% │ 10.0  │ 60% — DB Schema 100%, Standalone Schemas 100%          │
-│ INTEGRATIONS Module   │ tables+relations: 100% │ 10.0  │ 40% — DB Schema 100%, Webhook Routes 100%              │
-│ INFRASTRUCTURE Module │ tables+relations: 100% │ 10.0  │ 75% — DB Schema 100%, D1/R2/KV/Queues/DO Certified 100%│
-│ Demais 7 Módulos      │ ⏳ Pendentes em db/    │  0.0  │  0% — Planejamento Target (Esquemas DB Pendentes)      │
-└──────────────────────┴────────────────────────┴───────┴────────────────────────────────────────────────────────┘
+┌──────────────────────┬─────────┬──────────────┬───────────┬───────────────┐
+│ Bounded Context      │ DB (%)  │ Code/Impl(%) │ Security  │ Certification │
+├──────────────────────┼─────────┼──────────────┼───────────┼───────────────┤
+│ USER                 │  100%   │     60%      │    55%    │       ❌       │
+│ AUTHENTICATION/ID    │  100%   │     82%      │    70%    │       ❌       │
+│ WEB3                 │  100%   │     52%      │    50%    │       ❌       │
+│ CIVIL-IDENTITY       │  100%   │     88%      │    80%    │       🟡       │
+│ SSI                  │  100%   │     82%      │    70%    │       🟡       │
+│ FINANCE              │  100%   │     80%      │    60%    │       ❌       │
+│ SECURITY             │  100%   │     65%      │    60%    │       ❌       │
+│ AUTHORIZATION        │  100%   │     55%      │    50%    │       ❌       │
+│ COMMUNICATION        │  100%   │     25%      │    20%    │       ❌       │
+│ COMPLIANCE           │  100%   │     60%      │    55%    │       ❌       │
+│ INTEGRATIONS         │  100%   │     40%      │    35%    │       ❌       │
+│ INFRASTRUCTURE       │  100%   │     75%      │    65%    │       ❌       │
+│ Demais 6 Módulos     │    0%   │      0%      │     0%    │       ❌       │
+└──────────────────────┴─────────┴──────────────┴───────────┴───────────────┘
+
+STATUS REAL DO PROJETO:
+- Arquitetura:              █████████░  85%
+- Banco / Persistence:      ██████████ 100%
+- Domain/Application:       ███████░░░  70%
+- HTTP/API:                 ████████░░  75%
+- Segurança:                ███████░░░  70%
+- Integrações:              █████░░░░░  45%
+- Testes/Assurance:         ██████░░░░  60%
+- Projeto total:            ██████░░░░ ~63%
 ```
 
 

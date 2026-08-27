@@ -31,5 +31,6 @@ export interface IWeb3Repository {
   findActiveByUserId(userId: number): Promise<WalletRecord | null>;
   linkExternalWallet(data: LinkWalletData): Promise<WalletRecord>;
   updateWallet(wallet: WalletRecord): Promise<WalletRecord>;
+  revokeWallet(userId: number, address: string): Promise<boolean>;
 }
 

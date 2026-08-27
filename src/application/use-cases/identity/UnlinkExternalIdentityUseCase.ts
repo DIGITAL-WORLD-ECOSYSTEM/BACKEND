@@ -28,11 +28,20 @@ export class UnlinkExternalIdentityUseCase {
         return Result.fail<UnlinkExternalIdentityOutputDTO>(new AntiLockoutViolationError().message);
       }
 
+      if (provider === 'web3_wallet') {
+        const revoked = await web3Repo.revokeWallet(userId, subjectId);
+        if (!revoked) {
+          return Result.fail<UnlinkExternalIdentityOutputDTO>('Carteira não encontrada, já revogada ou indisponível.');
+        }
+      } else {
+        return Result.fail<UnlinkExternalIdentityOutputDTO>(`Revogação não implementada para o provedor: ${provider}`);
+      }
+
       if (this.securityAuditPort) {
         await this.securityAuditPort.logEvent({
           event: 'identity_unlinked',
           userId,
-          metadata: { provider, subjectId },
+          metadata: { provider, subjectId, action: 'revoked' },
         });
       }
 

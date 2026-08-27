@@ -94,32 +94,56 @@ export class AuthAuxiliaryController {
       // Garantindo que o rawToken NUNCA vá para o banco (Outbox) em texto plano.
       const payload = result.getValue();
       if (payload?.rawToken && c.env.EMAIL_PIPELINE_QUEUE) {
-        const messagePayload = {
-          type: 'password_reset',
-          email,
-          rawToken: payload.rawToken,
-          timestamp: Date.now()
-        };
+        const rawToken = payload.rawToken;
         
-        // HMAC Signature for Queue Message Integrity
+        // HKDF to derive a specific encryption key from JWT_SECRET
         const enc = new TextEncoder();
-        const key = await crypto.subtle.importKey(
+        const baseKey = await crypto.subtle.importKey(
           'raw',
           enc.encode(c.env.JWT_SECRET),
-          { name: 'HMAC', hash: 'SHA-256' },
+          { name: 'HKDF' },
           false,
-          ['sign']
+          ['deriveKey']
         );
-        const signatureBuffer = await crypto.subtle.sign(
-          'HMAC',
-          key,
-          enc.encode(JSON.stringify(messagePayload))
+        const encryptionKey = await crypto.subtle.deriveKey(
+          {
+            name: 'HKDF',
+            hash: 'SHA-256',
+            salt: enc.encode('asppibra-queue-salt'),
+            info: enc.encode('email-queue-encryption')
+          },
+          baseKey,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['encrypt']
         );
-        const signature = Array.from(new Uint8Array(signatureBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        // Encrypt rawToken using AES-GCM
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const aad = enc.encode('password-reset-v1');
+        const ciphertextBuffer = await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv, additionalData: aad },
+          encryptionKey,
+          enc.encode(rawToken)
+        );
+        
+        const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
+        const ciphertextHex = Array.from(new Uint8Array(ciphertextBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        const envelope = {
+          version: 1,
+          alg: 'A256GCM',
+          kid: 'email-v1',
+          iv: ivHex,
+          ciphertext: ciphertextHex,
+          aad: 'password-reset-v1'
+        };
         
         await c.env.EMAIL_PIPELINE_QUEUE.send({
-          ...messagePayload,
-          _signature: signature
+          type: 'password_reset',
+          email,
+          tokenEnvelope: envelope,
+          timestamp: Date.now()
         });
       }
 

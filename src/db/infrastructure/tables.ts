@@ -27,3 +27,12 @@ export const outboxEvents = sqliteTable('outbox_events', {
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(strftime('%s', 'now'))`).notNull(),
 });
 
+// ----------------------------------------------------------------------
+// Entity: idempotencyKeys
+// ----------------------------------------------------------------------
+export const idempotencyKeys = sqliteTable('idempotency_keys', {
+  id: text('id').primaryKey(), // The actual idempotency key string
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`).notNull(),
+});
+

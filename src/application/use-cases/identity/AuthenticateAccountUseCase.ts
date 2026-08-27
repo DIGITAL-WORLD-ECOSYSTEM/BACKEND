@@ -29,19 +29,21 @@ const MAX_FAILED_ATTEMPTS = 5;
 const GENERIC_AUTH_FAILURE_MESSAGE =
   'Não foi possível autenticar com as credenciais fornecidas. Se você esqueceu sua senha, solicite a redefinição.';
 
-// Hash "isca" usado para equalizar o tempo de resposta quando o usuário não
-// existe, evitando que a ausência de chamada ao hasher.verify() vaze a
-// existência da conta por timing side-channel (achado adicional, item B).
-// Deve ter o mesmo formato dos hashes reais gerados pelo IPasswordHasher em uso.
-const DUMMY_PASSWORD_HASH =
-  '$pbkdf2$iterations=100000$salt=0000000000000000000000000000000000000000000000000000000000000000$hash=0000000000000000000000000000000000000000000000000000000000000000';
-
 export class AuthenticateAccountUseCase {
+  private dummyPasswordHashPromise: Promise<string> | null = null;
+
   constructor(
     private readonly uow: IUnitOfWork,
     private readonly hasher: IPasswordHasher,
     private readonly auditPort?: ISecurityAuditPort
   ) {}
+
+  private getDummyHash(): Promise<string> {
+    if (!this.dummyPasswordHashPromise) {
+      this.dummyPasswordHashPromise = this.hasher.hash('dummy-password-fixa');
+    }
+    return this.dummyPasswordHashPromise;
+  }
 
   async execute(dto: AuthenticateAccountDTO): Promise<Result<AuthenticateAccountResult>> {
     if (!dto.email || !dto.password) {
@@ -63,7 +65,8 @@ export class AuthenticateAccountUseCase {
         // hash "isca" com o mesmo custo computacional do hasher real, para
         // que "usuário inexistente" e "senha incorreta" fiquem indistinguíveis
         // por tempo de resposta.
-        await this.hasher.verify(dto.password, DUMMY_PASSWORD_HASH).catch(() => undefined);
+        const dummyHash = await this.getDummyHash();
+        await this.hasher.verify(dto.password, dummyHash).catch(() => undefined);
         return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
       }
 
@@ -86,7 +89,8 @@ export class AuthenticateAccountUseCase {
       const credential = await authRepo.findPasswordCredentialByUserId(user.id);
       if (!credential) {
         // Equaliza tempo de resposta com hash isca
-        await this.hasher.verify(dto.password, DUMMY_PASSWORD_HASH).catch(() => undefined);
+        const dummyHash = await this.getDummyHash();
+        await this.hasher.verify(dto.password, dummyHash).catch(() => undefined);
         if (this.auditPort) {
           await this.auditPort.logEvent({
             event: 'identity_login_failed',

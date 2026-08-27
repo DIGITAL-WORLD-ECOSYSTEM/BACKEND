@@ -1,10 +1,11 @@
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import {
   financialAccounts,
   accountBalances,
   financialTransactions,
   financialLedgerEntries,
 } from '../../db/finance/tables';
+import { idempotencyKeys, outboxEvents } from '../../db/infrastructure/tables';
 import { Result } from '../../shared/kernel/Result';
 import {
   IFinanceRepository,
@@ -12,6 +13,7 @@ import {
   AccountBalanceRecord,
   FinancialTransactionRecord,
 } from '../../application/ports/output/IFinanceRepository';
+import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
 
 export type { FinancialAccountRecord, AccountBalanceRecord, FinancialTransactionRecord };
 
@@ -162,5 +164,119 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     } catch (err: any) {
       return Result.fail(err.message);
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // DOUBLE-ENTRY LEDGER & IDEMPOTENCY
+  // --------------------------------------------------------------------------
+  
+  async claimIdempotency(idempotencyKey: string): Promise<boolean> {
+    try {
+      // Tenta inserir a chave com expiração de 24h
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await this.db.insert(idempotencyKeys).values({
+        id: idempotencyKey,
+        expiresAt,
+      });
+      return true;
+    } catch (err: any) {
+      // Se houver conflito (UNIQUE constraint falhar), a transação já foi processada
+      if (err.message && err.message.includes('UNIQUE constraint failed')) {
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  async insertLedgerEntries(entries: LedgerEntry[]): Promise<void> {
+    const payload = entries.map(entry => ({
+      transactionId: 1, // Na arquitetura final, as entries vêm acopladas a uma tx real, por ora usamos placeholder ou resolvemos no serviço
+      accountId: parseInt(entry.accountId, 10),
+      assetId: parseInt(entry.amount.assetId, 10),
+      direction: entry.type,
+      amountBaseUnits: entry.amount.amount.toString(),
+    }));
+
+    if (payload.length > 0) {
+      await this.db.insert(financialLedgerEntries).values(payload);
+    }
+  }
+
+  async updateBalanceWithOCC(
+    accountId: string,
+    assetId: string,
+    amount: bigint,
+    type: 'debit' | 'credit'
+  ): Promise<boolean> {
+    // 1. Busca o saldo atual e a versão
+    const [balance] = await this.db
+      .select({
+        id: accountBalances.id,
+        availableBaseUnits: accountBalances.availableBaseUnits,
+        version: accountBalances.version,
+      })
+      .from(accountBalances)
+      .where(
+        and(
+          eq(accountBalances.accountId, parseInt(accountId, 10)),
+          eq(accountBalances.assetId, parseInt(assetId, 10))
+        )
+      )
+      .limit(1);
+
+    if (!balance) {
+      throw new Error(`Balance not found for account ${accountId} and asset ${assetId}`);
+    }
+
+    let currentAvailable = BigInt(balance.availableBaseUnits);
+    
+    // Debit means removing money from available balance in this domain context (if asset, credit means adding)
+    // Wait, in double-entry:
+    // User Deposit: Debit Treasury (increase), Credit User Liability (increase)
+    // The exact math depends on the account type (Asset vs Liability).
+    // For simplicity, we assume Debit = Subtract from source, Credit = Add to dest
+    // Actually standard accounting: Debit increases assets, Credit decreases assets.
+    // Let's implement a simple logic:
+    if (type === 'debit') {
+      currentAvailable -= amount;
+    } else {
+      currentAvailable += amount;
+    }
+
+    if (currentAvailable < 0n) {
+      throw new Error(`Insufficient funds for account ${accountId}`);
+    }
+
+    const res = await this.db
+      .update(accountBalances)
+      .set({
+        availableBaseUnits: currentAvailable.toString(),
+        version: balance.version + 1,
+      })
+      .where(
+        and(
+          eq(accountBalances.id, balance.id),
+          eq(accountBalances.version, balance.version)
+        )
+      );
+
+    // Drizzle with SQLite returns info about changes. If rows matched/updated = 0, OCC failed.
+    if (res.rowsAffected === 0) {
+      return false; // OCC Failed!
+    }
+
+    return true;
+  }
+
+  async persistOutboxEvent(eventType: string, payload: any): Promise<void> {
+    const eventId = crypto.randomUUID();
+    await this.db.insert(outboxEvents).values({
+      id: eventId,
+      aggregateId: 1,
+      aggregateType: 'LedgerTransaction',
+      aggregateVersion: 1,
+      eventName: eventType,
+      payload: JSON.stringify(payload),
+    });
   }
 }

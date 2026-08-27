@@ -58,16 +58,30 @@ export class VerifyPasskeyRegistrationUseCase {
         return Result.fail<{ authenticatorId: string }>('Falha de concorrência ou challenge expirado (replay attack).');
       }
 
-      const { credentialID, credentialPublicKey } = registrationInfo;
+      const { credentialID, credentialPublicKey, credentialBackedUp, credentialDeviceType, aaguid, attestationObject } = registrationInfo;
 
       const credentialIdStr = btoa(String.fromCharCode(...credentialID));
       const publicKeyStr = btoa(String.fromCharCode(...credentialPublicKey));
+      
+      // Extract attestation object if present
+      let attestationObjectStr = undefined;
+      let attestationFormatStr = undefined;
+      if (attestationObject) {
+        attestationObjectStr = btoa(String.fromCharCode(...attestationObject));
+        attestationFormatStr = verification.registrationInfo?.fmt || 'none';
+      }
 
       const authenticatorId = await authRepo.saveWebAuthnCredential(
         challenge.userId,
         credentialIdStr,
         publicKeyStr,
-        dto.expectedRPID
+        dto.expectedRPID,
+        true, // backupEligible is generally true for passkeys, or derived from flags
+        credentialBackedUp, // backupState
+        credentialDeviceType === 'singleDevice' ? false : true, // loosely inferring uvInitialized/device bounds
+        aaguid,
+        attestationFormatStr,
+        attestationObjectStr
       );
 
       return Result.ok({

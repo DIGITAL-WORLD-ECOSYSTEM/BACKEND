@@ -5,7 +5,8 @@ import { DrizzleFinanceRepository } from '../../../../infrastructure/repositorie
 import { GetTreasuryBalanceUseCase } from '../../../../domains/finance/use-cases/GetTreasuryBalanceUseCase';
 import { RecordTreasuryTransactionUseCase } from '../../../../domains/finance/use-cases/RecordTreasuryTransactionUseCase';
 import { FinanceController } from '../../controllers/finance/FinanceController';
-import { sessionGuard } from '../../middlewares/session_guard';
+import { sessionGuard, requireAal } from '../../middlewares/session_guard';
+import { verifyPermission } from '../../middlewares/rbac';
 
 type AppType = {
   Bindings: Bindings;
@@ -16,8 +17,12 @@ export const financeRouter = new Hono<AppType>();
 
 financeRouter.use('*', sessionGuard);
 
-financeRouter.get('/treasury/balance', async (c) => {
-  const db = c.get('db');
+financeRouter.get(
+  '/treasury/balance',
+  requireAal(2),
+  verifyPermission('finance.treasury.read'),
+  async (c) => {
+    const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const financeRepo = new DrizzleFinanceRepository(db);
   const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
@@ -27,8 +32,12 @@ financeRouter.get('/treasury/balance', async (c) => {
   return controller.getBalance(c);
 });
 
-financeRouter.post('/transactions', async (c) => {
-  const db = c.get('db');
+financeRouter.post(
+  '/transactions',
+  requireAal(2, 15),
+  verifyPermission('finance.transaction.create'),
+  async (c) => {
+    const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const financeRepo = new DrizzleFinanceRepository(db);
   const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
@@ -38,8 +47,12 @@ financeRouter.post('/transactions', async (c) => {
   return controller.recordTransaction(c);
 });
 
-financeRouter.get('/transactions', async (c) => {
-  const db = c.get('db');
+financeRouter.get(
+  '/transactions',
+  requireAal(2),
+  verifyPermission('finance.treasury.read'),
+  async (c) => {
+    const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const financeRepo = new DrizzleFinanceRepository(db);
   const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
