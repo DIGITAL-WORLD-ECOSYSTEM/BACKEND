@@ -94,10 +94,32 @@ export class AuthAuxiliaryController {
       // Garantindo que o rawToken NUNCA vá para o banco (Outbox) em texto plano.
       const payload = result.getValue();
       if (payload?.rawToken && c.env.EMAIL_PIPELINE_QUEUE) {
-        await c.env.EMAIL_PIPELINE_QUEUE.send({
+        const messagePayload = {
           type: 'password_reset',
           email,
-          rawToken: payload.rawToken
+          rawToken: payload.rawToken,
+          timestamp: Date.now()
+        };
+        
+        // HMAC Signature for Queue Message Integrity
+        const enc = new TextEncoder();
+        const key = await crypto.subtle.importKey(
+          'raw',
+          enc.encode(c.env.JWT_SECRET),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        const signatureBuffer = await crypto.subtle.sign(
+          'HMAC',
+          key,
+          enc.encode(JSON.stringify(messagePayload))
+        );
+        const signature = Array.from(new Uint8Array(signatureBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        await c.env.EMAIL_PIPELINE_QUEUE.send({
+          ...messagePayload,
+          _signature: signature
         });
       }
 

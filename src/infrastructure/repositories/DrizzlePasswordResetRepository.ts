@@ -46,14 +46,15 @@ export class DrizzlePasswordResetRepository implements IPasswordResetRepository 
 
   async consumeToken(tokenHash: string): Promise<Result<PasswordReset>> {
     try {
-      const { and, isNull } = await import('drizzle-orm');
+      const { and, isNull, sql } = await import('drizzle-orm');
       
       const [reset] = await this.db
         .update(passwordResets)
         .set({ usedAt: new Date() })
         .where(and(
           eq(passwordResets.tokenHash, tokenHash),
-          isNull(passwordResets.usedAt)
+          isNull(passwordResets.usedAt),
+          sql`${passwordResets.expiresAt} > ${new Date().getTime()}`
         ))
         .returning();
 
