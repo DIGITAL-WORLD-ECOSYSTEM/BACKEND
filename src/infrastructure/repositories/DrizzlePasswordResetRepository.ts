@@ -43,4 +43,26 @@ export class DrizzlePasswordResetRepository implements IPasswordResetRepository 
       return Result.fail(e.message);
     }
   }
+
+  async consumeToken(tokenHash: string): Promise<Result<PasswordReset>> {
+    try {
+      const { and, isNull } = await import('drizzle-orm');
+      
+      const [reset] = await this.db
+        .update(passwordResets)
+        .set({ usedAt: new Date() })
+        .where(and(
+          eq(passwordResets.tokenHash, tokenHash),
+          isNull(passwordResets.usedAt)
+        ))
+        .returning();
+
+      if (!reset) {
+        return Result.fail('PasswordResetNotFoundOrUsed');
+      }
+      return Result.ok(reset as PasswordReset);
+    } catch (e: any) {
+      return Result.fail(e.message);
+    }
+  }
 }

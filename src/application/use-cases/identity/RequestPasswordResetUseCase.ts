@@ -8,8 +8,8 @@ export class PasswordResetRequestedEvent implements IDomainEvent {
   dateTimeOccurred: Date = new Date();
   constructor(
     public readonly userId: number,
-    public readonly email: string,
-    public readonly rawToken: string
+    public readonly email: string
+    // rawToken removido por segurança (FASE 5)
   ) {}
 
   getAggregateId(): string {
@@ -23,12 +23,15 @@ export class RequestPasswordResetUseCase {
     private readonly auditPort?: ISecurityAuditPort
   ) {}
 
-  async execute(dto: RequestPasswordResetDTO): Promise<Result<void>> {
+  async execute(dto: RequestPasswordResetDTO): Promise<Result<{ rawToken: string | null }>> {
     if (!dto.email) {
-      return Result.fail<void>('E-mail é obrigatório.');
+      return Result.fail<{ rawToken: string | null }>('E-mail é obrigatório.');
     }
 
     const normalizedEmail = dto.email.trim().toLowerCase();
+
+    // Use variable to extract rawToken out of the UoW closure
+    let generatedRawToken: string | null = null;
 
     await this.uow.execute(async (factory) => {
       const userRepo = factory.getUserRepository();
@@ -38,6 +41,7 @@ export class RequestPasswordResetUseCase {
       const user = await userRepo.findByEmail(normalizedEmail);
       if (!user) {
         // Anti-user enumeration: Return success even if user not found
+        // But do not generate a token.
         return Result.ok();
       }
 
@@ -49,6 +53,7 @@ export class RequestPasswordResetUseCase {
         for (let i = 0; i < 32; i++) rawTokenBytes[i] = Math.floor(Math.random() * 256);
       }
       const rawToken = Array.from(rawTokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      generatedRawToken = rawToken;
 
       // Create token hash for DB storage
       const tokenHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawToken));
@@ -62,7 +67,8 @@ export class RequestPasswordResetUseCase {
         expiresAt,
       });
 
-      const event = new PasswordResetRequestedEvent(user.id, user.email || '', rawToken);
+      // Salva evento de auditoria no Outbox SEM o rawToken
+      const event = new PasswordResetRequestedEvent(user.id, user.email || '');
       await outboxRepo.saveEvent(event, user.id, 'User', 1);
 
       if (this.auditPort) {
@@ -76,6 +82,7 @@ export class RequestPasswordResetUseCase {
       return Result.ok();
     });
 
-    return Result.ok();
+    return Result.ok({ rawToken: generatedRawToken });
   }
 }
+

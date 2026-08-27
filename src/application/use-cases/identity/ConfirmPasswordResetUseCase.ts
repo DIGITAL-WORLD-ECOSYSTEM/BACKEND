@@ -30,20 +30,19 @@ export class ConfirmPasswordResetUseCase {
       const userRepo = factory.getUserRepository();
       const sessionRepo = factory.getSessionRepository();
 
-      const resetResult = await resetRepo.findByToken(tokenHash);
+      // Atomic consume: updates usedAt if it's null, preventing race conditions
+      const resetResult = await resetRepo.consumeToken(tokenHash);
       if (resetResult.isFailure || !resetResult.getValue()) {
-        return Result.fail<void>('Token de redefinição inválido ou expirado.');
+        return Result.fail<void>('Token de redefinição inválido, expirado ou já utilizado.');
       }
 
       const resetRecord = resetResult.getValue();
-      if (resetRecord.usedAt || new Date(resetRecord.expiresAt) < new Date()) {
-        return Result.fail<void>('Token de redefinição expirado ou já utilizado.');
+      if (new Date(resetRecord.expiresAt) < new Date()) {
+        return Result.fail<void>('Token de redefinição expirado.');
       }
 
       const newPasswordHash = await this.hasher.hash(dto.newPassword);
       await authRepo.savePasswordCredential(resetRecord.userId, newPasswordHash);
-
-      await resetRepo.invalidate(resetRecord.id);
 
       // AF-008: Increment authEpoch to revoke all active user sessions globally
       if (typeof userRepo.incrementAuthEpoch === 'function') {
