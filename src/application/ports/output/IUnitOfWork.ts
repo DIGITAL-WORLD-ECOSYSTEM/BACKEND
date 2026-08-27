@@ -11,6 +11,7 @@ import { IFinanceRepository } from './IFinanceRepository';
 
 export interface IRepositoryFactory {
   getUserRepository(): IUserRepository;
+  getAuthTransactionRepository(): import('./IAuthTransactionRepository').IAuthTransactionRepository;
   getAuthenticationRepository(): IAuthenticationRepository;
   getWeb3Repository(): IWeb3Repository;
   getSessionRepository(): ISessionRepository;

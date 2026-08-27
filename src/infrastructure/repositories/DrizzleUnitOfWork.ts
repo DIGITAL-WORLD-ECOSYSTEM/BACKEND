@@ -19,12 +19,18 @@ import { DrizzlePasswordResetRepository } from './DrizzlePasswordResetRepository
 import { IFinanceRepository } from '../../application/ports/output/IFinanceRepository';
 import { DrizzleFinanceRepository } from './DrizzleFinanceRepository';
 import { Result } from '../../shared/kernel/Result';
+import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
+import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
 
 class DrizzleRepositoryFactory implements IRepositoryFactory {
-  constructor(private tx: any) {}
+  constructor(private tx: any, private db?: any) {}
 
   getUserRepository(): IUserRepository {
-    return new DrizzleUserRepositoryAdapter(this.tx);
+    return new DrizzleUserRepositoryAdapter(this.tx || this.db);
+  }
+
+  getAuthTransactionRepository(): IAuthTransactionRepository {
+    return new DrizzleAuthTransactionRepository(this.tx || this.db);
   }
 
   getAuthenticationRepository(): IAuthenticationRepository {

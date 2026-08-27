@@ -24,7 +24,8 @@ export interface IAuthenticationRepository {
   findTotpCredentialByUserId(userId: number): Promise<TotpCredentialRecord | null>;
   saveTotpSecret(userId: number, encryptedTotpSecret: string): Promise<string>;
   verifyTotpAuthenticator(authenticatorId: string): Promise<void>;
-  findWebAuthnCredentialByUserId(userId: number): Promise<WebAuthnCredentialRecord | null>;
+  findAllWebAuthnCredentialsByUserId(userId: number): Promise<WebAuthnCredentialRecord[]>;
+  findWebAuthnCredentialById(credentialId: string): Promise<WebAuthnCredentialRecord | null>;
   saveWebAuthnCredential(
     userId: number,
     credentialId: string,

@@ -135,8 +135,8 @@ export class DrizzleAuthenticationRepositoryAdapter implements IAuthenticationRe
   // --------------------------------------------------------------------------
   // WEBAUTHN / PASSKEY CREDENTIALS
   // --------------------------------------------------------------------------
-  async findWebAuthnCredentialByUserId(userId: number): Promise<WebAuthnCredentialRecord | null> {
-    const [row] = await this.db
+  async findAllWebAuthnCredentialsByUserId(userId: number): Promise<WebAuthnCredentialRecord[]> {
+    const rows = await this.db
       .select({
         authenticatorId: webauthnCredentials.authenticatorId,
         userId: userAuthenticators.userId,
@@ -148,6 +148,27 @@ export class DrizzleAuthenticationRepositoryAdapter implements IAuthenticationRe
       .where(
         and(
           eq(userAuthenticators.userId, userId),
+          eq(userAuthenticators.type, 'webauthn'),
+          isNull(userAuthenticators.revokedAt)
+        )
+      );
+
+    return rows;
+  }
+
+  async findWebAuthnCredentialById(credentialId: string): Promise<WebAuthnCredentialRecord | null> {
+    const [row] = await this.db
+      .select({
+        authenticatorId: webauthnCredentials.authenticatorId,
+        userId: userAuthenticators.userId,
+        credentialId: webauthnCredentials.credentialId,
+        publicKeyCose: webauthnCredentials.publicKeyCose,
+      })
+      .from(webauthnCredentials)
+      .innerJoin(userAuthenticators, eq(webauthnCredentials.authenticatorId, userAuthenticators.id))
+      .where(
+        and(
+          eq(webauthnCredentials.credentialId, credentialId),
           eq(userAuthenticators.type, 'webauthn'),
           isNull(userAuthenticators.revokedAt)
         )
