@@ -64,8 +64,16 @@ export class SsiController {
 
   async revokeCredential(c: Context): Promise<Response> {
     try {
+      const actorUserId = c.get('userId') || c.get('user')?.userId;
+      if (!actorUserId) {
+        return c.json({ success: false, message: 'Usuário não autenticado' }, 401);
+      }
+
       const body = await c.req.json();
-      const result = await this.revokeVcUseCase.execute({ credentialId: body.credentialId });
+      const result = await this.revokeVcUseCase.execute({
+        credentialId: body.credentialId,
+        actorUserId,
+      });
 
       if (result.isFailure) {
         return c.json({ success: false, message: result.error }, 400);

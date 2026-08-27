@@ -111,8 +111,11 @@ export class IdentityController {
         return error(c, 'Challenge ID, Mensagem SIWE e assinatura são obrigatórios.', null, 400);
       }
 
-      // SECURITY ENFORCEMENT: Domain must come from strict server environment, not client headers.
-      const domain = c.env.SIWE_ALLOWED_DOMAIN || 'w3.app';
+      // SECURITY ENFORCEMENT: Fail-Closed. Env vars MUST be configured. No silent fallback.
+      const domain = c.env.SIWE_ALLOWED_DOMAIN;
+      if (!domain) {
+        return error(c, 'Configuração de servidor inválida: SIWE_ALLOWED_DOMAIN não definido.', null, 500);
+      }
 
       const result = await this.verifyWalletUseCase.execute({
         challengeId,
@@ -189,9 +192,12 @@ export class IdentityController {
         return error(c, 'Challenge ID e resposta WebAuthn são obrigatórios.', null, 400);
       }
 
-      // SECURITY ENFORCEMENT: Origin and RP_ID must come from strict server environment, not client headers.
-      const origin = c.env.WEBAUTHN_ALLOWED_ORIGINS || 'https://w3.app';
-      const rpID = c.env.WEBAUTHN_RP_ID || 'w3.app';
+      // SECURITY ENFORCEMENT: Fail-Closed. Env vars MUST be configured. No silent fallback.
+      const origin = c.env.WEBAUTHN_ALLOWED_ORIGINS;
+      const rpID = c.env.WEBAUTHN_RP_ID;
+      if (!origin || !rpID) {
+        return error(c, 'Configuração de servidor inválida: WEBAUTHN_ALLOWED_ORIGINS ou WEBAUTHN_RP_ID não definidos.', null, 500);
+      }
 
       const result = await this.verifyPasskeyUseCase.execute({
         challengeId,

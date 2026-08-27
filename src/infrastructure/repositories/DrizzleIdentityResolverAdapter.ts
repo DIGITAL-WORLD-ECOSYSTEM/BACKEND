@@ -3,9 +3,8 @@ import { IIdentityResolverPort } from '../../application/ports/output/IIdentityR
 import { IdentityAssertion } from '../../application/dto/IdentityAssertion';
 import { IdentityResolutionResult } from '../../application/dto/IdentityResolutionResult';
 import { wallets } from '../../db/web3/tables';
-import { webauthnCredentials, oauthIdentities } from '../../db/authentication/tables';
+import { webauthnCredentials, oauthIdentities, userAuthenticators } from '../../db/authentication/tables';
 import { didIdentities } from '../../db/ssi/tables';
-import { web3Networks } from '../../db/web3/tables';
 
 export class DrizzleIdentityResolverAdapter implements IIdentityResolverPort {
   constructor(private readonly db: any) { }

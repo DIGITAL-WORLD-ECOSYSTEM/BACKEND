@@ -34,6 +34,8 @@ export interface LedgerTransactionProps {
   idempotencyKey: string;
   description: string;
   entries: LedgerEntry[];
+  userId?: number | null;
+  transactionType?: string;
   status?: 'pending' | 'committed' | 'failed';
   createdAt?: Date;
 }
@@ -43,6 +45,8 @@ export class LedgerTransaction {
   public readonly idempotencyKey: string;
   public readonly description: string;
   public readonly entries: LedgerEntry[];
+  public readonly userId: number | null;
+  public readonly transactionType: string;
   public readonly status: 'pending' | 'committed' | 'failed';
   public readonly createdAt: Date;
 
@@ -51,6 +55,8 @@ export class LedgerTransaction {
     this.idempotencyKey = props.idempotencyKey;
     this.description = props.description;
     this.entries = props.entries;
+    this.userId = props.userId ?? null;
+    this.transactionType = props.transactionType ?? 'adjustment';
     this.status = props.status || 'pending';
     this.createdAt = props.createdAt || new Date();
 

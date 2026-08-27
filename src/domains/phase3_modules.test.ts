@@ -120,9 +120,9 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
       expect(mockSsiRepo.saveVerifiableCredential).toHaveBeenCalled();
     });
 
-    it('should revoke an existing Verifiable Credential', async () => {
+    it('should revoke an existing Verifiable Credential (with owner check)', async () => {
       const mockSsiRepo = {
-        findVerifiableCredentialById: vi.fn().mockResolvedValue(Result.ok({ id: 'vc-uuid-123' })),
+        findVerifiableCredentialById: vi.fn().mockResolvedValue(Result.ok({ id: 'vc-uuid-123', holderUserId: 10 })),
         revokeVerifiableCredential: vi.fn().mockResolvedValue(Result.ok(undefined)),
       };
       const mockUow = {
@@ -134,10 +134,31 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
       };
 
       const useCase = new RevokeCredentialUseCase(mockUow as any);
-      const result = await useCase.execute({ credentialId: 'vc-uuid-123' });
+      const result = await useCase.execute({ credentialId: 'vc-uuid-123', actorUserId: 10 });
 
       expect(result.isSuccess).toBe(true);
       expect(mockSsiRepo.revokeVerifiableCredential).toHaveBeenCalledWith('vc-uuid-123');
+    });
+
+    it('should reject revocation if actor is not the credential holder (IDOR guard)', async () => {
+      const mockSsiRepo = {
+        findVerifiableCredentialById: vi.fn().mockResolvedValue(Result.ok({ id: 'vc-uuid-123', holderUserId: 99 })),
+        revokeVerifiableCredential: vi.fn(),
+      };
+      const mockUow = {
+        execute: vi.fn().mockImplementation(async (cb) =>
+          cb({
+            getSsiRepository: () => mockSsiRepo,
+          })
+        ),
+      };
+
+      const useCase = new RevokeCredentialUseCase(mockUow as any);
+      const result = await useCase.execute({ credentialId: 'vc-uuid-123', actorUserId: 10 }); // Different actor
+
+      expect(result.isFailure).toBe(true);
+      expect(result.error).toContain('titular');
+      expect(mockSsiRepo.revokeVerifiableCredential).not.toHaveBeenCalled();
     });
   });
 
@@ -177,7 +198,11 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
         ),
       };
 
-      const useCase = new RecordTreasuryTransactionUseCase(mockUow as any);
+      const mockLedgerService = {
+        recordTransaction: vi.fn().mockResolvedValue(Result.ok()),
+      };
+
+      const useCase = new RecordTreasuryTransactionUseCase(mockUow as any, mockLedgerService as any);
       const result = await useCase.execute({
         description: 'Depósito Inicial',
         amountBaseUnits: '50000',
@@ -185,7 +210,7 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
       });
 
       expect(result.isSuccess).toBe(true);
-      expect(result.getValue().description).toBe('Depósito Inicial');
+      expect(mockLedgerService.recordTransaction).toHaveBeenCalled();
     });
   });
 });

@@ -54,7 +54,7 @@ export class DrizzlePasswordResetRepository implements IPasswordResetRepository 
         .where(and(
           eq(passwordResets.tokenHash, tokenHash),
           isNull(passwordResets.usedAt),
-          sql`${passwordResets.expiresAt} > ${new Date().getTime()}`
+          sql`${passwordResets.expiresAt} > ${sql`(unixepoch())`}`
         ))
         .returning();
 

@@ -142,6 +142,32 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
+  /**
+   * Inserts a top-level financial transaction record and returns its generated DB id.
+   * Called by DoubleEntryLedgerService BEFORE inserting ledger entries.
+   */
+  async insertTransaction(data: {
+    userId?: number | null;
+    type: string;
+    category: string;
+    description: string;
+    status: string;
+  }): Promise<number> {
+    const [tx] = await this.db
+      .insert(financialTransactions)
+      .values({
+        userId: data.userId || null,
+        type: data.type,
+        category: data.category,
+        status: data.status,
+        description: data.description,
+        completedAt: new Date(),
+      })
+      .returning({ id: financialTransactions.id });
+
+    if (!tx) throw new Error('Falha ao inserir registro de transação financeira.');
+    return tx.id;
+  }
   async listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>> {
     try {
       const query = userId
@@ -188,9 +214,9 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
-  async insertLedgerEntries(entries: LedgerEntry[]): Promise<void> {
+  async insertLedgerEntries(entries: LedgerEntry[], transactionId: number): Promise<void> {
     const payload = entries.map(entry => ({
-      transactionId: 1, // Na arquitetura final, as entries vêm acopladas a uma tx real, por ora usamos placeholder ou resolvemos no serviço
+      transactionId, // Real DB-generated transaction id, never a placeholder
       accountId: parseInt(entry.accountId, 10),
       assetId: parseInt(entry.amount.assetId, 10),
       direction: entry.type,
@@ -272,7 +298,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     const eventId = crypto.randomUUID();
     await this.db.insert(outboxEvents).values({
       id: eventId,
-      aggregateId: 1,
+      aggregateId: String(payload.transactionId ?? eventId), // Use real transaction ID from payload
       aggregateType: 'LedgerTransaction',
       aggregateVersion: 1,
       eventName: eventType,

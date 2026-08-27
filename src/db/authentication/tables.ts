@@ -85,7 +85,7 @@ export const passwordCredentials = sqliteTable('password_credentials', {
   authenticatorId: text('authenticator_id')
     .primaryKey()
     .references(() => userAuthenticators.id, { onDelete: 'cascade' }),
-  passwordHash: text('password_hash').notNull(), // Argon2id hash com parâmetros embutidos
+  passwordHash: text('password_hash').notNull(), // PBKDF2-HMAC-SHA256 (100.000 iterações, Edge-compatible). Formato: base64(salt):hexHash
 });
 
 // ----------------------------------------------------------------------
@@ -170,7 +170,7 @@ export const recoveryCredentials = sqliteTable(
     recoverySetId: text('recovery_set_id')
       .references(() => recoverySets.id, { onDelete: 'cascade' })
       .notNull(),
-    codeHash: text('code_hash').notNull(), // Argon2id hash
+    codeHash: text('code_hash').notNull(), // PBKDF2-HMAC-SHA256 (100.000 iterações). Argon2id não suportado em Cloudflare Workers sem WASM.
     consumedAt: integer('consumed_at', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .default(sql`(unixepoch())`)

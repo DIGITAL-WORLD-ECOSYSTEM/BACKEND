@@ -44,7 +44,14 @@ export interface IFinanceRepository {
   listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
 
   claimIdempotency(idempotencyKey: string): Promise<boolean>;
-  insertLedgerEntries(entries: LedgerEntry[]): Promise<void>;
+  insertTransaction(data: {
+    userId?: number | null;
+    type: string;
+    category: string;
+    description: string;
+    status: string;
+  }): Promise<number>;
+  insertLedgerEntries(entries: LedgerEntry[], transactionId: number): Promise<void>;
   updateBalanceWithOCC(
     accountId: string,
     assetId: string,

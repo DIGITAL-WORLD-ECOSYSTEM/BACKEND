@@ -4,6 +4,7 @@ import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/Drizz
 import { DrizzleFinanceRepository } from '../../../../infrastructure/repositories/DrizzleFinanceRepository';
 import { GetTreasuryBalanceUseCase } from '../../../../domains/finance/use-cases/GetTreasuryBalanceUseCase';
 import { RecordTreasuryTransactionUseCase } from '../../../../domains/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { DoubleEntryLedgerService } from '../../../../domains/finance/services/DoubleEntryLedgerService';
 import { FinanceController } from '../../controllers/finance/FinanceController';
 import { sessionGuard, requireAal } from '../../middlewares/session_guard';
 import { verifyPermission } from '../../middlewares/rbac';
@@ -17,20 +18,31 @@ export const financeRouter = new Hono<AppType>();
 
 financeRouter.use('*', sessionGuard);
 
+/**
+ * Helper: builds all finance dependencies.
+ * DoubleEntryLedgerService is now injected into RecordTreasuryTransactionUseCase
+ * to enforce the complete double-entry flow (OCC + Idempotency + Outbox).
+ */
+function buildFinanceDeps(db: any) {
+  const uow = new DrizzleUnitOfWork(db);
+  const financeRepo = new DrizzleFinanceRepository(db);
+  const ledgerService = new DoubleEntryLedgerService();
+  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow, ledgerService);
+  return { uow, financeRepo, getBalanceUseCase, recordTxUseCase };
+}
+
 financeRouter.get(
   '/treasury/balance',
   requireAal(2),
   verifyPermission('finance.treasury.read'),
   async (c) => {
     const db = c.get('db');
-  const uow = new DrizzleUnitOfWork(db);
-  const financeRepo = new DrizzleFinanceRepository(db);
-  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
-  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
-
-  const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
-  return controller.getBalance(c);
-});
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.getBalance(c);
+  }
+);
 
 financeRouter.post(
   '/transactions',
@@ -38,14 +50,11 @@ financeRouter.post(
   verifyPermission('finance.transaction.create'),
   async (c) => {
     const db = c.get('db');
-  const uow = new DrizzleUnitOfWork(db);
-  const financeRepo = new DrizzleFinanceRepository(db);
-  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
-  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
-
-  const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
-  return controller.recordTransaction(c);
-});
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordTransaction(c);
+  }
+);
 
 financeRouter.get(
   '/transactions',
@@ -53,11 +62,8 @@ financeRouter.get(
   verifyPermission('finance.treasury.read'),
   async (c) => {
     const db = c.get('db');
-  const uow = new DrizzleUnitOfWork(db);
-  const financeRepo = new DrizzleFinanceRepository(db);
-  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
-  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
-
-  const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
-  return controller.listTransactions(c);
-});
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.listTransactions(c);
+  }
+);

@@ -27,7 +27,7 @@ export class RecordTreasuryTransactionUseCase {
     // Materializa o Value Object
     const amountMoney = new Money(BigInt(dto.amountBaseUnits), String(dto.assetId || 1));
 
-    // Determina logicamente as pontas (Apenas exemplo, regras reais dependem da categoria)
+    // Determina logicamente as pontas (apenas exemplo; regras reais dependem da categoria)
     const systemAccountId = 'treasury-main-account';
     const userAccountId = dto.userId ? `user-acc-${dto.userId}` : 'external-entity';
 
@@ -41,16 +41,19 @@ export class RecordTreasuryTransactionUseCase {
       entries.push(new LedgerEntry({ accountId: systemAccountId, amount: amountMoney, type: 'credit', description: 'Treasury release' }));
     }
 
-    // Instancia o agregado. Se a matemática não bater, joga LedgerImbalanceError (Double-Entry Invariant)
+    // Instancia o agregado. Se a matemática não bater, joga LedgerImbalanceError.
     const transaction = new LedgerTransaction({
-      idempotencyKey: crypto.randomUUID(), // Para uso real, deve vir do cliente
+      idempotencyKey: crypto.randomUUID(), // Em produção deve vir do cliente via header
       description: dto.description,
-      entries
+      userId: dto.userId ?? null,
+      transactionType: dto.type,
+      entries,
     });
 
+    // Delegate to UoW, passing the factory to the ledger service (Clean Architecture)
     return await this.uow.execute(async (factory) => {
-      // Repassa para o Domain Service orquestrar com os Repositórios Corretos (Outbox, Ledger, etc)
-      await this.ledgerService.recordTransaction(transaction, factory);
+      const result = await this.ledgerService.recordTransaction(transaction, factory);
+      if (result.isFailure) return result;
       return Result.ok<void>();
     });
   }

@@ -90,7 +90,7 @@ identityRouter.post(
   }
 );
 
-identityRouter.post('/web3/challenge', async (c) => {
+identityRouter.post('/web3/challenge', rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }), async (c) => {
   const db = c.get('db');
   const jwtService = new JwtService();
   const sessionRepo = new DrizzleSessionRepository(db);
@@ -125,7 +125,7 @@ identityRouter.post(
   }
 );
 
-identityRouter.post('/login/passkey/challenge', async (c) => {
+identityRouter.post('/login/passkey/challenge', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), async (c) => {
   const db = c.get('db');
   const jwtService = new JwtService();
   const sessionRepo = new DrizzleSessionRepository(db);
@@ -133,7 +133,7 @@ identityRouter.post('/login/passkey/challenge', async (c) => {
   return controller.generatePasskeyChallenge(c);
 });
 
-identityRouter.post('/registration/passkey/challenge', sessionGuard, async (c) => {
+identityRouter.post('/registration/passkey/challenge', sessionGuard, rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }), async (c) => {
   const db = c.get('db');
   const jwtService = new JwtService();
   const sessionRepo = new DrizzleSessionRepository(db);

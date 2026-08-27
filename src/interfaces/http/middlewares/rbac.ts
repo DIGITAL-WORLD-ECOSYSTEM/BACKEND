@@ -32,7 +32,7 @@ export const verifyRole = (allowedRoles: string[]) => {
           and(
             eq(userRoles.userId, sessionUserId),
             isNull(userRoles.revokedAt), // A role não deve estar revogada
-            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${new Date().getTime()}`,
+            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${sql`(unixepoch())`}`,
             eq(roles.status, 'active') // A role deve estar ativa no sistema
           )
         );
@@ -86,7 +86,7 @@ export const verifyPermission = (requiredPermission: string) => {
           and(
             eq(userRoles.userId, sessionUserId),
             isNull(userRoles.revokedAt),
-            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${new Date().getTime()}`,
+            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${sql`(unixepoch())`}`,
             eq(roles.status, 'active'),
             eq(permissions.key, requiredPermission)
           )

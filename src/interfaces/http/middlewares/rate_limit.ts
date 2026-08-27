@@ -100,7 +100,16 @@ export const idempotency = () => {
       if (exists) {
         return c.json({ success: true, message: 'Request already processed (Idempotency)' }, 200);
       }
-      await c.env.KV_CACHE.put(key, '1', { expirationTtl: 86400 }); // 24 hours
+
+      // Execute the handler first
+      await next();
+
+      // Only lock the key if the operation succeeded (status < 400)
+      if (c.res.status < 400) {
+        await c.env.KV_CACHE.put(key, '1', { expirationTtl: 86400 }); // 24 hours
+      }
+      // On failure, key is NOT saved — client may retry legitimately
+      return;
     }
     await next();
   };
