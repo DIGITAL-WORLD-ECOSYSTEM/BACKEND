@@ -64,8 +64,11 @@ export class RefreshTokenUseCase {
         return Result.fail<RefreshTokenResult>('Usuário inativo ou não encontrado.');
       }
 
-      // 1. Revoke the current session as it's been consumed (Single-use)
-      await sessionRepo.revokeSession(session.id);
+      // 1. Revoke the current session as it's been consumed (Single-use ATOMICALLY)
+      const rotated = await sessionRepo.rotateRefreshTokenAtomically(session.id, tokenHash);
+      if (!rotated) {
+        return Result.fail<RefreshTokenResult>('Falha de concorrência ou sessão revogada por outra requisição (Race Condition).');
+      }
 
       const newAccessToken = await this.tokenService.generateAccessToken({
         userId: user.id,
@@ -96,6 +99,7 @@ export class RefreshTokenUseCase {
         authEpoch: user.authEpoch || 1,
         createdAt: now,
         expiresAt,
+        lastAuthenticatedAt: session.lastAuthenticatedAt ? new Date(session.lastAuthenticatedAt) : undefined,
       });
 
       return Result.ok<RefreshTokenResult>({

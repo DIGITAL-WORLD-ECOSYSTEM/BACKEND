@@ -66,8 +66,11 @@ export class JwtService implements IJwtService {
 
     const nowSeconds = Math.floor(Date.now() / 1000);
     const fullPayload = {
+      iss: 'asppibra-identity',
+      aud: 'asppibra-ecosystem',
       ...payload,
       iat: typeof payload.iat === 'number' ? payload.iat : nowSeconds,
+      nbf: typeof payload.nbf === 'number' ? payload.nbf : nowSeconds,
       exp: typeof payload.exp === 'number' ? payload.exp : nowSeconds + expiresInSeconds,
     };
 
@@ -126,6 +129,12 @@ export class JwtService implements IJwtService {
     }
     if (typeof payload.nbf === 'number' && payload.nbf > nowSeconds) {
       throw new Error('Token ainda não é válido (nbf).');
+    }
+    if (payload.iss !== 'asppibra-identity') {
+      throw new Error('Token emitido por origem desconhecida (iss).');
+    }
+    if (payload.aud !== 'asppibra-ecosystem') {
+      throw new Error('Token não destinado a este ecosistema (aud).');
     }
 
     return payload;

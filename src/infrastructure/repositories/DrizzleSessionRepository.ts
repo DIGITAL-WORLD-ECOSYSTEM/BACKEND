@@ -17,8 +17,19 @@ export class DrizzleSessionRepository implements ISessionRepository {
     authEpoch: number;
     createdAt: Date;
     expiresAt: Date;
+    lastAuthenticatedAt?: Date;
   }): Promise<void> {
     await this.db.insert(userSessions).values(sessionData);
+  }
+
+  async rotateRefreshTokenAtomically(sessionId: string, oldRefreshTokenHash: string): Promise<boolean> {
+    const { sql } = await import('drizzle-orm');
+    const result = await this.db
+      .update(userSessions)
+      .set({ revokedAt: new Date(), revocationReason: 'Rotated' })
+      .where(sql`${userSessions.id} = ${sessionId} AND ${userSessions.revokedAt} IS NULL AND ${userSessions.refreshTokenHash} = ${oldRefreshTokenHash}`);
+    
+    return result.meta.changes > 0;
   }
 
   async revokeSession(sessionId: string): Promise<void> {

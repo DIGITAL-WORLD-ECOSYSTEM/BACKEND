@@ -60,7 +60,7 @@ export class IdentityController {
       }
 
       const user = result.getValue();
-      return this.issueSessionResponse(c, user.userId, user.email, user.publicId, user.status);
+      return this.issueSessionResponse(c, user.userId, user.email, user.publicId, user.status, 1, new Date(), 'password');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       return error(c, 'Erro interno no servidor ao processar autenticação', message, 500);
@@ -125,7 +125,7 @@ export class IdentityController {
       }
 
       const walletAuth = result.getValue();
-      return this.issueSessionResponse(c, walletAuth.userId, `wallet_${walletAuth.address}@w3.app`, null, 'active');
+      return this.issueSessionResponse(c, walletAuth.userId, `wallet_${walletAuth.address}@w3.app`, null, 'active', 2, new Date(), 'web3_wallet');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       return error(c, 'Erro interno ao processar autenticação Web3 SIWE', message, 500);
@@ -142,7 +142,15 @@ export class IdentityController {
       const generatePasskeyChallengeUseCase = new GeneratePasskeyChallengeUseCase(uow);
 
       const body = await c.req.json().catch(() => ({}));
-      const { transactionId, context, userId, userName } = body || {};
+      let { transactionId, context, userId, userName } = body || {};
+
+      if (context === 'credential_link') {
+        const sessionUser = c.get('user');
+        if (!sessionUser || !sessionUser.userId) {
+          return error(c, 'Sessão ativa necessária para registrar Passkey', null, 401);
+        }
+        userId = sessionUser.userId;
+      }
 
       const rpID = c.req.header('host') || 'w3.app';
       const rpName = 'ASPPIBRA W3';
@@ -195,19 +203,22 @@ export class IdentityController {
       }
 
       const passkeyAuth = result.getValue();
-      return this.issueSessionResponse(c, passkeyAuth.userId, `passkey_${passkeyAuth.credentialId}@w3.app`, null, 'active');
+      return this.issueSessionResponse(c, passkeyAuth.userId, `passkey_${passkeyAuth.credentialId}@w3.app`, null, 'active', 2, new Date(), 'passkey');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       return error(c, 'Erro interno ao processar autenticação Passkey', message, 500);
     }
   }
 
-  private async issueSessionResponse(
+  public async issueSessionResponse(
     c: Context,
     userId: number,
     email: string,
     publicId: string | null,
-    status: string
+    status: string,
+    effectiveAal: number,
+    authTime: Date,
+    authMethod: string
   ): Promise<Response> {
     const jwtSecret = c.env?.JWT_SECRET;
     if (!jwtSecret) {
@@ -247,11 +258,12 @@ export class IdentityController {
       userAgent,
       familyId,
       refreshTokenHash,
-      aal: 1,
+      aal: effectiveAal,
       authEpoch: 1,
       createdAt: now,
       expiresAt: sessionExpiresAt,
-    });
+      lastAuthenticatedAt: authTime,
+    } as any); // Type cast due to possible interface mismatches, since we added lastAuthenticatedAt
 
     const token = await this.jwtService.sign(
       {
@@ -261,7 +273,8 @@ export class IdentityController {
         publicId,
         sid: sessionId,
         jti,
-        aal: 1,
+        aal: effectiveAal,
+        auth_time: Math.floor(authTime.getTime() / 1000),
         exp: Math.floor(jwtExpiresAt.getTime() / 1000), 
       },
       jwtSecret
@@ -279,7 +292,8 @@ export class IdentityController {
       },
       session: {
         id: sessionId,
-        aal: 1,
+        aal: effectiveAal,
+        auth_time: authTime.toISOString(),
         expiresAt: sessionExpiresAt,
       },
     });

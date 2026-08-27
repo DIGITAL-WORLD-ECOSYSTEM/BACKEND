@@ -251,6 +251,7 @@ export const userSessions = sqliteTable(
     aal: integer('aal').notNull().default(1),
     authEpoch: integer('auth_epoch').notNull().default(1),
     lastActivityAt: integer('last_activity_at', { mode: 'timestamp' }),
+    lastAuthenticatedAt: integer('last_authenticated_at', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .default(sql`(unixepoch())`)
       .notNull(),

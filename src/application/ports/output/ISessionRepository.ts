@@ -11,7 +11,10 @@ export interface ISessionRepository {
     authEpoch: number;
     createdAt: Date;
     expiresAt: Date;
+    lastAuthenticatedAt?: Date;
   }): Promise<void>;
+
+  rotateRefreshTokenAtomically(sessionId: string, oldRefreshTokenHash: string): Promise<boolean>;
 
   revokeSession(sessionId: string): Promise<void>;
 
