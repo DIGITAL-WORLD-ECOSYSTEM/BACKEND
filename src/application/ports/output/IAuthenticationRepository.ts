@@ -16,6 +16,7 @@ export interface WebAuthnCredentialRecord {
   userId: number;
   credentialId: string;
   publicKeyCose: string;
+  signCount: number;
 }
 
 export interface IAuthenticationRepository {
@@ -32,4 +33,5 @@ export interface IAuthenticationRepository {
     publicKeyCose: string,
     rpId?: string
   ): Promise<string>;
+  updateWebAuthnSignCount(credentialId: string, newSignCount: number): Promise<void>;
 }

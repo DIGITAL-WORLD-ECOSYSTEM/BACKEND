@@ -32,8 +32,6 @@ export class VerifyPasskeyIdentityUseCase {
 
       const expectedChallenge = challenge.challengeHash;
 
-      challenge.markAsUsed();
-      await authTxRepo.updateChallenge(challenge);
 
       const passkeyRecord = await authRepo.findWebAuthnCredentialById(input.responseJSON.id);
       if (!passkeyRecord) {
@@ -59,17 +57,28 @@ export class VerifyPasskeyIdentityUseCase {
           authenticator: {
             credentialID,
             credentialPublicKey,
-            counter: 0,
+            counter: passkeyRecord.signCount,
             transports: ['internal', 'hybrid', 'usb', 'ble', 'nfc'],
           },
+          requireUserVerification: true, // as required for high assurance (AAL2)
         });
       } catch (error: any) {
         return Result.fail<VerifyPasskeyIdentityOutputDTO>(`Falha na verificação da passkey: ${error.message}`);
       }
 
-      if (!verification.verified) {
+      if (!verification.verified || !verification.authenticationInfo) {
         return Result.fail<VerifyPasskeyIdentityOutputDTO>('Assinatura do Passkey não verificada.');
       }
+
+      // Atomic challenge consumption AFTER successful verification
+      const consumed = await authTxRepo.consumeChallengeAtomically(challenge.id);
+      if (!consumed) {
+        return Result.fail<VerifyPasskeyIdentityOutputDTO>('Falha de concorrência ou challenge expirado (replay attack).');
+      }
+
+      // Update signCount to prevent counter regression attacks
+      await authRepo.updateWebAuthnSignCount(passkeyRecord.credentialId, verification.authenticationInfo.newCounter);
+
 
       // 1. Resolver a identidade via CanonicalIdentityResolver (AF-013)
       const resolution = await this.identityResolver.resolve({

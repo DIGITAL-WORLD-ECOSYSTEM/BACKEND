@@ -142,6 +142,7 @@ export class DrizzleAuthenticationRepositoryAdapter implements IAuthenticationRe
         userId: userAuthenticators.userId,
         credentialId: webauthnCredentials.credentialId,
         publicKeyCose: webauthnCredentials.publicKeyCose,
+        signCount: webauthnCredentials.signCount,
       })
       .from(webauthnCredentials)
       .innerJoin(userAuthenticators, eq(webauthnCredentials.authenticatorId, userAuthenticators.id))
@@ -163,6 +164,7 @@ export class DrizzleAuthenticationRepositoryAdapter implements IAuthenticationRe
         userId: userAuthenticators.userId,
         credentialId: webauthnCredentials.credentialId,
         publicKeyCose: webauthnCredentials.publicKeyCose,
+        signCount: webauthnCredentials.signCount,
       })
       .from(webauthnCredentials)
       .innerJoin(userAuthenticators, eq(webauthnCredentials.authenticatorId, userAuthenticators.id))
@@ -204,5 +206,12 @@ export class DrizzleAuthenticationRepositoryAdapter implements IAuthenticationRe
     });
 
     return authenticatorId;
+  }
+
+  async updateWebAuthnSignCount(credentialId: string, newSignCount: number): Promise<void> {
+    await this.db
+      .update(webauthnCredentials)
+      .set({ signCount: newSignCount })
+      .where(eq(webauthnCredentials.credentialId, credentialId));
   }
 }

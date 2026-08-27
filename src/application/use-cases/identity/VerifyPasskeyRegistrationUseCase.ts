@@ -33,8 +33,6 @@ export class VerifyPasskeyRegistrationUseCase {
 
       const expectedChallenge = challenge.challengeHash;
 
-      challenge.markAsUsed();
-      await authTxRepo.updateChallenge(challenge);
 
       let verification;
       try {
@@ -52,6 +50,12 @@ export class VerifyPasskeyRegistrationUseCase {
 
       if (!verified || !registrationInfo) {
         return Result.fail<{ authenticatorId: string }>('Registro de Passkey não verificado.');
+      }
+
+      // Atomic challenge consumption AFTER successful verification
+      const consumed = await authTxRepo.consumeChallengeAtomically(challenge.id);
+      if (!consumed) {
+        return Result.fail<{ authenticatorId: string }>('Falha de concorrência ou challenge expirado (replay attack).');
       }
 
       const { credentialID, credentialPublicKey } = registrationInfo;

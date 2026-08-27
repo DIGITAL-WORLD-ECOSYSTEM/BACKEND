@@ -32,10 +32,6 @@ export class VerifyWalletIdentityUseCase {
           return Result.fail<VerifyWalletIdentityOutputDTO>('Contexto do challenge não permite autenticação SIWE aqui.');
         }
 
-        // Marcar como usado (Atomicidade garantida pelo IUnitOfWork / DB transaction se implementado)
-        challenge.markAsUsed();
-        await authTxRepo.updateChallenge(challenge);
-
         // 1. Verificar a assinatura EIP-4361 usando o nonce atrelado ao challenge
         const verifiedData = await this.siweVerifier.verify({
           message: input.message,
@@ -43,6 +39,12 @@ export class VerifyWalletIdentityUseCase {
           expectedNonce: challenge.challengeHash,
           expectedDomain: input.expectedDomain, // Este valor agora será o env do server
         });
+
+        // Atomic challenge consumption AFTER successful verification
+        const consumed = await authTxRepo.consumeChallengeAtomically(challenge.id);
+        if (!consumed) {
+          return Result.fail<VerifyWalletIdentityOutputDTO>('Falha de concorrência ou challenge expirado (replay attack).');
+        }
 
         // 2. Resolver a identidade via CanonicalIdentityResolver (AF-013)
         const resolution = await this.identityResolver.resolve({
