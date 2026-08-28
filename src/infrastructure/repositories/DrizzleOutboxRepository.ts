@@ -2,7 +2,7 @@ import { IDomainEvent } from '../../shared/kernel/DomainEvent';
 import { Result } from '../../shared/kernel/Result';
 import { IOutboxRepository, OutboxEventRecord } from '../../application/ports/output/IOutboxRepository';
 import { outboxEvents } from '../../db/infrastructure/tables';
-import { eq, asc, sql } from 'drizzle-orm';
+import { eq, and, inArray, asc, sql } from 'drizzle-orm';
 
 export class DrizzleOutboxRepository implements IOutboxRepository {
   // Recebe a instância do banco OU da transação (tx) ativa no UnitOfWork
@@ -29,54 +29,70 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
     }
   }
 
-  async getPendingEvents(limit: number): Promise<Result<OutboxEventRecord[]>> {
+  async claimPendingLease(
+    ownerId: string,
+    leaseDurationMs: number = 30000,
+    limit: number = 10
+  ): Promise<Result<OutboxEventRecord[]>> {
     try {
-      const pending = await this.db
+      const now = new Date();
+      const leaseExpiresAt = new Date(now.getTime() + leaseDurationMs);
+
+      // Select candidate unpublished events whose lease is expired or free
+      const candidates = await this.db
         .select()
         .from(outboxEvents)
-        .where(eq(outboxEvents.published, false))
+        .where(
+          and(
+            eq(outboxEvents.published, false),
+            sql`(${outboxEvents.leaseExpiresAt} IS NULL OR ${outboxEvents.leaseExpiresAt} < ${now})`
+          )
+        )
         .orderBy(asc(outboxEvents.createdAt))
         .limit(limit);
-        
-      return Result.ok(pending);
-    } catch (error: any) {
-      return Result.fail(`Failed to fetch pending outbox events: ${error.message}`);
-    }
-  }
 
-  async markAsPublished(eventId: string): Promise<Result<void>> {
-    try {
+      if (candidates.length === 0) {
+        return Result.ok([]);
+      }
+
+      const claimedIds = candidates.map((c: any) => c.id);
+
+      // Claim lease for selected events atomically
       await this.db
         .update(outboxEvents)
         .set({
-          published: true,
-          publishedAt: new Date(),
+          leaseOwner: ownerId,
+          leaseExpiresAt,
         })
-        .where(eq(outboxEvents.id, eventId));
-      return Result.ok();
+        .where(
+          and(
+            inArray(outboxEvents.id, claimedIds),
+            eq(outboxEvents.published, false)
+          )
+        );
+
+      return Result.ok(candidates);
     } catch (error: any) {
-      return Result.fail(`Failed to mark outbox event as published: ${error.message}`);
+      return Result.fail(`Failed to claim outbox lease: ${error.message}`);
     }
   }
 
-  async markAsFailed(eventId: string, error: string): Promise<Result<void>> {
+  async recordConsumerReceipt(consumerId: string, eventId: string): Promise<Result<boolean>> {
     try {
-      const result = await this.db
-        .update(outboxEvents)
-        .set({
-          attempts: sql`${outboxEvents.attempts} + 1`,
-          error: error.substring(0, 500)
-        })
-        .where(eq(outboxEvents.id, eventId))
-        .returning();
-        
-      if (!result || result.length === 0) {
-        return Result.fail('Event not found');
+      const { eventConsumerReceipts } = await import('../../db/infrastructure/tables');
+      const id = `${consumerId}:${eventId}`;
+      await this.db.insert(eventConsumerReceipts).values({
+        id,
+        consumerId,
+        eventId,
+        processedAt: new Date(),
+      });
+      return Result.ok(true);
+    } catch (error: any) {
+      if (error.message && (error.message.includes('UNIQUE') || error.message.includes('unique'))) {
+        return Result.ok(false); // Already processed by consumer!
       }
-
-      return Result.ok();
-    } catch (err: any) {
-      return Result.fail(`Failed to mark outbox event as failed: ${err.message}`);
+      return Result.fail(`Failed to record consumer receipt: ${error.message}`);
     }
   }
 }

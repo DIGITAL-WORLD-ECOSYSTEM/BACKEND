@@ -38,13 +38,15 @@ export class DrizzleSsiRepository implements ISsiRepository {
     }
   }
 
-  async saveDid(record: DidIdentityRecord): Promise<Result<DidIdentityRecord>> {
+  async saveDid(record: DidIdentityRecord & { isPrimary?: boolean; revokedAt?: Date | null }): Promise<Result<DidIdentityRecord>> {
     try {
       const existing = await this.db
         .select()
         .from(didIdentities)
         .where(eq(didIdentities.id, record.id))
         .limit(1);
+
+      const revokedAtValue = record.status === 'revoked' ? (record.revokedAt || new Date()) : null;
 
       if (!existing || existing.length === 0) {
         await this.db.insert(didIdentities).values({
@@ -53,10 +55,12 @@ export class DrizzleSsiRepository implements ISsiRepository {
           did: record.did,
           method: record.method,
           controller: record.controller,
+          isPrimary: record.isPrimary ?? false,
           status: record.status || 'active',
           version: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
+          revokedAt: revokedAtValue,
         });
         record.version = 1;
       } else {
@@ -66,6 +70,8 @@ export class DrizzleSsiRepository implements ISsiRepository {
           .update(didIdentities)
           .set({
             status: record.status || 'active',
+            isPrimary: record.isPrimary !== undefined ? record.isPrimary : existing[0].isPrimary,
+            revokedAt: revokedAtValue,
             updatedAt: new Date(),
             version: sql`${didIdentities.version} + 1`,
           })
@@ -105,6 +111,7 @@ export class DrizzleSsiRepository implements ISsiRepository {
         status: record.status || 'active',
         issuanceDate: record.issuanceDate,
         expirationDate: record.expirationDate || null,
+        revokedAt: record.status === 'revoked' ? (record.revokedAt || new Date()) : null,
         version: 1,
       });
 
@@ -151,7 +158,12 @@ export class DrizzleSsiRepository implements ISsiRepository {
       const rows = await this.db
         .select()
         .from(verifiableCredentials)
-        .where(eq(verifiableCredentials.holderUserId, userId));
+        .where(
+          and(
+            eq(verifiableCredentials.holderUserId, userId),
+            sql`${verifiableCredentials.status} != 'revoked'`
+          )
+        );
 
       const credentials: VerifiableCredentialRecord[] = rows.map((row: any) => ({
         id: row.id,
@@ -177,17 +189,29 @@ export class DrizzleSsiRepository implements ISsiRepository {
 
   async revokeVerifiableCredential(id: string): Promise<Result<void>> {
     try {
-      await this.db
+      const res = await this.db
         .update(verifiableCredentials)
         .set({
           status: 'revoked',
           revokedAt: new Date(),
+          version: sql`${verifiableCredentials.version} + 1`,
         })
-        .where(eq(verifiableCredentials.id, id));
+        .where(
+          and(
+            eq(verifiableCredentials.id, id),
+            sql`${verifiableCredentials.status} != 'revoked'`
+          )
+        );
+
+      const affected = (res?.meta?.changes ?? res?.rowsAffected ?? 0);
+      if (affected === 0) {
+        return Result.fail('Verifiable Credential already revoked or not found');
+      }
 
       return Result.ok(undefined);
     } catch (error: any) {
       return Result.fail(error.message);
     }
   }
+}
 }

@@ -1,5 +1,6 @@
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, isNull } from 'drizzle-orm';
 import { citizens, identityDocuments, kycVerifications } from '../../db/civil-identity/tables';
+import { didIdentities } from '../../db/ssi/tables';
 import {
   ICivilIdentityRepository,
   CitizenRecord,
@@ -13,11 +14,28 @@ export class DrizzleCivilIdentityRepositoryAdapter implements ICivilIdentityRepo
   constructor(private readonly db: any) {}
 
   async findByDid(did: string): Promise<CitizenRecord | null> {
-    const username = did.split(':').pop();
     const [row] = await this.db
-      .select()
-      .from(citizens)
-      .where(eq(citizens.username, username || did))
+      .select({
+        userId: citizens.userId,
+        username: citizens.username,
+        legalFirstName: citizens.legalFirstName,
+        legalLastName: citizens.legalLastName,
+        nationalityCode: citizens.nationalityCode,
+        birthDate: citizens.birthDate,
+        maritalStatus: citizens.maritalStatus,
+        civilStatus: citizens.civilStatus,
+        verifiedAt: citizens.verifiedAt,
+        verifiedBy: citizens.verifiedBy,
+        version: citizens.version,
+      })
+      .from(didIdentities)
+      .innerJoin(citizens, eq(didIdentities.userId, citizens.userId))
+      .where(
+        and(
+          eq(didIdentities.did, did),
+          eq(didIdentities.status, 'active')
+        )
+      )
       .limit(1);
 
     if (!row) return null;
@@ -25,10 +43,12 @@ export class DrizzleCivilIdentityRepositoryAdapter implements ICivilIdentityRepo
   }
 
   async createCitizen(data: Partial<CitizenRecord> & { userId: number }): Promise<CitizenRecord> {
+    const canonicalUsername = data.username ? data.username.trim().toLowerCase() : undefined;
     const [inserted] = await this.db
       .insert(citizens)
       .values({
         userId: data.userId,
+        username: canonicalUsername,
         legalFirstName: data.legalFirstName || null,
         legalLastName: data.legalLastName || null,
         nationalityCode: data.nationalityCode || 'BR',
@@ -55,17 +75,35 @@ export class DrizzleCivilIdentityRepositoryAdapter implements ICivilIdentityRepo
   async updateCivilStatus(
     userId: number,
     civilStatus: 'pending' | 'verified' | 'suspended' | 'revoked',
-    verifiedBy?: number
+    verifiedBy?: number,
+    expectedVersion?: number
   ): Promise<void> {
-    await this.db
+    const current = await this.findCitizenByUserId(userId);
+    if (!current) {
+      throw new Error(`Citizen record not found for userId ${userId}`);
+    }
+    const version = expectedVersion ?? current.version;
+
+    const res = await this.db
       .update(citizens)
       .set({
         civilStatus,
         verifiedAt: civilStatus === 'verified' ? new Date() : null,
         verifiedBy: verifiedBy || null,
         statusChangedAt: new Date(),
+        version: version + 1,
       })
-      .where(eq(citizens.userId, userId));
+      .where(
+        and(
+          eq(citizens.userId, userId),
+          eq(citizens.version, version)
+        )
+      );
+
+    const affected = (res?.meta?.changes ?? res?.rowsAffected ?? 0);
+    if (affected === 0) {
+      throw new Error(`OCC update failed for citizen userId ${userId}`);
+    }
   }
 
   async createIdentityDocument(data: IdentityDocumentRecord): Promise<IdentityDocumentRecord> {
@@ -78,7 +116,12 @@ export class DrizzleCivilIdentityRepositoryAdapter implements ICivilIdentityRepo
         numberLookupHash: data.numberLookupHash,
         encryptedNumber: data.encryptedNumber,
         last4: data.last4 || null,
+        documentHash: (data as any).documentHash || null,
+        issuingAuthority: (data as any).issuingAuthority || null,
+        issuedAt: (data as any).issuedAt || null,
+        expiresAt: (data as any).expiresAt || null,
         source: data.source,
+        sourceReference: (data as any).sourceReference || null,
         verificationStatus: data.verificationStatus || 'pending',
         verifiedAt: data.verifiedAt || null,
         verifiedBy: data.verifiedBy || null,
@@ -128,11 +171,16 @@ export class DrizzleCivilIdentityRepositoryAdapter implements ICivilIdentityRepo
       .insert(kycVerifications)
       .values({
         userId: data.userId,
+        verificationVersion: (data as any).verificationVersion ?? 1,
         verificationLevel: data.verificationLevel,
         status: data.status,
         provider: data.provider,
         riskScore: data.riskScore || null,
+        riskModel: (data as any).riskModel || null,
+        riskModelVersion: (data as any).riskModelVersion || null,
         rejectionReason: data.rejectionReason || null,
+        metadata: (data as any).metadata || null,
+        reviewedBy: (data as any).reviewedBy || null,
         startedAt: data.startedAt,
         completedAt: data.completedAt || null,
         expiresAt: data.expiresAt || null,
