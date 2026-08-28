@@ -1,7 +1,6 @@
 import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
 import { Result } from '../../../shared/kernel/Result';
 import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
-import { CryptoVault } from '../../../infrastructure/security/crypto/crypto';
 
 export interface GenerateWeb3ChallengeDTO {
   context: 'login' | 'credential_link';

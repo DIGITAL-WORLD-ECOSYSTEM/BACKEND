@@ -1,6 +1,6 @@
 import { IIdentityResolverPort } from '../../../application/ports/output/IIdentityResolverPort';
-import { IdentityAssertion } from '../../../application/dto/IdentityAssertion';
-import { IdentityResolutionResult } from '../../../application/dto/IdentityResolutionResult';
+import { IdentityAssertion } from '../../../application/dto/identity/IdentityAssertion';
+import { IdentityResolutionResult } from '../../../application/dto/identity/IdentityResolutionResult';
 
 export class CanonicalIdentityResolver implements IIdentityResolverPort {
   constructor(private readonly resolverAdapter: IIdentityResolverPort) { }

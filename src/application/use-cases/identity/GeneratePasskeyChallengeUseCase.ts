@@ -36,9 +36,8 @@ export class GeneratePasskeyChallengeUseCase {
           userName: dto.userName,
           attestationType: 'none',
           excludeCredentials: existingPasskeys.map(key => ({
-            id: Uint8Array.from(atob(key.credentialId), c => c.charCodeAt(0)),
-            type: 'public-key',
-            transports: ['internal', 'hybrid', 'usb', 'ble', 'nfc'],
+            id: key.credentialId,
+            transports: ['internal', 'hybrid', 'usb', 'ble', 'nfc'] as any,
           })),
           authenticatorSelection: {
             residentKey: 'required',

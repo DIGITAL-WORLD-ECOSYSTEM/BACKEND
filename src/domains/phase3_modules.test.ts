@@ -108,7 +108,11 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
         ),
       };
 
-      const useCase = new IssueVerifiableCredentialUseCase(mockUow as any);
+      const mockSigner = {
+        signCredential: vi.fn().mockResolvedValue({ type: 'Ed25519Signature2020', proofValue: 'sig_123' }),
+      };
+
+      const useCase = new IssueVerifiableCredentialUseCase(mockUow as any, mockSigner as any);
       const result = await useCase.execute({
         holderUserId: 10,
         credentialType: 'CivicIdentityCredential',

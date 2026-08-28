@@ -3,38 +3,54 @@ import { Result } from '../../../shared/kernel/Result';
 
 export interface OutboxEventRecord {
   id: string; // UUID
-  aggregateId: number;
+  aggregateId: string | number;
   aggregateType: string;
   aggregateVersion: number;
   eventName: string;
   payload: string; // JSON
-  metadata?: string; // JSON
+  metadata?: string | null; // JSON
   attempts: number;
-  published: boolean;
-  publishedAt?: Date;
-  error?: string;
+  status: 'pending' | 'processing' | 'published' | 'failed' | 'dead_letter';
+  publishedAt?: Date | null;
+  leaseOwner?: string | null;
+  leaseGeneration?: number;
+  leaseExpiresAt?: Date | null;
+  error?: string | null;
   createdAt: Date;
 }
 
 export interface IOutboxRepository {
   /**
-   * Persiste um evento de domínio no Outbox.
-   * IMPORTANTE: Deve ser chamado dentro da mesma transação do banco (UoW).
+   * Persiste um evento de domínio no Outbox (UoW transactional context).
    */
-  saveEvent(event: IDomainEvent, aggregateId: number, aggregateType: string, aggregateVersion: number): Promise<Result<void>>;
-  
+  saveEvent(
+    event: IDomainEvent,
+    aggregateId: number | string,
+    aggregateType: string,
+    aggregateVersion: number
+  ): Promise<Result<void>>;
+
   /**
-   * Busca eventos pendentes para publicação (published = false) limitando a quantidade.
+   * Adquire um lease atômico (CAS com fencing token leaseGeneration) para eventos pendentes/expirados.
    */
-  getPendingEvents(limit: number): Promise<Result<OutboxEventRecord[]>>;
-  
+  claimPendingLease(
+    ownerId: string,
+    leaseDurationMs?: number,
+    limit?: number
+  ): Promise<Result<OutboxEventRecord[]>>;
+
   /**
-   * Marca um evento como publicado (sucesso).
+   * Renova o lease de um evento em processamento se a geração do token corresponder.
    */
-  markAsPublished(eventId: string): Promise<Result<void>>;
-  
+  renewLease?(
+    ownerId: string,
+    eventId: string,
+    currentGeneration: number,
+    durationMs?: number
+  ): Promise<Result<boolean>>;
+
   /**
-   * Registra uma falha de tentativa de publicação. Incrementa attempts e salva o erro.
+   * Registra a recepção idempotente do consumidor via event_consumer_receipts.
    */
-  markAsFailed(eventId: string, error: string): Promise<Result<void>>;
+  recordConsumerReceipt(consumerId: string, eventId: string): Promise<Result<boolean>>;
 }

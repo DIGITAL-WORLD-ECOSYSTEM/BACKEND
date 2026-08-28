@@ -1,8 +1,6 @@
-import type { AuthenticationResponseJSON } from '@simplewebauthn/types';
-
 export interface VerifyPasskeyIdentityInputDTO {
   readonly challengeId: string;
-  readonly responseJSON: AuthenticationResponseJSON;
+  readonly responseJSON: any;
   readonly expectedOrigin: string;
   readonly expectedRPID: string;
 }

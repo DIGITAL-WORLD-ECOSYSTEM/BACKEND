@@ -23,9 +23,14 @@ export const outboxEvents = sqliteTable(
     payload: text('payload').notNull(), // JSON
     metadata: text('metadata'), // JSON
     attempts: integer('attempts').default(0).notNull(),
-    published: integer('published', { mode: 'boolean' }).default(false).notNull(),
+    status: text('status', {
+      enum: ['pending', 'processing', 'published', 'failed', 'dead_letter'],
+    })
+      .default('pending')
+      .notNull(),
     publishedAt: integer('published_at', { mode: 'timestamp' }),
     leaseOwner: text('lease_owner'),
+    leaseGeneration: integer('lease_generation').default(0).notNull(),
     leaseExpiresAt: integer('lease_expires_at', { mode: 'timestamp' }),
     error: text('error'),
     createdAt: integer('created_at', { mode: 'timestamp' })
@@ -33,9 +38,13 @@ export const outboxEvents = sqliteTable(
       .notNull(),
   },
   (table) => ({
-    publishedIdx: index('idx_outbox_events_published').on(table.published),
+    statusIdx: index('idx_outbox_events_status').on(table.status),
     leaseIdx: index('idx_outbox_events_lease').on(table.leaseExpiresAt),
     createdIdx: index('idx_outbox_events_created').on(table.createdAt),
+    statusCheck: check(
+      'ck_outbox_events_status',
+      sql`${table.status} IN ('pending', 'processing', 'published', 'failed', 'dead_letter')`
+    ),
   })
 );
 

@@ -1,5 +1,5 @@
-import { IdentityAssertion } from '../../dto/IdentityAssertion';
-import { IdentityResolutionResult } from '../../dto/IdentityResolutionResult';
+import { IdentityAssertion } from '../../dto/identity/IdentityAssertion';
+import { IdentityResolutionResult } from '../../dto/identity/IdentityResolutionResult';
 
 /**
  * Porta de saída para Resolução Canônica de Identidade.

@@ -1,7 +1,7 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { IIdentityResolverPort } from '../../application/ports/output/IIdentityResolverPort';
-import { IdentityAssertion } from '../../application/dto/IdentityAssertion';
-import { IdentityResolutionResult } from '../../application/dto/IdentityResolutionResult';
+import { IdentityAssertion } from '../../application/dto/identity/IdentityAssertion';
+import { IdentityResolutionResult } from '../../application/dto/identity/IdentityResolutionResult';
 import { wallets } from '../../db/web3/tables';
 import { webauthnCredentials, oauthIdentities, userAuthenticators } from '../../db/authentication/tables';
 import { didIdentities } from '../../db/ssi/tables';

@@ -21,7 +21,7 @@ export const verifyRole = (allowedRoles: string[]) => {
         return error(c, 'Erro Interno: Conexão com banco de dados não encontrada.', null, 500);
       }
 
-      const { userRoles, roles } = await import('../../../../db/authorization/tables');
+      const { userRoles, roles } = await import('../../../db/authorization/tables');
 
       // Query para verificar se o usuário possui algum dos roles permitidos
       const userRolesData = await db
@@ -74,7 +74,7 @@ export const verifyPermission = (requiredPermission: string) => {
       }
 
       const db = c.get('db');
-      const { userRoles, roles, rolePermissions, permissions } = await import('../../../../db/authorization/tables');
+      const { userRoles, roles, rolePermissions, permissions } = await import('../../../db/authorization/tables');
 
       const userPerms = await db
         .select({ permKey: permissions.key })

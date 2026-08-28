@@ -1,4 +1,4 @@
-import { IdentityAssertion } from '../IdentityAssertion';
+import { IdentityAssertion } from './IdentityAssertion';
 
 export interface LinkExternalIdentityInputDTO {
   readonly userId: number;

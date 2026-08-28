@@ -5,6 +5,7 @@ import { DrizzleSsiRepository } from '../../../../infrastructure/repositories/Dr
 import { CreateDidUseCase } from '../../../../domains/ssi/use-cases/CreateDidUseCase';
 import { IssueVerifiableCredentialUseCase } from '../../../../domains/ssi/use-cases/IssueVerifiableCredentialUseCase';
 import { RevokeCredentialUseCase } from '../../../../domains/ssi/use-cases/RevokeCredentialUseCase';
+import { LocalIssuerSigner } from '../../../../infrastructure/security/crypto/LocalIssuerSigner';
 import { SsiController } from '../../controllers/ssi/SsiController';
 import { sessionGuard, requireAal } from '../../middlewares/session_guard';
 import { verifyPermission } from '../../middlewares/rbac';
@@ -18,6 +19,9 @@ export const ssiRouter = new Hono<AppType>();
 
 ssiRouter.use('*', sessionGuard);
 
+const dummyIssuerKey = new Uint8Array(32);
+const defaultSigner = new LocalIssuerSigner(dummyIssuerKey);
+
 ssiRouter.post(
   '/did',
   requireAal(2),
@@ -27,7 +31,7 @@ ssiRouter.post(
   const uow = new DrizzleUnitOfWork(db);
   const ssiRepo = new DrizzleSsiRepository(db);
   const createDidUseCase = new CreateDidUseCase(uow);
-  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow, defaultSigner);
   const revokeVcUseCase = new RevokeCredentialUseCase(uow);
 
   const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
@@ -43,7 +47,7 @@ ssiRouter.post(
   const uow = new DrizzleUnitOfWork(db);
   const ssiRepo = new DrizzleSsiRepository(db);
   const createDidUseCase = new CreateDidUseCase(uow);
-  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow, defaultSigner);
   const revokeVcUseCase = new RevokeCredentialUseCase(uow);
 
   const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
@@ -59,7 +63,7 @@ ssiRouter.post(
   const uow = new DrizzleUnitOfWork(db);
   const ssiRepo = new DrizzleSsiRepository(db);
   const createDidUseCase = new CreateDidUseCase(uow);
-  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow, defaultSigner);
   const revokeVcUseCase = new RevokeCredentialUseCase(uow);
 
   const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
@@ -75,7 +79,7 @@ ssiRouter.get(
   const uow = new DrizzleUnitOfWork(db);
   const ssiRepo = new DrizzleSsiRepository(db);
   const createDidUseCase = new CreateDidUseCase(uow);
-  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow, defaultSigner);
   const revokeVcUseCase = new RevokeCredentialUseCase(uow);
 
   const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);

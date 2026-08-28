@@ -25,6 +25,7 @@ describe('Compliance Module — KYC', () => {
     KV_CACHE: {},
     STORAGE: {},
     JWT_SECRET: 'test_secret',
+    TOTP_ENCRYPTION_KEY: 'test_totp_key_32_bytes_min_length_123',
     ADMIN_PASSWORD: 'secret_admin_key_123',
   };
 

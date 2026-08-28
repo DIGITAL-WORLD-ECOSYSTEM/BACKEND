@@ -4,6 +4,8 @@ import { JwtService } from '../../../infrastructure/security/jwt/JwtService';
 import { DrizzleUnitOfWork } from '../../../infrastructure/repositories/DrizzleUnitOfWork';
 import { CitizenRecord } from '../../../application/ports/output/ICivilIdentityRepository';
 import { Result } from '../../../shared/kernel/Result';
+import { DrizzleSessionRepository } from '../../../infrastructure/repositories/DrizzleSessionRepository';
+import { DrizzleUserRepositoryAdapter } from '../../../infrastructure/repositories/DrizzleUserRepositoryAdapter';
 import { SessionValidationService } from '../../../application/services/SessionValidationService';
 
 const jwtService = new JwtService();
@@ -74,11 +76,14 @@ export const authSignature = async (c: Context, next: Next) => {
           return c.json({ success: false, message: 'Database context unavailable.' }, 500);
         }
 
+        const sessionRepo = new DrizzleSessionRepository(db);
+        const userRepo = new DrizzleUserRepositoryAdapter(db);
         const validationService = new SessionValidationService(jwtService);
         const validationResult = await validationService.validate({
           token,
           secret,
-          db,
+          sessionRepo,
+          userRepo,
         });
 
         c.set('user', {

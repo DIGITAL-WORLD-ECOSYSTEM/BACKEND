@@ -70,7 +70,7 @@ export class IssueVerifiableCredentialUseCase {
         credentialType: dto.credentialType,
         credentialHash,
         encryptedClaims: `enc_${claimsStr}`, // Simulação KMS / Vault
-        proofType: proof.type,
+        proofType: proof.type as 'Ed25519Signature2020' | 'BbsBlsSignature2020' | 'JsonWebSignature2020',
         status: 'active',
         issuanceDate,
         expirationDate,

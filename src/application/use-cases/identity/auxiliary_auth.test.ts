@@ -5,14 +5,16 @@ import { RequestPasswordResetUseCase } from './RequestPasswordResetUseCase';
 import { ConfirmPasswordResetUseCase } from './ConfirmPasswordResetUseCase';
 import { RefreshTokenUseCase } from './RefreshTokenUseCase';
 import { authenticator } from 'otplib';
-
+import { Result } from '../../../shared/kernel/Result';
+import { CryptoVault } from '../../../infrastructure/security/crypto/crypto';
 import { AuthenticateAccountUseCase } from './AuthenticateAccountUseCase';
 
 describe('Auxiliary Authentication Use Cases Suite', () => {
   describe('AuthenticateAccountUseCase Lockout Protection', () => {
     it('should lock account after 5 consecutive invalid password attempts', async () => {
       const mockUserRepo = {
-        findByEmail: vi.fn().mockResolvedValue({ id: 99, email: 'brute@asppibra.com', status: 'active' }),
+        findByEmail: vi.fn().mockResolvedValue({ id: 99, email: 'brute@asppibra.com', status: 'active', subjectType: 'human', failedLoginAttempts: 0 }),
+        incrementFailedLoginAttempts: vi.fn().mockResolvedValue(undefined),
         updateStatus: vi.fn().mockResolvedValue(undefined),
       };
       const mockAuthRepo = {
@@ -36,37 +38,49 @@ describe('Auxiliary Authentication Use Cases Suite', () => {
       for (let i = 0; i < 4; i++) {
         const res = await useCase.execute({ email: 'brute@asppibra.com', password: 'wrong' });
         expect(res.isFailure).toBe(true);
-        expect(res.error).toContain('Credenciais inválidas');
+        expect(res.error).toContain('Não foi possível autenticar com as credenciais fornecidas');
       }
 
       // Attempt 5 should trigger lockout!
       const res5 = await useCase.execute({ email: 'brute@asppibra.com', password: 'wrong' });
       expect(res5.isFailure).toBe(true);
-      expect(res5.error).toContain('Conta bloqueada devido a 5 tentativas incorretas');
-      expect(mockUserRepo.updateStatus).toHaveBeenCalledWith(99, 'locked');
+      expect(res5.error).toContain('Não foi possível autenticar com as credenciais fornecidas');
+      expect(mockUserRepo.incrementFailedLoginAttempts).toHaveBeenCalledWith(99, 5);
     });
   });
 
   describe('SetupTotpUseCase', () => {
-
     it('should generate valid secret and otpauthUrl for existing user', async () => {
       const mockUserRepo = {
-        findById: vi.fn().mockResolvedValue({ id: 1, email: 'user@asppibra.com' }),
+        findById: vi.fn().mockResolvedValue({ id: 1, email: 'user@asppibra.com', authEpoch: 1 }),
       };
       const mockAuthRepo = {
+        findTotpCredentialByUserId: vi.fn().mockResolvedValue(null),
         saveTotpSecret: vi.fn().mockResolvedValue('auth_123'),
+      };
+      const mockAuthTxRepo = {
+        getTransactionById: vi.fn().mockResolvedValue({
+          id: 'tx_123',
+          userId: 1,
+          context: 'mfa_setup',
+          isValid: () => true,
+        }),
       };
       const mockUow = {
         execute: vi.fn().mockImplementation(async (cb) =>
           cb({
             getUserRepository: () => mockUserRepo,
             getAuthenticationRepository: () => mockAuthRepo,
+            getAuthTransactionRepository: () => mockAuthTxRepo,
           })
         ),
       };
 
       const useCase = new SetupTotpUseCase(mockUow as any);
-      const result = await useCase.execute({ userId: 1 });
+      const result = await useCase.execute({
+        transactionId: 'tx_123',
+        encryptionKey: 'test_encryption_key_32_bytes_long',
+      });
 
       expect(result.isSuccess).toBe(true);
       expect(result.getValue().secret).toBeDefined();
@@ -78,26 +92,48 @@ describe('Auxiliary Authentication Use Cases Suite', () => {
     it('should verify valid 2FA TOTP code', async () => {
       const secret = authenticator.generateSecret();
       const code = authenticator.generate(secret);
+      const encryptionKey = 'test_encryption_key_32_bytes_long';
+      const encryptedSecret = await CryptoVault.encrypt(secret, encryptionKey);
 
+      const mockUserRepo = {
+        findById: vi.fn().mockResolvedValue({ id: 1, email: 'user@asppibra.com', authEpoch: 1 }),
+      };
       const mockAuthRepo = {
         findTotpCredentialByUserId: vi.fn().mockResolvedValue({
           authenticatorId: 'auth_123',
           userId: 1,
-          encryptedTotpSecret: secret,
+          encryptedTotpSecret: encryptedSecret,
           verified: false,
         }),
         verifyTotpAuthenticator: vi.fn().mockResolvedValue(undefined),
       };
+      const mockAuthTxRepo = {
+        getTransactionById: vi.fn().mockResolvedValue({
+          id: 'tx_123',
+          userId: 1,
+          context: 'mfa_setup',
+          authEpochAtStart: 1,
+          isValid: () => true,
+        }),
+        recordFailedAttemptAtomically: vi.fn().mockResolvedValue(true),
+        completeFactorAtomically: vi.fn().mockResolvedValue(true),
+      };
       const mockUow = {
         execute: vi.fn().mockImplementation(async (cb) =>
           cb({
+            getUserRepository: () => mockUserRepo,
             getAuthenticationRepository: () => mockAuthRepo,
+            getAuthTransactionRepository: () => mockAuthTxRepo,
           })
         ),
       };
 
       const useCase = new AuthenticateTotpUseCase(mockUow as any);
-      const result = await useCase.execute({ userId: 1, code });
+      const result = await useCase.execute({
+        transactionId: 'tx_123',
+        code,
+        encryptionKey,
+      });
 
       expect(result.isSuccess).toBe(true);
       expect(result.getValue().verified).toBe(true);
@@ -107,24 +143,46 @@ describe('Auxiliary Authentication Use Cases Suite', () => {
 
     it('should reject invalid 2FA TOTP code', async () => {
       const secret = authenticator.generateSecret();
+      const encryptionKey = 'test_encryption_key_32_bytes_long';
+      const encryptedSecret = await CryptoVault.encrypt(secret, encryptionKey);
+
+      const mockUserRepo = {
+        findById: vi.fn().mockResolvedValue({ id: 1, email: 'user@asppibra.com', authEpoch: 1 }),
+      };
       const mockAuthRepo = {
         findTotpCredentialByUserId: vi.fn().mockResolvedValue({
           authenticatorId: 'auth_123',
           userId: 1,
-          encryptedTotpSecret: secret,
+          encryptedTotpSecret: encryptedSecret,
           verified: true,
         }),
+      };
+      const mockAuthTxRepo = {
+        getTransactionById: vi.fn().mockResolvedValue({
+          id: 'tx_123',
+          userId: 1,
+          context: 'mfa_setup',
+          authEpochAtStart: 1,
+          isValid: () => true,
+        }),
+        recordFailedAttemptAtomically: vi.fn().mockResolvedValue(true),
       };
       const mockUow = {
         execute: vi.fn().mockImplementation(async (cb) =>
           cb({
+            getUserRepository: () => mockUserRepo,
             getAuthenticationRepository: () => mockAuthRepo,
+            getAuthTransactionRepository: () => mockAuthTxRepo,
           })
         ),
       };
 
       const useCase = new AuthenticateTotpUseCase(mockUow as any);
-      const result = await useCase.execute({ userId: 1, code: '000000' });
+      const result = await useCase.execute({
+        transactionId: 'tx_123',
+        code: '000000',
+        encryptionKey,
+      });
 
       expect(result.isFailure).toBe(true);
       expect(result.error).toContain('Código 2FA inválido');
@@ -142,6 +200,9 @@ describe('Auxiliary Authentication Use Cases Suite', () => {
       const mockOutboxRepo = {
         saveEvent: vi.fn().mockResolvedValue({ isSuccess: true }),
       };
+      const mockQueuePort = {
+        dispatchPasswordReset: vi.fn().mockResolvedValue(undefined),
+      };
       const mockUow = {
         execute: vi.fn().mockImplementation(async (cb) =>
           cb({
@@ -152,7 +213,7 @@ describe('Auxiliary Authentication Use Cases Suite', () => {
         ),
       };
 
-      const useCase = new RequestPasswordResetUseCase(mockUow as any);
+      const useCase = new RequestPasswordResetUseCase(mockUow as any, mockQueuePort as any);
       const result = await useCase.execute({ email: 'user@asppibra.com' });
 
       expect(result.isSuccess).toBe(true);
@@ -168,11 +229,9 @@ describe('Auxiliary Authentication Use Cases Suite', () => {
       const tokenHash = Array.from(new Uint8Array(tokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
       const mockResetRepo = {
-        findByToken: vi.fn().mockResolvedValue({
-          isFailure: false,
-          getValue: () => ({ id: 10, userId: 1, tokenHash, expiresAt: new Date(Date.now() + 3600000), usedAt: null }),
-        }),
-        invalidate: vi.fn().mockResolvedValue({ isSuccess: true }),
+        consumeToken: vi.fn().mockResolvedValue(
+          Result.ok({ id: 10, userId: 1, tokenHash, expiresAt: new Date(Date.now() + 3600000), usedAt: null })
+        ),
       };
       const mockAuthRepo = {
         savePasswordCredential: vi.fn().mockResolvedValue('auth_pw_1'),
@@ -214,7 +273,7 @@ describe('Auxiliary Authentication Use Cases Suite', () => {
       const tokenHash = Array.from(new Uint8Array(tokenHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
       const mockSessionRepo = {
-        getSessionById: vi.fn().mockResolvedValue({
+        getSessionByRefreshTokenHash: vi.fn().mockResolvedValue({
           id: tokenHash,
           userId: 1,
           revokedAt: new Date(), // Already revoked session!

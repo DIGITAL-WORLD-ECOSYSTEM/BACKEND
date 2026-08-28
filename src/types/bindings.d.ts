@@ -24,6 +24,7 @@ export type Bindings = {
 
   // 5. Segredos e Chaves de API
   JWT_SECRET: string;
+  TOTP_ENCRYPTION_KEY?: string;
   ADMIN_PASSWORD: string;
   ZERO_EX_API_KEY: string;
   MORALIS_API_KEY: string;
@@ -81,5 +82,8 @@ export type Variables = {
   };
   // Instância do banco injetada no middleware global
   db: import('../db').Database;
+  jwtService?: any;
   correlationId?: string;
 };
+
+export type DrizzleD1Database = import('../db').Database;

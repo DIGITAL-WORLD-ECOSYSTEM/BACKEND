@@ -51,6 +51,7 @@ describe('AuthenticateAccountUseCase', () => {
     };
 
     hasher = {
+      hash: vi.fn().mockResolvedValue('dummy_hash'),
       verify: vi.fn(),
     };
 

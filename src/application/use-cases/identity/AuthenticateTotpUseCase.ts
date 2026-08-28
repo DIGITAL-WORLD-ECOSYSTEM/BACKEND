@@ -3,13 +3,32 @@ import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityA
 import { Result } from '../../../shared/kernel/Result';
 import { AuthenticateTotpDTO } from '../../../application/dto/identity/AuthenticateTotpDTO';
 import { authenticator } from 'otplib';
-import { CryptoVault } from '../../../infrastructure/security/crypto/crypto';
+import { ICryptoVaultPort } from '../../../application/ports/security/ICryptoVaultPort';
 
 export class AuthenticateTotpUseCase {
   constructor(
     private readonly uow: IUnitOfWork,
-    private readonly auditPort?: ISecurityAuditPort
+    private readonly auditPort?: ISecurityAuditPort,
+    private readonly cryptoVault?: ICryptoVaultPort
   ) {}
+
+  private async decryptSecret(ciphertext: string, secretKey: string): Promise<string> {
+    if (this.cryptoVault) {
+      return this.cryptoVault.decrypt(ciphertext, secretKey);
+    }
+    const binaryString = atob(ciphertext);
+    const buffer = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      buffer[i] = binaryString.charCodeAt(i);
+    }
+    const iv = buffer.slice(0, 12);
+    const data = buffer.slice(12);
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secretKey.padEnd(32, '0').slice(0, 32));
+    const key = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['decrypt']);
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+    return new TextDecoder().decode(decrypted);
+  }
 
   async execute(dto: AuthenticateTotpDTO): Promise<Result<{ verified: boolean; aal: number }>> {
     if (!dto.transactionId || !dto.code || !dto.encryptionKey) {
@@ -42,7 +61,7 @@ export class AuthenticateTotpUseCase {
 
       let secret = '';
       try {
-        secret = await CryptoVault.decrypt(totpRecord.encryptedTotpSecret, dto.encryptionKey);
+        secret = await this.decryptSecret(totpRecord.encryptedTotpSecret, dto.encryptionKey);
       } catch (e) {
         return Result.fail<{ verified: boolean; aal: number }>('Falha ao descriptografar TOTP Secret.');
       }

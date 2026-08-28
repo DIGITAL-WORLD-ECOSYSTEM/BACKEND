@@ -90,63 +90,6 @@ export class AuthAuxiliaryController {
         return error(c, result.error || 'Erro ao solicitar redefinição de senha', null, 400);
       }
 
-      // Canal protegido: Envia direto para a fila usando Cloudflare Queues
-      // Garantindo que o rawToken NUNCA vá para o banco (Outbox) em texto plano.
-      const payload = result.getValue();
-      if (payload?.rawToken && c.env.EMAIL_PIPELINE_QUEUE) {
-        const rawToken = payload.rawToken;
-        
-        // HKDF to derive a specific encryption key from JWT_SECRET
-        const enc = new TextEncoder();
-        const baseKey = await crypto.subtle.importKey(
-          'raw',
-          enc.encode(c.env.JWT_SECRET),
-          { name: 'HKDF' },
-          false,
-          ['deriveKey']
-        );
-        const encryptionKey = await crypto.subtle.deriveKey(
-          {
-            name: 'HKDF',
-            hash: 'SHA-256',
-            salt: enc.encode('asppibra-queue-salt'),
-            info: enc.encode('email-queue-encryption')
-          },
-          baseKey,
-          { name: 'AES-GCM', length: 256 },
-          false,
-          ['encrypt']
-        );
-        
-        // Encrypt rawToken using AES-GCM
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        const aad = enc.encode('password-reset-v1');
-        const ciphertextBuffer = await crypto.subtle.encrypt(
-          { name: 'AES-GCM', iv, additionalData: aad },
-          encryptionKey,
-          enc.encode(rawToken)
-        );
-        
-        const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
-        const ciphertextHex = Array.from(new Uint8Array(ciphertextBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-        
-        const envelope = {
-          version: 1,
-          alg: 'A256GCM',
-          kid: 'email-v1',
-          iv: ivHex,
-          ciphertext: ciphertextHex,
-          aad: 'password-reset-v1'
-        };
-        
-        await c.env.EMAIL_PIPELINE_QUEUE.send({
-          type: 'password_reset',
-          email,
-          tokenEnvelope: envelope,
-          timestamp: Date.now()
-        });
-      }
-
       return success(c, 'Se o e-mail estiver cadastrado, as instruções de redefinição foram enviadas com sucesso.');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';

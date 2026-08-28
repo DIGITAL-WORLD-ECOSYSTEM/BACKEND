@@ -7,6 +7,7 @@ import { SecurityAuditAdapter } from '../../../../infrastructure/security/Securi
 import { DrizzleSessionRepository } from '../../../../infrastructure/repositories/DrizzleSessionRepository';
 import { DrizzleIdentityResolverAdapter } from '../../../../infrastructure/repositories/DrizzleIdentityResolverAdapter';
 import { Eip4361Verifier } from '../../../../infrastructure/security/crypto/Eip4361Verifier';
+import { CloudflareQueueAdapter } from '../../../../infrastructure/queue/CloudflareQueueAdapter';
 
 import { AuthenticateAccountUseCase } from '../../../../application/use-cases/identity/AuthenticateAccountUseCase';
 import { RegisterAccountUseCase } from '../../../../application/use-cases/identity/RegisterAccountUseCase';
@@ -112,7 +113,7 @@ identityRouter.post(
     const siweVerifier = new Eip4361Verifier();
 
     const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
-    const verifyWalletUseCase = new VerifyWalletIdentityUseCase(siweVerifier, resolverAdapter, auditAdapter);
+    const verifyWalletUseCase = new VerifyWalletIdentityUseCase(uow, siweVerifier, resolverAdapter, auditAdapter);
     const controller = new IdentityController(
       authenticateUseCase,
       jwtService,
@@ -190,7 +191,8 @@ identityRouter.post('/password-reset/request', rateLimit({ windowMs: 60 * 1000, 
   const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const auditAdapter = new SecurityAuditAdapter(db);
-  const requestResetUseCase = new RequestPasswordResetUseCase(uow, auditAdapter);
+  const queueAdapter = new CloudflareQueueAdapter(c.env?.EMAIL_PIPELINE_QUEUE);
+  const requestResetUseCase = new RequestPasswordResetUseCase(uow, queueAdapter, auditAdapter);
   const controller = new AuthAuxiliaryController(undefined, undefined, requestResetUseCase);
   return controller.requestPasswordReset(c);
 });

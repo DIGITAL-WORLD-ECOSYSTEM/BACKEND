@@ -21,6 +21,7 @@ export class AuthenticationChallenge {
 
   get id(): string { return this.props.id; }
   get transactionId(): string | null { return this.props.transactionId || null; }
+  get userId(): number | null { return this.props.userId || null; }
   get challengeHash(): string { return this.props.challengeHash; }
   get context(): AuthContext { return this.props.context; }
 

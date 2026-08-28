@@ -1,6 +1,6 @@
 import { ISessionRepository } from '../../application/ports/output/ISessionRepository';
-import { eq, and, isNull } from 'drizzle-orm';
-import { userSessions } from '../../db/authentication/tables';
+import { eq, and, isNull, gt } from 'drizzle-orm';
+import { userSessions, refreshTokenFamilies } from '../../db/authentication/tables';
 
 export class DrizzleSessionRepository implements ISessionRepository {
   constructor(private db: any) {}
@@ -23,18 +23,20 @@ export class DrizzleSessionRepository implements ISessionRepository {
   }
 
   async rotateRefreshTokenAtomically(sessionId: string, oldRefreshTokenHash: string): Promise<boolean> {
+    const now = new Date();
     const result = await this.db
       .update(userSessions)
-      .set({ revokedAt: new Date(), revocationReason: 'Rotated' })
+      .set({ revokedAt: now, revocationReason: 'Rotated' })
       .where(
         and(
           eq(userSessions.id, sessionId),
           isNull(userSessions.revokedAt),
-          eq(userSessions.refreshTokenHash, oldRefreshTokenHash)
+          eq(userSessions.refreshTokenHash, oldRefreshTokenHash),
+          gt(userSessions.expiresAt, now)
         )
       );
     
-    return result.meta.changes > 0;
+    return (result?.meta?.changes ?? result?.rowsAffected ?? 0) > 0;
   }
 
   async revokeSession(sessionId: string): Promise<void> {
@@ -51,10 +53,17 @@ export class DrizzleSessionRepository implements ISessionRepository {
   }
 
   async getSessionById(sessionId: string): Promise<any | null> {
+    const now = new Date();
     const [session] = await this.db
       .select()
       .from(userSessions)
-      .where(eq(userSessions.id, sessionId))
+      .where(
+        and(
+          eq(userSessions.id, sessionId),
+          isNull(userSessions.revokedAt),
+          gt(userSessions.expiresAt, now)
+        )
+      )
       .limit(1);
     return session || null;
   }
@@ -64,13 +73,10 @@ export class DrizzleSessionRepository implements ISessionRepository {
     userId: number;
     createdAt: Date;
   }): Promise<void> {
-    const { refreshTokenFamilies } = await import('../../db/authentication/tables');
     await this.db.insert(refreshTokenFamilies).values(familyData);
   }
 
   async revokeFamily(familyId: string, reason?: string): Promise<void> {
-    const { refreshTokenFamilies, userSessions } = await import('../../db/authentication/tables');
-
     const runRevocation = async (tx: any) => {
       // 1. Revoke the family
       await tx
@@ -103,8 +109,7 @@ export class DrizzleSessionRepository implements ISessionRepository {
   }
 
   async getSessionByRefreshTokenHash(refreshTokenHash: string): Promise<any | null> {
-    const { refreshTokenFamilies } = await import('../../db/authentication/tables');
-
+    const now = new Date();
     const [session] = await this.db
       .select({
         session: userSessions,
@@ -115,7 +120,8 @@ export class DrizzleSessionRepository implements ISessionRepository {
         and(
           eq(userSessions.refreshTokenHash, refreshTokenHash),
           isNull(userSessions.revokedAt),
-          isNull(refreshTokenFamilies.revokedAt)
+          isNull(refreshTokenFamilies.revokedAt),
+          gt(userSessions.expiresAt, now)
         )
       )
       .limit(1);

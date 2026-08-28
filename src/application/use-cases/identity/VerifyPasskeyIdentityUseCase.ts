@@ -54,14 +54,13 @@ export class VerifyPasskeyIdentityUseCase {
           expectedChallenge,
           expectedOrigin: input.expectedOrigin,
           expectedRPID: input.expectedRPID,
-          authenticator: {
-            credentialID,
-            credentialPublicKey,
+          credential: {
+            id: passkeyRecord.credentialId,
+            publicKey: credentialPublicKey,
             counter: passkeyRecord.signCount,
-            transports: ['internal', 'hybrid', 'usb', 'ble', 'nfc'],
           },
           requireUserVerification: true, // as required for high assurance (AAL2)
-        });
+        } as any);
       } catch (error: any) {
         return Result.fail<VerifyPasskeyIdentityOutputDTO>(`Falha na verificação da passkey: ${error.message}`);
       }
@@ -89,7 +88,7 @@ export class VerifyPasskeyIdentityUseCase {
       });
 
       // 2. Aplicar regra anti-shadow account (AF-009 & AF-012)
-      if (resolution.status === 'not_linked') {
+      if (resolution.status !== 'resolved') {
         if (this.securityAuditPort) {
           await this.securityAuditPort.logEvent({
             event: 'authentication_failed',

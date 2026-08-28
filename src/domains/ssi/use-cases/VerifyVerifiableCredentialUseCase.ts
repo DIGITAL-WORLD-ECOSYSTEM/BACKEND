@@ -40,7 +40,8 @@ export class VerifyVerifiableCredentialUseCase {
     if (credentialIdStr) {
       return await this.uow.execute(async (factory) => {
         const ssiRepo = factory.getSsiRepository();
-        const record = await ssiRepo.findCredentialById(credentialIdStr);
+        const recordResult = await ssiRepo.findVerifiableCredentialById(credentialIdStr);
+        const record = recordResult.isSuccess ? recordResult.getValue() : null;
         
         if (record && record.status === 'revoked') {
           return Result.fail('A credencial foi revogada pelo emissor.');

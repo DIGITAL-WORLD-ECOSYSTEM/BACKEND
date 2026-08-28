@@ -82,7 +82,7 @@ export class DrizzleCivilIdentityRepositoryAdapter implements ICivilIdentityRepo
     if (!current) {
       throw new Error(`Citizen record not found for userId ${userId}`);
     }
-    const version = expectedVersion ?? current.version;
+    const version = expectedVersion ?? current.version ?? 1;
 
     const res = await this.db
       .update(citizens)

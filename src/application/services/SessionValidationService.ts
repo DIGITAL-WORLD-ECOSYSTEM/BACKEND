@@ -1,11 +1,12 @@
-import { DrizzleSessionRepository } from '../../infrastructure/repositories/DrizzleSessionRepository';
-import { DrizzleUserRepositoryAdapter } from '../../infrastructure/repositories/DrizzleUserRepositoryAdapter';
+import { ISessionRepository } from '../ports/output/ISessionRepository';
+import { IUserRepository } from '../ports/output/IUserRepository';
 import { IJwtService } from '../ports/security/IJwtService';
 
 export interface ValidationContext {
   token: string;
   secret: string;
-  db: any; // Ideally typed, but using any here to match existing context extraction
+  sessionRepo: ISessionRepository;
+  userRepo: IUserRepository;
 }
 
 export interface ValidationResult {
@@ -27,7 +28,7 @@ export class SessionValidationService {
   constructor(private readonly jwtService: IJwtService) {}
 
   async validate(context: ValidationContext): Promise<ValidationResult> {
-    const { token, secret, db } = context;
+    const { token, secret, sessionRepo, userRepo } = context;
 
     // 1. Validate JWT cryptographic signature and standard claims
     const payload = await this.jwtService.verify(token, secret);
@@ -37,7 +38,6 @@ export class SessionValidationService {
     }
 
     // 2. Fetch session and validate state
-    const sessionRepo = new DrizzleSessionRepository(db);
     const sessionRecord = await sessionRepo.getSessionById(payload.sid);
 
     if (!sessionRecord) {
@@ -52,7 +52,6 @@ export class SessionValidationService {
     }
 
     // 3. Fetch user and validate eligibility
-    const userRepo = new DrizzleUserRepositoryAdapter(db);
     const userRecord = await userRepo.findById(session.userId);
 
     if (!userRecord) {
@@ -75,8 +74,8 @@ export class SessionValidationService {
       userId: session.userId,
       sessionId: session.id,
       sessionAal: session.aal,
-      lastAuthenticatedAt: session.lastAuthenticatedAt,
-      publicId: user.publicId,
+      lastAuthenticatedAt: (session as any).lastAuthenticatedAt || new Date(),
+      publicId: (user as any).publicId || '',
     };
   }
 }

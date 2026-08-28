@@ -56,7 +56,7 @@ export class VerifyWalletIdentityUseCase {
         });
 
         // 3. Aplicar regra anti-shadow account (AF-010 & AF-012)
-        if (resolution.status === 'not_linked' && challenge.context === 'login') {
+        if (resolution.status !== 'resolved') {
           if (this.securityAuditPort) {
             await this.securityAuditPort.logEvent({
               event: 'authentication_failed',

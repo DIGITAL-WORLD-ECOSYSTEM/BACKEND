@@ -17,14 +17,18 @@ import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
 
 export type { FinancialAccountRecord, AccountBalanceRecord, FinancialTransactionRecord };
 
-const MAX_SAFE_BASE_UNITS = 9223372036854775807n; // 2^63 - 1
+const MAX_BINDING_SAFE_BASE_UNITS = 9007199254740991; // Number.MAX_SAFE_INTEGER (2^53 - 1)
 
 export class DrizzleFinanceRepository implements IFinanceRepository {
   constructor(private readonly db: any) {}
 
+  private get executor() {
+    return this.db;
+  }
+
   async getTreasuryAccount(): Promise<Result<FinancialAccountRecord>> {
     try {
-      const [row] = await this.db
+      const [row] = await this.executor
         .select()
         .from(financialAccounts)
         .where(
@@ -36,12 +40,12 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         .limit(1);
 
       if (!row) {
-        // Se não existir a conta tesouraria, cria uma nova conta padrão de tesouraria
-        const [inserted] = await this.db
+        const [inserted] = await this.executor
           .insert(financialAccounts)
           .values({
             userId: null,
             accountType: 'treasury',
+            accountClass: 'asset',
             name: 'ASPPIBRA DAO Main Treasury',
             status: 'active',
           })
@@ -78,7 +82,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       }
 
       const treasuryId = treasuryRes.getValue().id;
-      const rows = await this.db
+      const rows = await this.executor
         .select()
         .from(accountBalances)
         .where(eq(accountBalances.accountId, treasuryId));
@@ -108,8 +112,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     userAccountId?: number;
   }): Promise<Result<FinancialTransactionRecord>> {
     try {
-      const amountBigInt = BigInt(data.amountBaseUnits);
-      if (amountBigInt <= 0n || amountBigInt > MAX_SAFE_BASE_UNITS) {
+      const amountNum = Number(data.amountBaseUnits);
+      if (isNaN(amountNum) || amountNum <= 0 || amountNum > MAX_BINDING_SAFE_BASE_UNITS) {
         return Result.fail(`Invalid monetary amount range: ${data.amountBaseUnits}`);
       }
 
@@ -117,7 +121,6 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       if (treasuryRes.isFailure) return Result.fail(treasuryRes.error || 'Treasury account error');
       const treasuryId = treasuryRes.getValue().id;
 
-      // Executa criação e lançamento em partidas dobradas de forma atômica
       const runTx = async (tx: any) => {
         // 1. Criar registro de transação
         const [transaction] = await tx
@@ -149,12 +152,12 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         }
 
         if (!counterpartAccountId) {
-          // Se não houver conta do usuário, cria ou usa conta operacional padrão
           const [opAcc] = await tx
             .insert(financialAccounts)
             .values({
               userId: data.userId || null,
               accountType: data.userId ? 'user_available' : 'operating',
+              accountClass: data.userId ? 'liability' : 'asset',
               name: data.userId ? `User ${data.userId} Main Account` : 'System Operating Account',
               status: 'active',
             })
@@ -162,8 +165,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           counterpartAccountId = opAcc.id;
         }
 
-        // 3. Inserir entradas de partidas dobradas (Double Entry Ledger)
-        // Deposit: Debit Operating/User (+Asset), Credit Treasury (+Liability/Equity)
+        // 3. Double-entry posting
         const isDeposit = data.type === 'deposit' || data.type === 'transfer' || data.type === 'yield';
         const leg1Direction = isDeposit ? 'debit' : 'credit';
         const leg2Direction = isDeposit ? 'credit' : 'debit';
@@ -174,23 +176,23 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
             accountId: counterpartAccountId,
             assetId: data.assetId,
             direction: leg1Direction,
-            amountBaseUnits: Number(amountBigInt),
+            amountBaseUnits: amountNum,
           },
           {
             transactionId: transaction.id,
             accountId: treasuryId,
             assetId: data.assetId,
             direction: leg2Direction,
-            amountBaseUnits: Number(amountBigInt),
+            amountBaseUnits: amountNum,
           },
         ]);
 
         return transaction;
       };
 
-      const resultTx = typeof this.db.transaction === 'function'
-        ? await this.db.transaction(runTx)
-        : await runTx(this.db);
+      const resultTx = typeof this.executor.transaction === 'function'
+        ? await this.executor.transaction(runTx)
+        : await runTx(this.executor);
 
       return Result.ok({
         id: resultTx.id,
@@ -214,7 +216,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     description: string;
     status: string;
   }): Promise<number> {
-    const [tx] = await this.db
+    const [tx] = await this.executor
       .insert(financialTransactions)
       .values({
         userId: data.userId || null,
@@ -233,8 +235,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   async listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>> {
     try {
       const query = userId
-        ? this.db.select().from(financialTransactions).where(eq(financialTransactions.userId, userId))
-        : this.db.select().from(financialTransactions);
+        ? this.executor.select().from(financialTransactions).where(eq(financialTransactions.userId, userId))
+        : this.executor.select().from(financialTransactions);
 
       const rows = await query;
       const txs: FinancialTransactionRecord[] = rows.map((r: any) => ({
@@ -266,7 +268,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   ): Promise<boolean> {
     try {
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      await this.db.insert(idempotencyKeys).values({
+      await this.executor.insert(idempotencyKeys).values({
         userId: userId ?? null,
         scope,
         key: idempotencyKey,
@@ -285,9 +287,12 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
   async insertLedgerEntries(entries: LedgerEntry[], transactionId: number): Promise<void> {
     const payload = entries.map(entry => {
-      const amountNum = typeof entry.amount.amount === 'bigint'
-        ? Number(entry.amount.amount)
-        : parseInt(entry.amount.amount.toString(), 10);
+      const rawVal = (entry.amount as any)?.amount ?? entry.amount;
+      const amountNum = typeof rawVal === 'number' ? rawVal : Number(rawVal);
+
+      if (isNaN(amountNum) || amountNum <= 0 || amountNum > MAX_BINDING_SAFE_BASE_UNITS) {
+        throw new Error(`Invalid ledger entry amount: ${entry.amount.amount}`);
+      }
 
       return {
         transactionId,
@@ -299,7 +304,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     });
 
     if (payload.length > 0) {
-      await this.db.insert(financialLedgerEntries).values(payload);
+      await this.executor.insert(financialLedgerEntries).values(payload);
     }
   }
 
@@ -309,14 +314,15 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     amount: bigint,
     type: 'debit' | 'credit'
   ): Promise<boolean> {
-    if (amount <= 0n || amount > MAX_SAFE_BASE_UNITS) {
+    const amountNum = Number(amount);
+    if (isNaN(amountNum) || amountNum <= 0 || amountNum > MAX_BINDING_SAFE_BASE_UNITS) {
       throw new Error(`Invalid base units amount for OCC update: ${amount}`);
     }
 
     const accIdNum = parseInt(accountId, 10);
     const assetIdNum = parseInt(assetId, 10);
 
-    const [balance] = await this.db
+    const [balance] = await this.executor
       .select({
         id: accountBalances.id,
         availableBaseUnits: accountBalances.availableBaseUnits,
@@ -335,13 +341,12 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       throw new Error(`Balance not found for account ${accountId} and asset ${assetId}`);
     }
 
-    const amountNum = Number(amount);
     const currentVersion = balance.version;
 
     let res: any;
     if (type === 'debit') {
       // Debit: Subtract amount from available balance if balance >= amount
-      res = await this.db
+      res = await this.executor
         .update(accountBalances)
         .set({
           availableBaseUnits: sql`${accountBalances.availableBaseUnits} - ${amountNum}`,
@@ -356,8 +361,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           )
         );
     } else {
-      // Credit: Add amount to available balance if sum <= MAX_SAFE_BASE_UNITS
-      res = await this.db
+      // Credit: Add amount to available balance satisfying INV-BALANCE-001 (<= 9007199254740991)
+      res = await this.executor
         .update(accountBalances)
         .set({
           availableBaseUnits: sql`${accountBalances.availableBaseUnits} + ${amountNum}`,
@@ -368,7 +373,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           and(
             eq(accountBalances.id, balance.id),
             eq(accountBalances.version, currentVersion),
-            sql`${accountBalances.availableBaseUnits} + ${amountNum} <= 9223372036854775807`
+            sql`${accountBalances.availableBaseUnits} + ${amountNum} <= 9007199254740991`
           )
         );
     }
@@ -379,13 +384,15 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
   async persistOutboxEvent(eventType: string, payload: any): Promise<void> {
     const eventId = crypto.randomUUID();
-    await this.db.insert(outboxEvents).values({
+    await this.executor.insert(outboxEvents).values({
       id: eventId,
       aggregateId: String(payload.transactionId ?? eventId),
       aggregateType: 'LedgerTransaction',
       aggregateVersion: 1,
       eventName: eventType,
       payload: JSON.stringify(payload),
+      status: 'pending',
+      leaseGeneration: 0,
     });
   }
 }

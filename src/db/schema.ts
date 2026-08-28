@@ -764,4 +764,3 @@ export * from './security/tables';
 export * from './security/relations';
 
 export * from './infrastructure/tables';
-export * from './infrastructure/relations';

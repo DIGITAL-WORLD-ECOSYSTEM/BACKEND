@@ -24,6 +24,8 @@ describe('Backend Health Check', () => {
         KV_AUTH: {},
         KV_CACHE: {},
         STORAGE: {},
+        JWT_SECRET: 'test_jwt_secret_32_bytes_min_length',
+        TOTP_ENCRYPTION_KEY: 'test_totp_key_32_bytes_min_length_123',
       } as any,
       { waitUntil: () => {}, passThroughOnException: () => {} } as any
     );

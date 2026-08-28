@@ -25,6 +25,7 @@ describe('Zero-Trust Middleware (auth_signature)', () => {
     KV_CACHE: {},
     STORAGE: {},
     JWT_SECRET: 'test_secret',
+    TOTP_ENCRYPTION_KEY: 'test_totp_key_32_bytes_min_length_123',
     ADMIN_PASSWORD: 'admin_secret',
   };
 
@@ -88,6 +89,7 @@ describe('Zero-Trust Middleware (auth_signature)', () => {
         'X-Identity-Signature': 'dGVzdA==',
         'X-Identity-DID': 'did:dao:asppibra:test_user',
         'X-Identity-Timestamp': expiredTimestamp,
+        'X-Identity-Nonce': 'nonce_expired_123',
       }),
       baseEnv as any,
       { waitUntil: () => {}, passThroughOnException: () => {} } as any
@@ -103,6 +105,7 @@ describe('Zero-Trust Middleware (auth_signature)', () => {
         'X-Identity-Signature': 'dGVzdA==',
         'X-Identity-DID': 'did:dao:asppibra:', // DID sem username
         'X-Identity-Timestamp': validTimestamp,
+        'X-Identity-Nonce': 'nonce_invalid_did_123',
       }),
       baseEnv as any,
       { waitUntil: () => {}, passThroughOnException: () => {} } as any

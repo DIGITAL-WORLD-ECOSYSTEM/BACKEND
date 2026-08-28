@@ -68,6 +68,12 @@ export const userAuthenticators = sqliteTable(
       table.type,
       table.revokedAt
     ),
+    passwordActiveUnq: uniqueIndex('uq_password_user_active')
+      .on(table.userId, table.type)
+      .where(sql`${table.type} = 'password' AND ${table.revokedAt} IS NULL`),
+    totpActiveUnq: uniqueIndex('uq_totp_user_active')
+      .on(table.userId, table.type)
+      .where(sql`${table.type} = 'totp' AND ${table.revokedAt} IS NULL`),
     typeCheck: check(
       'user_authenticators_type_check',
       sql`${table.type} IN ('password', 'totp', 'webauthn', 'recovery_code', 'wallet')`

@@ -1,11 +1,10 @@
 import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
 import { Result } from '../../../shared/kernel/Result';
 import { verifyRegistrationResponse } from '@simplewebauthn/server';
-import type { RegistrationResponseJSON } from '@simplewebauthn/types';
 
 export interface VerifyPasskeyRegistrationDTO {
   challengeId: string;
-  responseJSON: RegistrationResponseJSON;
+  responseJSON: any;
   expectedOrigin: string;
   expectedRPID: string;
 }
@@ -58,7 +57,13 @@ export class VerifyPasskeyRegistrationUseCase {
         return Result.fail<{ authenticatorId: string }>('Falha de concorrência ou challenge expirado (replay attack).');
       }
 
-      const { credentialID, credentialPublicKey, credentialBackedUp, credentialDeviceType, aaguid, attestationObject } = registrationInfo;
+      const reg: any = registrationInfo;
+      const credentialID = reg.credentialID || reg.credential?.id;
+      const credentialPublicKey = reg.credentialPublicKey || reg.credential?.publicKey;
+      const credentialBackedUp = reg.credentialBackedUp;
+      const credentialDeviceType = reg.credentialDeviceType;
+      const aaguid = reg.aaguid;
+      const attestationObject = reg.attestationObject;
 
       const credentialIdStr = btoa(String.fromCharCode(...credentialID));
       const publicKeyStr = btoa(String.fromCharCode(...credentialPublicKey));

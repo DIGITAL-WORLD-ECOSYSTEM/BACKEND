@@ -20,6 +20,9 @@ function resolveJwtService(c: Context): IJwtService {
  * 5. Bloqueia (HTTP 401) se a sessão não existir, estiver revogada ou expirada.
  * 6. Injeta no contexto do Hono (c.set('user', ...)) o userId, sessionId e sessionAal.
  */
+import { DrizzleSessionRepository } from '../../../infrastructure/repositories/DrizzleSessionRepository';
+import { DrizzleUserRepositoryAdapter } from '../../../infrastructure/repositories/DrizzleUserRepositoryAdapter';
+
 export const sessionGuard = async (c: Context, next: Next) => {
   const authHeader = c.req.header('Authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
@@ -41,11 +44,14 @@ export const sessionGuard = async (c: Context, next: Next) => {
       return c.json({ success: false, message: 'Database context unavailable.' }, 500);
     }
 
+    const sessionRepo = new DrizzleSessionRepository(db);
+    const userRepo = new DrizzleUserRepositoryAdapter(db);
     const validationService = new SessionValidationService(jwtService);
     const validationResult = await validationService.validate({
       token,
       secret,
-      db,
+      sessionRepo,
+      userRepo,
     });
 
     c.set('user', {
