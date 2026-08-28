@@ -70,24 +70,56 @@ export class DrizzleSessionRepository implements ISessionRepository {
 
   async revokeFamily(familyId: string, reason?: string): Promise<void> {
     const { refreshTokenFamilies, userSessions } = await import('../../db/authentication/tables');
-    
-    // Revoke the family
-    await this.db.update(refreshTokenFamilies)
-      .set({ revokedAt: new Date(), revocationReason: reason || 'Family revoked' })
-      .where(eq(refreshTokenFamilies.id, familyId));
 
-    // Revoke all sessions in the family
-    await this.db.update(userSessions)
-      .set({ revokedAt: new Date(), revocationReason: reason || 'Parent family revoked' })
-      .where(eq(userSessions.familyId, familyId));
+    const runRevocation = async (tx: any) => {
+      // 1. Revoke the family
+      await tx
+        .update(refreshTokenFamilies)
+        .set({ revokedAt: new Date(), revocationReason: reason || 'Family revoked' })
+        .where(
+          and(
+            eq(refreshTokenFamilies.id, familyId),
+            isNull(refreshTokenFamilies.revokedAt)
+          )
+        );
+
+      // 2. Revoke all active sessions belonging to this family
+      await tx
+        .update(userSessions)
+        .set({ revokedAt: new Date(), revocationReason: reason || 'Parent family revoked' })
+        .where(
+          and(
+            eq(userSessions.familyId, familyId),
+            isNull(userSessions.revokedAt)
+          )
+        );
+    };
+
+    if (typeof this.db.transaction === 'function') {
+      await this.db.transaction(runRevocation);
+    } else {
+      await runRevocation(this.db);
+    }
   }
 
   async getSessionByRefreshTokenHash(refreshTokenHash: string): Promise<any | null> {
+    const { refreshTokenFamilies } = await import('../../db/authentication/tables');
+
     const [session] = await this.db
-      .select()
+      .select({
+        session: userSessions,
+      })
       .from(userSessions)
-      .where(eq(userSessions.refreshTokenHash, refreshTokenHash))
+      .leftJoin(refreshTokenFamilies, eq(userSessions.familyId, refreshTokenFamilies.id))
+      .where(
+        and(
+          eq(userSessions.refreshTokenHash, refreshTokenHash),
+          isNull(userSessions.revokedAt),
+          isNull(refreshTokenFamilies.revokedAt)
+        )
+      )
       .limit(1);
-    return session || null;
+
+    return session ? session.session : null;
   }
 }

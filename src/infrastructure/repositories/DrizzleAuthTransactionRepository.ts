@@ -1,8 +1,8 @@
-import { DrizzleD1Database } from '../../../types/bindings';
-import { IAuthTransactionRepository } from '../../../application/ports/output/IAuthTransactionRepository';
-import { AuthenticationTransaction } from '../../../domains/identity/entities/AuthenticationTransaction';
-import { AuthenticationChallenge } from '../../../domains/identity/entities/AuthenticationChallenge';
-import { authTransactions, authChallenges } from '../../../db/authentication/tables';
+import { DrizzleD1Database } from '../../types/bindings';
+import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
+import { AuthenticationTransaction } from '../../domains/identity/entities/AuthenticationTransaction';
+import { AuthenticationChallenge } from '../../domains/identity/entities/AuthenticationChallenge';
+import { authTransactions, authChallenges } from '../../db/authentication/tables';
 import { eq, sql, and, inArray, gt, isNull } from 'drizzle-orm';
 
 export class DrizzleAuthTransactionRepository implements IAuthTransactionRepository {
@@ -27,10 +27,24 @@ export class DrizzleAuthTransactionRepository implements IAuthTransactionReposit
 
   async updateTransaction(transaction: AuthenticationTransaction): Promise<void> {
     const data = transaction.toPersistence();
-    await this.db
+    const currentVersion = (data as any).version ?? 1;
+    const res = await (this.db as any)
       .update(authTransactions)
-      .set(data)
-      .where(eq(authTransactions.id, data.id));
+      .set({
+        ...data,
+        version: currentVersion + 1,
+      })
+      .where(
+        and(
+          eq(authTransactions.id, data.id),
+          eq(authTransactions.version, currentVersion)
+        )
+      );
+
+    const affected = (res?.meta?.changes ?? res?.rowsAffected ?? 0);
+    if (affected === 0) {
+      throw new Error(`AuthenticationTransaction OCC failed or transaction locked: ${data.id}`);
+    }
   }
 
   async createChallenge(challenge: AuthenticationChallenge): Promise<void> {
@@ -39,10 +53,16 @@ export class DrizzleAuthTransactionRepository implements IAuthTransactionReposit
   }
 
   async getChallengeById(id: string): Promise<AuthenticationChallenge | null> {
-    const result = await this.db
+    const result = await (this.db as any)
       .select()
       .from(authChallenges)
-      .where(eq(authChallenges.id, id))
+      .where(
+        and(
+          eq(authChallenges.id, id),
+          isNull(authChallenges.usedAt),
+          gt(authChallenges.expiresAt, new Date())
+        )
+      )
       .limit(1)
       .get();
 
@@ -51,10 +71,16 @@ export class DrizzleAuthTransactionRepository implements IAuthTransactionReposit
   }
 
   async getChallengeByHash(hash: string): Promise<AuthenticationChallenge | null> {
-    const result = await this.db
+    const result = await (this.db as any)
       .select()
       .from(authChallenges)
-      .where(eq(authChallenges.challengeHash, hash))
+      .where(
+        and(
+          eq(authChallenges.challengeHash, hash),
+          isNull(authChallenges.usedAt),
+          gt(authChallenges.expiresAt, new Date())
+        )
+      )
       .limit(1)
       .get();
 
@@ -71,7 +97,7 @@ export class DrizzleAuthTransactionRepository implements IAuthTransactionReposit
   }
 
   async completeFactorAtomically(txId: string, aal: number, authEpochAtStart: number, method: string): Promise<boolean> {
-    const result = await this.db
+    const result: any = await this.db
       .update(authTransactions)
       .set({
         status: 'verified',
@@ -84,15 +110,17 @@ export class DrizzleAuthTransactionRepository implements IAuthTransactionReposit
         and(
           eq(authTransactions.id, txId),
           inArray(authTransactions.status, ['created', 'awaiting_factor']),
-          eq(authTransactions.authEpochAtStart, authEpochAtStart)
+          eq(authTransactions.authEpochAtStart, authEpochAtStart),
+          gt(authTransactions.expiresAt, new Date())
         )
       );
       
-    return result.meta.changes > 0;
+    const affected = (result?.meta?.changes ?? result?.rowsAffected ?? 0);
+    return affected > 0;
   }
 
   async recordFailedAttemptAtomically(txId: string, maxAttempts: number): Promise<boolean> {
-    const result = await this.db
+    const result: any = await this.db
       .update(authTransactions)
       .set({
         failureCount: sql`${authTransactions.failureCount} + 1`,
@@ -101,15 +129,17 @@ export class DrizzleAuthTransactionRepository implements IAuthTransactionReposit
       .where(
         and(
           eq(authTransactions.id, txId),
-          inArray(authTransactions.status, ['created', 'awaiting_factor'])
+          inArray(authTransactions.status, ['created', 'awaiting_factor']),
+          gt(authTransactions.expiresAt, new Date())
         )
       );
       
-    return result.meta.changes > 0;
+    const affected = (result?.meta?.changes ?? result?.rowsAffected ?? 0);
+    return affected > 0;
   }
 
   async consumeChallengeAtomically(challengeId: string): Promise<boolean> {
-    const result = await this.db
+    const result: any = await this.db
       .update(authChallenges)
       .set({
         usedAt: new Date()
@@ -121,6 +151,8 @@ export class DrizzleAuthTransactionRepository implements IAuthTransactionReposit
           gt(authChallenges.expiresAt, new Date())
         )
       );
-    return result.meta.changes > 0;
+
+    const affected = (result?.meta?.changes ?? result?.rowsAffected ?? 0);
+    return affected > 0;
   }
 }

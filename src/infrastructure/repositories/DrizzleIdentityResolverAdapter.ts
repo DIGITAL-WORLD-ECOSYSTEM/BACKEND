@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { IIdentityResolverPort } from '../../application/ports/output/IIdentityResolverPort';
 import { IdentityAssertion } from '../../application/dto/IdentityAssertion';
 import { IdentityResolutionResult } from '../../application/dto/IdentityResolutionResult';
@@ -38,10 +38,6 @@ export class DrizzleIdentityResolverAdapter implements IIdentityResolverPort {
       case 'web3_wallet': {
         const normalizedAddress = assertion.subjectId.toLowerCase();
 
-        // Find network by namespace and chainId? Wait, assertion has networkId.
-        // If assertion has networkId, we just join web3Networks to enforce the namespace/chainId?
-        // Actually, the user's plan mentions namespace + chainId + addressNormalized. 
-        // We will assume assertion provides networkId and we just validate it's active.
         const [wallet] = await this.db
           .select({ userId: wallets.userId })
           .from(wallets)
@@ -70,7 +66,13 @@ export class DrizzleIdentityResolverAdapter implements IIdentityResolverPort {
           .select({ userId: userAuthenticators.userId })
           .from(webauthnCredentials)
           .innerJoin(userAuthenticators, eq(webauthnCredentials.authenticatorId, userAuthenticators.id))
-          .where(eq(webauthnCredentials.credentialId, assertion.subjectId))
+          .where(
+            and(
+              eq(webauthnCredentials.credentialId, assertion.subjectId),
+              isNull(userAuthenticators.revokedAt),
+              eq(userAuthenticators.type, 'webauthn')
+            )
+          )
           .limit(1);
 
         if (passkey) {
