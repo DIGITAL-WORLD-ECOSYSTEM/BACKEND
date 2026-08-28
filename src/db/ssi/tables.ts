@@ -111,6 +111,7 @@ export const didIdentities = sqliteTable(
       enum: ['key', 'ion', 'polygonid', 'web', 'cheqd', 'pkh'],
     }).notNull(),
     controller: text('controller').notNull(),
+    isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
     status: text('status', {
       enum: ['active', 'suspended', 'revoked'],
     })
@@ -131,6 +132,9 @@ export const didIdentities = sqliteTable(
     userIdx: index('idx_did_identities_user').on(table.userId),
     didIdx: index('idx_did_identities_did').on(table.did),
     statusIdx: index('idx_did_identities_status').on(table.status),
+    activePrimaryDidUnq: uniqueIndex('uq_did_user_active_primary')
+      .on(table.userId)
+      .where(sql`${table.isPrimary} = 1 AND ${table.status} = 'active'`),
     didFormatCheck: check('ck_did_identities_did_format', sql`${table.did} LIKE 'did:%'`),
     statusCheck: check(
       'ck_did_identities_status',

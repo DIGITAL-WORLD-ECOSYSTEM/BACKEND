@@ -149,6 +149,9 @@ export const financialAccounts = sqliteTable(
       table.accountType,
       table.name
     ),
+    activeTreasurySingletonUnq: uniqueIndex('uq_treasury_active_singleton')
+      .on(table.accountType)
+      .where(sql`${table.accountType} = 'treasury' AND ${table.status} = 'active'`),
     ownerRuleCheck: check(
       'ck_financial_accounts_owner_rule',
       sql`(${table.accountType} = 'user_available' AND ${table.userId} IS NOT NULL) OR (${table.accountType} != 'user_available' AND ${table.userId} IS NULL)`
@@ -289,7 +292,7 @@ export const financialLedgerEntries = sqliteTable(
     direction: text('direction', {
       enum: ['debit', 'credit'],
     }).notNull(),
-    amountBaseUnits: text('amount_base_units').notNull(),
+    amountBaseUnits: integer('amount_base_units').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -304,8 +307,8 @@ export const financialLedgerEntries = sqliteTable(
       sql`${table.direction} IN ('debit', 'credit')`
     ),
     amountCheck: check(
-      'ck_financial_ledger_entries_amount_positive',
-      sql`${table.amountBaseUnits} <> '' AND ltrim(${table.amountBaseUnits}, '0123456789') = '' AND ${table.amountBaseUnits} <> '0' AND ltrim(${table.amountBaseUnits}, '0') = ${table.amountBaseUnits}`
+      'ck_financial_ledger_entries_amount_range',
+      sql`${table.amountBaseUnits} > 0 AND ${table.amountBaseUnits} <= 9223372036854775807`
     ),
   })
 );
@@ -328,8 +331,8 @@ export const accountBalances = sqliteTable(
       .references(() => financialAssets.id, {
         onDelete: 'restrict',
       }),
-    availableBaseUnits: text('available_base_units').notNull().default('0'),
-    lockedBaseUnits: text('locked_base_units').notNull().default('0'),
+    availableBaseUnits: integer('available_base_units').notNull().default(0),
+    lockedBaseUnits: integer('locked_base_units').notNull().default(0),
     version: integer('version').notNull().default(1),
     updatedAt: integer('updated_at', { mode: 'timestamp' })
       .notNull()
@@ -344,12 +347,12 @@ export const accountBalances = sqliteTable(
     accountIdx: index('idx_account_balances_account').on(table.accountId),
     assetIdx: index('idx_account_balances_asset').on(table.assetId),
     availableCheck: check(
-      'ck_account_balances_available_nonnegative',
-      sql`${table.availableBaseUnits} <> '' AND ltrim(${table.availableBaseUnits}, '0123456789') = '' AND (${table.availableBaseUnits} = '0' OR ltrim(${table.availableBaseUnits}, '0') = ${table.availableBaseUnits})`
+      'ck_account_balances_available_range',
+      sql`${table.availableBaseUnits} >= 0 AND ${table.availableBaseUnits} <= 9223372036854775807`
     ),
     lockedCheck: check(
-      'ck_account_balances_locked_nonnegative',
-      sql`${table.lockedBaseUnits} <> '' AND ltrim(${table.lockedBaseUnits}, '0123456789') = '' AND (${table.lockedBaseUnits} = '0' OR ltrim(${table.lockedBaseUnits}, '0') = ${table.lockedBaseUnits})`
+      'ck_account_balances_locked_range',
+      sql`${table.lockedBaseUnits} >= 0 AND ${table.lockedBaseUnits} <= 9223372036854775807`
     ),
     versionCheck: check('ck_account_balances_version', sql`${table.version} > 0`),
   })

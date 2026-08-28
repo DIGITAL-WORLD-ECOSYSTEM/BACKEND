@@ -77,6 +77,8 @@ export const citizens = sqliteTable(
       .$onUpdateFn(() => new Date()),
   },
   (table) => ({
+    usernameUnique: uniqueIndex('uq_citizens_username').on(table.username),
+
     civilStatusCheck: check(
       'ck_citizens_civil_status',
       sql`${table.civilStatus} IN ('pending', 'verified', 'suspended', 'revoked')`

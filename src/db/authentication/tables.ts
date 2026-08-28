@@ -3,6 +3,7 @@ import {
   text,
   integer,
   index,
+  uniqueIndex,
   check,
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
@@ -347,6 +348,7 @@ export const authTransactions = sqliteTable(
     lastAuthenticatedAt: integer('last_authenticated_at', { mode: 'timestamp' }),
     assuranceMethod: text('assurance_method'),
     riskLevel: text('risk_level', { enum: ['low', 'medium', 'high', 'critical'] }).notNull().default('low'),
+    version: integer('version').notNull().default(1),
   },
   (table) => ({
     userIdIdx: index('idx_auth_transactions_user').on(table.userId),
@@ -426,6 +428,6 @@ export const oauthIdentities = sqliteTable(
       .$onUpdateFn(() => new Date()),
   },
   (table) => ({
-    providerSubjectUnique: index('idx_oauth_identities_provider_subject').on(table.provider, table.subjectId),
+    providerSubjectUnique: uniqueIndex('uq_oauth_identities_provider_subject').on(table.provider, table.subjectId),
   })
 );
