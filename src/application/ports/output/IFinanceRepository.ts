@@ -32,18 +32,15 @@ export interface FinancialTransactionRecord {
 
 export interface IFinanceRepository {
   getTreasuryAccount(): Promise<Result<FinancialAccountRecord>>;
+  getOrCreateUserAccount(userId: number): Promise<Result<FinancialAccountRecord>>;
+  getOrCreateOperatingAccount(): Promise<Result<FinancialAccountRecord>>;
   getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>>;
-  createTransaction(data: {
-    userId?: number | null;
-    type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
-    category?: string;
-    description: string;
-    amountBaseUnits: string;
-    assetId: number;
-  }): Promise<Result<FinancialTransactionRecord>>;
+
   listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
 
-  claimIdempotency(idempotencyKey: string): Promise<boolean>;
+  getIdempotencyRecord(key: string, scope: string): Promise<{ status: string; requestHash: string; transactionId?: number } | null>;
+  claimIdempotency(idempotencyKey: string, userId: number | null | undefined, scope: string, requestHash: string): Promise<boolean>;
+  completeIdempotency(key: string, scope: string, transactionId: number): Promise<void>;
   insertTransaction(data: {
     userId?: number | null;
     type: string;
@@ -58,5 +55,6 @@ export interface IFinanceRepository {
     amount: bigint,
     type: 'debit' | 'credit'
   ): Promise<boolean>;
+  updateTransactionStatus(transactionId: number, status: string): Promise<void>;
   persistOutboxEvent(eventType: string, payload: any): Promise<void>;
 }

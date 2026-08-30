@@ -190,9 +190,9 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
 
     it('should record a treasury financial transaction', async () => {
       const mockFinanceRepo = {
-        createTransaction: vi.fn().mockResolvedValue(
-          Result.ok({ id: 50, userId: null, type: 'deposit', category: 'operational', description: 'Depósito Inicial', status: 'completed', createdAt: new Date() })
-        ),
+        getTreasuryAccount: vi.fn().mockResolvedValue(Result.ok({ id: 1 })),
+        getOrCreateUserAccount: vi.fn().mockResolvedValue(Result.ok({ id: 2 })),
+        getOrCreateOperatingAccount: vi.fn().mockResolvedValue(Result.ok({ id: 3 })),
       };
       const mockUow = {
         execute: vi.fn().mockImplementation(async (cb) =>
@@ -203,14 +203,18 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
       };
 
       const mockLedgerService = {
-        recordTransaction: vi.fn().mockResolvedValue(Result.ok()),
+        recordTransaction: vi.fn().mockResolvedValue(Result.ok({ transactionId: 10, isReplayed: false })),
       };
 
       const useCase = new RecordTreasuryTransactionUseCase(mockUow as any, mockLedgerService as any);
       const result = await useCase.execute({
         description: 'Depósito Inicial',
         amountBaseUnits: '50000',
+        direction: 'INBOUND',
         type: 'deposit',
+        assetId: 1,
+        idempotencyKey: 'test-key-123',
+        requestHash: 'hash-123'
       });
 
       expect(result.isSuccess).toBe(true);

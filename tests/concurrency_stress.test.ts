@@ -14,7 +14,7 @@ describe('Concurrency & Double-Spend Forensic Stress Suite', () => {
         select: () => ({
           from: () => ({
             where: () => ({
-              limit: async () => [{ id: 1, availableBaseUnits: currentBalance, version: currentVersion }],
+              limit: async () => [{ id: 1, availableBaseUnits: currentBalance, version: currentVersion, accountClass: 'asset' }],
             }),
           }),
         }),

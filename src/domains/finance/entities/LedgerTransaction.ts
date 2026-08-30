@@ -36,6 +36,7 @@ export interface LedgerTransactionProps {
   entries: LedgerEntry[];
   userId?: number | null;
   transactionType?: string;
+  category?: string;
   status?: 'pending' | 'committed' | 'failed';
   createdAt?: Date;
 }
@@ -47,6 +48,7 @@ export class LedgerTransaction {
   public readonly entries: LedgerEntry[];
   public readonly userId: number | null;
   public readonly transactionType: string;
+  public readonly category?: string;
   public readonly status: 'pending' | 'committed' | 'failed';
   public readonly createdAt: Date;
 
@@ -57,10 +59,51 @@ export class LedgerTransaction {
     this.entries = props.entries;
     this.userId = props.userId ?? null;
     this.transactionType = props.transactionType ?? 'adjustment';
+    this.category = props.category;
     this.status = props.status || 'pending';
     this.createdAt = props.createdAt || new Date();
 
     this.validateDoubleEntry();
+  }
+
+  /**
+   * Fábrica de Domínio Canônica para Movimentações de Tesouraria
+   */
+  static createTreasuryMovement(props: {
+    direction: 'INBOUND' | 'OUTBOUND';
+    treasuryAccountId: number;
+    userAccountId: number;
+    amount: Money;
+    category?: string;
+    type: string;
+    description: string;
+    idempotencyKey: string;
+    userId?: number | null;
+  }): LedgerTransaction {
+    const entries: LedgerEntry[] = [];
+    const treasuryIdStr = String(props.treasuryAccountId);
+    const userIdStr = String(props.userAccountId);
+
+    if (props.direction === 'INBOUND') {
+      // INBOUND: User Account (Liability) -> CREDIT (aumenta saldo do usuário)
+      // Tesouraria (Asset) -> DEBIT (aumenta saldo da tesouraria)
+      entries.push(new LedgerEntry({ accountId: userIdStr, amount: props.amount, type: 'credit', description: props.description }));
+      entries.push(new LedgerEntry({ accountId: treasuryIdStr, amount: props.amount, type: 'debit', description: 'Treasury receipt' }));
+    } else {
+      // OUTBOUND: User Account (Liability) -> DEBIT (reduz saldo do usuário)
+      // Tesouraria (Asset) -> CREDIT (reduz saldo da tesouraria)
+      entries.push(new LedgerEntry({ accountId: userIdStr, amount: props.amount, type: 'debit', description: props.description }));
+      entries.push(new LedgerEntry({ accountId: treasuryIdStr, amount: props.amount, type: 'credit', description: 'Treasury release' }));
+    }
+
+    return new LedgerTransaction({
+      idempotencyKey: props.idempotencyKey,
+      description: props.description,
+      userId: props.userId ?? null,
+      transactionType: props.type,
+      category: props.category,
+      entries,
+    });
   }
 
   /**

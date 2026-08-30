@@ -10,8 +10,8 @@ describe('LedgerTransaction (Double-Entry Balance Verification)', () => {
         idempotencyKey: crypto.randomUUID(),
         description: 'Test Imbalance',
         entries: [
-          new LedgerEntry({ accountId: 'acc1', amount: new Money(100n, 'asset-123'), type: 'debit' }),
-          new LedgerEntry({ accountId: 'acc2', amount: new Money(90n, 'asset-123'), type: 'credit' })
+          new LedgerEntry({ accountId: '1', amount: new Money(100n, '123'), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: new Money(90n, '123'), type: 'credit' })
         ]
       });
     }).toThrowError(LedgerImbalanceError);
@@ -22,8 +22,8 @@ describe('LedgerTransaction (Double-Entry Balance Verification)', () => {
       idempotencyKey: crypto.randomUUID(),
       description: 'Test Balance',
       entries: [
-        new LedgerEntry({ accountId: 'acc1', amount: new Money(100n, 'asset-123'), type: 'debit' }),
-        new LedgerEntry({ accountId: 'acc2', amount: new Money(100n, 'asset-123'), type: 'credit' })
+        new LedgerEntry({ accountId: '1', amount: new Money(100n, '123'), type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: new Money(100n, '123'), type: 'credit' })
       ]
     });
     expect(tx).toBeInstanceOf(LedgerTransaction);

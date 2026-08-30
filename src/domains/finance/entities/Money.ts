@@ -6,8 +6,8 @@ export class Money {
     if (typeof amount !== 'bigint') {
       throw new Error('Money amount must be a bigint');
     }
-    if (!assetId || assetId.trim().length === 0) {
-      throw new Error('Money requires a valid assetId');
+    if (!assetId || !/^[1-9]\d*$/.test(String(assetId))) {
+      throw new Error('Money requires a valid physical assetId (positive integer string)');
     }
   }
 

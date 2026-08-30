@@ -58,7 +58,7 @@ export const idempotencyKeys = sqliteTable(
     userId: integer('user_id').references(() => users.id, { onDelete: 'restrict' }),
     scope: text('scope').notNull().default('default'),
     key: text('key').notNull(),
-    requestHash: text('request_hash').notNull().default('hash'),
+    requestHash: text('request_hash').notNull(),
     financialTransactionId: integer('financial_transaction_id').references(
       () => financialTransactions.id,
       { onDelete: 'restrict' }
@@ -74,12 +74,7 @@ export const idempotencyKeys = sqliteTable(
     expiresAt: integer('expires_at', { mode: 'timestamp' }),
   },
   (table) => ({
-    userScopeKeyUnq: uniqueIndex('uq_idempotency_user_scope_key')
-      .on(table.userId, table.scope, table.key)
-      .where(sql`${table.userId} IS NOT NULL`),
-    anonScopeKeyUnq: uniqueIndex('uq_idempotency_anon_scope_key')
-      .on(table.scope, table.key)
-      .where(sql`${table.userId} IS NULL`),
+    scopeKeyUnq: uniqueIndex('uq_idempotency_scope_key').on(table.scope, table.key),
     statusIdx: index('idx_idempotency_keys_status').on(table.status),
   })
 );

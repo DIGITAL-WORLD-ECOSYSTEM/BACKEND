@@ -73,32 +73,32 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
     if (typeof this.db?.transaction === 'function') {
       let result: Result<T> | null = null;
-      let workStarted = false;
       try {
         await this.db.transaction(async (tx: any) => {
-          workStarted = true;
           const factory = new DrizzleRepositoryFactory(tx);
           result = await work(factory);
+          console.log('[DrizzleUnitOfWork] result after work():', result, 'isFailure:', result?.isFailure);
 
-          if (result && result.isFailure && typeof tx.rollback === 'function') {
-            tx.rollback();
+          if (result && result.isFailure) {
+            if (typeof tx.rollback === 'function') {
+              tx.rollback();
+            } else {
+              throw new Error('ROLLBACK_TRIGGERED_BY_RESULT_FAIL');
+            }
           }
         });
         if (result) return result;
       } catch (err: any) {
-        const errorMsg = err?.message || err?.toString() || '';
-        
-        // FAIL-CLOSED: No fallback to non-transactional execution for SECURITY_CRITICAL operations.
-        const failureResult = result as Result<T> | null;
-        if (failureResult && failureResult.isFailure) {
-          return failureResult;
+        if (result) {
+          return result;
         }
-        return Result.fail(errorMsg || 'Transaction aborted or driver error');
+        return Result.fail("CATCH_ERR_VAL:" + String(err?.message || err) + " TYPE:" + typeof err);
       }
     }
 
-    const factory = new DrizzleRepositoryFactory(this.db);
-    return await work(factory);
+    // BLOCKER FIX: If there is no transaction support, we must FAIL immediately,
+    // not fallback to a non-transactional execution.
+    throw new Error('Driver de banco de dados atual não suporta transações atômicas (db.transaction is not a function). Operação abortada por segurança.');
   }
 }
 
