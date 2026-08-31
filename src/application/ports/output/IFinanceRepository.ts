@@ -37,6 +37,7 @@ export interface IFinanceRepository {
   getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>>;
 
   listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
+  getTransactionEntries(transactionId: number): Promise<Result<Array<{ accountId: number; assetId: number; direction: 'debit' | 'credit'; amountBaseUnits: string }>>>;
 
   getIdempotencyRecord(key: string, scope: string): Promise<{ status: string; requestHash: string; transactionId?: number } | null>;
   claimIdempotency(idempotencyKey: string, userId: number | null | undefined, scope: string, requestHash: string): Promise<boolean>;

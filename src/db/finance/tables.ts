@@ -167,6 +167,9 @@ export const financialTransactions = sqliteTable(
         'yield',
         'conversion',
         'adjustment',
+        'reversal',
+        'inbound',
+        'outbound',
       ],
     }).notNull(),
     category: text('category', {
@@ -224,7 +227,7 @@ export const financialTransactions = sqliteTable(
     correlationIdx: index('idx_financial_transactions_correlation').on(table.correlationId),
     typeCheck: check(
       'ck_financial_tx_type',
-      sql`${table.type} IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment')`
+      sql`${table.type} IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment', 'reversal', 'inbound', 'outbound')`
     ),
     categoryCheck: check(
       'ck_financial_tx_category',
@@ -276,7 +279,7 @@ export const financialLedgerEntries = sqliteTable(
     direction: text('direction', {
       enum: ['debit', 'credit'],
     }).notNull(),
-    amountBaseUnits: integer('amount_base_units', { mode: 'number' }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -292,7 +295,7 @@ export const financialLedgerEntries = sqliteTable(
     ),
     amountCheck: check(
       'ck_financial_ledger_entries_amount_range',
-      sql`${table.amountBaseUnits} > 0 AND ${table.amountBaseUnits} <= 9007199254740991`
+      sql`length(${table.amountBaseUnits}) > 0`
     ),
   })
 );
@@ -315,8 +318,8 @@ export const accountBalances = sqliteTable(
       .references(() => financialAssets.id, {
         onDelete: 'restrict',
       }),
-    availableBaseUnits: integer('available_base_units', { mode: 'number' }).notNull().default(0),
-    lockedBaseUnits: integer('locked_base_units', { mode: 'number' }).notNull().default(0),
+    availableBaseUnits: text('available_base_units').notNull().default('0'),
+    lockedBaseUnits: text('locked_base_units').notNull().default('0'),
     version: integer('version').notNull().default(1),
     updatedAt: integer('updated_at', { mode: 'timestamp' })
       .notNull()
@@ -332,11 +335,11 @@ export const accountBalances = sqliteTable(
     assetIdx: index('idx_account_balances_asset').on(table.assetId),
     availableCheck: check(
       'ck_account_balances_available_range',
-      sql`${table.availableBaseUnits} >= 0 AND ${table.availableBaseUnits} <= 9007199254740991`
+      sql`length(${table.availableBaseUnits}) > 0`
     ),
     lockedCheck: check(
       'ck_account_balances_locked_range',
-      sql`${table.lockedBaseUnits} >= 0 AND ${table.lockedBaseUnits} <= 9007199254740991`
+      sql`length(${table.lockedBaseUnits}) > 0`
     ),
     versionCheck: check('ck_account_balances_version', sql`${table.version} > 0`),
   })

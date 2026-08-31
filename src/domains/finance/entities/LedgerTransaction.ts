@@ -37,7 +37,7 @@ export interface LedgerTransactionProps {
   userId?: number | null;
   transactionType?: string;
   category?: string;
-  status?: 'pending' | 'committed' | 'failed';
+  status?: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'reversed';
   createdAt?: Date;
 }
 
@@ -49,7 +49,7 @@ export class LedgerTransaction {
   public readonly userId: number | null;
   public readonly transactionType: string;
   public readonly category?: string;
-  public readonly status: 'pending' | 'committed' | 'failed';
+  public readonly status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'reversed';
   public readonly createdAt: Date;
 
   constructor(props: LedgerTransactionProps) {

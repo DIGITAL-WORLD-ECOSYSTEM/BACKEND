@@ -77,7 +77,6 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
         await this.db.transaction(async (tx: any) => {
           const factory = new DrizzleRepositoryFactory(tx);
           result = await work(factory);
-          console.log('[DrizzleUnitOfWork] result after work():', result, 'isFailure:', result?.isFailure);
 
           if (result && result.isFailure) {
             if (typeof tx.rollback === 'function') {
@@ -88,11 +87,18 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
           }
         });
         if (result) return result;
+        return Result.fail('Transação concluída sem resultado retornado pelo callback.');
       } catch (err: any) {
-        if (result) {
+        // Se o erro foi gerado intencionalmente por result.isFailure, devolve o Result.fail original
+        if (result && result.isFailure) {
           return result;
         }
-        return Result.fail("CATCH_ERR_VAL:" + String(err?.message || err) + " TYPE:" + typeof err);
+        const errorMessage = err?.message || String(err);
+        if (errorMessage === 'ROLLBACK_TRIGGERED_BY_RESULT_FAIL' && result && result.isFailure) {
+          return result;
+        }
+        // Se a callback retornou Result.ok(), mas o COMMIT/banco falhou, DEVE RETORNAR FALHA! (DOD-05)
+        return Result.fail(`Falha na transação do banco de dados (Commit/Execution): ${errorMessage}`);
       }
     }
 

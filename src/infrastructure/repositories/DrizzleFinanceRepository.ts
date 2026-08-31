@@ -15,9 +15,28 @@ import {
 } from '../../application/ports/output/IFinanceRepository';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
 
-export type { FinancialAccountRecord, AccountBalanceRecord, FinancialTransactionRecord };
+export function isUniqueConstraintViolation(err: any): boolean {
+  if (!err) return false;
 
-const MAX_BINDING_SAFE_BASE_UNITS = 9007199254740991; // Number.MAX_SAFE_INTEGER (2^53 - 1)
+  const code = String(err.code || err.extendedCode || err.rawCode || err.cause?.code || '');
+  if (
+    code === 'SQLITE_CONSTRAINT' ||
+    code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+    code === 'SQLITE_CONSTRAINT_PRIMARYKEY' ||
+    code === '1555' ||
+    code === '2067'
+  ) {
+    return true;
+  }
+
+  const msg = `${err.message || ''} ${err.cause?.message || ''} ${err.stack || ''}`.toLowerCase();
+  return (
+    msg.includes('unique constraint failed') ||
+    msg.includes('d1_error: unique constraint') ||
+    msg.includes('sqlite_constraint') ||
+    msg.includes('unique constraint')
+  );
+}
 
 export class DrizzleFinanceRepository implements IFinanceRepository {
   constructor(private readonly db: any) {}
@@ -40,27 +59,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         .limit(1);
 
       if (!row) {
-        const [inserted] = await this.executor
-          .insert(financialAccounts)
-          .values({
-            userId: null,
-            accountType: 'treasury',
-            accountClass: 'asset',
-            name: 'ASPPIBRA DAO Main Treasury',
-            status: 'active',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .returning();
-
-        return Result.ok({
-          id: inserted.id,
-          userId: inserted.userId,
-          accountType: inserted.accountType as any,
-          status: inserted.status as any,
-          name: inserted.name,
-          version: inserted.version,
-        });
+        return Result.fail('Treasury account not found. Must be provisioned via bootstrap seed.');
       }
 
       return Result.ok({
@@ -255,8 +254,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         await exec.insert(accountBalances).values({
           accountId,
           assetId,
-          availableBaseUnits: 0,
-          lockedBaseUnits: 0,
+          availableBaseUnits: '0',
+          lockedBaseUnits: '0',
           version: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -292,7 +291,6 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       })
       .returning({ id: financialTransactions.id });
 
-    console.log('[insertTransaction] returned id:', tx?.id);
     if (!tx) throw new Error('Falha ao inserir registro de transação financeira.');
     return tx.id;
   }
@@ -317,6 +315,24 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     const affected = (res?.meta?.changes ?? res?.rowsAffected ?? 0);
     if (affected === 0) {
       throw new Error(`State Machine Error: Transição de status inválida para a transação ${transactionId}. O status destino (${status}) requer que a transação esteja em 'processing' (se destino for completed) ou 'pending/processing'.`);
+    }
+  }
+
+  async getTransactionEntries(transactionId: number): Promise<Result<Array<{ accountId: number; assetId: number; direction: 'debit' | 'credit'; amountBaseUnits: string }>>> {
+    try {
+      const rows = await this.executor
+        .select({
+          accountId: financialLedgerEntries.accountId,
+          assetId: financialLedgerEntries.assetId,
+          direction: financialLedgerEntries.direction,
+          amountBaseUnits: financialLedgerEntries.amountBaseUnits,
+        })
+        .from(financialLedgerEntries)
+        .where(eq(financialLedgerEntries.transactionId, transactionId));
+
+      return Result.ok(rows as any);
+    } catch (err: any) {
+      return Result.fail(err.message);
     }
   }
 
@@ -395,10 +411,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       });
       return true;
     } catch (err: any) {
-      const msg = (err?.message || '') + ' ' + (err?.cause?.message || '');
-      const lowerMsg = msg.toLowerCase();
-      // Strict check for D1/SQLite UNIQUE constraint violation
-      if (lowerMsg.includes('unique constraint failed') || lowerMsg.includes('d1_error: unique constraint') || lowerMsg.includes('insert into "idempotency_keys"')) {
+      if (isUniqueConstraintViolation(err)) {
         return false;
       }
       throw err;
@@ -406,7 +419,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   }
 
   async completeIdempotency(key: string, scope: string, transactionId: number): Promise<void> {
-    await this.executor
+    const res = await this.executor
       .update(idempotencyKeys)
       .set({
         status: 'completed',
@@ -418,6 +431,11 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           eq(idempotencyKeys.scope, scope)
         )
       );
+
+    const affected = (res?.meta?.changes ?? res?.rowsAffected ?? 0);
+    if (affected === 0) {
+      throw new Error(`Falha ao concluir Idempotency Key (${key}): Registro de idempotência não encontrado ou em estado inconsistente.`);
+    }
   }
 
   async insertLedgerEntries(entries: LedgerEntry[], transactionId: number): Promise<void> {
@@ -425,11 +443,9 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       const rawVal = (entry.amount as any)?.amount ?? entry.amount;
       const amountBigInt = typeof rawVal === 'bigint' ? rawVal : BigInt(rawVal);
 
-      if (amountBigInt <= 0n || amountBigInt > BigInt(MAX_BINDING_SAFE_BASE_UNITS)) {
+      if (amountBigInt <= 0n) {
         throw new Error(`Invalid ledger entry amount: ${amountBigInt}`);
       }
-
-      const amountNum = Number(amountBigInt);
 
       const accountIdNum = Number(entry.accountId);
       const assetIdNum = Number(entry.amount.assetId);
@@ -446,18 +462,13 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         accountId: accountIdNum,
         assetId: assetIdNum,
         direction: entry.type,
-        amountBaseUnits: amountNum,
+        amountBaseUnits: amountBigInt.toString(),
         createdAt: new Date(),
       };
     });
 
     if (payload.length > 0) {
-      try {
-        await this.executor.insert(financialLedgerEntries).values(payload);
-      } catch (err: any) {
-        console.log('[insertLedgerEntries ERROR]', { message: err.message, cause: err.cause?.message, raw: err });
-        throw err;
-      }
+      await this.executor.insert(financialLedgerEntries).values(payload);
     }
   }
 
@@ -470,11 +481,9 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   ): Promise<boolean> {
     const exec = executorOverride || this.executor;
 
-    if (typeof amount !== 'bigint' || amount <= 0n || amount > BigInt(MAX_BINDING_SAFE_BASE_UNITS)) {
+    if (typeof amount !== 'bigint' || amount <= 0n) {
       throw new Error(`Invalid base units amount for OCC update: ${amount}`);
     }
-
-    const amountNum = Number(amount);
 
     const accIdNum = Number(accountId);
     const assetIdNum = Number(assetId);
@@ -501,11 +510,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
 
     const accClass = accRow.accountClass;
-    if (accClass !== 'asset' && accClass !== 'liability') {
-      throw new Error(`Account class '${accClass}' is not supported in Treasury Ledger OCC. Only 'asset' or 'liability' allowed.`);
-    }
-
-    const isAssetClass = accClass === 'asset';
+    const isDebitNormal = accClass === 'asset' || accClass === 'expense';
 
     // 3. Selecionar o saldo com OCC version
     const [balance] = await exec
@@ -528,46 +533,31 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
 
     const currentVersion = balance.version;
+    const isIncrease = isDebitNormal ? type === 'debit' : type === 'credit';
+    const currentAvailable = BigInt(balance.availableBaseUnits || '0');
+    const newAvailable = isIncrease
+      ? currentAvailable + amount
+      : currentAvailable - amount;
 
-    // Regra contábil de movimentação de saldo disponível materializado:
-    // - Para Passivo (liability, ex: user_available): Crédito aumenta saldo disponível, Débito reduz.
-    // - Para Ativo (asset, ex: treasury, operating): Débito aumenta saldo do ativo, Crédito reduz.
-    const isIncrease = isAssetClass ? type === 'debit' : type === 'credit';
-
-    let res: any;
-    if (isIncrease) {
-      // Crédito em Passivo OU Débito em Ativo -> Incrementa saldo disponível
-      res = await exec
-        .update(accountBalances)
-        .set({
-          availableBaseUnits: sql`${accountBalances.availableBaseUnits} + ${amountNum}`,
-          version: currentVersion + 1,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(accountBalances.id, balance.id),
-            eq(accountBalances.version, currentVersion),
-            sql`${accountBalances.availableBaseUnits} + ${amountNum} <= 9007199254740991`
-          )
-        );
-    } else {
-      // Débito em Passivo OU Crédito em Ativo -> Decrementa saldo disponível
-      res = await exec
-        .update(accountBalances)
-        .set({
-          availableBaseUnits: sql`${accountBalances.availableBaseUnits} - ${amountNum}`,
-          version: currentVersion + 1,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(accountBalances.id, balance.id),
-            eq(accountBalances.version, currentVersion),
-            sql`${accountBalances.availableBaseUnits} >= ${amountNum}`
-          )
-        );
+    if (newAvailable < 0n) {
+      return false; // Saldo insuficiente
     }
+
+    const newAvailableStr = newAvailable.toString();
+
+    const res = await exec
+      .update(accountBalances)
+      .set({
+        availableBaseUnits: newAvailableStr,
+        version: currentVersion + 1,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(accountBalances.id, balance.id),
+          eq(accountBalances.version, currentVersion)
+        )
+      );
 
     const affected = (res?.meta?.changes ?? res?.rowsAffected ?? 0);
     return affected > 0;
@@ -585,7 +575,6 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       status: 'pending',
       leaseGeneration: 0,
       createdAt: new Date(),
-      updatedAt: new Date(),
     });
   }
 }

@@ -1445,7 +1445,7 @@ CREATE TABLE `financial_transactions` (
 	`updated_at` integer NOT NULL,
 	`completed_at` integer,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_financial_tx_type" CHECK("financial_transactions"."type" IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment')),
+	CONSTRAINT "ck_financial_tx_type" CHECK("financial_transactions"."type" IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment', 'reversal', 'inbound', 'outbound')),
 	CONSTRAINT "ck_financial_tx_category" CHECK("financial_transactions"."category" IN ('membership', 'rwa_yield', 'grant', 'operational', 'payment', 'trading', 'withdrawal', 'deposit', 'fee', 'other')),
 	CONSTRAINT "ck_financial_tx_status" CHECK("financial_transactions"."status" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'refunded')),
 	CONSTRAINT "ck_financial_tx_source_type" CHECK("financial_transactions"."source_type" IS NULL OR "financial_transactions"."source_type" IN ('contribution', 'grant', 'membership', 'payroll', 'withdrawal', 'payment', 'conversion', 'system', 'other')),

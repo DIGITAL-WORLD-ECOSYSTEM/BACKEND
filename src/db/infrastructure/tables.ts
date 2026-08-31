@@ -97,3 +97,22 @@ export const eventConsumerReceipts = sqliteTable(
     eventIdx: index('idx_receipts_event').on(table.eventId),
   })
 );
+
+// ----------------------------------------------------------------------
+// Entity: eventInbox (DOD-14 Idempotência de Webhooks Externos)
+// ----------------------------------------------------------------------
+export const eventInbox = sqliteTable(
+  'event_inbox',
+  {
+    id: text('id').primaryKey(),
+    providerId: integer('provider_id').notNull(),
+    externalEventId: text('external_event_id').notNull(),
+    payload: text('payload').notNull(),
+    processedAt: integer('processed_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
+  },
+  (table) => ({
+    providerEventUnq: uniqueIndex('uq_event_inbox_provider_event').on(table.providerId, table.externalEventId),
+  })
+);

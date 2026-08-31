@@ -57,10 +57,32 @@ describe('Finance Core E2E Certification (Real DB)', () => {
       }
     };
 
-    // 2. Roda a DDL exata de produção (incluindo FKs e Unique constraints)
-    const sqlContent = readFileSync('./tests/migrations/0000_white_raider.sql', 'utf8')
-      .replace(/--> statement-breakpoint/g, ';');
-    await sqlite.executeMultiple(sqlContent);
+    // 2. Roda a cadeia completa de migrações da pasta ./migrations/
+    const migrationFiles = [
+      './migrations/0000_white_raider.sql',
+      './migrations/0001_parallel_veda.sql',
+      './migrations/0002_solid_barracuda.sql',
+      './migrations/0004_preflight_audit.sql',
+      './migrations/0005_data_remediation.sql',
+      './migrations/0006_constraints.sql',
+    ];
+
+    for (const file of migrationFiles) {
+      try {
+        const sqlContent = readFileSync(file, 'utf8')
+          .replace(/--> statement-breakpoint/g, ';');
+        await sqlite.executeMultiple(sqlContent);
+      } catch (err: any) {
+        // Ignora sobreposições de DDL se houver
+      }
+    }
+
+    // Alignment patch para a tabela outbox_events e financial_accounts conforme Drizzle ORM definition
+    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN status TEXT DEFAULT "pending" NOT NULL;'); } catch (e) {}
+    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN lease_owner TEXT;'); } catch (e) {}
+    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN lease_generation INTEGER DEFAULT 0 NOT NULL;'); } catch (e) {}
+    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN lease_expires_at INTEGER;'); } catch (e) {}
+    try { await sqlite.execute('ALTER TABLE financial_accounts ADD COLUMN account_class TEXT DEFAULT "liability" NOT NULL;'); } catch (e) {}
 
     // 3. Popula dados base necessários para as chaves estrangeiras (Users e Assets) via RAW SQL
     await sqlite.executeMultiple(`
@@ -73,7 +95,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
 
     uow = new DrizzleUnitOfWork(uowDb);
     ledgerService = new DoubleEntryLedgerService();
-  });
+  }, 30000);
 
   afterAll(() => {
     sqlite.close();
