@@ -71,6 +71,9 @@ export const idempotencyKeys = sqliteTable(
     createdAt: integer('created_at', { mode: 'timestamp' })
       .default(sql`(unixepoch())`)
       .notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .default(sql`(unixepoch())`)
+      .notNull(),
     expiresAt: integer('expires_at', { mode: 'timestamp' }),
   },
   (table) => ({
@@ -99,20 +102,40 @@ export const eventConsumerReceipts = sqliteTable(
 );
 
 // ----------------------------------------------------------------------
-// Entity: eventInbox (DOD-14 Idempotência de Webhooks Externos)
+// Entity: eventInbox (DOD-14 & FIN-015/FIN-021 Idempotência de Webhooks com Lease Generation)
 // ----------------------------------------------------------------------
 export const eventInbox = sqliteTable(
   'event_inbox',
   {
     id: text('id').primaryKey(),
     providerId: integer('provider_id').notNull(),
+    eventType: text('event_type'),
     externalEventId: text('external_event_id').notNull(),
     payload: text('payload').notNull(),
-    processedAt: integer('processed_at', { mode: 'timestamp' })
-      .default(sql`(unixepoch())`)
-      .notNull(),
+    payloadHash: text('payload_hash').notNull(),
+    status: text('status', {
+      enum: ['pending', 'processing', 'processed', 'failed'],
+    })
+      .notNull()
+      .default('pending'),
+    leaseOwner: text('lease_owner'),
+    leaseGeneration: integer('lease_generation').notNull().default(0),
+    leaseExpiresAt: integer('lease_expires_at', { mode: 'timestamp' }),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    processingStartedAt: integer('processing_started_at', { mode: 'timestamp' }),
+    processedAt: integer('processed_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
   },
   (table) => ({
     providerEventUnq: uniqueIndex('uq_event_inbox_provider_event').on(table.providerId, table.externalEventId),
+    statusIdx: index('idx_event_inbox_status').on(table.status),
+    leaseIdx: index('idx_event_inbox_lease').on(table.leaseExpiresAt),
+    statusCheck: check(
+      'ck_event_inbox_status',
+      sql`${table.status} IN ('pending', 'processing', 'processed', 'failed')`
+    ),
   })
 );

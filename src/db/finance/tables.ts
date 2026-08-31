@@ -91,7 +91,20 @@ export const financialAccounts = sqliteTable(
       onDelete: 'restrict',
     }),
     accountType: text('account_type', {
-      enum: ['user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow'],
+      enum: [
+        'user_available',
+        'treasury',
+        'operating',
+        'reserve',
+        'fees',
+        'escrow',
+        'reward_expense',
+        'yield_expense',
+        'clearing',
+        'opening_balance_equity',
+        'payment_revenue',
+        'refund_expense',
+      ],
     }).notNull(),
     accountClass: text('account_class', {
       enum: ['asset', 'liability', 'equity', 'revenue', 'expense'],
@@ -118,7 +131,7 @@ export const financialAccounts = sqliteTable(
     statusIdx: index('idx_financial_accounts_status').on(table.status),
     accountTypeCheck: check(
       'ck_financial_accounts_type',
-      sql`${table.accountType} IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow')`
+      sql`${table.accountType} IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow', 'reward_expense', 'yield_expense', 'clearing', 'opening_balance_equity', 'payment_revenue', 'refund_expense')`
     ),
     accountClassCheck: check(
       'ck_financial_accounts_class',
@@ -136,6 +149,15 @@ export const financialAccounts = sqliteTable(
     activeTreasurySingletonUnq: uniqueIndex('uq_treasury_active_singleton')
       .on(table.accountType)
       .where(sql`${table.accountType} = 'treasury' AND ${table.status} = 'active'`),
+    activeOperatingSingletonUnq: uniqueIndex('uq_operating_active_singleton')
+      .on(table.accountType)
+      .where(sql`${table.accountType} = 'operating' AND ${table.status} = 'active'`),
+    activeFeesSingletonUnq: uniqueIndex('uq_fees_active_singleton')
+      .on(table.accountType)
+      .where(sql`${table.accountType} = 'fees' AND ${table.status} = 'active'`),
+    userAvailableSingletonUnq: uniqueIndex('uq_user_available_singleton')
+      .on(table.userId)
+      .where(sql`${table.accountType} = 'user_available'`),
     ownerRuleCheck: check(
       'ck_financial_accounts_owner_rule',
       sql`(${table.accountType} = 'user_available' AND ${table.userId} IS NOT NULL) OR (${table.accountType} != 'user_available' AND ${table.userId} IS NULL)`
@@ -155,6 +177,7 @@ export const financialTransactions = sqliteTable(
     userId: integer('user_id').references(() => users.id, {
       onDelete: 'restrict',
     }),
+    reversalOfTransactionId: integer('reversal_of_transaction_id'),
     type: text('type', {
       enum: [
         'deposit',
@@ -225,6 +248,9 @@ export const financialTransactions = sqliteTable(
     statusIdx: index('idx_financial_transactions_status').on(table.status),
     createdIdx: index('idx_financial_transactions_created').on(table.createdAt),
     correlationIdx: index('idx_financial_transactions_correlation').on(table.correlationId),
+    singleReversalUnq: uniqueIndex('uq_financial_tx_single_reversal')
+      .on(table.reversalOfTransactionId)
+      .where(sql`${table.reversalOfTransactionId} IS NOT NULL`),
     typeCheck: check(
       'ck_financial_tx_type',
       sql`${table.type} IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment', 'reversal', 'inbound', 'outbound')`
@@ -363,7 +389,7 @@ export const balanceHolds = sqliteTable(
       .references(() => financialAssets.id, {
         onDelete: 'restrict',
       }),
-    amountBaseUnits: integer('amount_base_units', { mode: 'number' }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
     reason: text('reason').notNull(),
     referenceType: text('reference_type'),
     referenceId: text('reference_id'),
@@ -394,7 +420,7 @@ export const balanceHolds = sqliteTable(
     ),
     amountCheck: check(
       'ck_balance_holds_amount_range',
-      sql`${table.amountBaseUnits} > 0 AND ${table.amountBaseUnits} <= 9007199254740991`
+      sql`${table.amountBaseUnits} != ''`
     ),
     releasedStateCheck: check(
       'ck_balance_holds_released_state',
@@ -597,7 +623,7 @@ export const fiatTransactions = sqliteTable(
     direction: text('direction', {
       enum: ['inbound', 'outbound'],
     }).notNull(),
-    amountBaseUnits: integer('amount_base_units', { mode: 'number' }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
     status: text('status', {
       enum: ['pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed'],
     })
@@ -628,7 +654,7 @@ export const fiatTransactions = sqliteTable(
     ),
     amountCheck: check(
       'ck_fiat_transactions_amount_range',
-      sql`${table.amountBaseUnits} > 0 AND ${table.amountBaseUnits} <= 9007199254740991`
+      sql`${table.amountBaseUnits} != ''`
     ),
     temporalOrderCheck: check(
       'ck_fiat_tx_dates',
@@ -660,11 +686,11 @@ export const cryptoTransactions = sqliteTable(
     direction: text('direction', {
       enum: ['inbound', 'outbound'],
     }).notNull(),
-    amountBaseUnits: integer('amount_base_units', { mode: 'number' }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
     feeAssetId: integer('fee_asset_id').references(() => financialAssets.id, {
       onDelete: 'restrict',
     }),
-    feeBaseUnits: integer('fee_base_units', { mode: 'number' }).notNull().default(0),
+    feeBaseUnits: text('fee_base_units').notNull().default('0'),
     status: text('status', {
       enum: ['pending', 'processing', 'confirmed', 'failed', 'reversed'],
     })
@@ -695,15 +721,15 @@ export const cryptoTransactions = sqliteTable(
     ),
     amountCheck: check(
       'ck_crypto_transactions_amount_range',
-      sql`${table.amountBaseUnits} > 0 AND ${table.amountBaseUnits} <= 9007199254740991`
+      sql`${table.amountBaseUnits} != ''`
     ),
     feeCheck: check(
       'ck_crypto_transactions_fee_range',
-      sql`${table.feeBaseUnits} >= 0 AND ${table.feeBaseUnits} <= 9007199254740991`
+      sql`${table.feeBaseUnits} != ''`
     ),
     feeAssetCheck: check(
       'ck_crypto_transactions_fee_asset',
-      sql`${table.feeBaseUnits} = 0 OR ${table.feeAssetId} IS NOT NULL`
+      sql`${table.feeBaseUnits} = '0' OR ${table.feeAssetId} IS NOT NULL`
     ),
     temporalOrderCheck: check(
       'ck_crypto_tx_dates',
@@ -778,13 +804,13 @@ export const assetConversions = sqliteTable(
       .references(() => financialAssets.id, {
         onDelete: 'restrict',
       }),
-    fromAmountBaseUnits: integer('from_amount_base_units', { mode: 'number' }).notNull(),
-    toAmountBaseUnits: integer('to_amount_base_units', { mode: 'number' }).notNull(),
+    fromAmountBaseUnits: text('from_amount_base_units').notNull(),
+    toAmountBaseUnits: text('to_amount_base_units').notNull(),
     rateNumerator: integer('rate_numerator', { mode: 'number' }).notNull(),
     rateDenominator: integer('rate_denominator', { mode: 'number' }).notNull(),
     rateSource: text('rate_source'),
     quotedAt: integer('quoted_at', { mode: 'timestamp' }),
-    feeAmountBaseUnits: integer('fee_amount_base_units', { mode: 'number' }).notNull().default(0),
+    feeAmountBaseUnits: text('fee_amount_base_units').notNull().default('0'),
     status: text('status', {
       enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
     })
@@ -805,15 +831,15 @@ export const assetConversions = sqliteTable(
     ),
     fromAmountCheck: check(
       'ck_asset_conversions_from_amount_range',
-      sql`${table.fromAmountBaseUnits} > 0 AND ${table.fromAmountBaseUnits} <= 9007199254740991`
+      sql`${table.fromAmountBaseUnits} != ''`
     ),
     toAmountCheck: check(
       'ck_asset_conversions_to_amount_range',
-      sql`${table.toAmountBaseUnits} > 0 AND ${table.toAmountBaseUnits} <= 9007199254740991`
+      sql`${table.toAmountBaseUnits} != ''`
     ),
     feeCheck: check(
       'ck_asset_conversions_fee_range',
-      sql`${table.feeAmountBaseUnits} >= 0 AND ${table.feeAmountBaseUnits} <= 9007199254740991`
+      sql`${table.feeAmountBaseUnits} != ''`
     ),
     assetsDifferentCheck: check(
       'ck_asset_conversions_different_assets',
@@ -848,7 +874,7 @@ export const financialFees = sqliteTable(
     feeType: text('fee_type', {
       enum: ['platform', 'withdrawal', 'payment', 'conversion', 'network', 'other'],
     }).notNull(),
-    amountBaseUnits: integer('amount_base_units', { mode: 'number' }).notNull(),
+    amountBaseUnits: text('amount_base_units').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -863,7 +889,7 @@ export const financialFees = sqliteTable(
     ),
     amountCheck: check(
       'ck_financial_fees_amount_range',
-      sql`${table.amountBaseUnits} > 0 AND ${table.amountBaseUnits} <= 9007199254740991`
+      sql`${table.amountBaseUnits} != ''`
     ),
   })
 );
@@ -935,9 +961,9 @@ export const reconciliationRecords = sqliteTable(
       .references(() => financialAssets.id, {
         onDelete: 'restrict',
       }),
-    expectedBalanceBaseUnits: integer('expected_balance_base_units', { mode: 'number' }).notNull(),
-    actualBalanceBaseUnits: integer('actual_balance_base_units', { mode: 'number' }).notNull(),
-    differenceBaseUnits: integer('difference_base_units', { mode: 'number' }).notNull(),
+    expectedBalanceBaseUnits: text('expected_balance_base_units').notNull(),
+    actualBalanceBaseUnits: text('actual_balance_base_units').notNull(),
+    differenceBaseUnits: text('difference_base_units').notNull(),
     status: text('status', {
       enum: ['matched', 'mismatch', 'resolved'],
     })
@@ -966,11 +992,11 @@ export const reconciliationRecords = sqliteTable(
     versionCheck: check('ck_reconciliation_records_version', sql`${table.version} > 0`),
     expectedCheck: check(
       'ck_reconciliation_expected_range',
-      sql`${table.expectedBalanceBaseUnits} >= 0 AND ${table.expectedBalanceBaseUnits} <= 9007199254740991`
+      sql`${table.expectedBalanceBaseUnits} != ''`
     ),
     actualCheck: check(
       'ck_reconciliation_actual_range',
-      sql`${table.actualBalanceBaseUnits} >= 0 AND ${table.actualBalanceBaseUnits} <= 9007199254740991`
+      sql`${table.actualBalanceBaseUnits} != ''`
     ),
   })
 );

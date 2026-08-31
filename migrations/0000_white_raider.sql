@@ -1365,7 +1365,7 @@ CREATE TABLE `financial_accounts` (
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_financial_accounts_type" CHECK("financial_accounts"."account_type" IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow')),
+	CONSTRAINT "ck_financial_accounts_type" CHECK("financial_accounts"."account_type" IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow', 'reward_expense', 'yield_expense', 'clearing', 'opening_balance_equity', 'payment_revenue', 'refund_expense')),
 	CONSTRAINT "ck_financial_accounts_status" CHECK("financial_accounts"."status" IN ('active', 'inactive', 'suspended')),
 	CONSTRAINT "ck_financial_accounts_owner_rule" CHECK(("financial_accounts"."account_type" = 'user_available' AND "financial_accounts"."user_id" IS NOT NULL) OR ("financial_accounts"."account_type" != 'user_available' AND "financial_accounts"."user_id" IS NULL)),
 	CONSTRAINT "ck_financial_accounts_version" CHECK("financial_accounts"."version" > 0)

@@ -59,7 +59,7 @@ CREATE TABLE `__new_auth_challenges` (
 	CONSTRAINT "auth_challenges_used_state_check" CHECK("__new_auth_challenges"."used_at" IS NULL OR "__new_auth_challenges"."used_at" >= "__new_auth_challenges"."created_at")
 );
 --> statement-breakpoint
-INSERT INTO `__new_auth_challenges`("id", "transaction_id", "user_id", "challenge_hash", "challenge_type", "context", "used_at", "created_at", "expires_at") SELECT "id", "transaction_id", "user_id", "challenge_hash", "challenge_type", "context", "used_at", "created_at", "expires_at" FROM `auth_challenges`;--> statement-breakpoint
+INSERT INTO `__new_auth_challenges`("id", "transaction_id", "user_id", "challenge_hash", "challenge_type", "context", "used_at", "created_at", "expires_at") SELECT "id", NULL AS "transaction_id", "user_id", "challenge_hash", "challenge_type", "context", "used_at", "created_at", "expires_at" FROM `auth_challenges`;--> statement-breakpoint
 DROP TABLE `auth_challenges`;--> statement-breakpoint
 ALTER TABLE `__new_auth_challenges` RENAME TO `auth_challenges`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint
