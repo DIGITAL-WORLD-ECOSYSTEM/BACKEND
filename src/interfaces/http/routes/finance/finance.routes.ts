@@ -2,9 +2,8 @@ import { Hono } from 'hono';
 import { Bindings, Variables } from '../../../../types/bindings';
 import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
 import { DrizzleFinanceRepository } from '../../../../infrastructure/repositories/DrizzleFinanceRepository';
-import { GetTreasuryBalanceUseCase } from '../../../../domains/finance/use-cases/GetTreasuryBalanceUseCase';
-import { RecordTreasuryTransactionUseCase } from '../../../../domains/finance/use-cases/RecordTreasuryTransactionUseCase';
-import { DoubleEntryLedgerService } from '../../../../domains/finance/services/DoubleEntryLedgerService';
+import { GetTreasuryBalanceUseCase } from '../../../../application/finance/use-cases/GetTreasuryBalanceUseCase';
+import { RecordTreasuryTransactionUseCase } from '../../../../application/finance/use-cases/RecordTreasuryTransactionUseCase';
 import { FinanceController } from '../../controllers/finance/FinanceController';
 import { sessionGuard, requireAal } from '../../middlewares/session_guard';
 import { verifyPermission } from '../../middlewares/rbac';
@@ -18,17 +17,11 @@ export const financeRouter = new Hono<AppType>();
 
 financeRouter.use('*', sessionGuard);
 
-/**
- * Helper: builds all finance dependencies.
- * DoubleEntryLedgerService is now injected into RecordTreasuryTransactionUseCase
- * to enforce the complete double-entry flow (OCC + Idempotency + Outbox).
- */
 function buildFinanceDeps(db: any) {
   const uow = new DrizzleUnitOfWork(db);
   const financeRepo = new DrizzleFinanceRepository(db);
-  const ledgerService = new DoubleEntryLedgerService();
   const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
-  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow, ledgerService);
+  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
   return { uow, financeRepo, getBalanceUseCase, recordTxUseCase };
 }
 

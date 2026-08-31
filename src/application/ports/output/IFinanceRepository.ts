@@ -4,7 +4,7 @@ import { LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction
 export interface FinancialAccountRecord {
   id: number;
   userId: number | null;
-  accountType: 'user_available' | 'treasury' | 'operating' | 'reserve' | 'fees' | 'escrow';
+  accountType: 'user_available' | 'treasury' | 'operating' | 'reserve' | 'fees' | 'escrow' | 'reward_expense' | 'yield_expense' | 'clearing' | 'opening_balance_equity' | 'payment_revenue' | 'refund_expense';
   status: 'active' | 'inactive' | 'suspended';
   name: string;
   version: number;
@@ -22,10 +22,11 @@ export interface AccountBalanceRecord {
 export interface FinancialTransactionRecord {
   id: number;
   userId: number | null;
-  type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
+  type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment' | 'reversal' | 'inbound' | 'outbound';
   category: string;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'reversed' | 'refunded';
   description: string;
+  version: number;
   createdAt: Date;
   completedAt?: Date | null;
 }
@@ -48,6 +49,8 @@ export interface IFinanceRepository {
     category: string;
     description: string;
     status: string;
+    reversalOfTransactionId?: number;
+    refundOfTransactionId?: number;
   }): Promise<number>;
   insertLedgerEntries(entries: LedgerEntry[], transactionId: number): Promise<void>;
   updateBalanceWithOCC(
@@ -56,6 +59,6 @@ export interface IFinanceRepository {
     amount: bigint,
     type: 'debit' | 'credit'
   ): Promise<boolean>;
-  updateTransactionStatus(transactionId: number, status: string): Promise<void>;
+  updateTransactionStatus(transactionId: number, status: string, expectedVersion?: number): Promise<void>;
   persistOutboxEvent(eventType: string, payload: any): Promise<void>;
 }

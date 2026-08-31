@@ -150,7 +150,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           version: inserted.version,
         });
       } catch (insertErr: any) {
-        if (!insertErr.message || (!insertErr.message.toLowerCase().includes('unique'))) {
+        if (!isUniqueConstraintViolation(insertErr)) {
           throw insertErr;
         }
         
@@ -276,6 +276,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     category: string;
     description: string;
     status: string;
+    reversalOfTransactionId?: number;
+    refundOfTransactionId?: number;
   }): Promise<number> {
     const [tx] = await this.executor
       .insert(financialTransactions)
@@ -285,6 +287,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         category: data.category,
         status: data.status,
         description: data.description,
+        reversalOfTransactionId: data.reversalOfTransactionId || null,
+        refundOfTransactionId: data.refundOfTransactionId || null,
         completedAt: data.status === 'completed' ? new Date() : null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -295,26 +299,36 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     return tx.id;
   }
 
-  async updateTransactionStatus(transactionId: number, status: string): Promise<void> {
+  async updateTransactionStatus(transactionId: number, status: string, expectedVersion?: number): Promise<void> {
+    let whereCondition;
+    if (status === 'completed') {
+      whereCondition = eq(financialTransactions.status, 'processing');
+    } else if (status === 'reversed') {
+      whereCondition = eq(financialTransactions.status, 'completed');
+    } else if (status === 'processing') {
+      whereCondition = eq(financialTransactions.status, 'pending');
+    } else {
+      whereCondition = sql`${financialTransactions.status} IN ('pending', 'processing')`;
+    }
+
+    const conditions = [eq(financialTransactions.id, transactionId), whereCondition];
+    if (expectedVersion !== undefined) {
+      conditions.push(eq(financialTransactions.version, expectedVersion));
+    }
+
     const res = await this.executor
       .update(financialTransactions)
       .set({
         status: status as any,
+        version: sql`${financialTransactions.version} + 1`,
         completedAt: status === 'completed' ? new Date() : undefined,
         updatedAt: new Date()
       })
-      .where(
-        and(
-          eq(financialTransactions.id, transactionId),
-          status === 'completed' 
-            ? eq(financialTransactions.status, 'processing') 
-            : sql`${financialTransactions.status} IN ('pending', 'processing')`
-        )
-      );
+      .where(and(...conditions));
 
     const affected = (res?.meta?.changes ?? res?.rowsAffected ?? 0);
     if (affected === 0) {
-      throw new Error(`State Machine Error: Transição de status inválida para a transação ${transactionId}. O status destino (${status}) requer que a transação esteja em 'processing' (se destino for completed) ou 'pending/processing'.`);
+      throw new Error(`State Machine Error: Transição de status inválida para a transação ${transactionId}. Não foi possível atualizar status para '${status}'.`);
     }
   }
 
@@ -350,6 +364,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         category: r.category,
         status: r.status,
         description: r.description,
+        version: r.version,
         createdAt: new Date(r.createdAt),
         completedAt: r.completedAt ? new Date(r.completedAt) : null,
       }));

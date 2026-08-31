@@ -90,12 +90,13 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
         return Result.fail('Transação concluída sem resultado retornado pelo callback.');
       } catch (err: any) {
         // Se o erro foi gerado intencionalmente por result.isFailure, devolve o Result.fail original
-        if (result && result.isFailure) {
-          return result;
+        const resVal = result as (Result<T> | null);
+        if (resVal && resVal.isFailure) {
+          return resVal;
         }
         const errorMessage = err?.message || String(err);
-        if (errorMessage === 'ROLLBACK_TRIGGERED_BY_RESULT_FAIL' && result && result.isFailure) {
-          return result;
+        if (errorMessage === 'ROLLBACK_TRIGGERED_BY_RESULT_FAIL' && resVal && resVal.isFailure) {
+          return resVal;
         }
         // Se a callback retornou Result.ok(), mas o COMMIT/banco falhou, DEVE RETORNAR FALHA! (DOD-05)
         return Result.fail(`Falha na transação do banco de dados (Commit/Execution): ${errorMessage}`);
