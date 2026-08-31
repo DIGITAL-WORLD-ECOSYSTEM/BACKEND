@@ -5,8 +5,8 @@ import { SubmitKycVerificationUseCase } from './civil-identity/use-cases/SubmitK
 import { CreateDidUseCase } from './ssi/use-cases/CreateDidUseCase';
 import { IssueVerifiableCredentialUseCase } from './ssi/use-cases/IssueVerifiableCredentialUseCase';
 import { RevokeCredentialUseCase } from './ssi/use-cases/RevokeCredentialUseCase';
-import { GetTreasuryBalanceUseCase } from './finance/use-cases/GetTreasuryBalanceUseCase';
-import { RecordTreasuryTransactionUseCase } from './finance/use-cases/RecordTreasuryTransactionUseCase';
+import { GetTreasuryBalanceUseCase } from '../application/finance/use-cases/GetTreasuryBalanceUseCase';
+import { RecordTreasuryTransactionUseCase } from '../application/finance/use-cases/RecordTreasuryTransactionUseCase';
 
 describe('Phase 3 Ecosystem Modules Suite', () => {
   describe('Civil Identity Use Cases', () => {
@@ -193,6 +193,13 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
         getTreasuryAccount: vi.fn().mockResolvedValue(Result.ok({ id: 1 })),
         getOrCreateUserAccount: vi.fn().mockResolvedValue(Result.ok({ id: 2 })),
         getOrCreateOperatingAccount: vi.fn().mockResolvedValue(Result.ok({ id: 3 })),
+        claimIdempotency: vi.fn().mockResolvedValue(true),
+        insertTransaction: vi.fn().mockResolvedValue(10),
+        insertLedgerEntries: vi.fn().mockResolvedValue(undefined),
+        updateBalanceWithOCC: vi.fn().mockResolvedValue(true),
+        updateTransactionStatus: vi.fn().mockResolvedValue(undefined),
+        persistOutboxEvent: vi.fn().mockResolvedValue(undefined),
+        completeIdempotency: vi.fn().mockResolvedValue(undefined),
       };
       const mockUow = {
         execute: vi.fn().mockImplementation(async (cb) =>
@@ -202,11 +209,7 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
         ),
       };
 
-      const mockLedgerService = {
-        recordTransaction: vi.fn().mockResolvedValue(Result.ok({ transactionId: 10, isReplayed: false })),
-      };
-
-      const useCase = new RecordTreasuryTransactionUseCase(mockUow as any, mockLedgerService as any);
+      const useCase = new RecordTreasuryTransactionUseCase(mockUow as any);
       const result = await useCase.execute({
         description: 'Depósito Inicial',
         amountBaseUnits: '50000',
@@ -218,7 +221,7 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
       });
 
       expect(result.isSuccess).toBe(true);
-      expect(mockLedgerService.recordTransaction).toHaveBeenCalled();
+      expect(mockFinanceRepo.insertTransaction).toHaveBeenCalled();
     });
   });
 });

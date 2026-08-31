@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { LedgerTransaction, LedgerEntry } from './LedgerTransaction';
-import { Money } from './Money';
+import { Money256 } from '../value-objects/Money256';
 import { LedgerImbalanceError } from '../errors/LedgerImbalanceError';
 
 describe('LedgerTransaction (Double-Entry Balance Verification)', () => {
@@ -10,8 +10,8 @@ describe('LedgerTransaction (Double-Entry Balance Verification)', () => {
         idempotencyKey: crypto.randomUUID(),
         description: 'Test Imbalance',
         entries: [
-          new LedgerEntry({ accountId: '1', amount: new Money(100n, '123'), type: 'debit' }),
-          new LedgerEntry({ accountId: '2', amount: new Money(90n, '123'), type: 'credit' })
+          new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(90n, 1), type: 'credit' })
         ]
       });
     }).toThrowError(LedgerImbalanceError);
@@ -22,8 +22,8 @@ describe('LedgerTransaction (Double-Entry Balance Verification)', () => {
       idempotencyKey: crypto.randomUUID(),
       description: 'Test Balance',
       entries: [
-        new LedgerEntry({ accountId: '1', amount: new Money(100n, '123'), type: 'debit' }),
-        new LedgerEntry({ accountId: '2', amount: new Money(100n, '123'), type: 'credit' })
+        new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' })
       ]
     });
     expect(tx).toBeInstanceOf(LedgerTransaction);

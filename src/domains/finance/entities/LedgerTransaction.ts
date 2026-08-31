@@ -1,10 +1,10 @@
-import { Money } from './Money';
+import { Money256 } from '../value-objects/Money256';
 import { LedgerImbalanceError } from '../errors/LedgerImbalanceError';
 
 export interface LedgerEntryProps {
   id?: string;
   accountId: string;
-  amount: Money;
+  amount: Money256;
   type: 'debit' | 'credit';
   description?: string;
 }
@@ -12,7 +12,7 @@ export interface LedgerEntryProps {
 export class LedgerEntry {
   public readonly id: string;
   public readonly accountId: string;
-  public readonly amount: Money;
+  public readonly amount: Money256;
   public readonly type: 'debit' | 'credit';
   public readonly description?: string;
 
@@ -37,7 +37,9 @@ export interface LedgerTransactionProps {
   userId?: number | null;
   transactionType?: string;
   category?: string;
-  status?: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'reversed';
+  status?: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'reversed' | 'refunded';
+  reversalOfTransactionId?: number;
+  refundOfTransactionId?: number;
   createdAt?: Date;
 }
 
@@ -49,7 +51,9 @@ export class LedgerTransaction {
   public readonly userId: number | null;
   public readonly transactionType: string;
   public readonly category?: string;
-  public readonly status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'reversed';
+  public readonly status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'reversed' | 'refunded';
+  public readonly reversalOfTransactionId?: number;
+  public readonly refundOfTransactionId?: number;
   public readonly createdAt: Date;
 
   constructor(props: LedgerTransactionProps) {
@@ -61,53 +65,15 @@ export class LedgerTransaction {
     this.transactionType = props.transactionType ?? 'adjustment';
     this.category = props.category;
     this.status = props.status || 'pending';
+    this.reversalOfTransactionId = props.reversalOfTransactionId;
+    this.refundOfTransactionId = props.refundOfTransactionId;
     this.createdAt = props.createdAt || new Date();
 
     this.validateDoubleEntry();
   }
 
   /**
-   * Fábrica de Domínio Canônica para Movimentações de Tesouraria
-   */
-  static createTreasuryMovement(props: {
-    direction: 'INBOUND' | 'OUTBOUND';
-    treasuryAccountId: number;
-    userAccountId: number;
-    amount: Money;
-    category?: string;
-    type: string;
-    description: string;
-    idempotencyKey: string;
-    userId?: number | null;
-  }): LedgerTransaction {
-    const entries: LedgerEntry[] = [];
-    const treasuryIdStr = String(props.treasuryAccountId);
-    const userIdStr = String(props.userAccountId);
-
-    if (props.direction === 'INBOUND') {
-      // INBOUND: User Account (Liability) -> CREDIT (aumenta saldo do usuário)
-      // Tesouraria (Asset) -> DEBIT (aumenta saldo da tesouraria)
-      entries.push(new LedgerEntry({ accountId: userIdStr, amount: props.amount, type: 'credit', description: props.description }));
-      entries.push(new LedgerEntry({ accountId: treasuryIdStr, amount: props.amount, type: 'debit', description: 'Treasury receipt' }));
-    } else {
-      // OUTBOUND: User Account (Liability) -> DEBIT (reduz saldo do usuário)
-      // Tesouraria (Asset) -> CREDIT (reduz saldo da tesouraria)
-      entries.push(new LedgerEntry({ accountId: userIdStr, amount: props.amount, type: 'debit', description: props.description }));
-      entries.push(new LedgerEntry({ accountId: treasuryIdStr, amount: props.amount, type: 'credit', description: 'Treasury release' }));
-    }
-
-    return new LedgerTransaction({
-      idempotencyKey: props.idempotencyKey,
-      description: props.description,
-      userId: props.userId ?? null,
-      transactionType: props.type,
-      category: props.category,
-      entries,
-    });
-  }
-
-  /**
-   * INVARIANTE: Double-Entry Ledger
+   * INVARIANTE FIN-001: Double-Entry Ledger
    * A soma dos débitos deve ser exatamente igual à soma dos créditos, agrupados por ativo.
    */
   private validateDoubleEntry() {
@@ -115,7 +81,7 @@ export class LedgerTransaction {
       throw new Error('Transaction must have at least two entries');
     }
 
-    const balances = new Map<string, bigint>();
+    const balances = new Map<number, bigint>();
 
     for (const entry of this.entries) {
       const assetId = entry.amount.assetId;
@@ -130,7 +96,9 @@ export class LedgerTransaction {
 
     for (const [assetId, balance] of balances.entries()) {
       if (balance !== 0n) {
-        throw new LedgerImbalanceError(`Double-entry validation failed for asset ${assetId}: Debits and Credits do not balance (Diff: ${balance.toString()})`);
+        throw new LedgerImbalanceError(
+          `Double-entry validation failed for asset #${assetId}: Debits and Credits do not balance (Diff: ${balance.toString()})`
+        );
       }
     }
   }
