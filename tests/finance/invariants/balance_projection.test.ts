@@ -1,20 +1,20 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
-import { readFileSync, unlinkSync } from 'fs';
-import { eq, and, sql } from 'drizzle-orm';
+import { unlinkSync } from 'fs';
+import { eq, and } from 'drizzle-orm';
 
 import { DrizzleUnitOfWork } from '../../../src/infrastructure/repositories/DrizzleUnitOfWork';
-import { DoubleEntryLedgerService } from '../../../src/domains/finance/services/DoubleEntryLedgerService';
 import { LedgerTransaction, LedgerEntry } from '../../../src/domains/finance/entities/LedgerTransaction';
-import { Money } from '../../../src/domains/finance/entities/Money';
+import { Money256 } from '../../../src/domains/finance/value-objects/Money256';
+import { FinancialTransactionOrchestrator } from '../../../src/application/finance/services/FinancialTransactionOrchestrator';
 import { accountBalances, financialLedgerEntries, financialAccounts } from '../../../src/db/finance/tables';
+import { runAllMigrationsLibSql } from '../../test_helpers/runMigrations';
 
 describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada de Ledger', () => {
   let sqlite: any;
   let db: any;
   let uow: DrizzleUnitOfWork;
-  let ledgerService: DoubleEntryLedgerService;
   const dbFile = 'test_balance_projection.db';
 
   beforeAll(async () => {
@@ -40,28 +40,7 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
       }
     };
 
-    const migrationFiles = [
-      './migrations/0000_white_raider.sql',
-      './migrations/0001_parallel_veda.sql',
-      './migrations/0002_solid_barracuda.sql',
-      './migrations/0004_preflight_audit.sql',
-      './migrations/0005_data_remediation.sql',
-      './migrations/0006_constraints.sql',
-    ];
-
-    for (const file of migrationFiles) {
-      try {
-        const sqlContent = readFileSync(file, 'utf8')
-          .replace(/--> statement-breakpoint/g, ';');
-        await sqlite.executeMultiple(sqlContent);
-      } catch (err: any) {}
-    }
-
-    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN status TEXT DEFAULT "pending" NOT NULL;'); } catch (e) {}
-    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN lease_owner TEXT;'); } catch (e) {}
-    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN lease_generation INTEGER DEFAULT 0 NOT NULL;'); } catch (e) {}
-    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN lease_expires_at INTEGER;'); } catch (e) {}
-    try { await sqlite.execute('ALTER TABLE financial_accounts ADD COLUMN account_class TEXT DEFAULT "liability" NOT NULL;'); } catch (e) {}
+    await runAllMigrationsLibSql(sqlite);
 
     await sqlite.executeMultiple(`
       INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (1, 'user1@test.com', 'user1@test.com', 'active', 1000, 1000);
@@ -80,7 +59,6 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
     `);
 
     uow = new DrizzleUnitOfWork(uowDb);
-    ledgerService = new DoubleEntryLedgerService();
   });
 
   afterAll(() => {
@@ -93,41 +71,51 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
       idempotencyKey: 'proj-tx-1',
       description: 'Deposit User 1',
       entries: [
-        new LedgerEntry({ accountId: '1', amount: new Money(500n, '1'), type: 'debit' }),
-        new LedgerEntry({ accountId: '2', amount: new Money(500n, '1'), type: 'credit' }),
+        new LedgerEntry({ accountId: '1', amount: Money256.fromString('500', 1) as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: Money256.fromString('500', 1) as any, type: 'credit' }),
       ],
     });
 
-    const res1 = await uow.execute((f) => ledgerService.recordTransaction(tx1, f, 'hash1'));
-    if (res1.isFailure) console.log('res1 error:', res1.error);
-    expect(res1.isSuccess).toBe(true);
+    const res1 = await uow.execute(async (f) => {
+      const repo = f.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      return await orchestrator.executePosting(tx1, 'hash1');
+    });
+    expect(res1.transactionId).toBeDefined();
 
     // 2. Transferência 200 de User 1 (Conta 2) para User 2 (Conta 3)
     const tx2 = new LedgerTransaction({
       idempotencyKey: 'proj-tx-2',
       description: 'Transfer User 1 -> User 2',
       entries: [
-        new LedgerEntry({ accountId: '2', amount: new Money(200n, '1'), type: 'debit' }),
-        new LedgerEntry({ accountId: '3', amount: new Money(200n, '1'), type: 'credit' }),
+        new LedgerEntry({ accountId: '2', amount: Money256.fromString('200', 1) as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '3', amount: Money256.fromString('200', 1) as any, type: 'credit' }),
       ],
     });
 
-    const res2 = await uow.execute((f) => ledgerService.recordTransaction(tx2, f, 'hash2'));
-    expect(res2.isSuccess).toBe(true);
+    const res2 = await uow.execute(async (f) => {
+      const repo = f.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      return await orchestrator.executePosting(tx2, 'hash2');
+    });
+    expect(res2.transactionId).toBeDefined();
 
     // 3. Taxa 10 cobrada de User 1 (Conta 2) enviada para Fees Revenue (Conta 4)
     const tx3 = new LedgerTransaction({
       idempotencyKey: 'proj-tx-3',
       description: 'Fee Charge User 1',
       entries: [
-        new LedgerEntry({ accountId: '2', amount: new Money(10n, '1'), type: 'debit' }),
-        new LedgerEntry({ accountId: '4', amount: new Money(10n, '1'), type: 'credit' }),
+        new LedgerEntry({ accountId: '2', amount: Money256.fromString('10', 1) as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '4', amount: Money256.fromString('10', 1) as any, type: 'credit' }),
       ],
     });
 
-    const res3 = await uow.execute((f) => ledgerService.recordTransaction(tx3, f, 'hash3'));
-    if (res3.isFailure) console.log('res3 error:', res3.error);
-    expect(res3.isSuccess).toBe(true);
+    const res3 = await uow.execute(async (f) => {
+      const repo = f.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      return await orchestrator.executePosting(tx3, 'hash3');
+    });
+    expect(res3.transactionId).toBeDefined();
 
     // 4. Verificação Invariante DOD-04 para todas as contas
     const accounts = await db.select().from(financialAccounts);
@@ -154,8 +142,6 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
         else if (entry.direction === 'credit') creditSum += val;
       }
 
-      // Fórmula por accountClass (Seção 3 do Plano Diretor)
-      // Base inicial das contas no setup (Operating iniciou com 1000000 de saldo inicial)
       let initialBalance = acc.id === 1 ? 1000000n : 0n;
       let projectedBigInt = initialBalance;
 

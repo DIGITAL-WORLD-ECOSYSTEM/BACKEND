@@ -1,21 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
-import { readFileSync, unlinkSync } from 'fs';
+import { unlinkSync } from 'fs';
 import { eq, and } from 'drizzle-orm';
 
 import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
-import { DoubleEntryLedgerService } from '../../src/domains/finance/services/DoubleEntryLedgerService';
-import { ReverseTransactionUseCase } from '../../src/domains/finance/use-cases/ReverseTransactionUseCase';
+import { ReverseTransactionUseCase } from '../../src/application/finance/use-cases/ReverseTransactionUseCase';
 import { LedgerTransaction, LedgerEntry } from '../../src/domains/finance/entities/LedgerTransaction';
-import { Money } from '../../src/domains/finance/entities/Money';
-import { accountBalances, financialAccounts } from '../../src/db/finance/tables';
+import { Money256 } from '../../src/domains/finance/value-objects/Money256';
+import { FinancialTransactionOrchestrator } from '../../src/application/finance/services/FinancialTransactionOrchestrator';
+import { accountBalances } from '../../src/db/finance/tables';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
 
 describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)', () => {
   let sqlite: any;
   let db: any;
   let uow: DrizzleUnitOfWork;
-  let ledgerService: DoubleEntryLedgerService;
   let reverseUseCase: ReverseTransactionUseCase;
   const dbFile = 'test_reversal.db';
 
@@ -32,8 +32,9 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
           throw new Error('DRIZZLE_ROLLBACK');
         };
         try {
-          await cb(proxyDb);
+          const res = await cb(proxyDb);
           await t.commit();
+          return res;
         } catch (err: any) {
           try { await t.rollback(); } catch (e) {}
           if (err.message === 'DRIZZLE_ROLLBACK') return;
@@ -42,28 +43,7 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
       }
     };
 
-    const migrationFiles = [
-      './migrations/0000_white_raider.sql',
-      './migrations/0001_parallel_veda.sql',
-      './migrations/0002_solid_barracuda.sql',
-      './migrations/0004_preflight_audit.sql',
-      './migrations/0005_data_remediation.sql',
-      './migrations/0006_constraints.sql',
-    ];
-
-    for (const file of migrationFiles) {
-      try {
-        const sqlContent = readFileSync(file, 'utf8')
-          .replace(/--> statement-breakpoint/g, ';');
-        await sqlite.executeMultiple(sqlContent);
-      } catch (err: any) {}
-    }
-
-    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN status TEXT DEFAULT "pending" NOT NULL;'); } catch (e) {}
-    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN lease_owner TEXT;'); } catch (e) {}
-    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN lease_generation INTEGER DEFAULT 0 NOT NULL;'); } catch (e) {}
-    try { await sqlite.execute('ALTER TABLE outbox_events ADD COLUMN lease_expires_at INTEGER;'); } catch (e) {}
-    try { await sqlite.execute('ALTER TABLE financial_accounts ADD COLUMN account_class TEXT DEFAULT "liability" NOT NULL;'); } catch (e) {}
+    await runAllMigrationsLibSql(sqlite);
 
     await sqlite.executeMultiple(`
       INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (1, 'user1@test.com', 'user1@test.com', 'active', 1000, 1000);
@@ -77,8 +57,7 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
     `);
 
     uow = new DrizzleUnitOfWork(uowDb);
-    ledgerService = new DoubleEntryLedgerService();
-    reverseUseCase = new ReverseTransactionUseCase(uow, ledgerService);
+    reverseUseCase = new ReverseTransactionUseCase(uow);
   }, 30000);
 
   afterAll(() => {
@@ -87,18 +66,26 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
 
   it('DOD-17: Executar estorno deve gerar lançamentos espelho invertidos e restaurar o saldo ao valor original', async () => {
     // 1. Executa transação original de depósito (100 base units de Operating para User 1)
+    const amount = Money256.fromString('100', 1);
+
     const originalTx = new LedgerTransaction({
       idempotencyKey: 'orig-dep-100',
       description: 'Original Deposit 100',
       entries: [
-        new LedgerEntry({ accountId: '1', amount: new Money(100n, '1'), type: 'debit' }),
-        new LedgerEntry({ accountId: '2', amount: new Money(100n, '1'), type: 'credit' }),
+        new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' }),
       ],
     });
 
-    const origRes = await uow.execute((f) => ledgerService.recordTransaction(originalTx, f, 'orig-hash'));
-    expect(origRes.isSuccess).toBe(true);
-    const originalTxId = origRes.getValue().transactionId!;
+    const origRes = await uow.execute(async (f) => {
+      const repo = f.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const postingResult = await orchestrator.executePosting(originalTx, 'orig-hash');
+      return postingResult;
+    });
+
+    expect(origRes.transactionId).toBeDefined();
+    const originalTxId = origRes.transactionId;
 
     // Verifica saldos pós-depósito
     const b1AfterDep = await db.select().from(accountBalances).where(and(eq(accountBalances.accountId, 1), eq(accountBalances.assetId, 1)));

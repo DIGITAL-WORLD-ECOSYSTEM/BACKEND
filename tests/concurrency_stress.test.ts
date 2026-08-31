@@ -49,12 +49,12 @@ describe('Concurrency & Double-Spend Forensic Stress Suite', () => {
       expect(currentBalance).toBe(50);
     });
 
-    it('rejects monetary amounts outside integer safe boundaries', async () => {
+    it('rejects non-positive monetary amounts in OCC update', async () => {
       const mockDb = {};
       const repo = new DrizzleFinanceRepository(mockDb as any);
 
       await expect(
-        repo.updateBalanceWithOCC('1', '1', 9223372036854775808n, 'debit')
+        repo.updateBalanceWithOCC('1', '1', -100n, 'debit')
       ).rejects.toThrow('Invalid base units amount for OCC update');
     });
   });

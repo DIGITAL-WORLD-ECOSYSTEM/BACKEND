@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
-import { readFileSync, unlinkSync } from 'fs';
-
-import { EventInboxService } from '../../src/domains/finance/services/EventInboxService';
+import { unlinkSync } from 'fs';
+import { EventInboxService } from '../../src/infrastructure/services/EventInboxService';
+import { Result } from '../../src/shared/kernel/Result';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
 
 describe('Invariante DOD-14: Event Inbox Idempotency para Webhooks Externos', () => {
   let sqlite: any;
@@ -15,18 +16,7 @@ describe('Invariante DOD-14: Event Inbox Idempotency para Webhooks Externos', ()
     sqlite = createClient({ url: `file:${dbFile}` });
     db = drizzle(sqlite);
 
-    const migrationFiles = [
-      './migrations/0000_white_raider.sql',
-      './migrations/0007_event_inbox.sql',
-    ];
-
-    for (const file of migrationFiles) {
-      try {
-        const sqlContent = readFileSync(file, 'utf8')
-          .replace(/--> statement-breakpoint/g, ';');
-        await sqlite.executeMultiple(sqlContent);
-      } catch (err: any) {}
-    }
+    await runAllMigrationsLibSql(sqlite);
 
     eventInboxService = new EventInboxService();
   }, 30000);
@@ -39,7 +29,7 @@ describe('Invariante DOD-14: Event Inbox Idempotency para Webhooks Externos', ()
     let executionCount = 0;
     const handler = async () => {
       executionCount++;
-      return { status: 'processed' } as any;
+      return Result.ok({ status: 'processed' });
     };
 
     const webhookPayload = {
@@ -51,6 +41,7 @@ describe('Invariante DOD-14: Event Inbox Idempotency para Webhooks Externos', ()
 
     // Primeira tentativa -> Processa normalmente
     const res1 = await eventInboxService.processEventOnce(db, webhookPayload, handler);
+    if (res1.isFailure) console.log('res1 error:', res1.error);
     expect(res1.isSuccess).toBe(true);
     expect(res1.getValue().isDuplicate).toBe(false);
     expect(executionCount).toBe(1);

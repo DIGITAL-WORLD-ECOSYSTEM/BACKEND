@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
-import { FinanceBootstrapService } from '../../src/domains/finance/services/FinanceBootstrapService';
+import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
 import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
 import { unlinkSync, existsSync } from 'fs';
 
@@ -41,7 +41,7 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
       CREATE TABLE IF NOT EXISTS financial_accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
-        account_type TEXT NOT NULL CHECK(account_type IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow')),
+        account_type TEXT NOT NULL CHECK(account_type IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow', 'reward_expense', 'yield_expense', 'clearing', 'opening_balance_equity', 'payment_revenue', 'refund_expense')),
         account_class TEXT NOT NULL CHECK(account_class IN ('asset', 'liability', 'equity', 'revenue', 'expense')),
         status TEXT NOT NULL CHECK(status IN ('active', 'inactive', 'suspended')),
         name TEXT NOT NULL,
