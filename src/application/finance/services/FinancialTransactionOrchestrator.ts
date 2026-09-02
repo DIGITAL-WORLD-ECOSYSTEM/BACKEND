@@ -21,21 +21,20 @@ export class FinancialTransactionOrchestrator {
 
   /**
    * Executa o fluxo atômico de escrita no ledger:
-   * 1. Resolução do Hash Canônico de Idempotência (P0-1).
+   * 1. Cálculo servidor obrigatório do Hash Canônico do LedgerTransaction (P0-1).
    * 2. Reclamação atômica de Idempotência.
    * 3. Inserção do registro pai da transação financeira em 'processing'.
    * 4. Inserção dos lançamentos contábeis imutáveis.
-   * 5. Atualização dos saldos materializados com discriminação estrita de erro (P0-2: InsufficientBalanceError vs OptimisticConcurrencyError).
+   * 5. Atualização dos saldos materializados com discriminação por switch exaustivo (P0-2: UPDATED, INSUFFICIENT_BALANCE, OCC_CONFLICT).
    * 6. Transição de status para 'completed'.
    * 7. Registro de evento no Outbox.
    * 8. Conclusão da Idempotência.
    */
   public async executePosting(
-    transaction: LedgerTransaction,
-    requestHash?: string
+    transaction: LedgerTransaction
   ): Promise<OrchestratorResult> {
-    // P0-1: O Hash de idempotência é derivado pelo servidor (do DTO canônico ou do aggregate LedgerTransaction)
-    const computedHash = requestHash || CanonicalRequestHashService.calculateHash(transaction);
+    // P0-1: O Hash de idempotência é obrigatoriamente derivado pelo servidor a partir do aggregate
+    const computedHash = CanonicalRequestHashService.calculateHash(transaction);
 
     // 1. Claim Idempotency Key
     const claimed = await this.financeRepo.claimIdempotency(
@@ -75,7 +74,7 @@ export class FinancialTransactionOrchestrator {
     // 3. Insert immutable ledger entries
     await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
 
-    // 4. Update materialized balances with discriminated OCC & balance checks (P0-2)
+    // 4. Update materialized balances com switch exaustivo no tipo discriminado BalanceUpdateResult (P0-2)
     for (const entry of transaction.entries) {
       const updateResult = await this.financeRepo.updateBalanceWithOCC(
         entry.accountId,
@@ -84,16 +83,17 @@ export class FinancialTransactionOrchestrator {
         entry.type
       );
 
-      if (updateResult === 'INSUFFICIENT_BALANCE') {
-        throw new InsufficientBalanceError(
-          `saldo insuficiente para a conta #${entry.accountId} e ativo #${entry.amount.assetId}.`
-        );
-      }
-
-      if (updateResult === 'OCC_CONFLICT' || updateResult === false) {
-        throw new OptimisticConcurrencyError(
-          `Falha de concorrência otimista (OCC version mismatch) para a conta #${entry.accountId}.`
-        );
+      switch (updateResult) {
+        case 'UPDATED':
+          break;
+        case 'INSUFFICIENT_BALANCE':
+          throw new InsufficientBalanceError(
+            `saldo insuficiente para a conta #${entry.accountId} e ativo #${entry.amount.assetId}.`
+          );
+        case 'OCC_CONFLICT':
+          throw new OptimisticConcurrencyError(
+            `Falha de concorrência otimista (OCC version mismatch) para a conta #${entry.accountId}.`
+          );
       }
     }
 

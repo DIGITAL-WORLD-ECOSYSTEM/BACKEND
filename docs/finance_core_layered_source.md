@@ -1325,6 +1325,8 @@ export type FinancialTransactionCategory =
 
 export type FinancialAccountStatus = 'active' | 'inactive' | 'suspended';
 
+export type BalanceUpdateResult = 'UPDATED' | 'INSUFFICIENT_BALANCE' | 'OCC_CONFLICT';
+
 export interface FinancialAccountRecord {
   id: number;
   userId: number | null;
@@ -1387,7 +1389,7 @@ export interface IFinanceRepository {
     assetId: string,
     amount: bigint,
     type: 'debit' | 'credit'
-  ): Promise<BalanceUpdateResult | boolean>;
+  ): Promise<BalanceUpdateResult>;
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
   persistOutboxEvent(eventType: string, payload: Record<string, unknown>): Promise<void>;
 }
@@ -1459,21 +1461,20 @@ export class FinancialTransactionOrchestrator {
 
   /**
    * Executa o fluxo atômico de escrita no ledger:
-   * 1. Resolução do Hash Canônico de Idempotência (P0-1).
+   * 1. Cálculo servidor obrigatório do Hash Canônico do LedgerTransaction (P0-1).
    * 2. Reclamação atômica de Idempotência.
    * 3. Inserção do registro pai da transação financeira em 'processing'.
    * 4. Inserção dos lançamentos contábeis imutáveis.
-   * 5. Atualização dos saldos materializados com discriminação estrita de erro (P0-2: InsufficientBalanceError vs OptimisticConcurrencyError).
+   * 5. Atualização dos saldos materializados com discriminação por switch exaustivo (P0-2: UPDATED, INSUFFICIENT_BALANCE, OCC_CONFLICT).
    * 6. Transição de status para 'completed'.
    * 7. Registro de evento no Outbox.
    * 8. Conclusão da Idempotência.
    */
   public async executePosting(
-    transaction: LedgerTransaction,
-    requestHash?: string
+    transaction: LedgerTransaction
   ): Promise<OrchestratorResult> {
-    // P0-1: O Hash de idempotência é derivado pelo servidor (do DTO canônico ou do aggregate LedgerTransaction)
-    const computedHash = requestHash || CanonicalRequestHashService.calculateHash(transaction);
+    // P0-1: O Hash de idempotência é obrigatoriamente derivado pelo servidor a partir do aggregate
+    const computedHash = CanonicalRequestHashService.calculateHash(transaction);
 
     // 1. Claim Idempotency Key
     const claimed = await this.financeRepo.claimIdempotency(
@@ -1513,7 +1514,7 @@ export class FinancialTransactionOrchestrator {
     // 3. Insert immutable ledger entries
     await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
 
-    // 4. Update materialized balances with discriminated OCC & balance checks (P0-2)
+    // 4. Update materialized balances com switch exaustivo no tipo discriminado BalanceUpdateResult (P0-2)
     for (const entry of transaction.entries) {
       const updateResult = await this.financeRepo.updateBalanceWithOCC(
         entry.accountId,
@@ -1522,16 +1523,17 @@ export class FinancialTransactionOrchestrator {
         entry.type
       );
 
-      if (updateResult === 'INSUFFICIENT_BALANCE') {
-        throw new InsufficientBalanceError(
-          `saldo insuficiente para a conta #${entry.accountId} e ativo #${entry.amount.assetId}.`
-        );
-      }
-
-      if (updateResult === 'OCC_CONFLICT' || updateResult === false) {
-        throw new OptimisticConcurrencyError(
-          `Falha de concorrência otimista (OCC version mismatch) para a conta #${entry.accountId}.`
-        );
+      switch (updateResult) {
+        case 'UPDATED':
+          break;
+        case 'INSUFFICIENT_BALANCE':
+          throw new InsufficientBalanceError(
+            `saldo insuficiente para a conta #${entry.accountId} e ativo #${entry.amount.assetId}.`
+          );
+        case 'OCC_CONFLICT':
+          throw new OptimisticConcurrencyError(
+            `Falha de concorrência otimista (OCC version mismatch) para a conta #${entry.accountId}.`
+          );
       }
     }
 
@@ -1598,9 +1600,33 @@ export class CanonicalRequestHashService {
 
   /**
    * Gera o hash SHA-256 hexadecimal a partir do payload canônico.
+   * Se receber um aggregate LedgerTransaction ou DTO com entries, filtra exclusivamente
+   * os atributos financeiros determinísticos (removendo IDs aleatórios, UUIDs e timestamps).
    */
   public static calculateHash(payload: any): string {
-    const canonicalString = CanonicalRequestHashService.canonicalize(payload);
+    let targetPayload = payload;
+
+    if (payload && typeof payload === 'object' && 'entries' in payload && 'idempotencyKey' in payload) {
+      targetPayload = {
+        idempotencyKey: payload.idempotencyKey,
+        userId: payload.userId ?? null,
+        transactionType: payload.transactionType ?? null,
+        category: payload.category ?? null,
+        description: payload.description,
+        refundOfTransactionId: payload.refundOfTransactionId ?? null,
+        reversalOfTransactionId: payload.reversalOfTransactionId ?? null,
+        entries: Array.isArray(payload.entries)
+          ? payload.entries.map((e: any) => ({
+              accountId: String(e.accountId),
+              amount: String(e.amount?.amount ?? e.amount),
+              assetId: Number(e.amount?.assetId ?? e.assetId ?? 0),
+              type: e.type,
+            }))
+          : [],
+      };
+    }
+
+    const canonicalString = CanonicalRequestHashService.canonicalize(targetPayload);
     return createHash('sha256').update(canonicalString, 'utf8').digest('hex');
   }
 }
@@ -2020,9 +2046,9 @@ export class RecordTreasuryTransactionUseCase {
           refundOfTransactionId: dto.refundOfTransactionId ? Number(dto.refundOfTransactionId) : undefined,
         });
 
-        // 10. Execute Posting via Orchestrator with Canonical DTO Hash
+        // 10. Execute Posting via Orchestrator
         const orchestrator = new FinancialTransactionOrchestrator(financeRepo);
-        const orchestratorResult = await orchestrator.executePosting(transaction, canonicalHash);
+        const orchestratorResult = await orchestrator.executePosting(transaction);
         return Result.ok<RecordTreasuryTransactionResult>(orchestratorResult);
       });
     } catch (err: unknown) {
@@ -3512,6 +3538,7 @@ import {
   FinancialTransactionType,
   FinancialTransactionCategory,
   FinancialTransactionStatus,
+  BalanceUpdateResult,
 } from '../../application/ports/output/IFinanceRepository';
 import { FinancialLedgerEntryRecord } from '../../domains/finance/contracts/FinancialLedgerEntryRecord';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
@@ -4164,7 +4191,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     amount: bigint,
     type: 'debit' | 'credit',
     executorOverride?: any
-  ): Promise<'SUCCESS' | 'INSUFFICIENT_BALANCE' | 'OCC_CONFLICT'> {
+  ): Promise<BalanceUpdateResult> {
     const exec = executorOverride || this.executor;
 
     if (typeof amount !== 'bigint' || amount <= 0n) {
@@ -4267,7 +4294,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       );
 
     const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
-    return affected > 0;
+    return affected > 0 ? 'UPDATED' : 'OCC_CONFLICT';
   }
 
   async persistOutboxEvent(eventType: string, payload: Record<string, unknown>): Promise<void> {

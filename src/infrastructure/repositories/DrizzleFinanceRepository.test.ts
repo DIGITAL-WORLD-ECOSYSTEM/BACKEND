@@ -36,7 +36,7 @@ describe('DrizzleFinanceRepository', () => {
     const repo = new DrizzleFinanceRepository(mockDb);
     const result = await repo.updateBalanceWithOCC('10', '1', 500n, 'credit');
 
-    expect(result).toBe(true);
+    expect(result).toBe('UPDATED');
     expect(mockDb.insert).toHaveBeenCalled();
     expect(insertedBalance).toBe(true);
   });
@@ -59,7 +59,7 @@ describe('DrizzleFinanceRepository', () => {
 
     const repo = new DrizzleFinanceRepository(mockDbLiability);
     const success = await repo.updateBalanceWithOCC('10', '1', 50n, 'credit');
-    expect(success).toBe(true);
+    expect(success).toBe('UPDATED');
     expect(mockDbLiability.update).toHaveBeenCalled();
   });
 });

@@ -406,9 +406,9 @@ export class RecordTreasuryTransactionUseCase {
           refundOfTransactionId: dto.refundOfTransactionId ? Number(dto.refundOfTransactionId) : undefined,
         });
 
-        // 10. Execute Posting via Orchestrator with Canonical DTO Hash
+        // 10. Execute Posting via Orchestrator
         const orchestrator = new FinancialTransactionOrchestrator(financeRepo);
-        const orchestratorResult = await orchestrator.executePosting(transaction, canonicalHash);
+        const orchestratorResult = await orchestrator.executePosting(transaction);
         return Result.ok<RecordTreasuryTransactionResult>(orchestratorResult);
       });
     } catch (err: unknown) {

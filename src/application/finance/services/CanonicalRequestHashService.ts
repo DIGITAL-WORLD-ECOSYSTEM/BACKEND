@@ -37,9 +37,33 @@ export class CanonicalRequestHashService {
 
   /**
    * Gera o hash SHA-256 hexadecimal a partir do payload canônico.
+   * Se receber um aggregate LedgerTransaction ou DTO com entries, filtra exclusivamente
+   * os atributos financeiros determinísticos (removendo IDs aleatórios, UUIDs e timestamps).
    */
   public static calculateHash(payload: any): string {
-    const canonicalString = CanonicalRequestHashService.canonicalize(payload);
+    let targetPayload = payload;
+
+    if (payload && typeof payload === 'object' && 'entries' in payload && 'idempotencyKey' in payload) {
+      targetPayload = {
+        idempotencyKey: payload.idempotencyKey,
+        userId: payload.userId ?? null,
+        transactionType: payload.transactionType ?? null,
+        category: payload.category ?? null,
+        description: payload.description,
+        refundOfTransactionId: payload.refundOfTransactionId ?? null,
+        reversalOfTransactionId: payload.reversalOfTransactionId ?? null,
+        entries: Array.isArray(payload.entries)
+          ? payload.entries.map((e: any) => ({
+              accountId: String(e.accountId),
+              amount: String(e.amount?.amount ?? e.amount),
+              assetId: Number(e.amount?.assetId ?? e.assetId ?? 0),
+              type: e.type,
+            }))
+          : [],
+      };
+    }
+
+    const canonicalString = CanonicalRequestHashService.canonicalize(targetPayload);
     return createHash('sha256').update(canonicalString, 'utf8').digest('hex');
   }
 }

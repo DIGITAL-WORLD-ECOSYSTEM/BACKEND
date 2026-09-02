@@ -65,10 +65,10 @@ describe('Precisão Monetária EVM 256-bit - Transações com > 53-bits', () => 
 
     // 3. Atualizar saldos com OCC usando BigInt puro
     const successUser = await repo.updateBalanceWithOCC('1', '1', hugeEvmAmount, 'credit');
-    expect(successUser).toBe(true);
+    expect(successUser).toBe('UPDATED');
 
     const successTreasury = await repo.updateBalanceWithOCC('2', '1', hugeEvmAmount, 'debit');
-    expect(successTreasury).toBe(true);
+    expect(successTreasury).toBe('UPDATED');
 
     // 4. Consultar saldo no banco de dados e verificar a exatidão do BigInt (TEXT -> BigInt)
     const [userBalRow] = await db

@@ -53,6 +53,8 @@ export type FinancialTransactionCategory =
 
 export type FinancialAccountStatus = 'active' | 'inactive' | 'suspended';
 
+export type BalanceUpdateResult = 'UPDATED' | 'INSUFFICIENT_BALANCE' | 'OCC_CONFLICT';
+
 export interface FinancialAccountRecord {
   id: number;
   userId: number | null;
@@ -115,7 +117,7 @@ export interface IFinanceRepository {
     assetId: string,
     amount: bigint,
     type: 'debit' | 'credit'
-  ): Promise<BalanceUpdateResult | boolean>;
+  ): Promise<BalanceUpdateResult>;
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
   persistOutboxEvent(eventType: string, payload: Record<string, unknown>): Promise<void>;
 }

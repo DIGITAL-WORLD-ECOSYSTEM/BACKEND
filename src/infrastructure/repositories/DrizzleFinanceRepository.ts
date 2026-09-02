@@ -17,6 +17,7 @@ import {
   FinancialTransactionType,
   FinancialTransactionCategory,
   FinancialTransactionStatus,
+  BalanceUpdateResult,
 } from '../../application/ports/output/IFinanceRepository';
 import { FinancialLedgerEntryRecord } from '../../domains/finance/contracts/FinancialLedgerEntryRecord';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
@@ -669,7 +670,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     amount: bigint,
     type: 'debit' | 'credit',
     executorOverride?: any
-  ): Promise<'SUCCESS' | 'INSUFFICIENT_BALANCE' | 'OCC_CONFLICT'> {
+  ): Promise<BalanceUpdateResult> {
     const exec = executorOverride || this.executor;
 
     if (typeof amount !== 'bigint' || amount <= 0n) {
@@ -772,7 +773,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       );
 
     const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
-    return affected > 0;
+    return affected > 0 ? 'UPDATED' : 'OCC_CONFLICT';
   }
 
   async persistOutboxEvent(eventType: string, payload: Record<string, unknown>): Promise<void> {

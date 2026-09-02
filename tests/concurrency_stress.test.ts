@@ -40,8 +40,8 @@ describe('Concurrency & Double-Spend Forensic Stress Suite', () => {
       );
 
       const results = await Promise.all(attempts);
-      const successes = results.filter((res) => res === true);
-      const failures = results.filter((res) => res === false);
+      const successes = results.filter((res) => res === 'UPDATED');
+      const failures = results.filter((res) => res === 'OCC_CONFLICT');
 
       // Exactly 1 update succeeds against version 1; the other 9 fail OCC!
       expect(successes.length).toBe(1);

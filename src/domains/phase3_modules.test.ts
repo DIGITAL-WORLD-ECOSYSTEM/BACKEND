@@ -203,7 +203,7 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
         claimIdempotency: vi.fn().mockResolvedValue(true),
         insertTransaction: vi.fn().mockResolvedValue(10),
         insertLedgerEntries: vi.fn().mockResolvedValue(undefined),
-        updateBalanceWithOCC: vi.fn().mockResolvedValue(true),
+        updateBalanceWithOCC: vi.fn().mockResolvedValue('UPDATED'),
         updateTransactionStatus: vi.fn().mockResolvedValue(undefined),
         persistOutboxEvent: vi.fn().mockResolvedValue(undefined),
         completeIdempotency: vi.fn().mockResolvedValue(undefined),
