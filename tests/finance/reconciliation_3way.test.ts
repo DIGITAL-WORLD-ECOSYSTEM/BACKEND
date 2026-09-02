@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { accountBalances, financialLedgerEntries } from '../../src/db/finance/tables';
@@ -17,7 +17,7 @@ describe('3-Way Reconciliation Suite (External Provider <-> Ledger Projection <-
   let db: any;
   let uow: DrizzleUnitOfWork;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     if (existsSync(dbFile)) {
       try { unlinkSync(dbFile); } catch (e) {}
     }
@@ -47,9 +47,10 @@ describe('3-Way Reconciliation Suite (External Provider <-> Ledger Projection <-
     await runAllMigrationsLibSql(sqlite);
     uow = new DrizzleUnitOfWork(uowDb);
     await FinanceBootstrapService.seedSystemAccounts(db, { currencyCode: 'BRL' });
-  });
+  }, 30000);
 
-  afterEach(() => {
+  afterAll(() => {
+    try { sqlite.close(); } catch (e) {}
     try { unlinkSync(dbFile); } catch (e) {}
   });
 

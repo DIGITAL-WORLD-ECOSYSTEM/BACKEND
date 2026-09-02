@@ -19,6 +19,12 @@ export class AccountClassPolicy {
     fees: ['revenue'],
     reserve: ['asset', 'liability'],
     escrow: ['liability'],
+    reward_expense: ['expense'],
+    yield_expense: ['expense'],
+    clearing: ['asset', 'liability'],
+    opening_balance_equity: ['equity', 'liability'],
+    payment_revenue: ['revenue'],
+    refund_expense: ['expense'],
   };
 
   public static validate(accountType: string, accountClass: string): void {

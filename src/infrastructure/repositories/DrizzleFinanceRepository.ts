@@ -12,6 +12,7 @@ import {
   FinancialAccountRecord,
   AccountBalanceRecord,
   FinancialTransactionRecord,
+  SystemAccountType,
 } from '../../application/ports/output/IFinanceRepository';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
 
@@ -230,6 +231,97 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     } catch (err: any) {
       return Result.fail(err.message);
     }
+  }
+
+  async getSystemAccount(accountType: SystemAccountType): Promise<Result<FinancialAccountRecord>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(financialAccounts)
+        .where(
+          and(
+            sql`${financialAccounts.userId} IS NULL`,
+            eq(financialAccounts.accountType, accountType),
+            eq(financialAccounts.status, 'active')
+          )
+        )
+        .limit(1);
+
+      if (!row) {
+        return Result.fail(`System account of type "${accountType}" not found. Must be provisioned via bootstrap seed.`);
+      }
+
+      return Result.ok({
+        id: row.id,
+        userId: row.userId,
+        accountType: row.accountType as any,
+        status: row.status as any,
+        name: row.name,
+        version: row.version,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getTransactionById(transactionId: number): Promise<Result<FinancialTransactionRecord>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(financialTransactions)
+        .where(eq(financialTransactions.id, transactionId))
+        .limit(1);
+
+      if (!row) {
+        return Result.fail(`Transaction #${transactionId} not found.`);
+      }
+
+      return Result.ok({
+        id: row.id,
+        userId: row.userId,
+        type: row.type as any,
+        category: row.category as any,
+        status: row.status as any,
+        description: row.description,
+        version: row.version,
+        createdAt: new Date(row.createdAt),
+        completedAt: row.completedAt ? new Date(row.completedAt) : null,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getRefundsTotalForTransaction(originalTransactionId: number): Promise<bigint> {
+    const refundTxs = await this.executor
+      .select({ id: financialTransactions.id })
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.refundOfTransactionId, originalTransactionId),
+          eq(financialTransactions.status, 'completed'),
+          eq(financialTransactions.type, 'refund')
+        )
+      );
+
+    if (refundTxs.length === 0) return 0n;
+
+    const refundTxIds = refundTxs.map((t: any) => t.id);
+    const entries = await this.executor
+      .select({ amountBaseUnits: financialLedgerEntries.amountBaseUnits })
+      .from(financialLedgerEntries)
+      .where(
+        and(
+          sql`${financialLedgerEntries.transactionId} IN (${sql.join(refundTxIds.map((id: number) => sql`${id}`), sql`, `)})`,
+          eq(financialLedgerEntries.direction, 'credit')
+        )
+      );
+
+    let total = 0n;
+    for (const entry of entries) {
+      total += BigInt(entry.amountBaseUnits || '0');
+    }
+    return total;
   }
 
   private async ensureAccountBalance(

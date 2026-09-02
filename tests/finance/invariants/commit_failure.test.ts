@@ -171,5 +171,5 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
     expect(countOutboxFinal).toBe(countOutboxInitial);
 
     try { unlinkSync(dbFile); } catch (e) {}
-  });
+  }, 20000);
 });

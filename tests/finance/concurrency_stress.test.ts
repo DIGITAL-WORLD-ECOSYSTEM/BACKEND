@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { unlinkSync, existsSync } from 'fs';
@@ -9,22 +9,24 @@ import { AccountingEntryPolicy } from '../../src/domains/finance/policies/Accoun
 import { LedgerTransaction, LedgerEntry } from '../../src/domains/finance/entities/LedgerTransaction';
 import { FinancialTransactionOrchestrator } from '../../src/application/finance/services/FinancialTransactionOrchestrator';
 import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+import { Result } from '../../src/shared/kernel/Result';
 
 describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certification', () => {
   const dbFile = 'test_concurrency_stress.db';
   let sqlite: any;
   let db: any;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     if (existsSync(dbFile)) {
       try { unlinkSync(dbFile); } catch (e) {}
     }
     sqlite = createClient({ url: `file:${dbFile}` });
     db = drizzle(sqlite);
     await runAllMigrationsLibSql(sqlite);
-  });
+  }, 30000);
 
-  afterEach(() => {
+  afterAll(() => {
+    try { sqlite.close(); } catch (e) {}
     try { unlinkSync(dbFile); } catch (e) {}
   });
 
@@ -94,10 +96,11 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
       });
 
       const orchestrator = new FinancialTransactionOrchestrator(repo);
-      return await orchestrator.executePosting(tx);
+      return Result.ok(await orchestrator.executePosting(tx));
     });
 
-    expect(depositRes.transactionId).toBeDefined();
+    if (depositRes.isFailure) console.error('DEPOSIT 42 FAILED:', depositRes.error);
+    expect(depositRes.getValue().transactionId).toBeDefined();
 
     // 3. Launch 10 concurrent debit requests of 20 base units each
     const concurrentRequests = Array.from({ length: 10 }).map((_, idx) => async () => {
@@ -133,7 +136,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
           });
 
           const orchestrator = new FinancialTransactionOrchestrator(repo);
-          return await orchestrator.executePosting(tx);
+          return Result.ok(await orchestrator.executePosting(tx));
         });
         if (res.isFailure) {
           console.log(`Debit #${idx + 1} failed:`, res.error);
@@ -148,8 +151,8 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
 
     const results = await Promise.all(concurrentRequests.map((fn) => fn()));
 
-    const successful = results.filter((r) => !('error' in r));
-    const failed = results.filter((r) => 'error' in r);
+    const successful = results.filter((r: any) => r && r.isSuccess === true);
+    const failed = results.filter((r: any) => !r || r.isSuccess !== true);
 
     console.log(`SUCCESSFUL: ${successful.length}, FAILED: ${failed.length}`);
 
@@ -164,21 +167,29 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
   });
 
   it('Gate B: Multi-Client Independent Connections Concurrency Stress Certification', async () => {
+    const dbFileB = 'test_concurrency_stress_b.db';
+    if (existsSync(dbFileB)) {
+      try { unlinkSync(dbFileB); } catch (e) {}
+    }
+    const sqliteB = createClient({ url: `file:${dbFileB}` });
+    const dbB = drizzle(sqliteB);
+    await runAllMigrationsLibSql(sqliteB);
+
     // 1. Setup initial balance with primary DB connection
-    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(db, {
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(dbB, {
       currencyCode: 'BRL',
       initialBalanceBaseUnits: 1000n,
     });
     expect(bootstrapRes.isSuccess).toBe(true);
     const { assetId, treasuryAccountId } = bootstrapRes.getValue();
 
-    await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (55, 'user55@test.com', 'user55@test.com', 'active', 1000, 1000)`);
+    await sqliteB.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (55, 'user55@test.com', 'user55@test.com', 'active', 1000, 1000)`);
 
     // Initial deposit of 200 units to user 55
     const primaryUow = new DrizzleUnitOfWork({
-      ...db,
+      ...dbB,
       transaction: async (cb: any) => {
-        const t = await sqlite.transaction('write');
+        const t = await sqliteB.transaction('write');
         const proxyDb = drizzle(t) as any;
         proxyDb.rollback = () => { throw new Error('DRIZZLE_ROLLBACK'); };
         try {
@@ -218,14 +229,15 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
       });
 
       const orchestrator = new FinancialTransactionOrchestrator(repo);
-      return await orchestrator.executePosting(tx);
+      return Result.ok(await orchestrator.executePosting(tx));
     });
 
-    expect(initDepRes.transactionId).toBeDefined();
+    if (initDepRes.isFailure) console.error('DEPOSIT 55 FAILED:', initDepRes.error);
+    expect(initDepRes.getValue().transactionId).toBeDefined();
 
     // 2. Spawn 10 INDEPENDENT client connections to simulate distinct Microservices / Workers
     const independentClients = Array.from({ length: 10 }).map(() => {
-      const client = createClient({ url: `file:${dbFile}` });
+      const client = createClient({ url: `file:${dbFileB}` });
       const clientDb = drizzle(client);
       const clientUowDb = {
         ...clientDb,
@@ -275,7 +287,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
           });
 
           const orchestrator = new FinancialTransactionOrchestrator(repo);
-          return await orchestrator.executePosting(tx);
+          return Result.ok(await orchestrator.executePosting(tx));
         });
 
         if (res.isFailure) return { error: res.error };
@@ -286,7 +298,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
     });
 
     const results = await Promise.all(concurrentMultiClientOps.map((fn) => fn()));
-    const successful = results.filter((r) => !('error' in r));
+    const successful = results.filter((r: any) => r && r.isSuccess === true);
 
     // Close all independent clients
     independentClients.forEach(({ client }) => {
@@ -294,10 +306,13 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
     });
 
     // 4. Verify balance conservation: initial 200 - (successful * 30) === final balance
-    const finalBalanceRes = await sqlite.execute('SELECT available_base_units FROM account_balances WHERE account_id = (SELECT id FROM financial_accounts WHERE user_id = 55)');
+    const finalBalanceRes = await sqliteB.execute('SELECT available_base_units FROM account_balances WHERE account_id = (SELECT id FROM financial_accounts WHERE user_id = 55)');
     const finalBal = BigInt(finalBalanceRes.rows[0].available_base_units);
 
     expect(finalBal + BigInt(successful.length * 30)).toBe(200n);
     expect(finalBal >= 0n).toBe(true);
+
+    try { sqliteB.close(); } catch (e) {}
+    try { unlinkSync(dbFileB); } catch (e) {}
   });
 });

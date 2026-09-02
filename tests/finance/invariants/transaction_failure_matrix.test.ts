@@ -142,4 +142,42 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
     expect(finalState.entries).toBe(initialState.entries);
     expect(finalState.idem).toBe(initialState.idem);
   });
+
+  it('Rejeita tipo conversion com mensagem auditável de Forex não suportado', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    const result = await useCase.execute({
+      userId: 10,
+      type: 'conversion',
+      direction: 'INBOUND',
+      description: 'Conversão Forex Invalida',
+      amountBaseUnits: '100',
+      assetId: 1,
+      idempotencyKey: 'test-conversion-fail-key',
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Forex');
+  });
+
+  it('Rejeita requestHash adulterado com erro 409 Conflict', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    const fakeHash = 'a'.repeat(64);
+    const result = await useCase.execute({
+      userId: 10,
+      type: 'deposit',
+      direction: 'INBOUND',
+      description: 'Depósito com Hash Alterado',
+      amountBaseUnits: '100',
+      assetId: 1,
+      idempotencyKey: 'test-hash-tamper-key',
+      requestHash: fakeHash,
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('409 Conflict');
+  });
 });

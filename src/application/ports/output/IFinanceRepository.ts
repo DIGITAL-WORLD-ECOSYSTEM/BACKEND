@@ -1,11 +1,62 @@
 import { Result } from '../../../shared/kernel/Result';
 import { LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
 
+export type SystemAccountType =
+  | 'treasury'
+  | 'operating'
+  | 'reserve'
+  | 'fees'
+  | 'escrow'
+  | 'reward_expense'
+  | 'yield_expense'
+  | 'clearing'
+  | 'opening_balance_equity'
+  | 'payment_revenue'
+  | 'refund_expense';
+
+export type FinancialTransactionType =
+  | 'deposit'
+  | 'withdrawal'
+  | 'transfer'
+  | 'payment'
+  | 'refund'
+  | 'fee'
+  | 'reward'
+  | 'yield'
+  | 'conversion'
+  | 'adjustment'
+  | 'reversal'
+  | 'inbound'
+  | 'outbound';
+
+export type FinancialTransactionStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'reversed'
+  | 'refunded';
+
+export type FinancialTransactionCategory =
+  | 'membership'
+  | 'rwa_yield'
+  | 'grant'
+  | 'operational'
+  | 'payment'
+  | 'trading'
+  | 'withdrawal'
+  | 'deposit'
+  | 'fee'
+  | 'other';
+
+export type FinancialAccountStatus = 'active' | 'inactive' | 'suspended';
+
 export interface FinancialAccountRecord {
   id: number;
   userId: number | null;
-  accountType: 'user_available' | 'treasury' | 'operating' | 'reserve' | 'fees' | 'escrow' | 'reward_expense' | 'yield_expense' | 'clearing' | 'opening_balance_equity' | 'payment_revenue' | 'refund_expense';
-  status: 'active' | 'inactive' | 'suspended';
+  accountType: SystemAccountType | 'user_available';
+  status: FinancialAccountStatus;
   name: string;
   version: number;
 }
@@ -22,9 +73,9 @@ export interface AccountBalanceRecord {
 export interface FinancialTransactionRecord {
   id: number;
   userId: number | null;
-  type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment' | 'reversal' | 'inbound' | 'outbound';
-  category: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'reversed' | 'refunded';
+  type: FinancialTransactionType;
+  category: FinancialTransactionCategory | string;
+  status: FinancialTransactionStatus;
   description: string;
   version: number;
   createdAt: Date;
@@ -35,7 +86,11 @@ export interface IFinanceRepository {
   getTreasuryAccount(): Promise<Result<FinancialAccountRecord>>;
   getOrCreateUserAccount(userId: number): Promise<Result<FinancialAccountRecord>>;
   getOrCreateOperatingAccount(): Promise<Result<FinancialAccountRecord>>;
+  getSystemAccount(accountType: SystemAccountType): Promise<Result<FinancialAccountRecord>>;
   getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>>;
+
+  getTransactionById(transactionId: number): Promise<Result<FinancialTransactionRecord>>;
+  getRefundsTotalForTransaction(originalTransactionId: number): Promise<bigint>;
 
   listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
   getTransactionEntries(transactionId: number): Promise<Result<Array<{ accountId: number; assetId: number; direction: 'debit' | 'credit'; amountBaseUnits: string }>>>;
@@ -45,10 +100,10 @@ export interface IFinanceRepository {
   completeIdempotency(key: string, scope: string, transactionId: number): Promise<void>;
   insertTransaction(data: {
     userId?: number | null;
-    type: string;
-    category: string;
+    type: FinancialTransactionType | string;
+    category: FinancialTransactionCategory | string;
     description: string;
-    status: string;
+    status: FinancialTransactionStatus | string;
     reversalOfTransactionId?: number;
     refundOfTransactionId?: number;
   }): Promise<number>;
@@ -59,6 +114,6 @@ export interface IFinanceRepository {
     amount: bigint,
     type: 'debit' | 'credit'
   ): Promise<boolean>;
-  updateTransactionStatus(transactionId: number, status: string, expectedVersion?: number): Promise<void>;
+  updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus | string, expectedVersion?: number): Promise<void>;
   persistOutboxEvent(eventType: string, payload: any): Promise<void>;
 }
