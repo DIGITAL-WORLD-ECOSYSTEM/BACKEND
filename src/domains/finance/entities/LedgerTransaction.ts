@@ -25,6 +25,18 @@ export type FinancialTransactionType =
   | 'adjustment'
   | 'reversal';
 
+export type FinancialTransactionCategory =
+  | 'membership'
+  | 'rwa_yield'
+  | 'grant'
+  | 'operational'
+  | 'payment'
+  | 'trading'
+  | 'withdrawal'
+  | 'deposit'
+  | 'fee'
+  | 'other';
+
 export interface LedgerEntryProps {
   id?: string;
   accountId: string;
@@ -76,7 +88,7 @@ export interface LedgerTransactionProps {
   entries: ReadonlyArray<LedgerEntry>;
   userId?: number | null;
   transactionType?: FinancialTransactionType;
-  category?: string;
+  category?: FinancialTransactionCategory;
   status?: FinancialTransactionStatus;
   reversalOfTransactionId?: number;
   refundOfTransactionId?: number;
@@ -90,7 +102,7 @@ export class LedgerTransaction {
   public readonly entries: ReadonlyArray<LedgerEntry>;
   public readonly userId: number | null;
   public readonly transactionType: FinancialTransactionType;
-  public readonly category?: string;
+  public readonly category?: FinancialTransactionCategory;
   public readonly status: FinancialTransactionStatus;
   public readonly reversalOfTransactionId?: number;
   public readonly refundOfTransactionId?: number;

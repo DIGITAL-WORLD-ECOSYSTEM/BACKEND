@@ -1,6 +1,7 @@
 import { Money256 } from '../value-objects/Money256';
 import { FinancialError } from '../errors/FinancialError';
 import { FinancialLedgerEntryRecord } from '../contracts/FinancialLedgerEntryRecord';
+import { FinancialTransactionType, FinancialTransactionCategory } from '../entities/LedgerTransaction';
 
 export interface RawLedgerEntrySpec {
   accountId: number;
@@ -11,8 +12,8 @@ export interface RawLedgerEntrySpec {
 }
 
 export interface AccountingContext {
-  transactionType: string;
-  category?: string;
+  transactionType: FinancialTransactionType;
+  category?: FinancialTransactionCategory;
   source?: string;
   destination?: string;
   assetId: number;

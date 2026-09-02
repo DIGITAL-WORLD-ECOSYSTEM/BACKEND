@@ -138,6 +138,12 @@ export class Money256 {
     } else {
       throw new InvalidMoneyFormatError('Money amount must be a bigint or canonical decimal string.');
     }
+
+    Object.freeze(this);
+  }
+
+  public static zero(assetId: number | string): Money256 {
+    return new Money256(0n, assetId);
   }
 
   public static fromString(amountStr: string, assetId: number | string): Money256 {
@@ -193,6 +199,26 @@ export class Money256 {
     return this.assetId === other.assetId && this.amount === other.amount;
   }
 
+  public greaterThan(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount > other.amount;
+  }
+
+  public greaterThanOrEqual(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount >= other.amount;
+  }
+
+  public lessThan(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount < other.amount;
+  }
+
+  public lessThanOrEqual(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount <= other.amount;
+  }
+
   public toCanonicalString(): string {
     return this.amount.toString(10);
   }
@@ -243,6 +269,18 @@ export type FinancialTransactionType =
   | 'conversion'
   | 'adjustment'
   | 'reversal';
+
+export type FinancialTransactionCategory =
+  | 'membership'
+  | 'rwa_yield'
+  | 'grant'
+  | 'operational'
+  | 'payment'
+  | 'trading'
+  | 'withdrawal'
+  | 'deposit'
+  | 'fee'
+  | 'other';
 
 export interface LedgerEntryProps {
   id?: string;
@@ -295,7 +333,7 @@ export interface LedgerTransactionProps {
   entries: ReadonlyArray<LedgerEntry>;
   userId?: number | null;
   transactionType?: FinancialTransactionType;
-  category?: string;
+  category?: FinancialTransactionCategory;
   status?: FinancialTransactionStatus;
   reversalOfTransactionId?: number;
   refundOfTransactionId?: number;
@@ -309,7 +347,7 @@ export class LedgerTransaction {
   public readonly entries: ReadonlyArray<LedgerEntry>;
   public readonly userId: number | null;
   public readonly transactionType: FinancialTransactionType;
-  public readonly category?: string;
+  public readonly category?: FinancialTransactionCategory;
   public readonly status: FinancialTransactionStatus;
   public readonly reversalOfTransactionId?: number;
   public readonly refundOfTransactionId?: number;
@@ -530,6 +568,7 @@ export class LedgerImbalanceError extends Error {
 import { Money256 } from '../value-objects/Money256';
 import { FinancialError } from '../errors/FinancialError';
 import { FinancialLedgerEntryRecord } from '../contracts/FinancialLedgerEntryRecord';
+import { FinancialTransactionType, FinancialTransactionCategory } from '../entities/LedgerTransaction';
 
 export interface RawLedgerEntrySpec {
   accountId: number;
@@ -540,8 +579,8 @@ export interface RawLedgerEntrySpec {
 }
 
 export interface AccountingContext {
-  transactionType: string;
-  category?: string;
+  transactionType: FinancialTransactionType;
+  category?: FinancialTransactionCategory;
   source?: string;
   destination?: string;
   assetId: number;

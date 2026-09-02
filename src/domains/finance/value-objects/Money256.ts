@@ -25,6 +25,12 @@ export class Money256 {
     } else {
       throw new InvalidMoneyFormatError('Money amount must be a bigint or canonical decimal string.');
     }
+
+    Object.freeze(this);
+  }
+
+  public static zero(assetId: number | string): Money256 {
+    return new Money256(0n, assetId);
   }
 
   public static fromString(amountStr: string, assetId: number | string): Money256 {
@@ -78,6 +84,26 @@ export class Money256 {
 
   public equals(other: Money256): boolean {
     return this.assetId === other.assetId && this.amount === other.amount;
+  }
+
+  public greaterThan(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount > other.amount;
+  }
+
+  public greaterThanOrEqual(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount >= other.amount;
+  }
+
+  public lessThan(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount < other.amount;
+  }
+
+  public lessThanOrEqual(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount <= other.amount;
   }
 
   public toCanonicalString(): string {

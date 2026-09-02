@@ -54,4 +54,26 @@ describe('Money256 Value Object (EVM 256-bit Precision)', () => {
     const b = Money256.fromString('100', 2);
     expect(() => a.add(b)).toThrow(InvalidMoneyFormatError);
   });
+
+  it('supports comparison operators (greaterThan, greaterThanOrEqual, lessThan, lessThanOrEqual, zero)', () => {
+    const zero = Money256.zero(1);
+    const a = Money256.fromString('500', 1);
+    const b = Money256.fromString('300', 1);
+    const c = Money256.fromString('500', 1);
+
+    expect(zero.isZero()).toBe(true);
+    expect(a.greaterThan(b)).toBe(true);
+    expect(b.greaterThan(a)).toBe(false);
+
+    expect(a.greaterThanOrEqual(c)).toBe(true);
+    expect(a.greaterThanOrEqual(b)).toBe(true);
+
+    expect(b.lessThan(a)).toBe(true);
+    expect(a.lessThan(b)).toBe(false);
+
+    expect(a.lessThanOrEqual(c)).toBe(true);
+    expect(b.lessThanOrEqual(a)).toBe(true);
+
+    expect(Object.isFrozen(a)).toBe(true);
+  });
 });
