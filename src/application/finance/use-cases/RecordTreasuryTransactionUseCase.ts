@@ -85,7 +85,7 @@ export class RecordTreasuryTransactionUseCase {
       }
 
       // 4. Direction Rules per Operation
-      const inboundOnly = ['deposit', 'yield', 'reward'];
+      const inboundOnly = ['deposit', 'yield', 'reward', 'refund'];
       const outboundOnly = ['withdrawal', 'payment', 'fee'];
 
       if (dto.direction === 'INBOUND' && outboundOnly.includes(dto.type)) {
@@ -95,8 +95,18 @@ export class RecordTreasuryTransactionUseCase {
         return Result.fail<RecordTreasuryTransactionResult>(`Transação do tipo '${dto.type}' não pode ter direção OUTBOUND.`);
       }
 
-      // 5. Category Validation
-      const category: string = dto.category ? String(dto.category).toLowerCase().trim() : 'operational';
+      // 5. Category Strict Typing & Domain Validation
+      const VALID_CATEGORIES: FinancialTransactionCategory[] = [
+        'membership', 'rwa_yield', 'grant', 'operational', 'payment', 'trading', 'withdrawal', 'deposit', 'fee', 'other'
+      ];
+      let category: FinancialTransactionCategory = 'operational';
+      if (dto.category !== undefined && dto.category !== null) {
+        const trimmed = String(dto.category).toLowerCase().trim() as FinancialTransactionCategory;
+        if (!VALID_CATEGORIES.includes(trimmed)) {
+          return Result.fail<RecordTreasuryTransactionResult>(`Categoria '${dto.category}' não é uma categoria financeira válida do domínio.`);
+        }
+        category = trimmed;
+      }
 
       // 6. Compute Canonical Request Hash over Request DTO payload
       const canonicalPayload = {
@@ -119,26 +129,35 @@ export class RecordTreasuryTransactionUseCase {
       return await this.uow.execute(async (factory) => {
         const financeRepo = factory.getFinanceRepository();
 
-        // 7a. Resolve Treasury Account
+        // 7a. Validate Asset Existence & Active Status
+        const assetRes = await financeRepo.getAssetById(parsedAssetId);
+        if (assetRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(assetRes.error || `Ativo financeiro #${parsedAssetId} não encontrado.`);
+        const asset = assetRes.getValue();
+        if (asset.status !== 'active') return Result.fail<RecordTreasuryTransactionResult>(`Ativo financeiro #${parsedAssetId} (${asset.code}) está inativo ou suspenso.`);
+
+        // 7b. Resolve Treasury Account
         const treasuryRes = await financeRepo.getTreasuryAccount();
         if (treasuryRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(treasuryRes.error || 'Erro ao resolver conta de Tesouraria');
         const treasuryAcc = treasuryRes.getValue();
         if (treasuryAcc.status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta de Tesouraria está inativa ou suspensa.');
         const treasuryAccountId = treasuryAcc.id;
 
-        // 7b. Resolve User Account
-        let userAccountId: number;
-        if (parsedUserId !== null) {
-          const userAccRes = await financeRepo.getOrCreateUserAccount(parsedUserId);
-          if (userAccRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(userAccRes.error || 'Erro ao resolver conta do Usuário');
-          const userAcc = userAccRes.getValue();
-          if (userAcc.status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta do Usuário está inativa ou suspensa.');
-          userAccountId = userAcc.id;
-        } else {
-          // If no userId, use Operating Account
-          const sysOpRes = await financeRepo.getSystemAccount('operating');
-          if (sysOpRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysOpRes.error || 'Erro ao resolver conta operacional do sistema');
-          userAccountId = sysOpRes.getValue().id;
+        // 7c. Resolve User Account (deferred for refund to allow pre-check of ownership)
+        let userAccountId: number = 0;
+        if (dto.type !== 'refund') {
+          if (parsedUserId !== null) {
+            const userAccRes = await financeRepo.getOrCreateUserAccount(parsedUserId);
+            if (userAccRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(userAccRes.error || 'Erro ao resolver conta do Usuário');
+            const userAcc = userAccRes.getValue();
+            if (userAcc.status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta do Usuário está inativa ou suspensa.');
+            userAccountId = userAcc.id;
+          } else {
+            // If no userId, use Operating Account
+            const sysOpRes = await financeRepo.getSystemAccount('operating');
+            if (sysOpRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysOpRes.error || 'Erro ao resolver conta operacional do sistema');
+            if (sysOpRes.getValue().status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta operacional do sistema está inativa.');
+            userAccountId = sysOpRes.getValue().id;
+          }
         }
 
         let rawEntries: RawLedgerEntrySpec[];
@@ -166,6 +185,7 @@ export class RecordTreasuryTransactionUseCase {
           case 'payment': {
             const sysRevenueRes = await financeRepo.getSystemAccount('payment_revenue');
             if (sysRevenueRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysRevenueRes.error);
+            if (sysRevenueRes.getValue().status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta sistêmica payment_revenue está inativa.');
             rawEntries = AccountingEntryPolicy.createPaymentEntries({
               userAccountId,
               paymentRevenueAccountId: sysRevenueRes.getValue().id,
@@ -192,17 +212,36 @@ export class RecordTreasuryTransactionUseCase {
               return Result.fail<RecordTreasuryTransactionResult>(`Reembolso rejeitado: Apenas transações do tipo 'payment' podem ser reembolsadas.`);
             }
 
-            // Refund Limit & Concurrency Protection Check
-            const prevRefundsTotal = await financeRepo.getRefundsTotalForTransaction(origTxId);
+            // P0.2: Ownership Verification (refund.userId MUST match original payment userId)
+            if (origTx.userId !== null) {
+              if (parsedUserId !== null && parsedUserId !== origTx.userId) {
+                return Result.fail<RecordTreasuryTransactionResult>(
+                  `Reembolso rejeitado: O usuário solicitado (#${parsedUserId}) não coincide com o usuário proprietário da transação original (#${origTx.userId}).`
+                );
+              }
+              parsedUserId = origTx.userId;
+              const userAccRes = await financeRepo.getOrCreateUserAccount(parsedUserId);
+              if (userAccRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(userAccRes.error);
+              const userAcc = userAccRes.getValue();
+              if (userAcc.status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta do Usuário está inativa ou suspensa.');
+              userAccountId = userAcc.id;
+            }
 
-            // Get original payment entries to verify original payment amount
+            // P0.3 & P0.6: Fetch original payment ledger entries & match asset ID
             const origEntriesRes = await financeRepo.getTransactionEntries(origTxId);
             if (origEntriesRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>('Erro ao buscar lançamentos da transação original para refund.');
 
-            const paymentCreditEntry = origEntriesRes.getValue().find((e) => e.direction === 'credit');
-            if (!paymentCreditEntry) return Result.fail<RecordTreasuryTransactionResult>('Lançamento original de pagamento não encontrado.');
+            const origEntries = origEntriesRes.getValue();
+            const paymentCreditEntry = origEntries.find((e) => e.direction === 'credit' && e.assetId === parsedAssetId);
+            if (!paymentCreditEntry) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                `Reembolso rejeitado: A transação original #${origTxId} não possui lançamento de receita referente ao ativo #${parsedAssetId}.`
+              );
+            }
             const originalPaymentAmount = BigInt(paymentCreditEntry.amountBaseUnits);
 
+            // Refund Limit & Concurrency Protection Check
+            const prevRefundsTotal = await financeRepo.getRefundsTotalForTransaction(origTxId);
             const requestedRefundAmount = amountMoney.toBigInt();
             if (prevRefundsTotal + requestedRefundAmount > originalPaymentAmount) {
               const remaining = originalPaymentAmount > prevRefundsTotal ? originalPaymentAmount - prevRefundsTotal : 0n;
@@ -213,6 +252,7 @@ export class RecordTreasuryTransactionUseCase {
 
             const sysRefundExpRes = await financeRepo.getSystemAccount('refund_expense');
             if (sysRefundExpRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysRefundExpRes.error);
+            if (sysRefundExpRes.getValue().status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta sistêmica refund_expense está inativa.');
             rawEntries = AccountingEntryPolicy.createRefundEntries({
               refundExpenseAccountId: sysRefundExpRes.getValue().id,
               userAccountId,
@@ -224,6 +264,7 @@ export class RecordTreasuryTransactionUseCase {
           case 'fee': {
             const sysFeeRes = await financeRepo.getSystemAccount('fees');
             if (sysFeeRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysFeeRes.error);
+            if (sysFeeRes.getValue().status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta sistêmica fees está inativa.');
             rawEntries = AccountingEntryPolicy.createFeeEntries({
               userAccountId,
               feeAccountId: sysFeeRes.getValue().id,
@@ -235,6 +276,7 @@ export class RecordTreasuryTransactionUseCase {
           case 'reward': {
             const sysRewardExpRes = await financeRepo.getSystemAccount('reward_expense');
             if (sysRewardExpRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysRewardExpRes.error);
+            if (sysRewardExpRes.getValue().status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta sistêmica reward_expense está inativa.');
             rawEntries = AccountingEntryPolicy.createRewardEntries({
               rewardExpenseAccountId: sysRewardExpRes.getValue().id,
               userAccountId,
@@ -246,6 +288,7 @@ export class RecordTreasuryTransactionUseCase {
           case 'yield': {
             const sysYieldExpRes = await financeRepo.getSystemAccount('yield_expense');
             if (sysYieldExpRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysYieldExpRes.error);
+            if (sysYieldExpRes.getValue().status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta sistêmica yield_expense está inativa.');
             rawEntries = AccountingEntryPolicy.createYieldEntries({
               yieldExpenseAccountId: sysYieldExpRes.getValue().id,
               userAccountId,

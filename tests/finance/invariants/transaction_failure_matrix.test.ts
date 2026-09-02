@@ -47,7 +47,13 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
       INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at) VALUES (1, 'BRL', 'BRL', 'Brazilian Real', 'fiat', 2, 'active', 1000, 1000);
       INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (1, 10, 'user_available', 'liability', 'active', 'User 10 Main Account', 1, 1000, 1000);
       INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (2, NULL, 'treasury', 'asset', 'active', 'Treasury Vault', 1, 1000, 1000);
-      INSERT INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (1, 1, 1, '500', '0', 1, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (3, NULL, 'payment_revenue', 'revenue', 'active', 'Payment Revenue', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (4, NULL, 'refund_expense', 'expense', 'active', 'Refund Expense', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (5, NULL, 'operating', 'asset', 'active', 'System Operating', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (6, NULL, 'fees', 'revenue', 'active', 'System Fees', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (7, NULL, 'reward_expense', 'expense', 'active', 'Reward Expense', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (8, NULL, 'yield_expense', 'expense', 'active', 'Yield Expense', 1, 1000, 1000);
+      INSERT INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (1, 1, 1, '5000', '0', 1, 1000);
       INSERT INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (2, 2, 1, '10000', '0', 1, 1000);
     `);
 
@@ -179,5 +185,148 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
 
     expect(result.isFailure).toBe(true);
     expect(result.error).toContain('409 Conflict');
+  });
+
+  it('P0.2: Rejeita refund se userId não coincidir com proprietário da transação original', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    // 1. First record a valid payment for user 10
+    const paymentRes = await useCase.execute({
+      userId: 10,
+      type: 'payment',
+      direction: 'OUTBOUND',
+      description: 'Pagamento Original User 10',
+      amountBaseUnits: '200',
+      assetId: 1,
+      idempotencyKey: 'pmt-user-10-key',
+    });
+    expect(paymentRes.isSuccess).toBe(true);
+    const pmtTxId = paymentRes.getValue().transactionId;
+
+    // 2. Attempt refund specifying user 999
+    const refundRes = await useCase.execute({
+      userId: 999,
+      type: 'refund',
+      direction: 'INBOUND',
+      description: 'Tentativa de Reembolso por Outro Usuário',
+      amountBaseUnits: '100',
+      assetId: 1,
+      refundOfTransactionId: pmtTxId,
+      idempotencyKey: 'refund-wrong-user-key',
+    });
+
+    expect(refundRes.isFailure).toBe(true);
+    expect(refundRes.error).toContain('não coincide com o usuário proprietário');
+  });
+
+  it('P0.3: Rejeita refund se o ativo solicitado não coincidir com a transação original', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    // Insert asset 2 (active)
+    await sqlite.execute(`
+      INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at) VALUES (2, 'USD', 'USD', 'US Dollar', 'fiat', 2, 'active', 1000, 1000);
+    `);
+
+    // 1. Record payment in asset 1 (BRL)
+    const paymentRes = await useCase.execute({
+      userId: 10,
+      type: 'payment',
+      direction: 'OUTBOUND',
+      description: 'Pagamento BRL User 10',
+      amountBaseUnits: '150',
+      assetId: 1,
+      idempotencyKey: 'pmt-asset-1-key',
+    });
+    expect(paymentRes.isSuccess).toBe(true);
+    const pmtTxId = paymentRes.getValue().transactionId;
+
+    // 2. Attempt refund in asset 2 (USD)
+    const refundRes = await useCase.execute({
+      userId: 10,
+      type: 'refund',
+      direction: 'INBOUND',
+      description: 'Reembolso USD em pagamento BRL',
+      amountBaseUnits: '50',
+      assetId: 2,
+      refundOfTransactionId: pmtTxId,
+      idempotencyKey: 'refund-wrong-asset-key',
+    });
+
+    expect(refundRes.isFailure).toBe(true);
+    expect(refundRes.error).toContain('não possui lançamento de receita referente ao ativo #2');
+  });
+
+  it('P0.4: Rejeita transação com ativo inexistente ou inativo', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    // Insert asset 99 as inactive
+    await sqlite.execute(`
+      INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at) VALUES (99, 'OFF', 'OFF', 'Disabled Asset', 'fiat', 2, 'inactive', 1000, 1000);
+    `);
+
+    const resultInactive = await useCase.execute({
+      userId: 10,
+      type: 'deposit',
+      direction: 'INBOUND',
+      description: 'Depósito com Ativo Inativo',
+      amountBaseUnits: '100',
+      assetId: 99,
+      idempotencyKey: 'deposit-inactive-asset-key',
+    });
+    expect(resultInactive.isFailure).toBe(true);
+    expect(resultInactive.error).toContain('está inativo ou suspenso');
+
+    const resultNonExistent = await useCase.execute({
+      userId: 10,
+      type: 'deposit',
+      direction: 'INBOUND',
+      description: 'Depósito com Ativo Inexistente',
+      amountBaseUnits: '100',
+      assetId: 9999,
+      idempotencyKey: 'deposit-nonexistent-asset-key',
+    });
+    expect(resultNonExistent.isFailure).toBe(true);
+    expect(resultNonExistent.error).toContain('not found');
+  });
+
+  it('P1.1: Rejeita categoria financeira inválida', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    const result = await useCase.execute({
+      userId: 10,
+      type: 'deposit',
+      direction: 'INBOUND',
+      description: 'Depósito com Categoria Falsa',
+      amountBaseUnits: '100',
+      assetId: 1,
+      category: 'fake_category_xyz' as any,
+      idempotencyKey: 'deposit-fake-category-key',
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('não é uma categoria financeira válida');
+  });
+
+  it('P1.2: Rejeita refund com direção OUTBOUND', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    const result = await useCase.execute({
+      userId: 10,
+      type: 'refund',
+      direction: 'OUTBOUND',
+      description: 'Refund Direção Errada',
+      amountBaseUnits: '100',
+      assetId: 1,
+      refundOfTransactionId: 1,
+      idempotencyKey: 'refund-wrong-dir-key',
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('não pode ter direção OUTBOUND');
   });
 });

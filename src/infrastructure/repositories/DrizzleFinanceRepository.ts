@@ -4,6 +4,7 @@ import {
   accountBalances,
   financialTransactions,
   financialLedgerEntries,
+  financialAssets,
 } from '../../db/finance/tables';
 import { idempotencyKeys, outboxEvents } from '../../db/infrastructure/tables';
 import { Result } from '../../shared/kernel/Result';
@@ -19,9 +20,11 @@ import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
 export function isUniqueConstraintViolation(err: any): boolean {
   if (!err) return false;
 
+  const msg = `${err.message || ''} ${err.cause?.message || ''} ${err.stack || ''}`.toLowerCase();
+  if (msg.includes('foreign key') || msg.includes('check constraint')) return false;
+
   const code = String(err.code || err.extendedCode || err.rawCode || err.cause?.code || '');
   if (
-    code === 'SQLITE_CONSTRAINT' ||
     code === 'SQLITE_CONSTRAINT_UNIQUE' ||
     code === 'SQLITE_CONSTRAINT_PRIMARYKEY' ||
     code === '1555' ||
@@ -30,11 +33,9 @@ export function isUniqueConstraintViolation(err: any): boolean {
     return true;
   }
 
-  const msg = `${err.message || ''} ${err.cause?.message || ''} ${err.stack || ''}`.toLowerCase();
   return (
     msg.includes('unique constraint failed') ||
     msg.includes('d1_error: unique constraint') ||
-    msg.includes('sqlite_constraint') ||
     msg.includes('unique constraint')
   );
 }
@@ -99,6 +100,28 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       }));
 
       return Result.ok(balances);
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: string }>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(financialAssets)
+        .where(eq(financialAssets.id, assetId))
+        .limit(1);
+
+      if (!row) {
+        return Result.fail(`Financial asset #${assetId} not found.`);
+      }
+
+      return Result.ok({
+        id: row.id,
+        code: row.code,
+        status: row.status,
+      });
     } catch (err: any) {
       return Result.fail(err.message);
     }

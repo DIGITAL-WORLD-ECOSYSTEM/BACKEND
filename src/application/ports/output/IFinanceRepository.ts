@@ -88,6 +88,7 @@ export interface IFinanceRepository {
   getOrCreateOperatingAccount(): Promise<Result<FinancialAccountRecord>>;
   getSystemAccount(accountType: SystemAccountType): Promise<Result<FinancialAccountRecord>>;
   getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>>;
+  getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: string }>>;
 
   getTransactionById(transactionId: number): Promise<Result<FinancialTransactionRecord>>;
   getRefundsTotalForTransaction(originalTransactionId: number): Promise<bigint>;

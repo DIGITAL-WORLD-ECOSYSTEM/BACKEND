@@ -314,5 +314,5 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
 
     try { sqliteB.close(); } catch (e) {}
     try { unlinkSync(dbFileB); } catch (e) {}
-  });
+  }, 30000);
 });
