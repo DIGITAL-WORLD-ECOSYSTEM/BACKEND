@@ -1324,8 +1324,27 @@ export type FinancialTransactionCategory =
   | 'other';
 
 export type FinancialAccountStatus = 'active' | 'inactive' | 'suspended';
+export type FinancialAssetStatus = 'active' | 'inactive' | 'suspended';
 
 export type BalanceUpdateResult = 'UPDATED' | 'INSUFFICIENT_BALANCE' | 'OCC_CONFLICT';
+
+export type IdempotencyRecord =
+  | { status: 'processing'; transactionId: null; requestHash: string }
+  | { status: 'completed'; transactionId: number; requestHash: string }
+  | { status: 'failed'; transactionId: null; requestHash: string };
+
+export type IdempotencyClaimResult =
+  | { status: 'CLAIMED' }
+  | { status: 'COMPLETED'; transactionId: number; requestHash: string }
+  | { status: 'PROCESSING'; requestHash: string }
+  | { status: 'CONFLICT'; requestHash: string };
+
+export interface LedgerTransactionCommittedEvent {
+  transactionId: number;
+  idempotencyKey: string;
+  requestHash: string;
+  [key: string]: unknown;
+}
 
 export interface FinancialAccountRecord {
   id: number;
@@ -1363,7 +1382,7 @@ export interface IFinanceRepository {
   getOrCreateOperatingAccount(): Promise<Result<FinancialAccountRecord>>;
   getSystemAccount(accountType: SystemAccountType): Promise<Result<FinancialAccountRecord>>;
   getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>>;
-  getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: string }>>;
+  getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: FinancialAssetStatus }>>;
 
   getTransactionById(transactionId: number): Promise<Result<FinancialTransactionRecord>>;
   getRefundsTotalForTransaction(originalTransactionId: number, assetId: number): Promise<bigint>;
@@ -1371,8 +1390,8 @@ export interface IFinanceRepository {
   listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
   getTransactionEntries(transactionId: number): Promise<Result<FinancialLedgerEntryRecord[]>>;
 
-  getIdempotencyRecord(key: string, scope: string): Promise<{ status: string; requestHash: string; transactionId?: number } | null>;
-  claimIdempotency(idempotencyKey: string, userId: number | null | undefined, scope: string, requestHash: string): Promise<boolean>;
+  getIdempotencyRecord(key: string, scope: string): Promise<IdempotencyRecord | null>;
+  claimIdempotency(idempotencyKey: string, userId: number | null | undefined, scope: string, requestHash: string): Promise<boolean | IdempotencyClaimResult>;
   completeIdempotency(key: string, scope: string, transactionId: number): Promise<void>;
   insertTransaction(data: {
     userId?: number | null;
@@ -1385,13 +1404,13 @@ export interface IFinanceRepository {
   }): Promise<number>;
   insertLedgerEntries(entries: LedgerEntry[], transactionId: number): Promise<void>;
   updateBalanceWithOCC(
-    accountId: string,
-    assetId: string,
+    accountId: number | string,
+    assetId: number | string,
     amount: bigint,
     type: 'debit' | 'credit'
   ): Promise<BalanceUpdateResult>;
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
-  persistOutboxEvent(eventType: string, payload: Record<string, unknown>): Promise<void>;
+  persistOutboxEvent(eventType: string, payload: LedgerTransactionCommittedEvent | Record<string, unknown>): Promise<void>;
 }
 
 ```
@@ -1518,7 +1537,7 @@ export class FinancialTransactionOrchestrator {
     for (const entry of transaction.entries) {
       const updateResult = await this.financeRepo.updateBalanceWithOCC(
         entry.accountId,
-        String(entry.amount.assetId),
+        entry.amount.assetId,
         entry.amount.amount,
         entry.type
       );
@@ -3538,7 +3557,9 @@ import {
   FinancialTransactionType,
   FinancialTransactionCategory,
   FinancialTransactionStatus,
+  FinancialAssetStatus,
   BalanceUpdateResult,
+  IdempotencyRecord,
 } from '../../application/ports/output/IFinanceRepository';
 import { FinancialLedgerEntryRecord } from '../../domains/finance/contracts/FinancialLedgerEntryRecord';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
@@ -3657,7 +3678,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
-  async getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: string }>> {
+  async getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: FinancialAssetStatus }>> {
     try {
       const [row] = await this.executor
         .select()
@@ -3672,7 +3693,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       return Result.ok({
         id: row.id,
         code: row.code,
-        status: row.status,
+        status: row.status as FinancialAssetStatus,
       });
     } catch (err: any) {
       return Result.fail(err.message);
@@ -4074,7 +4095,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   async getIdempotencyRecord(
     key: string,
     scope: string
-  ): Promise<{ status: string; requestHash: string; transactionId?: number } | null> {
+  ): Promise<IdempotencyRecord | null> {
     const [record] = await this.executor
       .select({
         status: idempotencyKeys.status,
@@ -4091,10 +4112,27 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       .limit(1);
 
     if (!record) return null;
+
+    if (record.status === 'completed' && record.transactionId) {
+      return {
+        status: 'completed',
+        transactionId: record.transactionId,
+        requestHash: record.requestHash,
+      };
+    }
+
+    if (record.status === 'failed') {
+      return {
+        status: 'failed',
+        transactionId: null,
+        requestHash: record.requestHash,
+      };
+    }
+
     return {
-      status: record.status,
+      status: 'processing',
+      transactionId: null,
       requestHash: record.requestHash,
-      transactionId: record.transactionId || undefined
     };
   }
 
@@ -4186,8 +4224,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   }
 
   async updateBalanceWithOCC(
-    accountId: string,
-    assetId: string,
+    accountId: number | string,
+    assetId: number | string,
     amount: bigint,
     type: 'debit' | 'credit',
     executorOverride?: any

@@ -78,7 +78,7 @@ export class FinancialTransactionOrchestrator {
     for (const entry of transaction.entries) {
       const updateResult = await this.financeRepo.updateBalanceWithOCC(
         entry.accountId,
-        String(entry.amount.assetId),
+        entry.amount.assetId,
         entry.amount.amount,
         entry.type
       );

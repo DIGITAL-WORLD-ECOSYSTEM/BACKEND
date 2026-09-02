@@ -17,7 +17,9 @@ import {
   FinancialTransactionType,
   FinancialTransactionCategory,
   FinancialTransactionStatus,
+  FinancialAssetStatus,
   BalanceUpdateResult,
+  IdempotencyRecord,
 } from '../../application/ports/output/IFinanceRepository';
 import { FinancialLedgerEntryRecord } from '../../domains/finance/contracts/FinancialLedgerEntryRecord';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
@@ -136,7 +138,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
-  async getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: string }>> {
+  async getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: FinancialAssetStatus }>> {
     try {
       const [row] = await this.executor
         .select()
@@ -151,7 +153,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       return Result.ok({
         id: row.id,
         code: row.code,
-        status: row.status,
+        status: row.status as FinancialAssetStatus,
       });
     } catch (err: any) {
       return Result.fail(err.message);
@@ -553,7 +555,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   async getIdempotencyRecord(
     key: string,
     scope: string
-  ): Promise<{ status: string; requestHash: string; transactionId?: number } | null> {
+  ): Promise<IdempotencyRecord | null> {
     const [record] = await this.executor
       .select({
         status: idempotencyKeys.status,
@@ -570,10 +572,27 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       .limit(1);
 
     if (!record) return null;
+
+    if (record.status === 'completed' && record.transactionId) {
+      return {
+        status: 'completed',
+        transactionId: record.transactionId,
+        requestHash: record.requestHash,
+      };
+    }
+
+    if (record.status === 'failed') {
+      return {
+        status: 'failed',
+        transactionId: null,
+        requestHash: record.requestHash,
+      };
+    }
+
     return {
-      status: record.status,
+      status: 'processing',
+      transactionId: null,
       requestHash: record.requestHash,
-      transactionId: record.transactionId || undefined
     };
   }
 
@@ -665,8 +684,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   }
 
   async updateBalanceWithOCC(
-    accountId: string,
-    assetId: string,
+    accountId: number | string,
+    assetId: number | string,
     amount: bigint,
     type: 'debit' | 'credit',
     executorOverride?: any
