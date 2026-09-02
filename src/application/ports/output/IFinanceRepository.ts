@@ -115,7 +115,7 @@ export interface IFinanceRepository {
     assetId: string,
     amount: bigint,
     type: 'debit' | 'credit'
-  ): Promise<boolean>;
+  ): Promise<BalanceUpdateResult | boolean>;
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
   persistOutboxEvent(eventType: string, payload: Record<string, unknown>): Promise<void>;
 }

@@ -1387,7 +1387,7 @@ export interface IFinanceRepository {
     assetId: string,
     amount: bigint,
     type: 'debit' | 'credit'
-  ): Promise<boolean>;
+  ): Promise<BalanceUpdateResult | boolean>;
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
   persistOutboxEvent(eventType: string, payload: Record<string, unknown>): Promise<void>;
 }
@@ -1452,22 +1452,27 @@ export interface OrchestratorResult {
 }
 
 export class FinancialTransactionOrchestrator {
+  /**
+   * O Orchestrator exige um repositório transacional vinculado ao Unit of Work (BEGIN IMMEDIATE).
+   */
   constructor(private readonly financeRepo: IFinanceRepository) {}
 
   /**
    * Executa o fluxo atômico de escrita no ledger:
-   * 1. Reclamação atômica de Idempotência.
-   * 2. Inserção do registro pai da transação financeira em 'processing'.
-   * 3. Inserção dos lançamentos contábeis imutáveis.
-   * 4. Atualização dos saldos materializados com OCC (Optimistic Concurrency Control).
-   * 5. Transição de status para 'completed'.
-   * 6. Registro de evento no Outbox.
-   * 7. Conclusão da Idempotência.
+   * 1. Resolução do Hash Canônico de Idempotência (P0-1).
+   * 2. Reclamação atômica de Idempotência.
+   * 3. Inserção do registro pai da transação financeira em 'processing'.
+   * 4. Inserção dos lançamentos contábeis imutáveis.
+   * 5. Atualização dos saldos materializados com discriminação estrita de erro (P0-2: InsufficientBalanceError vs OptimisticConcurrencyError).
+   * 6. Transição de status para 'completed'.
+   * 7. Registro de evento no Outbox.
+   * 8. Conclusão da Idempotência.
    */
   public async executePosting(
     transaction: LedgerTransaction,
     requestHash?: string
   ): Promise<OrchestratorResult> {
+    // P0-1: O Hash de idempotência é derivado pelo servidor (do DTO canônico ou do aggregate LedgerTransaction)
     const computedHash = requestHash || CanonicalRequestHashService.calculateHash(transaction);
 
     // 1. Claim Idempotency Key
@@ -1508,18 +1513,24 @@ export class FinancialTransactionOrchestrator {
     // 3. Insert immutable ledger entries
     await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
 
-    // 4. Update materialized balances with OCC
+    // 4. Update materialized balances with discriminated OCC & balance checks (P0-2)
     for (const entry of transaction.entries) {
-      const success = await this.financeRepo.updateBalanceWithOCC(
+      const updateResult = await this.financeRepo.updateBalanceWithOCC(
         entry.accountId,
         String(entry.amount.assetId),
         entry.amount.amount,
         entry.type
       );
 
-      if (!success) {
+      if (updateResult === 'INSUFFICIENT_BALANCE') {
+        throw new InsufficientBalanceError(
+          `saldo insuficiente para a conta #${entry.accountId} e ativo #${entry.amount.assetId}.`
+        );
+      }
+
+      if (updateResult === 'OCC_CONFLICT' || updateResult === false) {
         throw new OptimisticConcurrencyError(
-          `Falha de concorrência ou saldo insuficiente para a conta #${entry.accountId}.`
+          `Falha de concorrência otimista (OCC version mismatch) para a conta #${entry.accountId}.`
         );
       }
     }
@@ -4153,7 +4164,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     amount: bigint,
     type: 'debit' | 'credit',
     executorOverride?: any
-  ): Promise<boolean> {
+  ): Promise<'SUCCESS' | 'INSUFFICIENT_BALANCE' | 'OCC_CONFLICT'> {
     const exec = executorOverride || this.executor;
 
     if (typeof amount !== 'bigint' || amount <= 0n) {
@@ -4232,7 +4243,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       : currentAvailable - amount;
 
     if (newAvailable < 0n) {
-      return false; // Saldo insuficiente
+      return 'INSUFFICIENT_BALANCE';
     }
 
     if (newAvailable > MAX_UINT256) {

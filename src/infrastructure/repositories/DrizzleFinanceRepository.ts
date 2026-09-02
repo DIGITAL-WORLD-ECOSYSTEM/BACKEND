@@ -669,7 +669,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     amount: bigint,
     type: 'debit' | 'credit',
     executorOverride?: any
-  ): Promise<boolean> {
+  ): Promise<'SUCCESS' | 'INSUFFICIENT_BALANCE' | 'OCC_CONFLICT'> {
     const exec = executorOverride || this.executor;
 
     if (typeof amount !== 'bigint' || amount <= 0n) {
@@ -748,7 +748,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       : currentAvailable - amount;
 
     if (newAvailable < 0n) {
-      return false; // Saldo insuficiente
+      return 'INSUFFICIENT_BALANCE';
     }
 
     if (newAvailable > MAX_UINT256) {
