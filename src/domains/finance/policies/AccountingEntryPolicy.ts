@@ -444,6 +444,25 @@ export class AccountingEntryPolicy {
     }
   }
 
+  /**
+   * Identifica e extrai o montante reembolsável de uma transação de pagamento original
+   * com base nos lançamentos contábeis de receita referentes ao ativo informado.
+   */
+  public static extractRefundablePaymentAmount(
+    entries: Array<{ direction?: string; entryType?: string; assetId: number; amount: Money256 }>,
+    assetId: number
+  ): Money256 {
+    const paymentCreditEntry = entries.find(
+      (e) => (e.direction === 'credit' || e.entryType === 'credit') && e.assetId === assetId
+    );
+    if (!paymentCreditEntry) {
+      throw new AccountingMatrixValidationError(
+        `A transação original não possui lançamento de receita referente ao ativo #${assetId}.`
+      );
+    }
+    return paymentCreditEntry.amount;
+  }
+
   private static assertPositiveAmount(amount: Money256): void {
     if (!amount.isPositive()) {
       throw new AccountingMatrixValidationError(

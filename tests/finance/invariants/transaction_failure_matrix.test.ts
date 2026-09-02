@@ -311,7 +311,7 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
     expect(result.error).toContain('não é uma categoria financeira válida');
   });
 
-  it('P1.2: Rejeita refund com direção OUTBOUND', async () => {
+  it('P1.2: Rejeita refund com direção OUTBOUND e infere direção se omitida', async () => {
     const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
     const useCase = new RecordTreasuryTransactionUseCase(uow);
 
@@ -328,5 +328,21 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
 
     expect(result.isFailure).toBe(true);
     expect(result.error).toContain('não pode ter direção OUTBOUND');
+  });
+
+  it('P1.3: Rejeita conta sistêmica com classe contábil incompatível', async () => {
+    // Temporarily mutate account_class of payment_revenue to 'asset' (should be 'revenue')
+    await sqlite.execute(`UPDATE financial_accounts SET account_class = 'asset' WHERE account_type = 'payment_revenue';`);
+
+    const sysAccRes = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      return await repo.getSystemAccount('payment_revenue');
+    });
+
+    expect(sysAccRes.isFailure).toBe(true);
+    expect(sysAccRes.error).toContain('classe contábil incompatível');
+
+    // Restore original class
+    await sqlite.execute(`UPDATE financial_accounts SET account_class = 'revenue' WHERE account_type = 'payment_revenue';`);
   });
 });

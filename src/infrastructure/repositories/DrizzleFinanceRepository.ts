@@ -274,6 +274,27 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         return Result.fail(`System account of type "${accountType}" not found. Must be provisioned via bootstrap seed.`);
       }
 
+      const EXPECTED_CLASSES: Record<string, string> = {
+        payment_revenue: 'revenue',
+        refund_expense: 'expense',
+        fees: 'revenue',
+        reward_expense: 'expense',
+        yield_expense: 'expense',
+        operating: 'asset',
+        treasury: 'asset',
+        reserve: 'asset',
+        escrow: 'asset',
+        clearing: 'asset',
+        opening_balance_equity: 'equity',
+      };
+
+      const expectedClass = EXPECTED_CLASSES[accountType];
+      if (expectedClass && row.accountClass !== expectedClass) {
+        return Result.fail(
+          `Conta sistêmica "${accountType}" possui classe contábil incompatível (${row.accountClass} !== ${expectedClass}).`
+        );
+      }
+
       return Result.ok({
         id: row.id,
         userId: row.userId,

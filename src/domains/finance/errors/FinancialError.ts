@@ -76,3 +76,27 @@ export class InvalidMoneyFormatError extends FinancialError {
     super(message, 'INVALID_MONEY_FORMAT', false, 400);
   }
 }
+
+export class InvalidRefundAmountError extends FinancialError {
+  constructor(message: string = 'Valor de reembolso inválido ou excede o montante da transação original.') {
+    super(message, 'INVALID_REFUND_AMOUNT', false, 422);
+  }
+}
+
+export class UnsupportedFinancialOperationError extends FinancialError {
+  constructor(message: string = 'Operação financeira não suportada.') {
+    super(message, 'UNSUPPORTED_FINANCIAL_OPERATION', false, 400);
+  }
+}
+
+export class InvalidFinancialOperationError extends FinancialError {
+  constructor(message: string = 'Operação financeira inválida ou parâmetros inconsistentes.') {
+    super(message, 'INVALID_FINANCIAL_OPERATION', false, 400);
+  }
+}
+
+export class AccountOwnershipError extends FinancialError {
+  constructor(message: string = 'Conflito de propriedade da conta ou transação financeira.') {
+    super(message, 'ACCOUNT_OWNERSHIP_MISMATCH', false, 403);
+  }
+}

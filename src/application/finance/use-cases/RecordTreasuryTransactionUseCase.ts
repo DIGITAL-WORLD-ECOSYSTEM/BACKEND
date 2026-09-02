@@ -5,14 +5,20 @@ import { Money256, parsePositiveSafeIntegerId } from '../../../domains/finance/v
 import { AccountingEntryPolicy, RawLedgerEntrySpec } from '../../../domains/finance/policies/AccountingEntryPolicy';
 import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
 import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
-import { FinancialError } from '../../../domains/finance/errors/FinancialError';
+import {
+  FinancialError,
+  InvalidRefundAmountError,
+  UnsupportedFinancialOperationError,
+  InvalidFinancialOperationError,
+  AccountOwnershipError,
+} from '../../../domains/finance/errors/FinancialError';
 import { FinancialTransactionCategory } from '../../ports/output/IFinanceRepository';
 
 export interface RecordTreasuryTransactionDTO {
   userId?: number | null;
   type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
-  direction: 'INBOUND' | 'OUTBOUND';
-  category?: FinancialTransactionCategory | string;
+  direction?: 'INBOUND' | 'OUTBOUND';
+  category?: FinancialTransactionCategory;
   description: string;
   amountBaseUnits: string;
   assetId: number;
@@ -26,27 +32,17 @@ export interface RecordTreasuryTransactionResult {
   isReplayed: boolean;
 }
 
-export class UnsupportedFinancialOperationError extends FinancialError {
-  constructor(message: string) {
-    super(message, 'UNSUPPORTED_FINANCIAL_OPERATION', false, 400);
-  }
-}
-
-export class InvalidRefundAmountError extends FinancialError {
-  constructor(message: string) {
-    super(message, 'INVALID_REFUND_AMOUNT', false, 422);
-  }
-}
-
-const USER_REQUIRED_OPERATIONS = ['payment', 'fee', 'reward', 'yield'];
+const USER_REQUIRED_OPERATIONS = ['payment', 'fee', 'reward', 'yield'] as const;
+const INBOUND_ONLY_OPS = ['deposit', 'yield', 'reward', 'refund'] as const;
+const OUTBOUND_ONLY_OPS = ['withdrawal', 'payment', 'fee'] as const;
 
 export class RecordTreasuryTransactionUseCase {
   constructor(private readonly uow: IUnitOfWork) {}
 
   async execute(dto: RecordTreasuryTransactionDTO): Promise<Result<RecordTreasuryTransactionResult>> {
     // 1. Structural DTO Field Validation
-    if (!dto.description || !dto.amountBaseUnits || !dto.idempotencyKey || dto.assetId === undefined || !dto.direction || !dto.type) {
-      return Result.fail<RecordTreasuryTransactionResult>('Descrição, valor, assetId, direction, type e idempotencyKey são obrigatórios.');
+    if (!dto.description || !dto.amountBaseUnits || !dto.idempotencyKey || dto.assetId === undefined || !dto.type) {
+      return Result.fail<RecordTreasuryTransactionResult>('Descrição, valor, assetId, type e idempotencyKey são obrigatórios.');
     }
 
     const description = dto.description.trim();
@@ -80,19 +76,24 @@ export class RecordTreasuryTransactionUseCase {
         parsedUserId = parsePositiveSafeIntegerId(dto.userId, 'userId');
       }
 
-      if (USER_REQUIRED_OPERATIONS.includes(dto.type) && parsedUserId === null) {
+      if ((USER_REQUIRED_OPERATIONS as readonly string[]).includes(dto.type) && parsedUserId === null) {
         return Result.fail<RecordTreasuryTransactionResult>(`Operação do tipo '${dto.type}' exige obrigatoriamente um userId de usuário final.`);
       }
 
-      // 4. Direction Rules per Operation
-      const inboundOnly = ['deposit', 'yield', 'reward', 'refund'];
-      const outboundOnly = ['withdrawal', 'payment', 'fee'];
-
-      if (dto.direction === 'INBOUND' && outboundOnly.includes(dto.type)) {
-        return Result.fail<RecordTreasuryTransactionResult>(`Transação do tipo '${dto.type}' não pode ter direção INBOUND.`);
-      }
-      if (dto.direction === 'OUTBOUND' && inboundOnly.includes(dto.type)) {
-        return Result.fail<RecordTreasuryTransactionResult>(`Transação do tipo '${dto.type}' não pode ter direção OUTBOUND.`);
+      // 4. Direction Rules & Determinism per Operation
+      let resolvedDirection = dto.direction;
+      if ((INBOUND_ONLY_OPS as readonly string[]).includes(dto.type)) {
+        if (resolvedDirection && resolvedDirection !== 'INBOUND') {
+          return Result.fail<RecordTreasuryTransactionResult>(`Transação do tipo '${dto.type}' não pode ter direção OUTBOUND. Direção determinística: INBOUND.`);
+        }
+        resolvedDirection = 'INBOUND';
+      } else if ((OUTBOUND_ONLY_OPS as readonly string[]).includes(dto.type)) {
+        if (resolvedDirection && resolvedDirection !== 'OUTBOUND') {
+          return Result.fail<RecordTreasuryTransactionResult>(`Transação do tipo '${dto.type}' não pode ter direção INBOUND. Direção determinística: OUTBOUND.`);
+        }
+        resolvedDirection = 'OUTBOUND';
+      } else if (!resolvedDirection) {
+        return Result.fail<RecordTreasuryTransactionResult>(`Operação do tipo '${dto.type}' exige declaração explícita de direção (INBOUND ou OUTBOUND).`);
       }
 
       // 5. Category Strict Typing & Domain Validation
@@ -114,7 +115,7 @@ export class RecordTreasuryTransactionUseCase {
         assetId: parsedAssetId,
         category,
         description,
-        direction: dto.direction,
+        direction: resolvedDirection,
         refundOfTransactionId: dto.refundOfTransactionId ?? null,
         type: dto.type,
         userId: parsedUserId,
@@ -212,35 +213,33 @@ export class RecordTreasuryTransactionUseCase {
               return Result.fail<RecordTreasuryTransactionResult>(`Reembolso rejeitado: Apenas transações do tipo 'payment' podem ser reembolsadas.`);
             }
 
-            // P0.2: Ownership Verification (refund.userId MUST match original payment userId)
-            if (origTx.userId !== null) {
-              if (parsedUserId !== null && parsedUserId !== origTx.userId) {
-                return Result.fail<RecordTreasuryTransactionResult>(
-                  `Reembolso rejeitado: O usuário solicitado (#${parsedUserId}) não coincide com o usuário proprietário da transação original (#${origTx.userId}).`
-                );
-              }
-              parsedUserId = origTx.userId;
-              const userAccRes = await financeRepo.getOrCreateUserAccount(parsedUserId);
-              if (userAccRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(userAccRes.error);
-              const userAcc = userAccRes.getValue();
-              if (userAcc.status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta do Usuário está inativa ou suspensa.');
-              userAccountId = userAcc.id;
+            // P0.2: Strict Refund Ownership Verification (origTx.userId MUST be non-null and match parsedUserId if supplied)
+            if (origTx.userId === null) {
+              return Result.fail<RecordTreasuryTransactionResult>(`Reembolso rejeitado: A transação original #${origTxId} não possui usuário proprietário.`);
+            }
+            if (parsedUserId !== null && parsedUserId !== origTx.userId) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                `Reembolso rejeitado: O usuário solicitado (#${parsedUserId}) não coincide com o usuário proprietário da transação original (#${origTx.userId}).`
+              );
             }
 
-            // P0.3 & P0.6: Fetch original payment ledger entries & match asset ID
+            // Strictly derive user account from original payment owner
+            parsedUserId = origTx.userId;
+            const userAccRes = await financeRepo.getOrCreateUserAccount(parsedUserId);
+            if (userAccRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(userAccRes.error);
+            const userAcc = userAccRes.getValue();
+            if (userAcc.status !== 'active') return Result.fail<RecordTreasuryTransactionResult>('Conta do Usuário está inativa ou suspensa.');
+            userAccountId = userAcc.id;
+
+            // P0.3 & P0.6: Fetch original payment ledger entries & extract payment revenue amount
             const origEntriesRes = await financeRepo.getTransactionEntries(origTxId);
             if (origEntriesRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>('Erro ao buscar lançamentos da transação original para refund.');
 
             const origEntries = origEntriesRes.getValue();
-            const paymentCreditEntry = origEntries.find((e) => e.direction === 'credit' && e.assetId === parsedAssetId);
-            if (!paymentCreditEntry) {
-              return Result.fail<RecordTreasuryTransactionResult>(
-                `Reembolso rejeitado: A transação original #${origTxId} não possui lançamento de receita referente ao ativo #${parsedAssetId}.`
-              );
-            }
-            const originalPaymentAmount = BigInt(paymentCreditEntry.amountBaseUnits);
+            const originalPaymentMoney = AccountingEntryPolicy.extractRefundablePaymentAmount(origEntries as any, parsedAssetId);
+            const originalPaymentAmount = originalPaymentMoney.toBigInt();
 
-            // Refund Limit & Concurrency Protection Check
+            // Refund Limit & Atomic Concurrency Protection Check (Executing within single UoW write lock)
             const prevRefundsTotal = await financeRepo.getRefundsTotalForTransaction(origTxId);
             const requestedRefundAmount = amountMoney.toBigInt();
             if (prevRefundsTotal + requestedRefundAmount > originalPaymentAmount) {
@@ -299,8 +298,8 @@ export class RecordTreasuryTransactionUseCase {
           }
           case 'adjustment': {
             rawEntries = AccountingEntryPolicy.createAdjustmentEntries({
-              debitAccountId: dto.direction === 'INBOUND' ? treasuryAccountId : userAccountId,
-              creditAccountId: dto.direction === 'INBOUND' ? userAccountId : treasuryAccountId,
+              debitAccountId: resolvedDirection === 'INBOUND' ? treasuryAccountId : userAccountId,
+              creditAccountId: resolvedDirection === 'INBOUND' ? userAccountId : treasuryAccountId,
               amount: amountMoney,
               reason: description,
             });
@@ -308,8 +307,8 @@ export class RecordTreasuryTransactionUseCase {
           }
           case 'transfer': {
             rawEntries = AccountingEntryPolicy.createTransferEntries({
-              sourceAccountId: dto.direction === 'OUTBOUND' ? userAccountId : treasuryAccountId,
-              destinationAccountId: dto.direction === 'OUTBOUND' ? treasuryAccountId : userAccountId,
+              sourceAccountId: resolvedDirection === 'OUTBOUND' ? userAccountId : treasuryAccountId,
+              destinationAccountId: resolvedDirection === 'OUTBOUND' ? treasuryAccountId : userAccountId,
               amount: amountMoney,
               description,
             });
