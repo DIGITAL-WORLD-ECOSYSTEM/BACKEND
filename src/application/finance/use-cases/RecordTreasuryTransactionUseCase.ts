@@ -359,6 +359,7 @@ export class RecordTreasuryTransactionUseCase {
               creditAccountId: resolvedDirection === 'INBOUND' ? userAccountId : treasuryAccountId,
               amount: amountMoney,
               reason: description,
+              authorizedByUserId: dto.userId ?? 1,
             });
             break;
           }
