@@ -287,7 +287,7 @@ export class RecordTreasuryTransactionUseCase {
             const originalPaymentAmount = originalPaymentMoney.toBigInt();
 
             // Refund cumulative limit check. Concurrency safety is guaranteed by the UoW transaction boundary (BEGIN IMMEDIATE write lock).
-            const prevRefundsTotal = await financeRepo.getRefundsTotalForTransaction(origTxId);
+            const prevRefundsTotal = await financeRepo.getRefundsTotalForTransaction(origTxId, parsedAssetId);
             const requestedRefundAmount = amountMoney.toBigInt();
             if (prevRefundsTotal + requestedRefundAmount > originalPaymentAmount) {
               const remaining = originalPaymentAmount > prevRefundsTotal ? originalPaymentAmount - prevRefundsTotal : 0n;

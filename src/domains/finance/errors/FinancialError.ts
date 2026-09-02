@@ -100,3 +100,9 @@ export class AccountOwnershipError extends FinancialError {
     super(message, 'ACCOUNT_OWNERSHIP_MISMATCH', false, 403);
   }
 }
+
+export class InvalidAccountClassError extends FinancialError {
+  constructor(message: string = 'Classe contábil inválida ou não suportada.') {
+    super(message, 'INVALID_ACCOUNT_CLASS', false, 400);
+  }
+}

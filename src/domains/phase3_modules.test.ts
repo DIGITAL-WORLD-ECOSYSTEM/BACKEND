@@ -190,7 +190,14 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
 
     it('should record a treasury financial transaction', async () => {
       const mockFinanceRepo = {
-        getTreasuryAccount: vi.fn().mockResolvedValue(Result.ok({ id: 1 })),
+        getAssetById: vi.fn().mockResolvedValue(Result.ok({ id: 1, code: 'BRL', status: 'active' })),
+        getSystemAccount: vi.fn().mockImplementation(async (type) => Result.ok({
+          id: type === 'treasury' ? 1 : 3,
+          accountType: type,
+          accountClass: type === 'treasury' ? 'asset' : 'revenue',
+          status: 'active'
+        })),
+        getTreasuryAccount: vi.fn().mockResolvedValue(Result.ok({ id: 1, status: 'active' })),
         getOrCreateUserAccount: vi.fn().mockResolvedValue(Result.ok({ id: 2 })),
         getOrCreateOperatingAccount: vi.fn().mockResolvedValue(Result.ok({ id: 3 })),
         claimIdempotency: vi.fn().mockResolvedValue(true),
@@ -216,8 +223,7 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
         direction: 'INBOUND',
         type: 'deposit',
         assetId: 1,
-        idempotencyKey: 'test-key-123',
-        requestHash: 'hash-123'
+        idempotencyKey: 'test-key-123'
       });
 
       expect(result.isSuccess).toBe(true);

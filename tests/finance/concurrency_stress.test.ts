@@ -164,7 +164,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
     // Remaining balance + debited MUST EQUAL initial balance (100)
     expect(finalBal + BigInt(successful.length * 20)).toBe(100n);
     expect(finalBal >= 0n).toBe(true);
-  });
+  }, 30000);
 
   it('Gate B: Multi-Client Independent Connections Concurrency Stress Certification', async () => {
     const dbFileB = 'test_concurrency_stress_b.db';

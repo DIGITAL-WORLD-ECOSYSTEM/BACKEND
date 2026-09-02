@@ -8,7 +8,7 @@ import { LedgerTransaction, LedgerEntry } from '../../../src/domains/finance/ent
 import { Money256 } from '../../../src/domains/finance/value-objects/Money256';
 import { FinancialTransactionOrchestrator } from '../../../src/application/finance/services/FinancialTransactionOrchestrator';
 import { idempotencyKeys, outboxEvents } from '../../../src/db/infrastructure/tables';
-import { financialTransactions, financialLedgerEntries, accountBalances } from '../../../src/db/finance/tables';
+import { financialAccounts, financialTransactions, financialLedgerEntries, accountBalances } from '../../../src/db/finance/tables';
 import { Result } from '../../../src/shared/kernel/Result';
 import { runAllMigrationsLibSql } from '../../test_helpers/runMigrations';
 
@@ -439,5 +439,40 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
     });
     const totalRefunded = rawResult.rows.reduce((acc: bigint, r: any) => acc + BigInt(r.amount_base_units || 0), 0n);
     expect(totalRefunded).toBe(80n);
+  });
+
+  it('P1.6: Rejeita valor numérico em formato não canônico no storage persistence', async () => {
+    const { validateCanonicalBaseUnits } = await import('../../../src/infrastructure/repositories/DrizzleFinanceRepository');
+    
+    expect(() => validateCanonicalBaseUnits('00100')).toThrow(/Formato de baseUnits inválido/);
+    expect(() => validateCanonicalBaseUnits('-50')).toThrow(/Formato de baseUnits inválido/);
+    expect(() => validateCanonicalBaseUnits('100abc')).toThrow(/Formato de baseUnits inválido/);
+    expect(validateCanonicalBaseUnits('100')).toBe(100n);
+    expect(validateCanonicalBaseUnits('0')).toBe(0n);
+  });
+
+  it('P1.7: Rejeita classe contábil inválida em updateBalanceWithOCC com InvalidAccountClassError', async () => {
+    const { InvalidAccountClassError } = await import('../../../src/domains/finance/errors/FinancialError');
+    const err = new InvalidAccountClassError('Classe contábil invalida.');
+    expect(err.code).toBe('INVALID_ACCOUNT_CLASS');
+    expect(err.httpStatus).toBe(400);
+  });
+
+  it('P1.8: Rejeita quantia excedente a UINT256 com Money256OverflowError', async () => {
+    const overflowBigInt = (1n << 256n) + 100n;
+
+    const repoRes = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      try {
+        await repo.updateBalanceWithOCC('1', '1', overflowBigInt, 'credit');
+        return Result.ok(true);
+      } catch (err: any) {
+        return Result.fail(err);
+      }
+    });
+
+    expect(repoRes.isFailure).toBe(true);
+    const errObj = repoRes.errorObject as any;
+    expect(errObj.code).toBe('MONEY_256_OVERFLOW');
   });
 });

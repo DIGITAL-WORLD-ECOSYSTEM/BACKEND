@@ -75,7 +75,7 @@ export interface FinancialTransactionRecord {
   id: number;
   userId: number | null;
   type: FinancialTransactionType;
-  category: FinancialTransactionCategory | string;
+  category: FinancialTransactionCategory;
   status: FinancialTransactionStatus;
   description: string;
   version: number;
@@ -92,7 +92,7 @@ export interface IFinanceRepository {
   getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: string }>>;
 
   getTransactionById(transactionId: number): Promise<Result<FinancialTransactionRecord>>;
-  getRefundsTotalForTransaction(originalTransactionId: number): Promise<bigint>;
+  getRefundsTotalForTransaction(originalTransactionId: number, assetId: number): Promise<bigint>;
 
   listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
   getTransactionEntries(transactionId: number): Promise<Result<FinancialLedgerEntryRecord[]>>;
@@ -102,10 +102,10 @@ export interface IFinanceRepository {
   completeIdempotency(key: string, scope: string, transactionId: number): Promise<void>;
   insertTransaction(data: {
     userId?: number | null;
-    type: FinancialTransactionType | string;
-    category: FinancialTransactionCategory | string;
+    type: FinancialTransactionType;
+    category: FinancialTransactionCategory;
     description: string;
-    status: FinancialTransactionStatus | string;
+    status: FinancialTransactionStatus;
     reversalOfTransactionId?: number;
     refundOfTransactionId?: number;
   }): Promise<number>;
@@ -116,6 +116,6 @@ export interface IFinanceRepository {
     amount: bigint,
     type: 'debit' | 'credit'
   ): Promise<boolean>;
-  updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus | string, expectedVersion?: number): Promise<void>;
-  persistOutboxEvent(eventType: string, payload: any): Promise<void>;
+  updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
+  persistOutboxEvent(eventType: string, payload: Record<string, unknown>): Promise<void>;
 }
