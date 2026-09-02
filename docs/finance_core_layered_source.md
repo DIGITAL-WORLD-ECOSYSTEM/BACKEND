@@ -111,14 +111,20 @@ export interface FinancialLedgerEntryRecord {
 ### [Domain Layer — Value Objects] `src/domains/finance/value-objects/Money256.ts`
 
 ```typescript
-import { InvalidMoneyFormatError, Money256OverflowError } from '../errors/FinancialError';
+import {
+  InvalidMoneyFormatError,
+  Money256OverflowError,
+  CurrencyMismatchError,
+  MoneyUnderflowError,
+  InvalidIdentifierError,
+} from '../errors/FinancialError';
 
 export const MAX_UINT256 = (1n << 256n) - 1n; // 2^256 - 1
 
 export function parsePositiveSafeIntegerId(id: number | string, name = 'id'): number {
   const numericId = typeof id === 'number' ? id : Number(id);
   if (!Number.isInteger(numericId) || numericId <= 0 || numericId > Number.MAX_SAFE_INTEGER) {
-    throw new InvalidMoneyFormatError(`Invalid physical ${name}: ${id}`);
+    throw new InvalidIdentifierError(`Invalid physical ${name}: ${id}`);
   }
   return numericId;
 }
@@ -182,7 +188,7 @@ export class Money256 {
   public subtract(other: Money256): Money256 {
     this.assertSameAsset(other);
     if (this.amount < other.amount) {
-      throw new InvalidMoneyFormatError('Subtraction resulting in negative balance is prohibited.');
+      throw new MoneyUnderflowError('Subtraction resulting in negative balance is prohibited.');
     }
     return new Money256(this.amount - other.amount, this.assetId);
   }
@@ -229,7 +235,7 @@ export class Money256 {
 
   private assertSameAsset(other: Money256): void {
     if (this.assetId !== other.assetId) {
-      throw new InvalidMoneyFormatError(
+      throw new CurrencyMismatchError(
         `Cannot perform arithmetic on different assets: ${this.assetId} and ${other.assetId}`
       );
     }
@@ -510,6 +516,27 @@ export class Money256OverflowError extends FinancialError {
 export class InvalidMoneyFormatError extends FinancialError {
   constructor(message: string = 'Formato numérico inválido. Deve ser string decimal canônica sem expoente, sinal ou zeros à esquerda.') {
     super(message, 'INVALID_MONEY_FORMAT', false, 400);
+  }
+}
+
+export class CurrencyMismatchError extends InvalidMoneyFormatError {
+  constructor(message: string = 'Operação proibida entre ativos/moedas diferentes.') {
+    super(message);
+    (this as any).code = 'CURRENCY_MISMATCH';
+  }
+}
+
+export class MoneyUnderflowError extends InvalidMoneyFormatError {
+  constructor(message: string = 'Subtração resultando em saldo negativo é proibida (underflow).') {
+    super(message);
+    (this as any).code = 'MONEY_UNDERFLOW';
+  }
+}
+
+export class InvalidIdentifierError extends InvalidMoneyFormatError {
+  constructor(message: string = 'Identificador físico inválido.') {
+    super(message);
+    (this as any).code = 'INVALID_IDENTIFIER';
   }
 }
 

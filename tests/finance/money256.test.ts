@@ -3,6 +3,9 @@ import { Money256, MAX_UINT256 } from '../../src/domains/finance/value-objects/M
 import {
   InvalidMoneyFormatError,
   Money256OverflowError,
+  CurrencyMismatchError,
+  MoneyUnderflowError,
+  InvalidIdentifierError,
 } from '../../src/domains/finance/errors/FinancialError';
 
 describe('Money256 Value Object (EVM 256-bit Precision)', () => {
@@ -28,6 +31,7 @@ describe('Money256 Value Object (EVM 256-bit Precision)', () => {
     expect(() => Money256.fromString('1e18', 1)).toThrow(InvalidMoneyFormatError);
     expect(() => Money256.fromString('100.0', 1)).toThrow(InvalidMoneyFormatError);
     expect(() => Money256.fromString(' 100 ', 1)).toThrow(InvalidMoneyFormatError);
+    expect(() => Money256.fromString('100', -1)).toThrow(InvalidIdentifierError);
   });
 
   it('throws Money256OverflowError on values exceeding 2^256 - 1', () => {
@@ -46,13 +50,13 @@ describe('Money256 Value Object (EVM 256-bit Precision)', () => {
     const diff = a.subtract(b);
     expect(diff.toCanonicalString()).toBe('200');
 
-    expect(() => b.subtract(a)).toThrow(InvalidMoneyFormatError); // Prohibits negative result
+    expect(() => b.subtract(a)).toThrow(MoneyUnderflowError); // Prohibits negative result
   });
 
   it('prohibits arithmetic across different asset IDs', () => {
     const a = Money256.fromString('100', 1);
     const b = Money256.fromString('100', 2);
-    expect(() => a.add(b)).toThrow(InvalidMoneyFormatError);
+    expect(() => a.add(b)).toThrow(CurrencyMismatchError);
   });
 
   it('supports comparison operators (greaterThan, greaterThanOrEqual, lessThan, lessThanOrEqual, zero)', () => {

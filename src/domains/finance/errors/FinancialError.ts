@@ -77,6 +77,27 @@ export class InvalidMoneyFormatError extends FinancialError {
   }
 }
 
+export class CurrencyMismatchError extends InvalidMoneyFormatError {
+  constructor(message: string = 'Operação proibida entre ativos/moedas diferentes.') {
+    super(message);
+    (this as any).code = 'CURRENCY_MISMATCH';
+  }
+}
+
+export class MoneyUnderflowError extends InvalidMoneyFormatError {
+  constructor(message: string = 'Subtração resultando em saldo negativo é proibida (underflow).') {
+    super(message);
+    (this as any).code = 'MONEY_UNDERFLOW';
+  }
+}
+
+export class InvalidIdentifierError extends InvalidMoneyFormatError {
+  constructor(message: string = 'Identificador físico inválido.') {
+    super(message);
+    (this as any).code = 'INVALID_IDENTIFIER';
+  }
+}
+
 export class InvalidRefundAmountError extends FinancialError {
   constructor(message: string = 'Valor de reembolso inválido ou excede o montante da transação original.') {
     super(message, 'INVALID_REFUND_AMOUNT', false, 422);
