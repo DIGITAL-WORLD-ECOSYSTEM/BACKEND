@@ -2,9 +2,10 @@ export class Result<T> {
   public readonly isSuccess: boolean;
   public readonly isFailure: boolean;
   public readonly error: string | null;
+  public readonly errorObject: Error | null;
   private readonly _value: T | null;
 
-  private constructor(isSuccess: boolean, error: string | null, value: T | null) {
+  private constructor(isSuccess: boolean, error: string | Error | null, value: T | null) {
     if (isSuccess && error) {
       throw new Error("InvalidOperation: A result cannot be successful and contain an error");
     }
@@ -13,7 +14,13 @@ export class Result<T> {
     }
     this.isSuccess = isSuccess;
     this.isFailure = !isSuccess;
-    this.error = error;
+    if (error instanceof Error) {
+      this.error = error.message;
+      this.errorObject = error;
+    } else {
+      this.error = error;
+      this.errorObject = error ? new Error(error) : null;
+    }
     this._value = value;
   }
 
@@ -28,7 +35,7 @@ export class Result<T> {
     return new Result<U>(true, null, value as U);
   }
 
-  public static fail<U>(error: string): Result<U> {
+  public static fail<U>(error: string | Error): Result<U> {
     return new Result<U>(false, error, null);
   }
 }

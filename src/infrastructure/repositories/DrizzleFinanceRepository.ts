@@ -15,6 +15,7 @@ import {
   FinancialTransactionRecord,
   SystemAccountType,
 } from '../../application/ports/output/IFinanceRepository';
+import { FinancialLedgerEntryRecord } from '../../domains/finance/contracts/FinancialLedgerEntryRecord';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
 
 export function isUniqueConstraintViolation(err: any): boolean {
@@ -468,7 +469,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
-  async getTransactionEntries(transactionId: number): Promise<Result<Array<{ accountId: number; assetId: number; direction: 'debit' | 'credit'; amountBaseUnits: string }>>> {
+  async getTransactionEntries(transactionId: number): Promise<Result<FinancialLedgerEntryRecord[]>> {
     try {
       const rows = await this.executor
         .select({
@@ -480,7 +481,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         .from(financialLedgerEntries)
         .where(eq(financialLedgerEntries.transactionId, transactionId));
 
-      return Result.ok(rows as any);
+      return Result.ok(rows as FinancialLedgerEntryRecord[]);
     } catch (err: any) {
       return Result.fail(err.message);
     }

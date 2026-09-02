@@ -178,6 +178,7 @@ export const financialTransactions = sqliteTable(
       onDelete: 'restrict',
     }),
     reversalOfTransactionId: integer('reversal_of_transaction_id'),
+    refundOfTransactionId: integer('refund_of_transaction_id'),
     type: text('type', {
       enum: [
         'deposit',

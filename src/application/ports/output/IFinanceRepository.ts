@@ -1,5 +1,6 @@
 import { Result } from '../../../shared/kernel/Result';
 import { LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
+import { FinancialLedgerEntryRecord } from '../../../domains/finance/contracts/FinancialLedgerEntryRecord';
 
 export type SystemAccountType =
   | 'treasury'
@@ -94,7 +95,7 @@ export interface IFinanceRepository {
   getRefundsTotalForTransaction(originalTransactionId: number): Promise<bigint>;
 
   listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
-  getTransactionEntries(transactionId: number): Promise<Result<Array<{ accountId: number; assetId: number; direction: 'debit' | 'credit'; amountBaseUnits: string }>>>;
+  getTransactionEntries(transactionId: number): Promise<Result<FinancialLedgerEntryRecord[]>>;
 
   getIdempotencyRecord(key: string, scope: string): Promise<{ status: string; requestHash: string; transactionId?: number } | null>;
   claimIdempotency(idempotencyKey: string, userId: number | null | undefined, scope: string, requestHash: string): Promise<boolean>;

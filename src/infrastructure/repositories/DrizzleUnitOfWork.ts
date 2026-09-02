@@ -74,18 +74,21 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
     if (typeof this.db?.transaction === 'function') {
       let result: Result<T> | null = null;
       try {
-        await this.db.transaction(async (tx: any) => {
-          const factory = new DrizzleRepositoryFactory(tx);
-          result = await work(factory);
+        await this.db.transaction(
+          async (tx: any) => {
+            const factory = new DrizzleRepositoryFactory(tx);
+            result = await work(factory);
 
-          if (result && result.isFailure) {
-            if (typeof tx.rollback === 'function') {
-              tx.rollback();
-            } else {
-              throw new Error('ROLLBACK_TRIGGERED_BY_RESULT_FAIL');
+            if (result && result.isFailure) {
+              if (typeof tx.rollback === 'function') {
+                tx.rollback();
+              } else {
+                throw new Error('ROLLBACK_TRIGGERED_BY_RESULT_FAIL');
+              }
             }
-          }
-        });
+          },
+          { behavior: 'immediate' }
+        );
         if (result) return result;
         return Result.fail('Transação concluída sem resultado retornado pelo callback.');
       } catch (err: any) {

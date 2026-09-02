@@ -1,5 +1,6 @@
 import { Money256 } from '../value-objects/Money256';
 import { FinancialError } from '../errors/FinancialError';
+import { FinancialLedgerEntryRecord } from '../contracts/FinancialLedgerEntryRecord';
 
 export interface RawLedgerEntrySpec {
   accountId: number;
@@ -449,18 +450,18 @@ export class AccountingEntryPolicy {
    * com base nos lançamentos contábeis de receita referentes ao ativo informado.
    */
   public static extractRefundablePaymentAmount(
-    entries: Array<{ direction?: string; entryType?: string; assetId: number; amount: Money256 }>,
+    entries: FinancialLedgerEntryRecord[],
     assetId: number
   ): Money256 {
     const paymentCreditEntry = entries.find(
-      (e) => (e.direction === 'credit' || e.entryType === 'credit') && e.assetId === assetId
+      (e) => e.direction === 'credit' && e.assetId === assetId
     );
     if (!paymentCreditEntry) {
       throw new AccountingMatrixValidationError(
         `A transação original não possui lançamento de receita referente ao ativo #${assetId}.`
       );
     }
-    return paymentCreditEntry.amount;
+    return Money256.fromString(paymentCreditEntry.amountBaseUnits, assetId);
   }
 
   private static assertPositiveAmount(amount: Money256): void {

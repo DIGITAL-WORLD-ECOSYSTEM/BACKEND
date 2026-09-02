@@ -345,4 +345,99 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
     // Restore original class
     await sqlite.execute(`UPDATE financial_accounts SET account_class = 'revenue' WHERE account_type = 'payment_revenue';`);
   });
+
+  it('P1.4: Preserva objeto de erro estruturado (FinancialError) no Result.fail', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    const result = await useCase.execute({
+      userId: 999, // Mismatched user ID vs original owner (10)
+      type: 'refund',
+      direction: 'INBOUND',
+      description: 'Refund de Usuário Incompatível',
+      amountBaseUnits: '50',
+      assetId: 1,
+      refundOfTransactionId: 1,
+      idempotencyKey: 'refund-ownership-err-key',
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.errorObject).toBeDefined();
+    const errObj = result.errorObject as any;
+    expect(errObj.code).toBe('ACCOUNT_OWNERSHIP_MISMATCH');
+    expect(errObj.httpStatus).toBe(403);
+  });
+
+  it('P1.5: Garante serialização e proteção contra over-refund em requisições concorrentes (BEGIN IMMEDIATE)', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    // First deposit 1000 to user 10
+    const depRes = await useCase.execute({
+      userId: 10,
+      type: 'deposit',
+      direction: 'INBOUND',
+      description: 'Depósito Inicial para Refund Test',
+      amountBaseUnits: '1000',
+      assetId: 1,
+      idempotencyKey: 'deposit-1000-for-refund-test',
+    });
+    expect(depRes.isSuccess).toBe(true);
+
+    // 1. Record a payment of 100 for user 10
+    const paymentRes = await useCase.execute({
+      userId: 10,
+      type: 'payment',
+      direction: 'OUTBOUND',
+      description: 'Pagamento Original 100',
+      amountBaseUnits: '100',
+      assetId: 1,
+      idempotencyKey: 'payment-100-for-refund-test',
+    });
+    expect(paymentRes.isSuccess).toBe(true);
+    const origTxId = paymentRes.getValue().transactionId!;
+
+    // 2. Fire 2 concurrent refund requests of 80 each simultaneously
+    const reqA = useCase.execute({
+      userId: 10,
+      type: 'refund',
+      direction: 'INBOUND',
+      description: 'Concurrent Refund A',
+      amountBaseUnits: '80',
+      assetId: 1,
+      refundOfTransactionId: origTxId,
+      idempotencyKey: 'concurrent-refund-80-a',
+    });
+
+    const reqB = useCase.execute({
+      userId: 10,
+      type: 'refund',
+      direction: 'INBOUND',
+      description: 'Concurrent Refund B',
+      amountBaseUnits: '80',
+      assetId: 1,
+      refundOfTransactionId: origTxId,
+      idempotencyKey: 'concurrent-refund-80-b',
+    });
+
+    const [resA, resB] = await Promise.all([reqA, reqB]);
+    if (resA.isFailure) console.log('ResA Failure:', resA.error);
+    if (resB.isFailure) console.log('ResB Failure:', resB.error);
+
+    const successes = [resA, resB].filter((r) => r.isSuccess);
+    const failures = [resA, resB].filter((r) => r.isFailure);
+
+    // Exactly 1 refund must succeed, and exactly 1 must fail due to limit
+    expect(successes.length).toBe(1);
+    expect(failures.length).toBe(1);
+    expect(failures[0].error).toMatch(/INVALID_REFUND_AMOUNT|SQLITE_BUSY|excede o saldo/i);
+
+    // Verify DB cumulative refund total is exactly 80, not 160
+    const rawResult = await sqlite.execute({
+      sql: `SELECT amount_base_units FROM financial_ledger_entries WHERE transaction_id IN (SELECT id FROM financial_transactions WHERE refund_of_transaction_id = ?) AND direction = 'credit';`,
+      args: [origTxId],
+    });
+    const totalRefunded = rawResult.rows.reduce((acc: bigint, r: any) => acc + BigInt(r.amount_base_units || 0), 0n);
+    expect(totalRefunded).toBe(80n);
+  });
 });
