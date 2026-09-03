@@ -1601,10 +1601,10 @@ export type CanonicalValue =
 export class CanonicalRequestHashService {
   /**
    * Converte recursivamente um objeto/payload para formato JSON canônico:
-   * 1. Ordena chaves de objetos alfabeticamente.
-   * 2. Rejeita tipos não determinísticos (Date, Function, Symbol, undefined em arrays).
-   * 3. Converte BigInt para representação de string decimal canônica.
-   * 4. Garante representação determinística sem espaços de formatação.
+   * 1. Ordena chaves de objetos alfabeticamente com ordenação binária pura.
+   * 2. Rejeita `undefined` e tipos não determinísticos (Date, Function, Symbol).
+   * 3. Valida inteiros seguros em números (Number.isSafeInteger) ou BigInt.
+   * 4. Garante representação determinística sem dependência de locale.
    */
   public static canonicalize(obj: unknown): string {
     if (obj === null) {
@@ -1618,6 +1618,9 @@ export class CanonicalRequestHashService {
     if (typeof obj === 'number') {
       if (!Number.isFinite(obj)) {
         throw new Error(`Erro de canonicalização: Número não-finito (${obj}) é proibido.`);
+      }
+      if (!Number.isSafeInteger(obj)) {
+        throw new Error(`Erro de canonicalização: Número fora do limite de precisão inteira segura (${obj}). Utilize BigInt ou decimal string.`);
       }
       return JSON.stringify(obj);
     }
@@ -1644,15 +1647,18 @@ export class CanonicalRequestHashService {
     }
 
     if (typeof obj === 'object') {
-      const sortedKeys = Object.keys(obj as Record<string, unknown>).sort();
+      const record = obj as Record<string, unknown>;
+      // Ordenação binária/lexicográfica pura (sem localeCompare)
+      const sortedKeys = Object.keys(record).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
       const pairs: string[] = [];
 
       for (const key of sortedKeys) {
-        const val = (obj as Record<string, unknown>)[key];
-        if (val !== undefined) {
-          const canonicalVal = CanonicalRequestHashService.canonicalize(val);
-          pairs.push(`${JSON.stringify(key)}:${canonicalVal}`);
+        const val = record[key];
+        if (val === undefined) {
+          throw new Error(`Erro de canonicalização: undefined não é permitido na chave "${key}".`);
         }
+        const canonicalVal = CanonicalRequestHashService.canonicalize(val);
+        pairs.push(`${JSON.stringify(key)}:${canonicalVal}`);
       }
 
       return `{${pairs.join(',')}}`;
@@ -1665,7 +1671,7 @@ export class CanonicalRequestHashService {
    * Gera o hash SHA-256 hexadecimal a partir do payload canônico.
    * Se receber um aggregate LedgerTransaction ou DTO com entries, filtra exclusivamente
    * os atributos financeiros determinísticos (removendo IDs aleatórios, UUIDs e timestamps)
-   * e ordena os lançamentos deterministicamente por (accountId, assetId, type, amount).
+   * e ordena os lançamentos deterministicamente por ordenação binária pura.
    */
   public static calculateHash(payload: unknown): string {
     let targetPayload = payload;
@@ -1681,11 +1687,11 @@ export class CanonicalRequestHashService {
           }))
         : [];
 
-      // Ordenação determinística dos lançamentos por (accountId, assetId, type, amount)
+      // Ordenação binária/lexicográfica pura dos lançamentos
       rawEntries.sort((a: any, b: any) => {
         const keyA = `${a.accountId}:${a.assetId}:${a.type}:${a.amount}`;
         const keyB = `${b.accountId}:${b.assetId}:${b.type}:${b.amount}`;
-        return keyA.localeCompare(keyB);
+        return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
       });
 
       targetPayload = {
@@ -1704,6 +1710,7 @@ export class CanonicalRequestHashService {
     return createHash('sha256').update(canonicalString, 'utf8').digest('hex');
   }
 }
+
 
 
 ```
@@ -1739,17 +1746,23 @@ export class FinancialTransactionOrchestrator {
   /**
    * Executa o fluxo atômico de escrita no ledger:
    * 1. Cálculo servidor obrigatório do Hash Canônico do LedgerTransaction (P0-1).
-   * 2. Reclamação atômica de Idempotência.
-   * 3. Inserção do registro pai da transação financeira em 'processing'.
-   * 4. Inserção dos lançamentos contábeis imutáveis.
-   * 5. Agregação de deltas de saldo por (accountId, assetId) e atualização com OCC e switch exaustivo (P0-2).
-   * 6. Transição de status para 'completed'.
-   * 7. Registro de evento no Outbox.
-   * 8. Conclusão da Idempotência.
+   * 2. Validação do invariante do Ledger (mínimo de 2 lançamentos contábeis - partidas dobradas).
+   * 3. Reclamação atômica de Idempotência.
+   * 4. Inserção do registro pai da transação financeira em 'processing'.
+   * 5. Inserção dos lançamentos contábeis imutáveis.
+   * 6. Atualização dos saldos materializados via OCC delegando direção ao repositório/domínio com switch exaustivo (P0-2).
+   * 7. Transição de status para 'completed'.
+   * 8. Registro de evento no Outbox.
+   * 9. Conclusão da Idempotência.
    */
   public async executePosting(
     transaction: LedgerTransaction
   ): Promise<OrchestratorResult> {
+    // Invariante FIN-001: Uma transação financeira válida exige no mínimo 2 lançamentos contábeis (partidas dobradas)
+    if (!transaction.entries || transaction.entries.length < 2) {
+      throw new Error('Invariante do Ledger violado: Uma transação financeira deve conter no mínimo 2 lançamentos contábeis.');
+    }
+
     // P0-1: O Hash de idempotência é obrigatoriamente derivado pelo servidor a partir do aggregate
     const computedHash = CanonicalRequestHashService.calculateHash(transaction);
 
@@ -1791,30 +1804,14 @@ export class FinancialTransactionOrchestrator {
     // 3. Insert immutable ledger entries
     await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
 
-    // 4. Agregação de deltas de saldo por (accountId, assetId) antes das atualizações OCC
-    const balanceDeltas = new Map<string, { accountId: string; assetId: number; netDelta: bigint }>();
-
+    // 4. Atualização de saldo materializado via OCC para cada lançamento contábil.
+    // A direção (debit/credit) e regra da classe contábil são delegadas 100% à camada de domínio/repositório.
     for (const entry of transaction.entries) {
-      const assetIdNum = Number(entry.amount.assetId);
-      const key = `${entry.accountId}:${assetIdNum}`;
-      const current = balanceDeltas.get(key) || { accountId: entry.accountId, assetId: assetIdNum, netDelta: 0n };
-
-      const change = entry.type === 'debit' ? entry.amount.amount : -entry.amount.amount;
-      current.netDelta += change;
-      balanceDeltas.set(key, current);
-    }
-
-    for (const { accountId, assetId, netDelta } of balanceDeltas.values()) {
-      if (netDelta === 0n) continue;
-
-      const type: 'debit' | 'credit' = netDelta > 0n ? 'debit' : 'credit';
-      const absAmount = netDelta > 0n ? netDelta : -netDelta;
-
       const updateResult = await this.financeRepo.updateBalanceWithOCC(
-        accountId,
-        assetId,
-        absAmount,
-        type
+        entry.accountId,
+        entry.amount.assetId,
+        entry.amount.amount,
+        entry.type
       );
 
       switch (updateResult) {
@@ -1822,11 +1819,11 @@ export class FinancialTransactionOrchestrator {
           break;
         case 'INSUFFICIENT_BALANCE':
           throw new InsufficientBalanceError(
-            `saldo insuficiente para a conta #${accountId} e ativo #${assetId}.`
+            `saldo insuficiente para a conta #${entry.accountId} e ativo #${entry.amount.assetId}.`
           );
         case 'OCC_CONFLICT':
           throw new OptimisticConcurrencyError(
-            `Falha de concorrência otimista (OCC version mismatch) para a conta #${accountId}.`
+            `Falha de concorrência otimista (OCC version mismatch) para a conta #${entry.accountId}.`
           );
         default:
           assertNever(updateResult);

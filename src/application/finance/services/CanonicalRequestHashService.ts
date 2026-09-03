@@ -9,10 +9,10 @@ export type CanonicalValue =
 export class CanonicalRequestHashService {
   /**
    * Converte recursivamente um objeto/payload para formato JSON canônico:
-   * 1. Ordena chaves de objetos alfabeticamente.
-   * 2. Rejeita tipos não determinísticos (Date, Function, Symbol, undefined em arrays).
-   * 3. Converte BigInt para representação de string decimal canônica.
-   * 4. Garante representação determinística sem espaços de formatação.
+   * 1. Ordena chaves de objetos alfabeticamente com ordenação binária pura.
+   * 2. Rejeita `undefined` e tipos não determinísticos (Date, Function, Symbol).
+   * 3. Valida inteiros seguros em números (Number.isSafeInteger) ou BigInt.
+   * 4. Garante representação determinística sem dependência de locale.
    */
   public static canonicalize(obj: unknown): string {
     if (obj === null) {
@@ -26,6 +26,9 @@ export class CanonicalRequestHashService {
     if (typeof obj === 'number') {
       if (!Number.isFinite(obj)) {
         throw new Error(`Erro de canonicalização: Número não-finito (${obj}) é proibido.`);
+      }
+      if (!Number.isSafeInteger(obj)) {
+        throw new Error(`Erro de canonicalização: Número fora do limite de precisão inteira segura (${obj}). Utilize BigInt ou decimal string.`);
       }
       return JSON.stringify(obj);
     }
@@ -52,15 +55,18 @@ export class CanonicalRequestHashService {
     }
 
     if (typeof obj === 'object') {
-      const sortedKeys = Object.keys(obj as Record<string, unknown>).sort();
+      const record = obj as Record<string, unknown>;
+      // Ordenação binária/lexicográfica pura (sem localeCompare)
+      const sortedKeys = Object.keys(record).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
       const pairs: string[] = [];
 
       for (const key of sortedKeys) {
-        const val = (obj as Record<string, unknown>)[key];
-        if (val !== undefined) {
-          const canonicalVal = CanonicalRequestHashService.canonicalize(val);
-          pairs.push(`${JSON.stringify(key)}:${canonicalVal}`);
+        const val = record[key];
+        if (val === undefined) {
+          throw new Error(`Erro de canonicalização: undefined não é permitido na chave "${key}".`);
         }
+        const canonicalVal = CanonicalRequestHashService.canonicalize(val);
+        pairs.push(`${JSON.stringify(key)}:${canonicalVal}`);
       }
 
       return `{${pairs.join(',')}}`;
@@ -73,7 +79,7 @@ export class CanonicalRequestHashService {
    * Gera o hash SHA-256 hexadecimal a partir do payload canônico.
    * Se receber um aggregate LedgerTransaction ou DTO com entries, filtra exclusivamente
    * os atributos financeiros determinísticos (removendo IDs aleatórios, UUIDs e timestamps)
-   * e ordena os lançamentos deterministicamente por (accountId, assetId, type, amount).
+   * e ordena os lançamentos deterministicamente por ordenação binária pura.
    */
   public static calculateHash(payload: unknown): string {
     let targetPayload = payload;
@@ -89,11 +95,11 @@ export class CanonicalRequestHashService {
           }))
         : [];
 
-      // Ordenação determinística dos lançamentos por (accountId, assetId, type, amount)
+      // Ordenação binária/lexicográfica pura dos lançamentos
       rawEntries.sort((a: any, b: any) => {
         const keyA = `${a.accountId}:${a.assetId}:${a.type}:${a.amount}`;
         const keyB = `${b.accountId}:${b.assetId}:${b.type}:${b.amount}`;
-        return keyA.localeCompare(keyB);
+        return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
       });
 
       targetPayload = {
@@ -112,4 +118,5 @@ export class CanonicalRequestHashService {
     return createHash('sha256').update(canonicalString, 'utf8').digest('hex');
   }
 }
+
 
