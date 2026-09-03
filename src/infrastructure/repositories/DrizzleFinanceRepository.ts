@@ -646,7 +646,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
-  async insertLedgerEntries(entries: LedgerEntry[], transactionId: number): Promise<void> {
+  async insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<void> {
     const payload = entries.map(entry => {
       const amountBigInt = entry.amount.toBigInt();
 

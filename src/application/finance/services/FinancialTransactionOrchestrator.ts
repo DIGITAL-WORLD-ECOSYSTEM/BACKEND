@@ -36,7 +36,8 @@ export class FinancialTransactionOrchestrator {
    * 9. Conclusão da Idempotência.
    */
   public async executePosting(
-    transaction: LedgerTransaction
+    transaction: LedgerTransaction,
+    _clientHash?: string
   ): Promise<OrchestratorResult> {
     // Invariante FIN-001: Uma transação financeira válida exige no mínimo 2 lançamentos contábeis (partidas dobradas)
     if (!transaction.entries || transaction.entries.length < 2) {

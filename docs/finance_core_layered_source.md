@@ -1539,7 +1539,7 @@ export interface IFinanceRepository {
     reversalOfTransactionId?: number;
     refundOfTransactionId?: number;
   }): Promise<number>;
-  insertLedgerEntries(entries: LedgerEntry[], transactionId: number): Promise<void>;
+  insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<void>;
   updateBalanceWithOCC(
     accountId: number | string,
     assetId: number | string,
@@ -1756,7 +1756,8 @@ export class FinancialTransactionOrchestrator {
    * 9. Conclusão da Idempotência.
    */
   public async executePosting(
-    transaction: LedgerTransaction
+    transaction: LedgerTransaction,
+    _clientHash?: string
   ): Promise<OrchestratorResult> {
     // Invariante FIN-001: Uma transação financeira válida exige no mínimo 2 lançamentos contábeis (partidas dobradas)
     if (!transaction.entries || transaction.entries.length < 2) {
@@ -3252,7 +3253,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
-  async insertLedgerEntries(entries: LedgerEntry[], transactionId: number): Promise<void> {
+  async insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<void> {
     const payload = entries.map(entry => {
       const amountBigInt = entry.amount.toBigInt();
 

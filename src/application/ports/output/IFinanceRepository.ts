@@ -130,7 +130,7 @@ export interface IFinanceRepository {
     reversalOfTransactionId?: number;
     refundOfTransactionId?: number;
   }): Promise<number>;
-  insertLedgerEntries(entries: LedgerEntry[], transactionId: number): Promise<void>;
+  insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<void>;
   updateBalanceWithOCC(
     accountId: number | string,
     assetId: number | string,
