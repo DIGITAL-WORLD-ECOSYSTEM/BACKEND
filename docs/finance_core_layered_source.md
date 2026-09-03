@@ -698,6 +698,13 @@ export class InvalidAccountClassError extends FinancialError {
   }
 }
 
+export class InvalidLedgerTransactionError extends FinancialError {
+  constructor(message: string = 'Transação contábil do ledger inválida ou viola os invariantes de partidas dobradas.') {
+    super(message, 'INVALID_LEDGER_TRANSACTION', false, 422);
+  }
+}
+
+
 
 
 ```
@@ -1598,6 +1605,23 @@ export type CanonicalValue =
   | CanonicalValue[]
   | { [key: string]: CanonicalValue };
 
+export interface CanonicalEntryInput {
+  accountId: string | number;
+  amount: { amount: bigint | string | number; assetId: number | string } | bigint | string | number;
+  assetId?: number | string;
+  type: 'debit' | 'credit' | string;
+}
+
+export interface CanonicalTransactionInput {
+  userId?: number | null;
+  transactionType?: string | null;
+  category?: string | null;
+  description?: string | null;
+  refundOfTransactionId?: number | null;
+  reversalOfTransactionId?: number | null;
+  entries: ReadonlyArray<CanonicalEntryInput>;
+}
+
 export class CanonicalRequestHashService {
   /**
    * Converte recursivamente um objeto/payload para formato JSON canônico:
@@ -1681,30 +1705,48 @@ export class CanonicalRequestHashService {
   }
 
   /**
+   * Extrai e formata o fingerprint financeiro canônico estritamente tipado.
+   */
+  private static isCanonicalTransactionInput(payload: unknown): payload is CanonicalTransactionInput {
+    return (
+      payload !== null &&
+      typeof payload === 'object' &&
+      'entries' in payload &&
+      Array.isArray((payload as any).entries)
+    );
+  }
+
+  /**
    * Gera o hash SHA-256 hexadecimal a partir do payload canônico do negócio.
    * Se receber um aggregate LedgerTransaction ou DTO com entries, filtra exclusivamente
    * os atributos financeiros determinísticos (removendo IDs aleatórios, UUIDs e timestamps)
-   * e ordena os lançamentos deterministicamente por ordenação binária pura.
+   * e ordena os lançamentos por ordenação estrutural por tupla (accountId, assetId, type, amount).
    */
   public static calculateHash(payload: unknown): string {
     let targetPayload = payload;
 
-    if (payload && typeof payload === 'object' && 'entries' in payload) {
-      const p = payload as any;
-      const rawEntries = Array.isArray(p.entries)
-        ? p.entries.map((e: any) => ({
-            accountId: String(e.accountId),
-            amount: String(e.amount?.amount ?? e.amount),
-            assetId: String(e.amount?.assetId ?? e.assetId ?? '0'),
-            type: String(e.type),
-          }))
-        : [];
+    if (CanonicalRequestHashService.isCanonicalTransactionInput(payload)) {
+      const p = payload;
+      const rawEntries = p.entries.map((e) => {
+        const amountObj = typeof e.amount === 'object' && e.amount !== null ? e.amount : null;
+        const amountVal = amountObj ? String(amountObj.amount) : String(e.amount);
+        const assetVal = amountObj ? String(amountObj.assetId) : String(e.assetId ?? '0');
 
-      // Ordenação binária/lexicográfica pura dos lançamentos
-      rawEntries.sort((a: any, b: any) => {
-        const keyA = `${a.accountId}:${a.assetId}:${a.type}:${a.amount}`;
-        const keyB = `${b.accountId}:${b.assetId}:${b.type}:${b.amount}`;
-        return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
+        return {
+          accountId: String(e.accountId),
+          amount: amountVal,
+          assetId: assetVal,
+          type: String(e.type),
+        };
+      });
+
+      // Ordenação determinística estrita por tupla (accountId -> assetId -> type -> amount)
+      rawEntries.sort((a, b) => {
+        if (a.accountId !== b.accountId) return a.accountId < b.accountId ? -1 : 1;
+        if (a.assetId !== b.assetId) return a.assetId < b.assetId ? -1 : 1;
+        if (a.type !== b.type) return a.type < b.type ? -1 : 1;
+        if (a.amount !== b.amount) return a.amount < b.amount ? -1 : 1;
+        return 0;
       });
 
       targetPayload = {
@@ -1738,6 +1780,7 @@ import {
   IdempotencyInProgressError,
   OptimisticConcurrencyError,
   InsufficientBalanceError,
+  InvalidLedgerTransactionError,
 } from '../../../domains/finance/errors/FinancialError';
 import { LedgerImbalanceError } from '../../../domains/finance/errors/LedgerImbalanceError';
 import { CanonicalRequestHashService } from './CanonicalRequestHashService';
@@ -1784,12 +1827,12 @@ export class FinancialTransactionOrchestrator {
 
   /**
    * Executa o fluxo atômico de escrita no ledger:
-   * 1. Validação estrita do invariante do Ledger (mínimo 2 lançamentos e balanço nulo de partidas dobradas).
+   * 1. Validação estrita do invariante do Ledger (mínimo 2 lançamentos, ao menos 1 débito e 1 crédito, e balanço nulo).
    * 2. Cálculo servidor obrigatório do Hash Canônico do payload financeiro (P0-1).
    * 3. Reclamação atômica de Idempotência.
    * 4. Inserção do registro pai da transação financeira em 'processing'.
    * 5. Inserção dos lançamentos contábeis imutáveis.
-   * 6. Atualização dos saldos materializados via OCC delegando direção ao repositório/domínio com switch exaustivo (P0-2).
+   * 6. Atualização dos saldos materializados via OCC com ordenação determinística por (accountId, assetId) para prevenção de deadlock.
    * 7. Transição de status para 'completed'.
    * 8. Registro de evento no Outbox.
    * 9. Conclusão da Idempotência.
@@ -1797,10 +1840,21 @@ export class FinancialTransactionOrchestrator {
   public async executePosting(
     transaction: LedgerTransaction
   ): Promise<OrchestratorResult> {
-    // Invariante FIN-001: Validação do número mínimo de lançamentos e balanço contábil perfeito por ativo
+    // Invariante FIN-001: Validação do número mínimo de lançamentos
     if (!transaction.entries || transaction.entries.length < 2) {
-      throw new Error('Invariante do Ledger violado: Uma transação financeira deve conter no mínimo 2 lançamentos contábeis.');
+      throw new InvalidLedgerTransactionError(
+        'Invariante do Ledger violado: Uma transação financeira deve conter no mínimo 2 lançamentos contábeis.'
+      );
     }
+
+    const hasDebit = transaction.entries.some((e) => e.type === 'debit');
+    const hasCredit = transaction.entries.some((e) => e.type === 'credit');
+    if (!hasDebit || !hasCredit) {
+      throw new InvalidLedgerTransactionError(
+        'Invariante do Ledger violado: Uma transação financeira exige no mínimo 1 lançamento de débito e 1 de crédito.'
+      );
+    }
+
     this.validateDoubleEntry(transaction);
 
     // P0-1: O Hash de idempotência é obrigatoriamente derivado pelo servidor a partir do aggregate
@@ -1845,8 +1899,15 @@ export class FinancialTransactionOrchestrator {
     await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
 
     // 4. Atualização de saldo materializado via OCC para cada lançamento contábil.
-    // A direção (debit/credit) e regra da classe contábil são delegadas 100% à camada de domínio/repositório.
-    for (const entry of transaction.entries) {
+    // Ordenação determinística de execução por (accountId, assetId) para prevenção de lock contention / deadlock em operações concorrentes.
+    const sortedEntriesForPosting = [...transaction.entries].sort((a, b) => {
+      if (a.accountId !== b.accountId) {
+        return a.accountId < b.accountId ? -1 : 1;
+      }
+      return a.amount.assetId < b.amount.assetId ? -1 : a.amount.assetId > b.amount.assetId ? 1 : 0;
+    });
+
+    for (const entry of sortedEntriesForPosting) {
       const updateResult = await this.financeRepo.updateBalanceWithOCC(
         entry.accountId,
         entry.amount.assetId,

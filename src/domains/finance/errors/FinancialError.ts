@@ -128,4 +128,11 @@ export class InvalidAccountClassError extends FinancialError {
   }
 }
 
+export class InvalidLedgerTransactionError extends FinancialError {
+  constructor(message: string = 'Transação contábil do ledger inválida ou viola os invariantes de partidas dobradas.') {
+    super(message, 'INVALID_LEDGER_TRANSACTION', false, 422);
+  }
+}
+
+
 

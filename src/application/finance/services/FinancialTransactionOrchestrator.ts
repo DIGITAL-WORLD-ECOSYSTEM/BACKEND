@@ -5,6 +5,7 @@ import {
   IdempotencyInProgressError,
   OptimisticConcurrencyError,
   InsufficientBalanceError,
+  InvalidLedgerTransactionError,
 } from '../../../domains/finance/errors/FinancialError';
 import { LedgerImbalanceError } from '../../../domains/finance/errors/LedgerImbalanceError';
 import { CanonicalRequestHashService } from './CanonicalRequestHashService';
@@ -51,12 +52,12 @@ export class FinancialTransactionOrchestrator {
 
   /**
    * Executa o fluxo atômico de escrita no ledger:
-   * 1. Validação estrita do invariante do Ledger (mínimo 2 lançamentos e balanço nulo de partidas dobradas).
+   * 1. Validação estrita do invariante do Ledger (mínimo 2 lançamentos, ao menos 1 débito e 1 crédito, e balanço nulo).
    * 2. Cálculo servidor obrigatório do Hash Canônico do payload financeiro (P0-1).
    * 3. Reclamação atômica de Idempotência.
    * 4. Inserção do registro pai da transação financeira em 'processing'.
    * 5. Inserção dos lançamentos contábeis imutáveis.
-   * 6. Atualização dos saldos materializados via OCC delegando direção ao repositório/domínio com switch exaustivo (P0-2).
+   * 6. Atualização dos saldos materializados via OCC com ordenação determinística por (accountId, assetId) para prevenção de deadlock.
    * 7. Transição de status para 'completed'.
    * 8. Registro de evento no Outbox.
    * 9. Conclusão da Idempotência.
@@ -64,10 +65,21 @@ export class FinancialTransactionOrchestrator {
   public async executePosting(
     transaction: LedgerTransaction
   ): Promise<OrchestratorResult> {
-    // Invariante FIN-001: Validação do número mínimo de lançamentos e balanço contábil perfeito por ativo
+    // Invariante FIN-001: Validação do número mínimo de lançamentos
     if (!transaction.entries || transaction.entries.length < 2) {
-      throw new Error('Invariante do Ledger violado: Uma transação financeira deve conter no mínimo 2 lançamentos contábeis.');
+      throw new InvalidLedgerTransactionError(
+        'Invariante do Ledger violado: Uma transação financeira deve conter no mínimo 2 lançamentos contábeis.'
+      );
     }
+
+    const hasDebit = transaction.entries.some((e) => e.type === 'debit');
+    const hasCredit = transaction.entries.some((e) => e.type === 'credit');
+    if (!hasDebit || !hasCredit) {
+      throw new InvalidLedgerTransactionError(
+        'Invariante do Ledger violado: Uma transação financeira exige no mínimo 1 lançamento de débito e 1 de crédito.'
+      );
+    }
+
     this.validateDoubleEntry(transaction);
 
     // P0-1: O Hash de idempotência é obrigatoriamente derivado pelo servidor a partir do aggregate
@@ -112,8 +124,15 @@ export class FinancialTransactionOrchestrator {
     await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
 
     // 4. Atualização de saldo materializado via OCC para cada lançamento contábil.
-    // A direção (debit/credit) e regra da classe contábil são delegadas 100% à camada de domínio/repositório.
-    for (const entry of transaction.entries) {
+    // Ordenação determinística de execução por (accountId, assetId) para prevenção de lock contention / deadlock em operações concorrentes.
+    const sortedEntriesForPosting = [...transaction.entries].sort((a, b) => {
+      if (a.accountId !== b.accountId) {
+        return a.accountId < b.accountId ? -1 : 1;
+      }
+      return a.amount.assetId < b.amount.assetId ? -1 : a.amount.assetId > b.amount.assetId ? 1 : 0;
+    });
+
+    for (const entry of sortedEntriesForPosting) {
       const updateResult = await this.financeRepo.updateBalanceWithOCC(
         entry.accountId,
         entry.amount.assetId,
