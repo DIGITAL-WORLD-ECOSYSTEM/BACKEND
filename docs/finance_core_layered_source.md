@@ -1592,20 +1592,50 @@ export interface IUnitOfWork {
 ```typescript
 import { createHash } from 'crypto';
 
+export type CanonicalPrimitive = string | number | boolean | null;
+export type CanonicalValue =
+  | CanonicalPrimitive
+  | CanonicalValue[]
+  | { [key: string]: CanonicalValue };
+
 export class CanonicalRequestHashService {
   /**
    * Converte recursivamente um objeto/payload para formato JSON canônico:
    * 1. Ordena chaves de objetos alfabeticamente.
-   * 2. Remove valores `undefined`.
-   * 3. Converte números para representação de string padrão.
-   * 4. Remove qualquer espaço de formatação.
+   * 2. Rejeita tipos não determinísticos (Date, Function, Symbol, undefined em arrays).
+   * 3. Converte BigInt para representação de string decimal canônica.
+   * 4. Garante representação determinística sem espaços de formatação.
    */
-  public static canonicalize(obj: any): string {
-    if (obj === null || typeof obj !== 'object') {
-      if (typeof obj === 'bigint') {
-        return obj.toString(10);
+  public static canonicalize(obj: unknown): string {
+    if (obj === null) {
+      return 'null';
+    }
+
+    if (typeof obj === 'boolean') {
+      return obj ? 'true' : 'false';
+    }
+
+    if (typeof obj === 'number') {
+      if (!Number.isFinite(obj)) {
+        throw new Error(`Erro de canonicalização: Número não-finito (${obj}) é proibido.`);
       }
       return JSON.stringify(obj);
+    }
+
+    if (typeof obj === 'string') {
+      return JSON.stringify(obj);
+    }
+
+    if (typeof obj === 'bigint') {
+      return JSON.stringify(obj.toString(10));
+    }
+
+    if (typeof obj === 'symbol' || typeof obj === 'function') {
+      throw new Error(`Erro de canonicalização: Tipo não suportado (${typeof obj}).`);
+    }
+
+    if (obj instanceof Date) {
+      throw new Error('Erro de canonicalização: Objetos Date não são determinísticos para payloads financeiros.');
     }
 
     if (Array.isArray(obj)) {
@@ -1613,45 +1643,60 @@ export class CanonicalRequestHashService {
       return `[${items.join(',')}]`;
     }
 
-    const sortedKeys = Object.keys(obj).sort();
-    const pairs: string[] = [];
+    if (typeof obj === 'object') {
+      const sortedKeys = Object.keys(obj as Record<string, unknown>).sort();
+      const pairs: string[] = [];
 
-    for (const key of sortedKeys) {
-      const val = obj[key];
-      if (val !== undefined) {
-        const canonicalVal = CanonicalRequestHashService.canonicalize(val);
-        pairs.push(`${JSON.stringify(key)}:${canonicalVal}`);
+      for (const key of sortedKeys) {
+        const val = (obj as Record<string, unknown>)[key];
+        if (val !== undefined) {
+          const canonicalVal = CanonicalRequestHashService.canonicalize(val);
+          pairs.push(`${JSON.stringify(key)}:${canonicalVal}`);
+        }
       }
+
+      return `{${pairs.join(',')}}`;
     }
 
-    return `{${pairs.join(',')}}`;
+    throw new Error(`Erro de canonicalização: Tipo primitivo não suportado (${typeof obj}).`);
   }
 
   /**
    * Gera o hash SHA-256 hexadecimal a partir do payload canônico.
    * Se receber um aggregate LedgerTransaction ou DTO com entries, filtra exclusivamente
-   * os atributos financeiros determinísticos (removendo IDs aleatórios, UUIDs e timestamps).
+   * os atributos financeiros determinísticos (removendo IDs aleatórios, UUIDs e timestamps)
+   * e ordena os lançamentos deterministicamente por (accountId, assetId, type, amount).
    */
-  public static calculateHash(payload: any): string {
+  public static calculateHash(payload: unknown): string {
     let targetPayload = payload;
 
     if (payload && typeof payload === 'object' && 'entries' in payload && 'idempotencyKey' in payload) {
+      const p = payload as any;
+      const rawEntries = Array.isArray(p.entries)
+        ? p.entries.map((e: any) => ({
+            accountId: String(e.accountId),
+            amount: String(e.amount?.amount ?? e.amount),
+            assetId: String(e.amount?.assetId ?? e.assetId ?? '0'),
+            type: String(e.type),
+          }))
+        : [];
+
+      // Ordenação determinística dos lançamentos por (accountId, assetId, type, amount)
+      rawEntries.sort((a: any, b: any) => {
+        const keyA = `${a.accountId}:${a.assetId}:${a.type}:${a.amount}`;
+        const keyB = `${b.accountId}:${b.assetId}:${b.type}:${b.amount}`;
+        return keyA.localeCompare(keyB);
+      });
+
       targetPayload = {
-        idempotencyKey: payload.idempotencyKey,
-        userId: payload.userId ?? null,
-        transactionType: payload.transactionType ?? null,
-        category: payload.category ?? null,
-        description: payload.description,
-        refundOfTransactionId: payload.refundOfTransactionId ?? null,
-        reversalOfTransactionId: payload.reversalOfTransactionId ?? null,
-        entries: Array.isArray(payload.entries)
-          ? payload.entries.map((e: any) => ({
-              accountId: String(e.accountId),
-              amount: String(e.amount?.amount ?? e.amount),
-              assetId: Number(e.amount?.assetId ?? e.assetId ?? 0),
-              type: e.type,
-            }))
-          : [],
+        idempotencyKey: String(p.idempotencyKey),
+        userId: p.userId ?? null,
+        transactionType: p.transactionType ?? null,
+        category: p.category ?? null,
+        description: String(p.description),
+        refundOfTransactionId: p.refundOfTransactionId ?? null,
+        reversalOfTransactionId: p.reversalOfTransactionId ?? null,
+        entries: rawEntries,
       };
     }
 
@@ -1659,6 +1704,7 @@ export class CanonicalRequestHashService {
     return createHash('sha256').update(canonicalString, 'utf8').digest('hex');
   }
 }
+
 
 ```
 
@@ -1680,6 +1726,10 @@ export interface OrchestratorResult {
   isReplayed: boolean;
 }
 
+function assertNever(value: never): never {
+  throw new Error(`Unhandled BalanceUpdateResult case: ${value}`);
+}
+
 export class FinancialTransactionOrchestrator {
   /**
    * O Orchestrator exige um repositório transacional vinculado ao Unit of Work (BEGIN IMMEDIATE).
@@ -1692,7 +1742,7 @@ export class FinancialTransactionOrchestrator {
    * 2. Reclamação atômica de Idempotência.
    * 3. Inserção do registro pai da transação financeira em 'processing'.
    * 4. Inserção dos lançamentos contábeis imutáveis.
-   * 5. Atualização dos saldos materializados com discriminação por switch exaustivo (P0-2: UPDATED, INSUFFICIENT_BALANCE, OCC_CONFLICT).
+   * 5. Agregação de deltas de saldo por (accountId, assetId) e atualização com OCC e switch exaustivo (P0-2).
    * 6. Transição de status para 'completed'.
    * 7. Registro de evento no Outbox.
    * 8. Conclusão da Idempotência.
@@ -1741,13 +1791,30 @@ export class FinancialTransactionOrchestrator {
     // 3. Insert immutable ledger entries
     await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
 
-    // 4. Update materialized balances com switch exaustivo no tipo discriminado BalanceUpdateResult (P0-2)
+    // 4. Agregação de deltas de saldo por (accountId, assetId) antes das atualizações OCC
+    const balanceDeltas = new Map<string, { accountId: string; assetId: number; netDelta: bigint }>();
+
     for (const entry of transaction.entries) {
+      const assetIdNum = Number(entry.amount.assetId);
+      const key = `${entry.accountId}:${assetIdNum}`;
+      const current = balanceDeltas.get(key) || { accountId: entry.accountId, assetId: assetIdNum, netDelta: 0n };
+
+      const change = entry.type === 'debit' ? entry.amount.amount : -entry.amount.amount;
+      current.netDelta += change;
+      balanceDeltas.set(key, current);
+    }
+
+    for (const { accountId, assetId, netDelta } of balanceDeltas.values()) {
+      if (netDelta === 0n) continue;
+
+      const type: 'debit' | 'credit' = netDelta > 0n ? 'debit' : 'credit';
+      const absAmount = netDelta > 0n ? netDelta : -netDelta;
+
       const updateResult = await this.financeRepo.updateBalanceWithOCC(
-        entry.accountId,
-        entry.amount.assetId,
-        entry.amount.amount,
-        entry.type
+        accountId,
+        assetId,
+        absAmount,
+        type
       );
 
       switch (updateResult) {
@@ -1755,12 +1822,14 @@ export class FinancialTransactionOrchestrator {
           break;
         case 'INSUFFICIENT_BALANCE':
           throw new InsufficientBalanceError(
-            `saldo insuficiente para a conta #${entry.accountId} e ativo #${entry.amount.assetId}.`
+            `saldo insuficiente para a conta #${accountId} e ativo #${assetId}.`
           );
         case 'OCC_CONFLICT':
           throw new OptimisticConcurrencyError(
-            `Falha de concorrência otimista (OCC version mismatch) para a conta #${entry.accountId}.`
+            `Falha de concorrência otimista (OCC version mismatch) para a conta #${accountId}.`
           );
+        default:
+          assertNever(updateResult);
       }
     }
 

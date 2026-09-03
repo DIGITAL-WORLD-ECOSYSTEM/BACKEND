@@ -13,6 +13,10 @@ export interface OrchestratorResult {
   isReplayed: boolean;
 }
 
+function assertNever(value: never): never {
+  throw new Error(`Unhandled BalanceUpdateResult case: ${value}`);
+}
+
 export class FinancialTransactionOrchestrator {
   /**
    * O Orchestrator exige um repositório transacional vinculado ao Unit of Work (BEGIN IMMEDIATE).
@@ -25,7 +29,7 @@ export class FinancialTransactionOrchestrator {
    * 2. Reclamação atômica de Idempotência.
    * 3. Inserção do registro pai da transação financeira em 'processing'.
    * 4. Inserção dos lançamentos contábeis imutáveis.
-   * 5. Atualização dos saldos materializados com discriminação por switch exaustivo (P0-2: UPDATED, INSUFFICIENT_BALANCE, OCC_CONFLICT).
+   * 5. Agregação de deltas de saldo por (accountId, assetId) e atualização com OCC e switch exaustivo (P0-2).
    * 6. Transição de status para 'completed'.
    * 7. Registro de evento no Outbox.
    * 8. Conclusão da Idempotência.
@@ -74,13 +78,30 @@ export class FinancialTransactionOrchestrator {
     // 3. Insert immutable ledger entries
     await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
 
-    // 4. Update materialized balances com switch exaustivo no tipo discriminado BalanceUpdateResult (P0-2)
+    // 4. Agregação de deltas de saldo por (accountId, assetId) antes das atualizações OCC
+    const balanceDeltas = new Map<string, { accountId: string; assetId: number; netDelta: bigint }>();
+
     for (const entry of transaction.entries) {
+      const assetIdNum = Number(entry.amount.assetId);
+      const key = `${entry.accountId}:${assetIdNum}`;
+      const current = balanceDeltas.get(key) || { accountId: entry.accountId, assetId: assetIdNum, netDelta: 0n };
+
+      const change = entry.type === 'debit' ? entry.amount.amount : -entry.amount.amount;
+      current.netDelta += change;
+      balanceDeltas.set(key, current);
+    }
+
+    for (const { accountId, assetId, netDelta } of balanceDeltas.values()) {
+      if (netDelta === 0n) continue;
+
+      const type: 'debit' | 'credit' = netDelta > 0n ? 'debit' : 'credit';
+      const absAmount = netDelta > 0n ? netDelta : -netDelta;
+
       const updateResult = await this.financeRepo.updateBalanceWithOCC(
-        entry.accountId,
-        entry.amount.assetId,
-        entry.amount.amount,
-        entry.type
+        accountId,
+        assetId,
+        absAmount,
+        type
       );
 
       switch (updateResult) {
@@ -88,12 +109,14 @@ export class FinancialTransactionOrchestrator {
           break;
         case 'INSUFFICIENT_BALANCE':
           throw new InsufficientBalanceError(
-            `saldo insuficiente para a conta #${entry.accountId} e ativo #${entry.amount.assetId}.`
+            `saldo insuficiente para a conta #${accountId} e ativo #${assetId}.`
           );
         case 'OCC_CONFLICT':
           throw new OptimisticConcurrencyError(
-            `Falha de concorrência otimista (OCC version mismatch) para a conta #${entry.accountId}.`
+            `Falha de concorrência otimista (OCC version mismatch) para a conta #${accountId}.`
           );
+        default:
+          assertNever(updateResult);
       }
     }
 
