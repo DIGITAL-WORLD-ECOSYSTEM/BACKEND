@@ -77,24 +77,21 @@ export class InvalidMoneyFormatError extends FinancialError {
   }
 }
 
-export class CurrencyMismatchError extends InvalidMoneyFormatError {
+export class CurrencyMismatchError extends FinancialError {
   constructor(message: string = 'Operação proibida entre ativos/moedas diferentes.') {
-    super(message);
-    (this as any).code = 'CURRENCY_MISMATCH';
+    super(message, 'CURRENCY_MISMATCH', false, 422);
   }
 }
 
-export class MoneyUnderflowError extends InvalidMoneyFormatError {
+export class MoneyUnderflowError extends FinancialError {
   constructor(message: string = 'Subtração resultando em saldo negativo é proibida (underflow).') {
-    super(message);
-    (this as any).code = 'MONEY_UNDERFLOW';
+    super(message, 'MONEY_UNDERFLOW', false, 422);
   }
 }
 
-export class InvalidIdentifierError extends InvalidMoneyFormatError {
+export class InvalidIdentifierError extends FinancialError {
   constructor(message: string = 'Identificador físico inválido.') {
-    super(message);
-    (this as any).code = 'INVALID_IDENTIFIER';
+    super(message, 'INVALID_IDENTIFIER', false, 400);
   }
 }
 
@@ -127,7 +124,8 @@ export class InvalidAccountClassError extends FinancialError {
     const message = accountClass
       ? `Classe de conta "${accountClass}" é incompatível com o tipo de conta "${accountTypeOrMessage}".`
       : accountTypeOrMessage;
-    super(message, 'INVALID_ACCOUNT_CLASS', false, 400);
+    super(message, 'INVALID_ACCOUNT_CLASS', false, 422);
   }
 }
+
 

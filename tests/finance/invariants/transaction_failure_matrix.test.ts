@@ -455,7 +455,7 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
     const { InvalidAccountClassError } = await import('../../../src/domains/finance/errors/FinancialError');
     const err = new InvalidAccountClassError('Classe contábil invalida.');
     expect(err.code).toBe('INVALID_ACCOUNT_CLASS');
-    expect(err.httpStatus).toBe(400);
+    expect(err.httpStatus).toBe(422);
   });
 
   it('P1.8: Rejeita quantia excedente a UINT256 com Money256OverflowError', async () => {

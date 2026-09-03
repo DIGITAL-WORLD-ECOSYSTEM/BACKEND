@@ -647,24 +647,21 @@ export class InvalidMoneyFormatError extends FinancialError {
   }
 }
 
-export class CurrencyMismatchError extends InvalidMoneyFormatError {
+export class CurrencyMismatchError extends FinancialError {
   constructor(message: string = 'Operação proibida entre ativos/moedas diferentes.') {
-    super(message);
-    (this as any).code = 'CURRENCY_MISMATCH';
+    super(message, 'CURRENCY_MISMATCH', false, 422);
   }
 }
 
-export class MoneyUnderflowError extends InvalidMoneyFormatError {
+export class MoneyUnderflowError extends FinancialError {
   constructor(message: string = 'Subtração resultando em saldo negativo é proibida (underflow).') {
-    super(message);
-    (this as any).code = 'MONEY_UNDERFLOW';
+    super(message, 'MONEY_UNDERFLOW', false, 422);
   }
 }
 
-export class InvalidIdentifierError extends InvalidMoneyFormatError {
+export class InvalidIdentifierError extends FinancialError {
   constructor(message: string = 'Identificador físico inválido.') {
-    super(message);
-    (this as any).code = 'INVALID_IDENTIFIER';
+    super(message, 'INVALID_IDENTIFIER', false, 400);
   }
 }
 
@@ -697,9 +694,10 @@ export class InvalidAccountClassError extends FinancialError {
     const message = accountClass
       ? `Classe de conta "${accountClass}" é incompatível com o tipo de conta "${accountTypeOrMessage}".`
       : accountTypeOrMessage;
-    super(message, 'INVALID_ACCOUNT_CLASS', false, 400);
+    super(message, 'INVALID_ACCOUNT_CLASS', false, 422);
   }
 }
+
 
 
 ```
@@ -707,13 +705,16 @@ export class InvalidAccountClassError extends FinancialError {
 ### [Domain Layer] `src/domains/finance/errors/LedgerImbalanceError.ts`
 
 ```typescript
-export class LedgerImbalanceError extends Error {
-  constructor(message: string = 'A transação não está balanceada. A soma dos débitos deve ser exatamente igual à soma dos créditos.') {
-    super(message);
-    this.name = 'LedgerImbalanceError';
-    Object.setPrototypeOf(this, LedgerImbalanceError.prototype);
+import { FinancialError } from './FinancialError';
+
+export class LedgerImbalanceError extends FinancialError {
+  constructor(
+    message: string = 'A transação não está balanceada. A soma dos débitos deve ser exatamente igual à soma dos créditos.'
+  ) {
+    super(message, 'LEDGER_IMBALANCE', false, 422);
   }
 }
+
 
 ```
 
@@ -10868,7 +10869,7 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
     const { InvalidAccountClassError } = await import('../../../src/domains/finance/errors/FinancialError');
     const err = new InvalidAccountClassError('Classe contábil invalida.');
     expect(err.code).toBe('INVALID_ACCOUNT_CLASS');
-    expect(err.httpStatus).toBe(400);
+    expect(err.httpStatus).toBe(422);
   });
 
   it('P1.8: Rejeita quantia excedente a UINT256 com Money256OverflowError', async () => {
