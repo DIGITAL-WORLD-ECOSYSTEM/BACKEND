@@ -58,7 +58,7 @@ export class RecordDepositUseCase {
         });
 
         const orchestrator = new FinancialTransactionOrchestrator(repo);
-        const orchestratorResult = await orchestrator.executePosting(transaction, command.requestHash);
+        const orchestratorResult = await orchestrator.executePosting(transaction);
         return Result.ok(orchestratorResult);
       });
     } catch (err: any) {

@@ -83,7 +83,7 @@ export class ReverseTransactionUseCase {
         });
 
         const orchestrator = new FinancialTransactionOrchestrator(repo);
-        const orchestratorResult = await orchestrator.executePosting(reversalTx, input.requestHash);
+        const orchestratorResult = await orchestrator.executePosting(reversalTx);
 
         // Atualizar transação original para 'reversed' dentro da mesma UoW
         await repo.updateTransactionStatus(input.originalTransactionId, 'reversed', originalTx.version);
