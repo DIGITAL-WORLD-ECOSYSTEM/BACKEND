@@ -1,4 +1,4 @@
-import { AccountInactiveError, AssetInactiveError } from '../errors/FinancialError';
+import { AccountInactiveError } from '../errors/FinancialError';
 
 export class AccountStatusPolicy {
   public static validateActive(account: { id: number; status: string; name?: string }): void {
@@ -10,12 +10,3 @@ export class AccountStatusPolicy {
   }
 }
 
-export class AssetStatusPolicy {
-  public static validateActive(asset: { id: number; status: string; code?: string }): void {
-    if (asset.status !== 'active') {
-      throw new AssetInactiveError(
-        `Ativo financeiro #${asset.id} (${asset.code || 'desconhecido'}) está com status "${asset.status}". Operações financeiras exigem ativo ativo.`
-      );
-    }
-  }
-}

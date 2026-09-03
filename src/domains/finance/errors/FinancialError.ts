@@ -123,7 +123,11 @@ export class AccountOwnershipError extends FinancialError {
 }
 
 export class InvalidAccountClassError extends FinancialError {
-  constructor(message: string = 'Classe contábil inválida ou não suportada.') {
+  constructor(accountTypeOrMessage: string = 'Classe contábil inválida ou não suportada.', accountClass?: string) {
+    const message = accountClass
+      ? `Classe de conta "${accountClass}" é incompatível com o tipo de conta "${accountTypeOrMessage}".`
+      : accountTypeOrMessage;
     super(message, 'INVALID_ACCOUNT_CLASS', false, 400);
   }
 }
+

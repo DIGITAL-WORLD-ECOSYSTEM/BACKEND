@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { FinancialTransactionStateMachine } from '../../src/domains/finance/services/FinancialTransactionStateMachine';
-import { AccountStatusPolicy, AssetStatusPolicy } from '../../src/domains/finance/policies/AccountStatusPolicy';
+import { AccountStatusPolicy } from '../../src/domains/finance/policies/AccountStatusPolicy';
+import { AssetStatusPolicy } from '../../src/domains/finance/policies/AssetStatusPolicy';
 import {
   AccountingEntryPolicy,
   AccountingMatrixValidationError,
@@ -46,7 +47,7 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
     });
 
     it('deve rejeitar ativos inativos', () => {
-      expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'suspended' })).toThrow(/Operações financeiras exigem ativo ativo/);
+      expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'suspended' })).toThrow(/Operações financeiras exigem que o ativo esteja ativo/);
     });
   });
 

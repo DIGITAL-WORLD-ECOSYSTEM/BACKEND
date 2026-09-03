@@ -1,15 +1,4 @@
-import { FinancialError } from '../errors/FinancialError';
-
-export class InvalidAccountClassError extends FinancialError {
-  constructor(accountType: string, accountClass: string) {
-    super(
-      `Classe de conta "${accountClass}" é incompatível com o tipo de conta "${accountType}".`,
-      'INVALID_ACCOUNT_CLASS',
-      false,
-      400
-    );
-  }
-}
+import { InvalidAccountClassError } from '../errors/FinancialError';
 
 export class AccountClassPolicy {
   private static readonly PERMITTED_CLASSES: Record<string, string[]> = {
