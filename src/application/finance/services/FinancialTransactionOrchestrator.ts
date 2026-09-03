@@ -80,6 +80,15 @@ export class FinancialTransactionOrchestrator {
       );
     }
 
+    // Invariante: Todas as quantias de lançamentos contábeis devem ser estritamente maiores que zero (> 0)
+    for (const entry of transaction.entries) {
+      if (entry.amount.amount <= 0n) {
+        throw new InvalidLedgerTransactionError(
+          `Invariante do Ledger violado: Quantia de lançamento contábil inválida (${entry.amount.amount.toString()}). O valor deve ser estritamente positivo.`
+        );
+      }
+    }
+
     this.validateDoubleEntry(transaction);
 
     // P0-1: O Hash de idempotência é obrigatoriamente derivado pelo servidor a partir do aggregate
@@ -123,21 +132,57 @@ export class FinancialTransactionOrchestrator {
     // 3. Insert immutable ledger entries
     await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
 
-    // 4. Atualização de saldo materializado via OCC para cada lançamento contábil.
+    // 4. Consolidação e agregação de saldos por (accountId, assetId) para evitar falhas de saldo intermediário (intra-transaction) e otimizar I/O.
+    interface AccountAssetKey {
+      accountId: string;
+      assetId: number;
+      debitSum: bigint;
+      creditSum: bigint;
+    }
+
+    const aggregatedMap = new Map<string, AccountAssetKey>();
+
+    for (const entry of transaction.entries) {
+      const key = `${entry.accountId}:${entry.amount.assetId}`;
+      const existing = aggregatedMap.get(key) || {
+        accountId: entry.accountId,
+        assetId: entry.amount.assetId,
+        debitSum: 0n,
+        creditSum: 0n,
+      };
+
+      if (entry.type === 'debit') {
+        existing.debitSum += entry.amount.amount;
+      } else {
+        existing.creditSum += entry.amount.amount;
+      }
+      aggregatedMap.set(key, existing);
+    }
+
     // Ordenação determinística de execução por (accountId, assetId) para prevenção de lock contention / deadlock em operações concorrentes.
-    const sortedEntriesForPosting = [...transaction.entries].sort((a, b) => {
+    const sortedDeltas = Array.from(aggregatedMap.values()).sort((a, b) => {
       if (a.accountId !== b.accountId) {
         return a.accountId < b.accountId ? -1 : 1;
       }
-      return a.amount.assetId < b.amount.assetId ? -1 : a.amount.assetId > b.amount.assetId ? 1 : 0;
+      return a.assetId < b.assetId ? -1 : a.assetId > b.assetId ? 1 : 0;
     });
 
-    for (const entry of sortedEntriesForPosting) {
+    for (const delta of sortedDeltas) {
+      if (delta.debitSum === delta.creditSum) {
+        continue; // Débitos e créditos idênticos na mesma conta cancelam-se com variação nula de saldo
+      }
+
+      const isNetDebit = delta.debitSum > delta.creditSum;
+      const netAmount = isNetDebit
+        ? delta.debitSum - delta.creditSum
+        : delta.creditSum - delta.debitSum;
+      const netType: 'debit' | 'credit' = isNetDebit ? 'debit' : 'credit';
+
       const updateResult = await this.financeRepo.updateBalanceWithOCC(
-        entry.accountId,
-        entry.amount.assetId,
-        entry.amount.amount,
-        entry.type
+        delta.accountId,
+        delta.assetId,
+        netAmount,
+        netType
       );
 
       switch (updateResult) {
@@ -145,11 +190,11 @@ export class FinancialTransactionOrchestrator {
           break;
         case 'INSUFFICIENT_BALANCE':
           throw new InsufficientBalanceError(
-            `saldo insuficiente para a conta #${entry.accountId} e ativo #${entry.amount.assetId}.`
+            `saldo insuficiente para a conta #${delta.accountId} e ativo #${delta.assetId}.`
           );
         case 'OCC_CONFLICT':
           throw new OptimisticConcurrencyError(
-            `Falha de concorrência otimista (OCC version mismatch) para a conta #${entry.accountId}.`
+            `Falha de concorrência otimista (OCC version mismatch) para a conta #${delta.accountId}.`
           );
         default:
           assertNever(updateResult);

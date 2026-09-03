@@ -106,15 +106,23 @@ export class CanonicalRequestHashService {
   }
 
   /**
-   * Extrai e formata o fingerprint financeiro canônico estritamente tipado.
+   * Extrai e valida a estrutura runtime do DTO/Aggregate de transação canônica.
    */
   private static isCanonicalTransactionInput(payload: unknown): payload is CanonicalTransactionInput {
-    return (
-      payload !== null &&
-      typeof payload === 'object' &&
-      'entries' in payload &&
-      Array.isArray((payload as any).entries)
-    );
+    if (payload === null || typeof payload !== 'object' || !('entries' in payload)) {
+      return false;
+    }
+    const p = payload as any;
+    if (!Array.isArray(p.entries)) {
+      return false;
+    }
+    for (const e of p.entries) {
+      if (e === null || typeof e !== 'object') return false;
+      if (e.accountId === undefined || e.accountId === null) return false;
+      if (e.amount === undefined || e.amount === null) return false;
+      if (typeof e.type !== 'string' || (e.type !== 'debit' && e.type !== 'credit')) return false;
+    }
+    return true;
   }
 
   /**
@@ -132,6 +140,17 @@ export class CanonicalRequestHashService {
         const amountObj = typeof e.amount === 'object' && e.amount !== null ? e.amount : null;
         const amountVal = amountObj ? String(amountObj.amount) : String(e.amount);
         const assetVal = amountObj ? String(amountObj.assetId) : String(e.assetId ?? '0');
+
+        // Validação runtime estrita de valores positivos
+        try {
+          const parsedBigInt = BigInt(amountVal);
+          if (parsedBigInt <= 0n) {
+            throw new Error(`Erro de canonicalização: Quantia de lançamento deve ser maior que zero (recebido: ${amountVal}).`);
+          }
+        } catch (err: any) {
+          if (err.message?.includes('Quantia de lançamento')) throw err;
+          throw new Error(`Erro de canonicalização: Valor numérico de quantia inválido ("${amountVal}").`);
+        }
 
         return {
           accountId: String(e.accountId),
@@ -154,7 +173,7 @@ export class CanonicalRequestHashService {
         userId: p.userId ?? null,
         transactionType: p.transactionType ?? null,
         category: p.category ?? null,
-        description: p.description !== undefined ? String(p.description) : undefined,
+        description: p.description ?? null,
         refundOfTransactionId: p.refundOfTransactionId ?? null,
         reversalOfTransactionId: p.reversalOfTransactionId ?? null,
         entries: rawEntries,
