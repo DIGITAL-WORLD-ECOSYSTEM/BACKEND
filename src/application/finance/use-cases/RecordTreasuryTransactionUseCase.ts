@@ -354,12 +354,17 @@ export class RecordTreasuryTransactionUseCase {
             break;
           }
           case 'adjustment': {
+            if (parsedUserId === null) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new AccountOwnershipError("Operação de ajuste (adjustment) exige obrigatoriamente a identificação do usuário autorizador (userId).")
+              );
+            }
             rawEntries = AccountingEntryPolicy.createAdjustmentEntries({
               debitAccountId: resolvedDirection === 'INBOUND' ? treasuryAccountId : userAccountId,
               creditAccountId: resolvedDirection === 'INBOUND' ? userAccountId : treasuryAccountId,
               amount: amountMoney,
               reason: description,
-              authorizedByUserId: dto.userId ?? 1,
+              authorizedByUserId: parsedUserId,
             });
             break;
           }

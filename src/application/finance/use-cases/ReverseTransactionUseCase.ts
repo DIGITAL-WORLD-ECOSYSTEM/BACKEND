@@ -4,6 +4,7 @@ import { LedgerTransaction, LedgerEntry } from '../../../domains/finance/entitie
 import { Money256 } from '../../../domains/finance/value-objects/Money256';
 import { AccountingEntryPolicy } from '../../../domains/finance/policies/AccountingEntryPolicy';
 import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
+import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
 import { InvalidStateTransitionError } from '../../../domains/finance/errors/FinancialError';
 
 export interface ReverseTransactionInput {
@@ -32,14 +33,12 @@ export class ReverseTransactionUseCase {
           throw new Error(`Transação original #${input.originalTransactionId} não possui lançamentos contábeis.`);
         }
 
-        // 2. Obter registro original para validar estado e tipo
-        const txsRes = await repo.listTransactions();
-        if (txsRes.isFailure) throw new Error(txsRes.error || 'Erro ao listar transações');
-        const originalTx = txsRes.getValue().find((t) => t.id === input.originalTransactionId);
-
-        if (!originalTx) {
-          throw new Error(`Registro de transação #${input.originalTransactionId} não encontrado.`);
+        // 2. Obter registro original por ID direto O(1) para validar estado e tipo
+        const txRes = await repo.getTransactionById(input.originalTransactionId);
+        if (txRes.isFailure) {
+          throw new Error(`Registro de transação #${input.originalTransactionId} não encontrado: ${txRes.error}`);
         }
+        const originalTx = txRes.getValue();
 
         if (originalTx.status !== 'completed') {
           throw new InvalidStateTransitionError(
@@ -82,6 +81,13 @@ export class ReverseTransactionUseCase {
           reversalOfTransactionId: input.originalTransactionId,
         });
 
+        if (input.requestHash !== undefined) {
+          const canonicalHash = CanonicalRequestHashService.calculateHash(reversalTx);
+          if (input.requestHash !== canonicalHash) {
+            throw new Error('409 Conflict: O requestHash fornecido não coincide com o hash canônico do estorno.');
+          }
+        }
+
         const orchestrator = new FinancialTransactionOrchestrator(repo);
         const orchestratorResult = await orchestrator.executePosting(reversalTx);
 
@@ -90,8 +96,9 @@ export class ReverseTransactionUseCase {
 
         return Result.ok(orchestratorResult);
       });
-    } catch (err: any) {
-      return Result.fail(err.message || 'Falha ao estornar transação financeira.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao estornar transação financeira.';
+      return Result.fail(message);
     }
   }
 }

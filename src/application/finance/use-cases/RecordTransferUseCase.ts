@@ -4,6 +4,7 @@ import { LedgerTransaction, LedgerEntry } from '../../../domains/finance/entitie
 import { Money256 } from '../../../domains/finance/value-objects/Money256';
 import { AccountingEntryPolicy } from '../../../domains/finance/policies/AccountingEntryPolicy';
 import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
+import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
 
 export interface TransferCommand {
   sourceUserId: number;
@@ -35,8 +36,18 @@ export class RecordTransferUseCase {
         const destAccRes = await repo.getOrCreateUserAccount(command.destinationUserId);
         if (destAccRes.isFailure) throw new Error(destAccRes.error || 'Conta de destino não encontrada');
 
-        const sourceAccountId = sourceAccRes.getValue().id;
-        const destinationAccountId = destAccRes.getValue().id;
+        const sourceAcc = sourceAccRes.getValue();
+        if (sourceAcc.status !== 'active') {
+          throw new Error('Conta de origem está inativa ou suspensa.');
+        }
+
+        const destAcc = destAccRes.getValue();
+        if (destAcc.status !== 'active') {
+          throw new Error('Conta de destino está inativa ou suspensa.');
+        }
+
+        const sourceAccountId = sourceAcc.id;
+        const destinationAccountId = destAcc.id;
 
         const rawEntries = AccountingEntryPolicy.createTransferEntries({
           sourceAccountId,
@@ -49,7 +60,7 @@ export class RecordTransferUseCase {
           (r) =>
             new LedgerEntry({
               accountId: String(r.accountId),
-              amount: r.amount as any,
+              amount: r.amount,
               type: r.entryType,
               description: r.description,
             })
@@ -63,12 +74,20 @@ export class RecordTransferUseCase {
           userId: command.sourceUserId,
         });
 
+        if (command.requestHash !== undefined) {
+          const canonicalHash = CanonicalRequestHashService.calculateHash(transaction);
+          if (command.requestHash !== canonicalHash) {
+            throw new Error('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload de transferência.');
+          }
+        }
+
         const orchestrator = new FinancialTransactionOrchestrator(repo);
         const orchestratorResult = await orchestrator.executePosting(transaction);
         return Result.ok(orchestratorResult);
       });
-    } catch (err: any) {
-      return Result.fail(err.message || 'Falha ao realizar transferência.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao realizar transferência.';
+      return Result.fail(message);
     }
   }
 }

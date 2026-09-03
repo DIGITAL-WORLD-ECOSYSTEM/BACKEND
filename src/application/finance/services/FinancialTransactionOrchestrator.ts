@@ -25,7 +25,7 @@ export class FinancialTransactionOrchestrator {
    * Todas as etapas de persistência (Claim Idempotency, Insert Transaction, Insert Entries, OCC Balance Updates,
    * Outbox Event e Complete Idempotency) ocorrem obrigatoriamente dentro do mesmo boundary transacional do banco.
    */
-  constructor(private readonly financeRepo: IFinanceRepository) {}
+  constructor(private readonly financeRepo: IFinanceRepository) { }
 
   /**
    * Valida rigorosamente o invariante FIN-001 de partidas dobradas antes da persistência:

@@ -13,12 +13,12 @@ export class RecordLedgerTransactionUseCase {
    */
   async execute(
     transaction: LedgerTransaction,
-    customRequestHash?: string
+    providedRequestHash?: string
   ): Promise<Result<OrchestratorResult>> {
     try {
       const canonicalHash = CanonicalRequestHashService.calculateHash(transaction);
-      // Se um hash customizado for fornecido, deve coincidir com o hash canônico calculado para evitar payload falsificado
-      if (customRequestHash && customRequestHash !== canonicalHash) {
+      // Se um hash do cliente for fornecido, deve coincidir com o hash canônico calculado para evitar payload falsificado
+      if (providedRequestHash && providedRequestHash !== canonicalHash) {
         return Result.fail('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload (FIN-008).');
       }
 
@@ -28,8 +28,9 @@ export class RecordLedgerTransactionUseCase {
         const orchestratorResult = await orchestrator.executePosting(transaction);
         return Result.ok(orchestratorResult);
       });
-    } catch (err: any) {
-      return Result.fail(err.message || 'Falha ao processar lançamento no ledger financeiro.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao processar lançamento no ledger financeiro.';
+      return Result.fail(message);
     }
   }
 }

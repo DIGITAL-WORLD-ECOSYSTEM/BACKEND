@@ -4,6 +4,7 @@ import { LedgerTransaction, LedgerEntry } from '../../../domains/finance/entitie
 import { Money256 } from '../../../domains/finance/value-objects/Money256';
 import { AccountingEntryPolicy } from '../../../domains/finance/policies/AccountingEntryPolicy';
 import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
+import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
 
 export interface DepositCommand {
   userId: number;
@@ -43,7 +44,7 @@ export class RecordDepositUseCase {
           (r) =>
             new LedgerEntry({
               accountId: String(r.accountId),
-              amount: r.amount as any,
+              amount: r.amount,
               type: r.entryType,
               description: r.description,
             })
@@ -57,12 +58,20 @@ export class RecordDepositUseCase {
           userId: command.userId,
         });
 
+        if (command.requestHash !== undefined) {
+          const canonicalHash = CanonicalRequestHashService.calculateHash(transaction);
+          if (command.requestHash !== canonicalHash) {
+            throw new Error('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload de depósito.');
+          }
+        }
+
         const orchestrator = new FinancialTransactionOrchestrator(repo);
         const orchestratorResult = await orchestrator.executePosting(transaction);
         return Result.ok(orchestratorResult);
       });
-    } catch (err: any) {
-      return Result.fail(err.message || 'Falha ao realizar depósito.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao realizar depósito.';
+      return Result.fail(message);
     }
   }
 }
