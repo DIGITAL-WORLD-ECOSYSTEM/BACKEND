@@ -7,7 +7,7 @@ import {
   check,
   foreignKey,
 } from 'drizzle-orm/sqlite-core';
-import { sql } from 'drizzle-orm';
+import { sql, SQL } from 'drizzle-orm';
 
 import { users } from '../user/tables';
 
@@ -46,11 +46,148 @@ import { users } from '../user/tables';
  * The database accepts integer strings only and rejects values above this
  * binding-safe limit. This keeps the current D1 application binding contract
  * explicit.
+ *
+ * ============================================================================
+ * AUDIT CHANGELOG (applied on top of the previous revision)
+ * ============================================================================
+ * 1. DRY: extracted the repeated "canonical numeric string" GLOB/length
+ *    logic into reusable helper functions (canonicalUnsignedAmountSql,
+ *    canonicalUnsignedOrZeroAmountSql, canonicalSignedAmountSql). All amount
+ *    CHECK constraints now call these helpers instead of duplicating the
+ *    same SQL fragment 12+ times. Behavior is 100% identical to before.
+ * 2. financial_accounts: added uq_financial_accounts_system_type_name to
+ *    close the gap where SQLite does not enforce uniqueness across rows
+ *    with userId = NULL. System accounts (treasury, operating, fees, etc.)
+ *    can no longer duplicate accountType+name even while inactive.
+ * 3. crypto_transactions: web3TransactionId uniqueness is now scoped by
+ *    network (uq_crypto_transactions_network_web3_transaction) instead of
+ *    being globally unique, since the same hash format is only guaranteed
+ *    unique within a given chain/network.
+ * 4. crypto_transactions: added feeAssetId's counterpart documentation and
+ *    kept as-is (see relations.ts fix tracked separately); no schema change
+ *    needed here beyond the network-scoped uniqueness above.
+ * 5. financial_transactions: added explanatory comment on the `(): any =>`
+ *    self-reference workaround required by Drizzle's circular type
+ *    inference for self-referencing FKs.
+ * 6. asset_conversions: added optional sourceExchangeRateId column to allow
+ *    traceability back to the exact exchangeRates snapshot used, without
+ *    breaking immutability of the persisted rate numerator/denominator.
+ * 7. financial_assets: added ck_financial_assets_decimals_by_type to bound
+ *    decimals per asset type (fiat: 0-6, crypto: 0-18), tightening the
+ *    previous blanket 0-18 range.
+ * 8. financial_ledger_entries: documented (cannot be expressed as a Drizzle
+ *    CHECK constraint) the required double-entry balancing trigger. The
+ *    recommended raw SQL trigger is included as a comment for the migration
+ *    author to wire in via a raw SQL migration step.
+ * 9. fiat_transactions: documented the cross-table ownership invariant
+ *    (paymentMethodId must belong to the same user as the parent
+ *    financialTransaction) that cannot be expressed as a table-level CHECK
+ *    in SQLite and must be enforced by the application/service layer.
  * ============================================================================
  */
 
 export const MAX_BINDING_SAFE_BASE_UNITS = 9007199254740991;
 export const MAX_BINDING_SAFE_BASE_UNITS_TEXT = '9007199254740991';
+
+/* ============================================================================
+ * SHARED CANONICAL-AMOUNT SQL HELPERS
+ * ============================================================================
+ *
+ * All base-unit monetary columns in this domain are persisted as canonical
+ * decimal strings. These helpers centralize the exact validation rules so
+ * every table applies identical semantics:
+ *
+ * - no sign (unless explicitly signed)
+ * - no decimal point
+ * - no whitespace
+ * - no leading zero
+ * - optionally zero is accepted ('0' exactly, never '00' or '-0')
+ * - maximum is Number.MAX_SAFE_INTEGER (binding-safe limit for D1)
+ * ============================================================================
+ */
+
+/** Strictly positive canonical integer string (zero NOT accepted). */
+function canonicalUnsignedAmountSql(column: unknown): SQL {
+  return sql`
+    ${column} GLOB '[1-9]*'
+    AND ${column} NOT GLOB '*[^0-9]*'
+    AND (
+      length(${column}) < 16
+      OR (
+        length(${column}) = 16
+        AND ${column} <= '9007199254740991'
+      )
+    )
+  `;
+}
+
+/** Non-negative canonical integer string (zero IS accepted, as exactly '0'). */
+function canonicalUnsignedOrZeroAmountSql(column: unknown): SQL {
+  return sql`
+    (
+      ${column} = '0'
+      OR (
+        ${column} GLOB '[1-9]*'
+        AND ${column} NOT GLOB '*[^0-9]*'
+      )
+    )
+    AND (
+      length(${column}) < 16
+      OR (
+        length(${column}) = 16
+        AND ${column} <= '9007199254740991'
+      )
+    )
+  `;
+}
+
+/**
+ * Signed canonical integer string: '0', a positive canonical string, or a
+ * '-' prefixed canonical string. Rejects '-0', '+1', leading zeros, etc.
+ */
+function canonicalSignedAmountSql(column: unknown): SQL {
+  return sql`
+    (
+      ${column} = '0'
+      OR
+      (
+        ${column} GLOB '[1-9]*'
+        AND ${column} NOT GLOB '*[^0-9]*'
+      )
+      OR
+      (
+        substr(${column}, 1, 1) = '-'
+        AND substr(${column}, 2) GLOB '[1-9]*'
+        AND substr(${column}, 2) NOT GLOB '*[^0-9]*'
+      )
+    )
+    AND (
+      ${column} = '0'
+      OR
+      (
+        substr(${column}, 1, 1) != '-'
+        AND (
+          length(${column}) < 16
+          OR (
+            length(${column}) = 16
+            AND ${column} <= '9007199254740991'
+          )
+        )
+      )
+      OR
+      (
+        substr(${column}, 1, 1) = '-'
+        AND (
+          length(${column}) < 17
+          OR (
+            length(${column}) = 17
+            AND substr(${column}, 2) <= '9007199254740991'
+          )
+        )
+      )
+    )
+  `;
+}
 
 /* ============================================================================
  * 1. FINANCIAL ASSETS
@@ -124,6 +261,30 @@ export const financialAssets = sqliteTable(
     decimalsCheck: check(
       'ck_financial_assets_decimals',
       sql`${table.decimals} >= 0 AND ${table.decimals} <= 18`
+    ),
+
+    /**
+     * [AUDIT FIX #7]
+     * Tightens the blanket 0-18 range with a per-type policy:
+     *
+     *   fiat   -> 0 to 6 decimals   (covers all known fiat currencies,
+     *                                 including 3-decimal currencies like
+     *                                 KWD/BHD with headroom)
+     *   crypto -> 0 to 18 decimals  (covers ERC-20 standard of 18)
+     *
+     * Adjust the fiat upper bound here if a new fiat currency requires it;
+     * this is a deliberately conservative platform policy, not a protocol
+     * limitation.
+     */
+    decimalsByTypeCheck: check(
+      'ck_financial_assets_decimals_by_type',
+      sql`(
+        ${table.type} = 'fiat' AND ${table.decimals} BETWEEN 0 AND 6
+      )
+      OR
+      (
+        ${table.type} = 'crypto' AND ${table.decimals} BETWEEN 0 AND 18
+      )`
     ),
   })
 );
@@ -299,6 +460,21 @@ export const financialAccounts = sqliteTable(
       table.name
     ),
 
+    /**
+     * [AUDIT FIX #2]
+     * SQLite treats every NULL as distinct for uniqueness purposes, so the
+     * index above (uq_financial_accounts_user_type_name) does NOT prevent
+     * two system accounts (userId IS NULL) from sharing the same
+     * accountType + name. This partial index closes that gap explicitly,
+     * independent of `status`, so an inactive system account can't quietly
+     * duplicate an active one either.
+     */
+    systemAccountTypeNameUq: uniqueIndex(
+      'uq_financial_accounts_system_type_name'
+    )
+      .on(table.accountType, table.name)
+      .where(sql`${table.userId} IS NULL`),
+
     activeTreasurySingletonUnq: uniqueIndex(
       'uq_treasury_active_singleton'
     )
@@ -368,6 +544,20 @@ export const financialTransactions = sqliteTable(
       onDelete: 'restrict',
     }),
 
+    /**
+     * [AUDIT FIX #5]
+     * Self-referencing FK.
+     *
+     * `(): any =>` is required here (instead of the usual
+     * `() => financialTransactions.id` pattern) because Drizzle's type
+     * inference cannot resolve a table referencing its own not-yet-fully-
+     * typed export while the module is still being evaluated. This is a
+     * well-known workaround for self-referential FKs in Drizzle and is
+     * functionally identical to the lazy-reference pattern used elsewhere
+     * in this file (`() => financialTransactions.id`) once the module has
+     * finished loading. Do not "clean this up" to the non-`any` form; it
+     * will reintroduce a circular-type compile error.
+     */
     reversalOfTransactionId: integer(
       'reversal_of_transaction_id'
     ).references(
@@ -690,6 +880,49 @@ export const financialTransactions = sqliteTable(
 /* ============================================================================
  * 4. FINANCIAL LEDGER ENTRIES
  * ============================================================================
+ *
+ * [AUDIT FIX #8 - IMPORTANT, ACTION REQUIRED IN MIGRATIONS]
+ *
+ * SQLite CHECK constraints can only see the row being inserted/updated; they
+ * cannot aggregate across multiple rows. Because of that, the fundamental
+ * double-entry invariant:
+ *
+ *   SUM(debit) == SUM(credit)  for every (transactionId, assetId) group
+ *
+ * CANNOT be expressed as a Drizzle `check()` on this table. It must be
+ * enforced by either:
+ *
+ *   (a) an application-layer transactional write path that always inserts
+ *       balanced entry sets atomically (current approach, per file header),
+ *       backed by integration tests asserting the invariant never breaks; or
+ *   (b) a raw SQL trigger added via a hand-written migration, e.g.:
+ *
+ *   CREATE TRIGGER trg_ledger_entries_balanced
+ *   AFTER INSERT ON financial_ledger_entries
+ *   BEGIN
+ *     SELECT CASE
+ *       WHEN (
+ *         SELECT COALESCE(SUM(
+ *           CASE WHEN direction = 'debit'
+ *                THEN CAST(amount_base_units AS INTEGER)
+ *                ELSE -CAST(amount_base_units AS INTEGER) END
+ *         ), 0)
+ *         FROM financial_ledger_entries
+ *         WHERE transaction_id = NEW.transaction_id
+ *           AND asset_id = NEW.asset_id
+ *       ) != 0
+ *       -- only enforce once the transaction is "closed" by the app;
+ *       -- otherwise a multi-statement write would fail mid-flight.
+ *       THEN RAISE(ABORT, 'ledger entries not balanced for transaction/asset')
+ *     END;
+ *   END;
+ *
+ *   Note option (b) requires entries for a given transaction+asset to be
+ *   inserted in a single statement/batch (D1 supports batched statements),
+ *   otherwise the trigger will fire on the first (necessarily unbalanced)
+ *   partial insert. Coordinate with the write-path implementation before
+ *   enabling this trigger.
+ * ============================================================================
  */
 
 export const financialLedgerEntries = sqliteTable(
@@ -749,29 +982,9 @@ export const financialLedgerEntries = sqliteTable(
       sql`${table.direction} IN ('debit', 'credit')`
     ),
 
-    /**
-     * Positive canonical unsigned integer:
-     *
-     * - no sign
-     * - no decimal point
-     * - no whitespace
-     * - no leading zero
-     * - zero is not accepted
-     * - maximum is Number.MAX_SAFE_INTEGER
-     */
     amountCheck: check(
       'ck_financial_ledger_entries_amount_canonical',
-      sql`
-        ${table.amountBaseUnits} GLOB '[1-9]*'
-        AND ${table.amountBaseUnits} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.amountBaseUnits}) < 16
-          OR (
-            length(${table.amountBaseUnits}) = 16
-            AND ${table.amountBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.amountBaseUnits)
     ),
   })
 );
@@ -833,42 +1046,12 @@ export const accountBalances = sqliteTable(
 
     availableCheck: check(
       'ck_account_balances_available_canonical',
-      sql`
-        (
-          ${table.availableBaseUnits} = '0'
-          OR (
-            ${table.availableBaseUnits} GLOB '[1-9]*'
-            AND ${table.availableBaseUnits} NOT GLOB '*[^0-9]*'
-          )
-        )
-        AND (
-          length(${table.availableBaseUnits}) < 16
-          OR (
-            length(${table.availableBaseUnits}) = 16
-            AND ${table.availableBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedOrZeroAmountSql(table.availableBaseUnits)
     ),
 
     lockedCheck: check(
       'ck_account_balances_locked_canonical',
-      sql`
-        (
-          ${table.lockedBaseUnits} = '0'
-          OR (
-            ${table.lockedBaseUnits} GLOB '[1-9]*'
-            AND ${table.lockedBaseUnits} NOT GLOB '*[^0-9]*'
-          )
-        )
-        AND (
-          length(${table.lockedBaseUnits}) < 16
-          OR (
-            length(${table.lockedBaseUnits}) = 16
-            AND ${table.lockedBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedOrZeroAmountSql(table.lockedBaseUnits)
     ),
 
     versionCheck: check(
@@ -1024,17 +1207,7 @@ export const balanceHolds = sqliteTable(
 
     amountCheck: check(
       'ck_balance_holds_amount_canonical',
-      sql`
-        ${table.amountBaseUnits} GLOB '[1-9]*'
-        AND ${table.amountBaseUnits} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.amountBaseUnits}) < 16
-          OR (
-            length(${table.amountBaseUnits}) = 16
-            AND ${table.amountBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.amountBaseUnits)
     ),
 
     releasedStateCheck: check(
@@ -1369,7 +1542,7 @@ export const fiatAccounts = sqliteTable(
         AND ${table.blockedAt} IS NULL
       )`
     ),
-    
+
     blockedTemporalCheck: check(
       'ck_fiat_accounts_blocked_temporal',
       sql`${table.blockedAt} IS NULL
@@ -1525,6 +1698,20 @@ export const fiatPaymentMethods = sqliteTable(
 /* ============================================================================
  * 10. FIAT TRANSACTIONS
  * ============================================================================
+ *
+ * [AUDIT FIX #9 - DOCUMENTATION OF AN UNENFORCEABLE-AT-DB-LEVEL INVARIANT]
+ *
+ * `paymentMethodId` must belong to the same user who owns the parent
+ * `financialTransaction` (financialTransactions.userId). This cannot be
+ * expressed as a table-level CHECK/FK in SQLite because it spans three
+ * tables (fiat_transactions -> financial_transactions -> fiat_payment_methods)
+ * and SQLite CHECK constraints cannot reference other tables.
+ *
+ * REQUIRED: the application/service layer MUST validate this ownership
+ * before persisting a fiat_transactions row, and this must be covered by a
+ * dedicated integration test (e.g. "rejects payment method owned by a
+ * different user than the transaction owner").
+ * ============================================================================
  */
 
 export const fiatTransactions = sqliteTable(
@@ -1648,17 +1835,7 @@ export const fiatTransactions = sqliteTable(
 
     amountCheck: check(
       'ck_fiat_transactions_amount_canonical',
-      sql`
-        ${table.amountBaseUnits} GLOB '[1-9]*'
-        AND ${table.amountBaseUnits} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.amountBaseUnits}) < 16
-          OR (
-            length(${table.amountBaseUnits}) = 16
-            AND ${table.amountBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.amountBaseUnits)
     ),
 
     processedTemporalCheck: check(
@@ -1726,6 +1903,10 @@ export const cryptoTransactions = sqliteTable(
      *
      * For blockchain-backed operations this normally represents the
      * transaction hash.
+     *
+     * [AUDIT FIX #3] Uniqueness for this column is scoped by `network`
+     * below (uq_crypto_transactions_network_web3_transaction), not global,
+     * since the hash format is only guaranteed unique within a given chain.
      */
     web3TransactionId: text(
       'web3_transaction_id'
@@ -1804,9 +1985,17 @@ export const cryptoTransactions = sqliteTable(
       'uq_crypto_transactions_financial_transaction'
     ).on(table.financialTransactionId),
 
-    web3TransactionUq: uniqueIndex(
-      'uq_crypto_transactions_web3_transaction'
-    ).on(table.web3TransactionId),
+    /**
+     * [AUDIT FIX #3]
+     * Replaces the previous globally-unique index on web3TransactionId
+     * alone. The identifier (typically a tx hash) is only guaranteed to be
+     * unique *within* a given network; scoping avoids a theoretical (if
+     * unlikely) cross-chain collision incorrectly rejecting a legitimate
+     * transaction. NULLs (not yet known) remain unconstrained, as before.
+     */
+    web3TransactionNetworkUq: uniqueIndex(
+      'uq_crypto_transactions_network_web3_transaction'
+    ).on(table.network, table.web3TransactionId),
 
     assetIdx: index(
       'idx_crypto_transactions_asset'
@@ -1849,37 +2038,12 @@ export const cryptoTransactions = sqliteTable(
 
     amountCheck: check(
       'ck_crypto_transactions_amount_canonical',
-      sql`
-        ${table.amountBaseUnits} GLOB '[1-9]*'
-        AND ${table.amountBaseUnits} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.amountBaseUnits}) < 16
-          OR (
-            length(${table.amountBaseUnits}) = 16
-            AND ${table.amountBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.amountBaseUnits)
     ),
 
     feeCheck: check(
       'ck_crypto_transactions_fee_canonical',
-      sql`
-        (
-          ${table.feeBaseUnits} = '0'
-          OR (
-            ${table.feeBaseUnits} GLOB '[1-9]*'
-            AND ${table.feeBaseUnits} NOT GLOB '*[^0-9]*'
-          )
-        )
-        AND (
-          length(${table.feeBaseUnits}) < 16
-          OR (
-            length(${table.feeBaseUnits}) = 16
-            AND ${table.feeBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedOrZeroAmountSql(table.feeBaseUnits)
     ),
 
     feeAssetCheck: check(
@@ -2029,32 +2193,12 @@ export const exchangeRates = sqliteTable(
 
     rateNumeratorCheck: check(
       'ck_exchange_rates_numerator_canonical',
-      sql`
-        ${table.rateNumerator} GLOB '[1-9]*'
-        AND ${table.rateNumerator} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.rateNumerator}) < 16
-          OR (
-            length(${table.rateNumerator}) = 16
-            AND ${table.rateNumerator} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.rateNumerator)
     ),
 
     rateDenominatorCheck: check(
       'ck_exchange_rates_denominator_canonical',
-      sql`
-        ${table.rateDenominator} GLOB '[1-9]*'
-        AND ${table.rateDenominator} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.rateDenominator}) < 16
-          OR (
-            length(${table.rateDenominator}) = 16
-            AND ${table.rateDenominator} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.rateDenominator)
     ),
 
     sourceCheck: check(
@@ -2110,6 +2254,10 @@ export const assetConversions = sqliteTable(
 
     /**
      * Exact rational conversion rate.
+     *
+     * These are an immutable snapshot of the rate actually applied to this
+     * conversion, and are NOT expected to change even if the referenced
+     * exchangeRates row is later superseded.
      */
     rateNumerator: text(
       'rate_numerator'
@@ -2120,6 +2268,24 @@ export const assetConversions = sqliteTable(
     ).notNull(),
 
     rateSource: text('rate_source'),
+
+    /**
+     * [AUDIT FIX #6]
+     * Optional traceability pointer back to the exact exchangeRates row
+     * whose numerator/denominator were snapshotted above. Nullable because
+     * a conversion may be priced from a source that never produced a
+     * persisted exchangeRates row (e.g. an inline provider quote). Does not
+     * replace rateNumerator/rateDenominator, which remain the source of
+     * truth for what was actually applied.
+     */
+    sourceExchangeRateId: integer(
+      'source_exchange_rate_id'
+    ).references(
+      () => exchangeRates.id,
+      {
+        onDelete: 'restrict',
+      }
+    ),
 
     quotedAt: integer('quoted_at', {
       mode: 'timestamp',
@@ -2174,6 +2340,10 @@ export const assetConversions = sqliteTable(
       'idx_asset_conversions_created'
     ).on(table.createdAt),
 
+    sourceExchangeRateIdx: index(
+      'idx_asset_conversions_source_exchange_rate'
+    ).on(table.sourceExchangeRateId),
+
     statusCheck: check(
       'ck_asset_conversions_status',
       sql`${table.status} IN (
@@ -2187,52 +2357,17 @@ export const assetConversions = sqliteTable(
 
     fromAmountCheck: check(
       'ck_asset_conversions_from_amount_canonical',
-      sql`
-        ${table.fromAmountBaseUnits} GLOB '[1-9]*'
-        AND ${table.fromAmountBaseUnits} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.fromAmountBaseUnits}) < 16
-          OR (
-            length(${table.fromAmountBaseUnits}) = 16
-            AND ${table.fromAmountBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.fromAmountBaseUnits)
     ),
 
     toAmountCheck: check(
       'ck_asset_conversions_to_amount_canonical',
-      sql`
-        ${table.toAmountBaseUnits} GLOB '[1-9]*'
-        AND ${table.toAmountBaseUnits} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.toAmountBaseUnits}) < 16
-          OR (
-            length(${table.toAmountBaseUnits}) = 16
-            AND ${table.toAmountBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.toAmountBaseUnits)
     ),
 
     feeCheck: check(
       'ck_asset_conversions_fee_canonical',
-      sql`
-        (
-          ${table.feeAmountBaseUnits} = '0'
-          OR (
-            ${table.feeAmountBaseUnits} GLOB '[1-9]*'
-            AND ${table.feeAmountBaseUnits} NOT GLOB '*[^0-9]*'
-          )
-        )
-        AND (
-          length(${table.feeAmountBaseUnits}) < 16
-          OR (
-            length(${table.feeAmountBaseUnits}) = 16
-            AND ${table.feeAmountBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedOrZeroAmountSql(table.feeAmountBaseUnits)
     ),
 
     assetsDifferentCheck: check(
@@ -2242,32 +2377,12 @@ export const assetConversions = sqliteTable(
 
     rateNumeratorCheck: check(
       'ck_asset_conversions_numerator_canonical',
-      sql`
-        ${table.rateNumerator} GLOB '[1-9]*'
-        AND ${table.rateNumerator} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.rateNumerator}) < 16
-          OR (
-            length(${table.rateNumerator}) = 16
-            AND ${table.rateNumerator} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.rateNumerator)
     ),
 
     rateDenominatorCheck: check(
       'ck_asset_conversions_denominator_canonical',
-      sql`
-        ${table.rateDenominator} GLOB '[1-9]*'
-        AND ${table.rateDenominator} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.rateDenominator}) < 16
-          OR (
-            length(${table.rateDenominator}) = 16
-            AND ${table.rateDenominator} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.rateDenominator)
     ),
 
     rateSourceCheck: check(
@@ -2388,17 +2503,7 @@ export const financialFees = sqliteTable(
 
     amountCheck: check(
       'ck_financial_fees_amount_canonical',
-      sql`
-        ${table.amountBaseUnits} GLOB '[1-9]*'
-        AND ${table.amountBaseUnits} NOT GLOB '*[^0-9]*'
-        AND (
-          length(${table.amountBaseUnits}) < 16
-          OR (
-            length(${table.amountBaseUnits}) = 16
-            AND ${table.amountBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedAmountSql(table.amountBaseUnits)
     ),
   })
 );
@@ -2742,42 +2847,12 @@ export const reconciliationRecords = sqliteTable(
 
     expectedCheck: check(
       'ck_reconciliation_expected_canonical',
-      sql`
-        (
-          ${table.expectedBalanceBaseUnits} = '0'
-          OR (
-            ${table.expectedBalanceBaseUnits} GLOB '[1-9]*'
-            AND ${table.expectedBalanceBaseUnits} NOT GLOB '*[^0-9]*'
-          )
-        )
-        AND (
-          length(${table.expectedBalanceBaseUnits}) < 16
-          OR (
-            length(${table.expectedBalanceBaseUnits}) = 16
-            AND ${table.expectedBalanceBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedOrZeroAmountSql(table.expectedBalanceBaseUnits)
     ),
 
     actualCheck: check(
       'ck_reconciliation_actual_canonical',
-      sql`
-        (
-          ${table.actualBalanceBaseUnits} = '0'
-          OR (
-            ${table.actualBalanceBaseUnits} GLOB '[1-9]*'
-            AND ${table.actualBalanceBaseUnits} NOT GLOB '*[^0-9]*'
-          )
-        )
-        AND (
-          length(${table.actualBalanceBaseUnits}) < 16
-          OR (
-            length(${table.actualBalanceBaseUnits}) = 16
-            AND ${table.actualBalanceBaseUnits} <= '9007199254740991'
-          )
-        )
-      `
+      canonicalUnsignedOrZeroAmountSql(table.actualBalanceBaseUnits)
     ),
 
     /**
@@ -2797,47 +2872,7 @@ export const reconciliationRecords = sqliteTable(
      */
     differenceCheck: check(
       'ck_reconciliation_difference_canonical',
-      sql`
-        (
-          ${table.differenceBaseUnits} = '0'
-          OR
-          (
-            ${table.differenceBaseUnits} GLOB '[1-9]*'
-            AND ${table.differenceBaseUnits} NOT GLOB '*[^0-9]*'
-          )
-          OR
-          (
-            substr(${table.differenceBaseUnits}, 1, 1) = '-'
-            AND substr(${table.differenceBaseUnits}, 2) GLOB '[1-9]*'
-            AND substr(${table.differenceBaseUnits}, 2) NOT GLOB '*[^0-9]*'
-          )
-        )
-        AND (
-          ${table.differenceBaseUnits} = '0'
-          OR
-          (
-            substr(${table.differenceBaseUnits}, 1, 1) != '-'
-            AND (
-              length(${table.differenceBaseUnits}) < 16
-              OR (
-                length(${table.differenceBaseUnits}) = 16
-                AND ${table.differenceBaseUnits} <= '9007199254740991'
-              )
-            )
-          )
-          OR
-          (
-            substr(${table.differenceBaseUnits}, 1, 1) = '-'
-            AND (
-              length(${table.differenceBaseUnits}) < 17
-              OR (
-                length(${table.differenceBaseUnits}) = 17
-                AND substr(${table.differenceBaseUnits}, 2) <= '9007199254740991'
-              )
-            )
-          )
-        )
-      `
+      canonicalSignedAmountSql(table.differenceBaseUnits)
     ),
 
     /**

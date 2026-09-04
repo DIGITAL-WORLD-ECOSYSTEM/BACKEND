@@ -484,6 +484,11 @@ export const assetConversionsRelations = relations(
       references: [financialAssets.id],
       relationName: 'conversionToAsset',
     }),
+
+    sourceExchangeRate: one(exchangeRates, {
+      fields: [assetConversions.sourceExchangeRateId],
+      references: [exchangeRates.id],
+    }),
   }),
 );
 
