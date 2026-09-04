@@ -27,6 +27,8 @@ import {
   InvalidMoneyFormatError,
   Money256OverflowError,
   InvalidAccountClassError,
+  AccountInactiveError,
+  AssetInactiveError,
 } from '../../domains/finance/errors/FinancialError';
 
 const MAX_UINT256 = (1n << 256n) - 1n;
@@ -252,7 +254,18 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         )
         .limit(1);
 
-      if (!row) {
+      if (row) {
+        return Result.ok({
+          id: row.id,
+          userId: row.userId,
+          accountType: row.accountType as any,
+          status: row.status as any,
+          name: row.name,
+          version: row.version,
+        });
+      }
+
+      try {
         const [inserted] = await this.executor
           .insert(financialAccounts)
           .values({
@@ -274,16 +287,34 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           name: inserted.name,
           version: inserted.version,
         });
-      }
+      } catch (insertErr: any) {
+        if (!isUniqueConstraintViolation(insertErr)) {
+          throw insertErr;
+        }
 
-      return Result.ok({
-        id: row.id,
-        userId: row.userId,
-        accountType: row.accountType as any,
-        status: row.status as any,
-        name: row.name,
-        version: row.version,
-      });
+        const [existing] = await this.executor
+          .select()
+          .from(financialAccounts)
+          .where(
+            and(
+              sql`${financialAccounts.userId} IS NULL`,
+              eq(financialAccounts.accountType, 'operating')
+            )
+          )
+          .limit(1);
+
+        if (existing) {
+          return Result.ok({
+            id: existing.id,
+            userId: existing.userId,
+            accountType: existing.accountType as any,
+            status: existing.status as any,
+            name: existing.name,
+            version: existing.version,
+          });
+        }
+        throw new Error('Falha de concorrência: Conta operacional não encontrada mesmo após violação de UNIQUE.');
+      }
     } catch (err: any) {
       return Result.fail(err.message);
     }
@@ -713,15 +744,36 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     // 1. Garantir que a linha de saldo exista (auto-provisionamento se necessário)
     await this.ensureAccountBalance(accIdNum, assetIdNum, exec);
 
-    // 2. Determinar a classe da conta com switch exaustivo
+    // 1.5. Validar status ativo do ativo financeiro
+    const [assetRow] = await exec
+      .select({ status: financialAssets.status })
+      .from(financialAssets)
+      .where(eq(financialAssets.id, assetIdNum))
+      .limit(1);
+
+    if (!assetRow) {
+      throw new Error(`Financial asset #${assetIdNum} not found.`);
+    }
+    if (assetRow.status !== 'active') {
+      throw new AssetInactiveError(`Ativo financeiro #${assetIdNum} está inativo ou suspenso.`);
+    }
+
+    // 2. Determinar a classe e status da conta com switch exaustivo
     const [accRow] = await exec
-      .select({ accountClass: financialAccounts.accountClass })
+      .select({
+        accountClass: financialAccounts.accountClass,
+        status: financialAccounts.status,
+      })
       .from(financialAccounts)
       .where(eq(financialAccounts.id, accIdNum))
       .limit(1);
 
     if (!accRow) {
       throw new Error(`Account not found: ${accountId}`);
+    }
+
+    if (accRow.status !== 'active') {
+      throw new AccountInactiveError(`Conta financeira #${accIdNum} está inativa ou suspensa.`);
     }
 
     const accClass = accRow.accountClass;

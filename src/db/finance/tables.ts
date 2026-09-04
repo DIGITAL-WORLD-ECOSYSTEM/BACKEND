@@ -177,8 +177,14 @@ export const financialTransactions = sqliteTable(
     userId: integer('user_id').references(() => users.id, {
       onDelete: 'restrict',
     }),
-    reversalOfTransactionId: integer('reversal_of_transaction_id'),
-    refundOfTransactionId: integer('refund_of_transaction_id'),
+    reversalOfTransactionId: integer('reversal_of_transaction_id').references(
+      (): any => financialTransactions.id,
+      { onDelete: 'restrict' }
+    ),
+    refundOfTransactionId: integer('refund_of_transaction_id').references(
+      (): any => financialTransactions.id,
+      { onDelete: 'restrict' }
+    ),
     type: text('type', {
       enum: [
         'deposit',
@@ -192,8 +198,6 @@ export const financialTransactions = sqliteTable(
         'conversion',
         'adjustment',
         'reversal',
-        'inbound',
-        'outbound',
       ],
     }).notNull(),
     category: text('category', {
@@ -254,7 +258,7 @@ export const financialTransactions = sqliteTable(
       .where(sql`${table.reversalOfTransactionId} IS NOT NULL`),
     typeCheck: check(
       'ck_financial_tx_type',
-      sql`${table.type} IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment', 'reversal', 'inbound', 'outbound')`
+      sql`${table.type} IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment', 'reversal')`
     ),
     categoryCheck: check(
       'ck_financial_tx_category',
@@ -321,8 +325,8 @@ export const financialLedgerEntries = sqliteTable(
       sql`${table.direction} IN ('debit', 'credit')`
     ),
     amountCheck: check(
-      'ck_financial_ledger_entries_amount_range',
-      sql`length(${table.amountBaseUnits}) > 0`
+      'ck_financial_ledger_entries_amount_canonical',
+      sql`${table.amountBaseUnits} GLOB '[1-9]*' AND ${table.amountBaseUnits} NOT GLOB '*[^0-9]*'`
     ),
   })
 );
@@ -361,12 +365,12 @@ export const accountBalances = sqliteTable(
     accountIdx: index('idx_account_balances_account').on(table.accountId),
     assetIdx: index('idx_account_balances_asset').on(table.assetId),
     availableCheck: check(
-      'ck_account_balances_available_range',
-      sql`length(${table.availableBaseUnits}) > 0`
+      'ck_account_balances_available_canonical',
+      sql`${table.availableBaseUnits} GLOB '[0-9]*' AND (${table.availableBaseUnits} = '0' OR ${table.availableBaseUnits} NOT GLOB '0*') AND ${table.availableBaseUnits} NOT GLOB '*[^0-9]*'`
     ),
     lockedCheck: check(
-      'ck_account_balances_locked_range',
-      sql`length(${table.lockedBaseUnits}) > 0`
+      'ck_account_balances_locked_canonical',
+      sql`${table.lockedBaseUnits} GLOB '[0-9]*' AND (${table.lockedBaseUnits} = '0' OR ${table.lockedBaseUnits} NOT GLOB '0*') AND ${table.lockedBaseUnits} NOT GLOB '*[^0-9]*'`
     ),
     versionCheck: check('ck_account_balances_version', sql`${table.version} > 0`),
   })

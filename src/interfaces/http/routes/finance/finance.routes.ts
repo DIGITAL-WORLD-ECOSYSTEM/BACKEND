@@ -37,6 +37,80 @@ financeRouter.get(
   }
 );
 
+// Option A: Dedicated HTTP Routes per Operation with Granular RBAC Permissions
+financeRouter.post(
+  '/deposits',
+  requireAal(2, 15),
+  verifyPermission('finance.deposit.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordDeposit(c);
+  }
+);
+
+financeRouter.post(
+  '/withdrawals',
+  requireAal(2, 15),
+  verifyPermission('finance.withdrawal.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordWithdrawal(c);
+  }
+);
+
+financeRouter.post(
+  '/payments',
+  requireAal(2, 15),
+  verifyPermission('finance.payment.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordPayment(c);
+  }
+);
+
+financeRouter.post(
+  '/refunds',
+  requireAal(2, 15),
+  verifyPermission('finance.refund.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordRefund(c);
+  }
+);
+
+financeRouter.post(
+  '/transfers',
+  requireAal(2, 15),
+  verifyPermission('finance.transfer.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordTransfer(c);
+  }
+);
+
+financeRouter.post(
+  '/adjustments',
+  requireAal(2, 15),
+  verifyPermission('finance.adjustment.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordAdjustment(c);
+  }
+);
+
+// Generic Legacy Rota POST /transactions (fallback)
 financeRouter.post(
   '/transactions',
   requireAal(2, 15),

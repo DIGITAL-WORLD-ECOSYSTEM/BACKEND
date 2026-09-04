@@ -11,6 +11,7 @@ import { Money256 } from '../../src/domains/finance/value-objects/Money256';
 import { FinancialTransactionOrchestrator } from '../../src/application/finance/services/FinancialTransactionOrchestrator';
 import { accountBalances } from '../../src/db/finance/tables';
 import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+import { Result } from '../../src/shared/kernel/Result';
 
 describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)', () => {
   let sqlite: any;
@@ -80,12 +81,12 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
     const origRes = await uow.execute(async (f) => {
       const repo = f.getFinanceRepository();
       const orchestrator = new FinancialTransactionOrchestrator(repo);
-      const postingResult = await orchestrator.executePosting(originalTx, 'orig-hash');
-      return postingResult;
+      const postingResult = await orchestrator.executePosting(originalTx);
+      return Result.ok(postingResult);
     });
 
-    expect(origRes.transactionId).toBeDefined();
-    const originalTxId = origRes.transactionId;
+    expect(origRes.isSuccess).toBe(true);
+    const originalTxId = origRes.getValue().transactionId;
 
     // Verifica saldos pós-depósito
     const b1AfterDep = await db.select().from(accountBalances).where(and(eq(accountBalances.accountId, 1), eq(accountBalances.assetId, 1)));
@@ -96,9 +97,9 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
     // 2. Executa estorno (ReverseTransactionUseCase)
     const revRes = await reverseUseCase.execute({
       originalTransactionId: originalTxId,
+      actorUserId: 1,
       idempotencyKey: 'rev-dep-100',
       reason: 'Solicitação do cliente / Erro operacional',
-      requestHash: 'rev-hash',
     });
 
     if (revRes.isFailure) console.log('revRes error:', revRes.error);

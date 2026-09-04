@@ -18,7 +18,9 @@ import {
 import { FinancialTransactionCategory } from '../../ports/output/IFinanceRepository';
 
 export interface RecordTreasuryTransactionDTO {
-  userId?: number | null;
+  userId?: number | null; // targetUserId
+  actorUserId?: number | null;
+  authorizedByUserId?: number | null;
   type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
   direction?: 'INBOUND' | 'OUTBOUND';
   category?: FinancialTransactionCategory;
@@ -354,17 +356,29 @@ export class RecordTreasuryTransactionUseCase {
             break;
           }
           case 'adjustment': {
-            if (parsedUserId === null) {
+            let parsedAuthUserId: number | null = null;
+            if (dto.authorizedByUserId !== null && dto.authorizedByUserId !== undefined) {
+              parsedAuthUserId = parsePositiveSafeIntegerId(dto.authorizedByUserId, 'authorizedByUserId');
+            }
+
+            if (parsedAuthUserId === null) {
               return Result.fail<RecordTreasuryTransactionResult>(
-                new AccountOwnershipError("Operação de ajuste (adjustment) exige obrigatoriamente a identificação do usuário autorizador (userId).")
+                new AccountOwnershipError("Operação de ajuste (adjustment) exige obrigatoriamente a identificação do usuário autorizador (authorizedByUserId).")
               );
             }
+
+            if (parsedUserId !== null && parsedUserId === parsedAuthUserId) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new InvalidFinancialOperationError("Invariante FIN-007 violado: Para ajustes administrativos, o usuário titular (targetUserId) deve ser distinto do autorizador (authorizedByUserId).")
+              );
+            }
+
             rawEntries = AccountingEntryPolicy.createAdjustmentEntries({
               debitAccountId: resolvedDirection === 'INBOUND' ? treasuryAccountId : userAccountId,
               creditAccountId: resolvedDirection === 'INBOUND' ? userAccountId : treasuryAccountId,
               amount: amountMoney,
               reason: description,
-              authorizedByUserId: parsedUserId,
+              authorizedByUserId: parsedAuthUserId,
             });
             break;
           }

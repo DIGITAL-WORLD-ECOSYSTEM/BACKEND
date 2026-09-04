@@ -15,7 +15,7 @@ describe('DrizzleFinanceRepository', () => {
               }
               // Segunda busca: financialAccounts (accountClass)
               // Terceira busca: account_balances (pós inserção)
-              return [{ id: 1, availableBaseUnits: 0, version: 1, accountClass: 'liability' }];
+              return [{ id: 1, availableBaseUnits: 0, version: 1, accountClass: 'liability', status: 'active' }];
             }),
           })),
         })),
@@ -46,7 +46,7 @@ describe('DrizzleFinanceRepository', () => {
       select: vi.fn().mockImplementation(() => ({
         from: vi.fn().mockImplementation(() => ({
           where: vi.fn().mockImplementation(() => ({
-            limit: vi.fn().mockResolvedValue([{ id: 1, availableBaseUnits: 100, version: 1, accountClass: 'liability' }]),
+            limit: vi.fn().mockResolvedValue([{ id: 1, availableBaseUnits: 100, version: 1, accountClass: 'liability', status: 'active' }]),
           })),
         })),
       })),

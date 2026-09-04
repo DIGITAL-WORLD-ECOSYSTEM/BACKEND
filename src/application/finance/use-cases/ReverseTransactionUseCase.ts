@@ -9,6 +9,7 @@ import { InvalidStateTransitionError } from '../../../domains/finance/errors/Fin
 
 export interface ReverseTransactionInput {
   originalTransactionId: number;
+  actorUserId: number;
   idempotencyKey: string;
   reason: string;
   requestHash?: string;
@@ -19,6 +20,10 @@ export class ReverseTransactionUseCase {
 
   async execute(input: ReverseTransactionInput): Promise<Result<OrchestratorResult>> {
     try {
+      if (!input.actorUserId) {
+        throw new Error('Identificação de actorUserId é obrigatória para efetuar o estorno.');
+      }
+
       return await this.uow.execute(async (factory) => {
         const repo = factory.getFinanceRepository();
 

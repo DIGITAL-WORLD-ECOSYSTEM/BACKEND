@@ -5,6 +5,7 @@ import { Money256 } from '../../../domains/finance/value-objects/Money256';
 import { AccountingEntryPolicy } from '../../../domains/finance/policies/AccountingEntryPolicy';
 import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
 import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
+import { AccountInactiveError } from '../../../domains/finance/errors/FinancialError';
 
 export interface DepositCommand {
   userId: number;
@@ -31,7 +32,11 @@ export class RecordDepositUseCase {
 
         const userAccRes = await repo.getOrCreateUserAccount(command.userId);
         if (userAccRes.isFailure) throw new Error(userAccRes.error || 'Conta do usuário não encontrada');
-        const userAccountId = userAccRes.getValue().id;
+        const userAcc = userAccRes.getValue();
+        if (userAcc.status !== 'active') {
+          throw new AccountInactiveError('Conta do Usuário está inativa ou suspensa.');
+        }
+        const userAccountId = userAcc.id;
 
         const rawEntries = AccountingEntryPolicy.createDepositEntries({
           treasuryAccountId,

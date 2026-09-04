@@ -24,14 +24,16 @@ export class FinanceController {
     }
   }
 
-  async recordTransaction(c: Context): Promise<Response> {
+  async recordTransactionWithType(c: Context, forcedType?: string): Promise<Response> {
     try {
-      const userId = c.get('userId') || c.get('user')?.userId;
+      const actorUserId = c.get('userId') || c.get('user')?.userId;
       const body = await c.req.json();
+
+      const type = forcedType || body.type;
 
       // 1. Validate Type
       const allowedTypes = ['deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment'];
-      if (!body.type || !allowedTypes.includes(body.type)) {
+      if (!type || !allowedTypes.includes(type)) {
         return c.json({ success: false, message: `Tipo de transação inválido. Tipos permitidos: ${allowedTypes.join(', ')}` }, 400);
       }
 
@@ -56,15 +58,19 @@ export class FinanceController {
         return c.json({ success: false, message: 'Idempotency-Key header ou no body é obrigatório' }, 400);
       }
 
-      // 5. Generate Canonical Request Hash
+      // 5. Target / Authorized / Actor User ID Resolution
+      const targetUserId = body.targetUserId ?? body.userId ?? actorUserId;
+      const authorizedByUserId = body.authorizedByUserId;
+
+      // 6. Generate Canonical Request Hash
       const canonicalPayload = JSON.stringify({
         amountBaseUnits: String(body.amountBaseUnits),
         assetId: String(body.assetId),
         category: String(body.category || ''),
         description: String(body.description || ''),
         direction,
-        type: String(body.type),
-        userId: userId ? String(userId) : ''
+        type: String(type),
+        userId: targetUserId ? String(targetUserId) : ''
       });
       
       const encoder = new TextEncoder();
@@ -73,10 +79,12 @@ export class FinanceController {
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const requestHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-      // 6. Execute Use Case
+      // 7. Execute Use Case
       const result = await this.recordTxUseCase.execute({
-        userId,
-        type: body.type,
+        userId: targetUserId,
+        actorUserId: actorUserId ? Number(actorUserId) : undefined,
+        authorizedByUserId: authorizedByUserId ? Number(authorizedByUserId) : undefined,
+        type: type as any,
         direction,
         category: body.category,
         description: body.description,
@@ -87,8 +95,7 @@ export class FinanceController {
       });
 
       if (result.isFailure) {
-        const errorMsg = result.error as string;
-        // Map domain errors to HTTP Status Codes
+        const errorMsg = typeof result.error === 'string' ? result.error : (result.error as any)?.message || String(result.error);
         if (errorMsg.includes('409 Conflict') || errorMsg.includes('Idempotency Key Processing')) {
           return c.json({ success: false, message: errorMsg }, 409);
         }
@@ -97,7 +104,6 @@ export class FinanceController {
 
       const { transactionId, isReplayed } = result.getValue();
 
-      // 201 Created se foi nova, ou 200 OK se foi idempotente.
       c.header('Idempotency-Replayed', isReplayed ? 'true' : 'false');
       
       return c.json({ 
@@ -109,6 +115,34 @@ export class FinanceController {
       const message = err instanceof Error ? err.message : 'Erro interno';
       return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
     }
+  }
+
+  async recordTransaction(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c);
+  }
+
+  async recordDeposit(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'deposit');
+  }
+
+  async recordWithdrawal(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'withdrawal');
+  }
+
+  async recordPayment(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'payment');
+  }
+
+  async recordRefund(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'refund');
+  }
+
+  async recordTransfer(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'transfer');
+  }
+
+  async recordAdjustment(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'adjustment');
   }
 
   async listTransactions(c: Context): Promise<Response> {
