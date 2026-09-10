@@ -63,6 +63,11 @@ temp/
 *.tmp
 *.temp
 *.bak
+*-snapshot.txt
+*.snapshot.txt
+*.dump
+*.patch
+scratch/
 
 # ------------------------------------------------------
 # 🏗️ Build & Output
