@@ -1,12 +1,13 @@
 import { Result } from '../../shared/kernel/Result';
-import { IPasswordResetRepository, PasswordReset } from '../../application/ports/output/IPasswordResetRepository';
+import { RepositoryError } from '../../shared/kernel/RepositoryError';
+import { IPasswordResetRepository, PasswordReset, CreatePasswordResetData } from '../../application/ports/output/IPasswordResetRepository';
 import { passwordResets } from '../../db/authentication/tables';
 import { eq } from 'drizzle-orm';
 
 export class DrizzlePasswordResetRepository implements IPasswordResetRepository {
   constructor(private db: any) {}
 
-  async findByToken(tokenHash: string): Promise<Result<PasswordReset>> {
+  async findByToken(tokenHash: string): Promise<Result<PasswordReset, RepositoryError>> {
     try {
       const [reset] = await this.db
         .select()
@@ -15,15 +16,15 @@ export class DrizzlePasswordResetRepository implements IPasswordResetRepository 
         .limit(1);
 
       if (!reset) {
-        return Result.fail('PasswordResetNotFound');
+        return Result.err(RepositoryError.notFound('PasswordReset', tokenHash));
       }
       return Result.ok(reset as PasswordReset);
     } catch (e: any) {
-      return Result.fail(e.message);
+      return Result.err(RepositoryError.transient(e.message, e));
     }
   }
 
-  async invalidate(id: number): Promise<Result<void>> {
+  async invalidate(id: number): Promise<Result<void, RepositoryError>> {
     try {
       await this.db
         .update(passwordResets)
@@ -31,20 +32,20 @@ export class DrizzlePasswordResetRepository implements IPasswordResetRepository 
         .where(eq(passwordResets.id, id));
       return Result.ok();
     } catch (e: any) {
-      return Result.fail(e.message);
+      return Result.err(RepositoryError.transient(e.message, e));
     }
   }
 
-  async create(data: { userId: number; tokenHash: string; expiresAt: Date }): Promise<Result<void>> {
+  async create(data: CreatePasswordResetData): Promise<Result<void, RepositoryError>> {
     try {
       await this.db.insert(passwordResets).values(data);
       return Result.ok();
     } catch (e: any) {
-      return Result.fail(e.message);
+      return Result.err(RepositoryError.integrity(e.message, e));
     }
   }
 
-  async consumeToken(tokenHash: string): Promise<Result<PasswordReset>> {
+  async consumeToken(tokenHash: string): Promise<Result<PasswordReset, RepositoryError>> {
     try {
       const { and, isNull, sql } = await import('drizzle-orm');
       
@@ -59,11 +60,11 @@ export class DrizzlePasswordResetRepository implements IPasswordResetRepository 
         .returning();
 
       if (!reset) {
-        return Result.fail('PasswordResetNotFoundOrUsed');
+        return Result.err(RepositoryError.notFound('PasswordReset', tokenHash));
       }
       return Result.ok(reset as PasswordReset);
     } catch (e: any) {
-      return Result.fail(e.message);
+      return Result.err(RepositoryError.transient(e.message, e));
     }
   }
 }
