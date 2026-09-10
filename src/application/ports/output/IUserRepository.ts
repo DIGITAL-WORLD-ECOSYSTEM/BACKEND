@@ -1,3 +1,6 @@
+import { Result } from '../../../shared/kernel/Result';
+import { RepositoryError } from '../../../shared/kernel/RepositoryError';
+
 export interface UserRecord {
   id: number;
   publicId: string | null;
@@ -19,12 +22,16 @@ export interface CreateUserData {
   status?: 'active' | 'suspended' | 'pending' | 'locked';
 }
 
+export type UserStatus = 'active' | 'suspended' | 'pending' | 'locked';
+
 export interface IUserRepository {
   findById(id: number): Promise<UserRecord | null>;
   findByEmail(email: string): Promise<UserRecord | null>;
-  create(data: CreateUserData): Promise<UserRecord>;
-  updateStatus(id: number, status: 'active' | 'suspended' | 'pending' | 'locked'): Promise<void>;
-  incrementAuthEpoch?(userId: number): Promise<number>;
-  incrementFailedLoginAttempts(userId: number, maxAttempts: number): Promise<void>;
-  resetFailedLoginAttempts(userId: number): Promise<void>;
+  create(data: CreateUserData): Promise<Result<UserRecord, RepositoryError>>;
+  updateStatus(id: number, status: UserStatus): Promise<Result<void, RepositoryError>>;
+  /** Increments the auth epoch and returns the new value. Mandatory — used for session invalidation. */
+  incrementAuthEpoch(userId: number): Promise<Result<number, RepositoryError>>;
+  incrementFailedLoginAttempts(userId: number, maxAttempts: number): Promise<Result<void, RepositoryError>>;
+  resetFailedLoginAttempts(userId: number): Promise<Result<void, RepositoryError>>;
 }
+

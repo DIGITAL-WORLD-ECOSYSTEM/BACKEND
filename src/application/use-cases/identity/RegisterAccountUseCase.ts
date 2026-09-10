@@ -32,12 +32,17 @@ export class RegisterAccountUseCase {
       const passwordHash = await this.passwordHasher.hash(input.password);
 
       // 3. Criar registro mestre do usuário
-      const newUser = await userRepo.create({
+      const userCreateRes = await userRepo.create({
         email: input.email.trim(),
         emailNormalized,
         subjectType: 'citizen',
         status: 'active',
       });
+
+      if (userCreateRes.isFailure) {
+        return Result.fail<RegisterAccountOutputDTO>(userCreateRes.error || 'Falha ao criar usuário.');
+      }
+      const newUser = userCreateRes.getValue();
 
       // 4. Salvar credencial de senha no repositório de autenticação
       await authRepo.savePasswordCredential(newUser.id, passwordHash);
