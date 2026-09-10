@@ -1,4 +1,5 @@
 import { eq, and, isNull, sql } from 'drizzle-orm';
+import { isD1Database } from './db_helper';
 import {
   userAuthenticators,
   passwordCredentials,
@@ -68,7 +69,7 @@ export class DrizzleAuthenticationRepositoryAdapter implements IAuthenticationRe
       });
     };
 
-    if (typeof this.db.transaction === 'function') {
+    if (typeof this.db.transaction === 'function' && !isD1Database(this.db)) {
       await this.db.transaction(runTransaction);
     } else {
       await runTransaction(this.db);

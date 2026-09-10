@@ -28,6 +28,10 @@ export class User {
     return this.props.id;
   }
 
+  get publicId(): string | null {
+    return this.props.publicId || null;
+  }
+
   get email(): string | null {
     return this.props.email || null;
   }

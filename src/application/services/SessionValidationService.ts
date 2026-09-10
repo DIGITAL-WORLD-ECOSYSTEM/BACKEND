@@ -74,8 +74,8 @@ export class SessionValidationService {
       userId: session.userId,
       sessionId: session.id,
       sessionAal: session.aal,
-      lastAuthenticatedAt: (session as any).lastAuthenticatedAt || new Date(),
-      publicId: (user as any).publicId || '',
+      lastAuthenticatedAt: sessionRecord.createdAt instanceof Date ? sessionRecord.createdAt : new Date(),
+      publicId: user.publicId || '',
     };
   }
 }

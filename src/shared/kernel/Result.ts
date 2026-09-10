@@ -13,6 +13,14 @@ export class Result<T, E = string> {
   public readonly isSuccess: boolean;
   public readonly isFailure: boolean;
 
+  public isOk(): boolean {
+    return this.isSuccess;
+  }
+
+  public isErr(): boolean {
+    return this.isFailure;
+  }
+
   /** Legacy string error — only set when created via Result.fail(string|Error). */
   public readonly error: string | null;
   /** Legacy Error object — only set when created via Result.fail(Error). */
