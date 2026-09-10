@@ -30,4 +30,4 @@ ON event_consumer_receipts (consumer_id, event_id);
 
 -- 7. Outbox Events Indexing
 CREATE INDEX IF NOT EXISTS idx_outbox_events_published ON outbox_events (published);
-CREATE INDEX IF NOT EXISTS idx_outbox_events_lease ON outbox_events (lease_expires_at);
+
