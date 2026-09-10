@@ -70,7 +70,7 @@ export class RecordDepositUseCase {
           }
         }
 
-        const orchestrator = new FinancialTransactionOrchestrator(repo);
+        const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
         const orchestratorResult = await orchestrator.executePosting(transaction);
         return Result.ok(orchestratorResult);
       });

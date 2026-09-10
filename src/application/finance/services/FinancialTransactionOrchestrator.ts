@@ -1,4 +1,6 @@
 import { IFinanceRepository } from '../../ports/output/IFinanceRepository';
+import { IOutboxRepository } from '../../ports/output/IOutboxRepository';
+import { IDomainEvent } from '../../../shared/kernel/DomainEvent';
 import { LedgerTransaction } from '../../../domains/finance/entities/LedgerTransaction';
 import {
   IdempotencyConflictError,
@@ -25,7 +27,10 @@ export class FinancialTransactionOrchestrator {
    * Todas as etapas de persistência (Claim Idempotency, Insert Transaction, Insert Entries, OCC Balance Updates,
    * Outbox Event e Complete Idempotency) ocorrem obrigatoriamente dentro do mesmo boundary transacional do banco.
    */
-  constructor(private readonly financeRepo: IFinanceRepository) { }
+  constructor(
+    private readonly financeRepo: IFinanceRepository,
+    private readonly outboxRepo?: IOutboxRepository
+  ) { }
 
   /**
    * Valida rigorosamente o invariante FIN-001 de partidas dobradas antes da persistência:
@@ -119,7 +124,7 @@ export class FinancialTransactionOrchestrator {
     }
 
     // 2. Insert transaction record (status = 'processing')
-    const transactionId = await this.financeRepo.insertTransaction({
+    const txResult = await this.financeRepo.insertTransaction({
       userId: transaction.userId ?? null,
       type: transaction.transactionType ?? 'adjustment',
       category: transaction.category || 'operational',
@@ -128,9 +133,16 @@ export class FinancialTransactionOrchestrator {
       reversalOfTransactionId: transaction.reversalOfTransactionId,
       refundOfTransactionId: transaction.refundOfTransactionId,
     });
+    if (txResult.isFailure) {
+      throw new Error(txResult.typedError?.message || txResult.error || 'Falha ao inserir registro de transação financeira.');
+    }
+    const transactionId = txResult.getValue();
 
     // 3. Insert immutable ledger entries
-    await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
+    const entriesResult = await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
+    if (entriesResult.isFailure) {
+      throw new Error(entriesResult.typedError?.message || entriesResult.error || 'Falha ao inserir lançamentos contábeis.');
+    }
 
     // 4. Consolidação e agregação de saldos por (accountId, assetId) para evitar falhas de saldo intermediário (intra-transaction) e otimizar I/O.
     interface AccountAssetKey {
@@ -205,11 +217,20 @@ export class FinancialTransactionOrchestrator {
     await this.financeRepo.updateTransactionStatus(transactionId, 'completed');
 
     // 6. Persist Outbox Event
-    await this.financeRepo.persistOutboxEvent('LedgerTransactionCommitted', {
-      transactionId,
-      idempotencyKey: transaction.idempotencyKey,
-      requestHash: computedHash,
-    });
+    if (this.outboxRepo) {
+      await this.outboxRepo.saveEvent(
+        {
+          dateTimeOccurred: new Date(),
+          getAggregateId: () => String(transactionId),
+          transactionId,
+          idempotencyKey: transaction.idempotencyKey,
+          requestHash: computedHash,
+        } as IDomainEvent,
+        transactionId,
+        'LedgerTransaction',
+        1
+      );
+    }
 
     // 7. Complete Idempotency record
     await this.financeRepo.completeIdempotency(transaction.idempotencyKey, 'finance', transactionId);

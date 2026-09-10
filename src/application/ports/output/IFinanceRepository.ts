@@ -1,4 +1,5 @@
 import { Result } from '../../../shared/kernel/Result';
+import { RepositoryError } from '../../../shared/kernel/RepositoryError';
 import { LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
 import { FinancialLedgerEntryRecord } from '../../../domains/finance/contracts/FinancialLedgerEntryRecord';
 
@@ -129,8 +130,8 @@ export interface IFinanceRepository {
     status: FinancialTransactionStatus;
     reversalOfTransactionId?: number;
     refundOfTransactionId?: number;
-  }): Promise<number>;
-  insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<void>;
+  }): Promise<Result<number, RepositoryError>>;
+  insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<Result<void, RepositoryError>>;
   updateBalanceWithOCC(
     accountId: number | string,
     assetId: number | string,
@@ -138,5 +139,5 @@ export interface IFinanceRepository {
     type: 'debit' | 'credit'
   ): Promise<BalanceUpdateResult>;
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
-  persistOutboxEvent(eventType: string, payload: LedgerTransactionCommittedEvent | Record<string, unknown>): Promise<void>;
+  // NOTE: persistOutboxEvent removed — use IOutboxRepository.saveEvent() within the same UoW transaction.
 }

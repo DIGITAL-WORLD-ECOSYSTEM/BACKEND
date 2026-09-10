@@ -24,7 +24,7 @@ export class RecordLedgerTransactionUseCase {
 
       return await this.unitOfWork.execute(async (factory) => {
         const repo = factory.getFinanceRepository();
-        const orchestrator = new FinancialTransactionOrchestrator(repo);
+        const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
         const orchestratorResult = await orchestrator.executePosting(transaction);
         return Result.ok(orchestratorResult);
       });

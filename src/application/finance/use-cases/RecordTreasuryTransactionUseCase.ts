@@ -426,7 +426,7 @@ export class RecordTreasuryTransactionUseCase {
         });
 
         // 10. Execute Posting via Orchestrator
-        const orchestrator = new FinancialTransactionOrchestrator(financeRepo);
+        const orchestrator = new FinancialTransactionOrchestrator(financeRepo, factory.getOutboxRepository());
         const orchestratorResult = await orchestrator.executePosting(transaction);
         return Result.ok<RecordTreasuryTransactionResult>(orchestratorResult);
       });

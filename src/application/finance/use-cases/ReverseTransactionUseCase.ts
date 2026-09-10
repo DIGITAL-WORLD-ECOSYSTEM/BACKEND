@@ -93,7 +93,7 @@ export class ReverseTransactionUseCase {
           }
         }
 
-        const orchestrator = new FinancialTransactionOrchestrator(repo);
+        const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
         const orchestratorResult = await orchestrator.executePosting(reversalTx);
 
         // Atualizar transação original para 'reversed' dentro da mesma UoW
