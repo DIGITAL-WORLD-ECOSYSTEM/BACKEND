@@ -30,7 +30,7 @@ export class SubmitKycVerificationUseCase {
       const last4 = dto.documentNumber.slice(-4);
 
       // 1. Salva registro de documento de identidade
-      await civilRepo.createIdentityDocument({
+      const docRes = await civilRepo.createIdentityDocument({
         userId: dto.userId,
         documentType: dto.documentType,
         countryCode: 'BR',
@@ -40,9 +40,12 @@ export class SubmitKycVerificationUseCase {
         source: 'manual_upload',
         verificationStatus: 'pending',
       });
+      if (docRes.isFailure) {
+        return Result.fail<KycVerificationRecord>(docRes.error || 'Falha ao salvar documento de identidade.');
+      }
 
       // 2. Registra o processo de verificação KYC
-      const kyc = await civilRepo.createKycVerification({
+      const kycRes = await civilRepo.createKycVerification({
         userId: dto.userId,
         verificationLevel: dto.verificationLevel || 'basic',
         status: 'submitted',
@@ -50,7 +53,11 @@ export class SubmitKycVerificationUseCase {
         startedAt: new Date(),
       });
 
-      return Result.ok<KycVerificationRecord>(kyc);
+      if (kycRes.isFailure) {
+        return Result.fail<KycVerificationRecord>(kycRes.error || 'Falha ao registrar verificação KYC.');
+      }
+
+      return Result.ok<KycVerificationRecord>(kycRes.getValue());
     });
   }
 }

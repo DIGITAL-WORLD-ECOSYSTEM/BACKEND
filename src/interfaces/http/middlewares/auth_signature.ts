@@ -143,7 +143,7 @@ export const authSignature = async (c: Context, next: Next) => {
 
   const activeCitizen: CitizenRecord | null = repoResult.isSuccess ? repoResult.getValue() : null;
 
-  if (!activeCitizen || activeCitizen.status === 'revoked' || activeCitizen.civilStatus === 'revoked') {
+  if (!activeCitizen || activeCitizen.civilStatus === 'revoked') {
     return c.json({ success: false, message: 'Citizen not found or revoked.' }, 401);
   }
 

@@ -27,7 +27,7 @@ export class RegisterCitizenUseCase {
         return Result.ok<CitizenRecord>(existing);
       }
 
-      const created = await civilRepo.createCitizen({
+      const createdRes = await civilRepo.createCitizen({
         userId: dto.userId,
         legalFirstName: dto.legalFirstName,
         legalLastName: dto.legalLastName,
@@ -37,7 +37,11 @@ export class RegisterCitizenUseCase {
         civilStatus: 'pending',
       });
 
-      return Result.ok<CitizenRecord>(created);
+      if (createdRes.isFailure) {
+        return Result.fail<CitizenRecord>(createdRes.error || 'Falha ao registrar cidadão.');
+      }
+
+      return Result.ok<CitizenRecord>(createdRes.getValue());
     });
   }
 }
