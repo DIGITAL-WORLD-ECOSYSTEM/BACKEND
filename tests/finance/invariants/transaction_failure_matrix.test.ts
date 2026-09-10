@@ -122,13 +122,14 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
       const repo = factory.getFinanceRepository();
       // Executa os passos normais manualmente para simular falha no completeIdempotency
       await repo.claimIdempotency(tx.idempotencyKey, 10, 'finance', 'hash-6');
-      const dbTxId = await repo.insertTransaction({
+      const txRes = await repo.insertTransaction({
         userId: tx.userId,
         type: tx.transactionType || 'deposit',
         category: 'operational',
         description: tx.description,
         status: 'processing'
       });
+      const dbTxId = txRes.getValue();
       await repo.insertLedgerEntries(tx.entries, dbTxId);
       await repo.updateBalanceWithOCC('1', '1', 100n, 'debit');
       await repo.updateBalanceWithOCC('2', '1', 100n, 'credit');

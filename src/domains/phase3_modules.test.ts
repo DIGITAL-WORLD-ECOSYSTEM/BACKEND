@@ -13,7 +13,7 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
     it('should register a new citizen civil identity', async () => {
       const mockCivilRepo = {
         findCitizenByUserId: vi.fn().mockResolvedValue(null),
-        createCitizen: vi.fn().mockImplementation(async (data) => ({
+        createCitizen: vi.fn().mockImplementation(async (data) => Result.ok({
           ...data,
           username: 'citizen_123',
           version: 1,
@@ -42,13 +42,13 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
 
     it('should submit KYC verification request and store identity document', async () => {
       const mockCivilRepo = {
-        createIdentityDocument: vi.fn().mockResolvedValue({ id: 1, userId: 10 }),
-        createKycVerification: vi.fn().mockResolvedValue({
+        createIdentityDocument: vi.fn().mockResolvedValue(Result.ok({ id: 1, userId: 10 })),
+        createKycVerification: vi.fn().mockResolvedValue(Result.ok({
           id: 5,
           userId: 10,
           status: 'submitted',
           verificationLevel: 'basic',
-        }),
+        })),
       };
       const mockUow = {
         execute: vi.fn().mockImplementation(async (cb) =>
@@ -201,17 +201,20 @@ describe('Phase 3 Ecosystem Modules Suite', () => {
         getOrCreateUserAccount: vi.fn().mockResolvedValue(Result.ok({ id: 2 })),
         getOrCreateOperatingAccount: vi.fn().mockResolvedValue(Result.ok({ id: 3 })),
         claimIdempotency: vi.fn().mockResolvedValue(true),
-        insertTransaction: vi.fn().mockResolvedValue(10),
-        insertLedgerEntries: vi.fn().mockResolvedValue(undefined),
+        insertTransaction: vi.fn().mockResolvedValue(Result.ok(10)),
+        insertLedgerEntries: vi.fn().mockResolvedValue(Result.ok()),
         updateBalanceWithOCC: vi.fn().mockResolvedValue('UPDATED'),
         updateTransactionStatus: vi.fn().mockResolvedValue(undefined),
-        persistOutboxEvent: vi.fn().mockResolvedValue(undefined),
         completeIdempotency: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockOutboxRepo = {
+        saveEvent: vi.fn().mockResolvedValue(Result.ok()),
       };
       const mockUow = {
         execute: vi.fn().mockImplementation(async (cb) =>
           cb({
             getFinanceRepository: () => mockFinanceRepo,
+            getOutboxRepository: () => mockOutboxRepo,
           })
         ),
       };

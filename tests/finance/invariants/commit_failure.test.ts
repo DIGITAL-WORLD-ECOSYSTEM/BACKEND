@@ -118,9 +118,10 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
     // Executa postagem com FALHA INJETADA no Outbox
     const result = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository() as DrizzleFinanceRepository;
+      const outbox = factory.getOutboxRepository();
 
-      // Injeta falha deliberada no persistOutboxEvent
-      repo.persistOutboxEvent = async () => {
+      // Injeta falha deliberada no saveEvent do Outbox
+      outbox.saveEvent = async () => {
         throw new Error('FAULT_INJECTION_OUTBOX_STORAGE_CRASH');
       };
 
@@ -152,7 +153,7 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
         userId: 99,
       });
 
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, outbox);
       return Result.ok(await orchestrator.executePosting(tx));
     });
 

@@ -91,7 +91,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
 
     const resultRes = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
       const postResult = await orchestrator.executePosting(tx, reqHash);
       return Result.ok(postResult);
     });
@@ -130,7 +130,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
 
     const result = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
       const postResult = await orchestrator.executePosting(tx, 'hash-fail');
       return Result.ok(postResult);
     });
@@ -160,7 +160,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
 
     const resultRes = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
       const postResult = await orchestrator.executePosting(tx, 'hash123');
       return Result.ok(postResult);
     });
@@ -185,7 +185,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
 
     const result = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
       const postResult = await orchestrator.executePosting(tx, 'hash-diferente');
       return Result.ok(postResult);
     });
