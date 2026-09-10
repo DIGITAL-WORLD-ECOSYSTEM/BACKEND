@@ -71,15 +71,22 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
   constructor(private db: any) {}
 
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
+    const isD1 = Boolean(
+      (this.db as any)?.session?.client?.batch ||
+      (this.db as any)?.$client?.batch ||
+      typeof (this.db as any)?.session?.client?.dump === 'function' ||
+      (this.db as any)?.session?.constructor?.name?.toLowerCase().includes('d1')
+    );
+
+    if (isD1) {
+      // Cloudflare D1 does not support interactive BEGIN transactions.
+      // Queries are executed atomically by D1's serverless engine.
+      const factory = new DrizzleRepositoryFactory(this.db, this.db);
+      return await work(factory);
+    }
+
     if (typeof this.db?.transaction === 'function') {
       let result: Result<T> | null = null;
-      const isD1 = Boolean(
-        (this.db as any)?.session?.client?.batch ||
-        (this.db as any)?.$client?.batch ||
-        typeof (this.db as any)?.session?.client?.dump === 'function' ||
-        (this.db as any)?.session?.constructor?.name?.toLowerCase().includes('d1')
-      );
-      const txConfig = isD1 ? undefined : { behavior: 'immediate' };
       try {
         await this.db.transaction(
           async (tx: any) => {
@@ -94,7 +101,7 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
               }
             }
           },
-          txConfig
+          { behavior: 'immediate' }
         );
         if (result) return result;
         return Result.fail('Transação concluída sem resultado retornado pelo callback.');
