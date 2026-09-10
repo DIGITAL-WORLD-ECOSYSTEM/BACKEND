@@ -73,6 +73,13 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
     if (typeof this.db?.transaction === 'function') {
       let result: Result<T> | null = null;
+      const isD1 = Boolean(
+        (this.db as any)?.session?.client?.batch ||
+        (this.db as any)?.$client?.batch ||
+        typeof (this.db as any)?.session?.client?.dump === 'function' ||
+        (this.db as any)?.session?.constructor?.name?.toLowerCase().includes('d1')
+      );
+      const txConfig = isD1 ? undefined : { behavior: 'immediate' };
       try {
         await this.db.transaction(
           async (tx: any) => {
@@ -87,7 +94,7 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
               }
             }
           },
-          { behavior: 'immediate' }
+          txConfig
         );
         if (result) return result;
         return Result.fail('Transação concluída sem resultado retornado pelo callback.');
