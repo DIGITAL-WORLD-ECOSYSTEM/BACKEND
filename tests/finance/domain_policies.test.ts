@@ -335,10 +335,95 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
 
       expect(() => AccountingEntryPolicy.extractRefundablePaymentAmount(entries as any, 1, 999)).toThrow(AccountingMatrixValidationError);
 
-      // Múltiplos créditos sem revenueAccountId devem lançar erro de ambiguidade
+      // Chamada sem revenueAccountId deve lançar erro de obrigatoriedade
       expect(() => AccountingEntryPolicy.extractRefundablePaymentAmount(entries as any, 1)).toThrow(
-        /múltiplos lançamentos de crédito/
+        /revenueAccountId é obrigatório/
       );
+    });
+
+    it('deve rejeitar parâmetros de operação nulos, primitivos ou malformados (assertOperationParams)', () => {
+      expect(() => AccountingEntryPolicy.createDepositEntries(null as any)).toThrow('Parâmetros da operação contábil inválidos.');
+      expect(() => AccountingEntryPolicy.createWithdrawalEntries(undefined as any)).toThrow('Parâmetros da operação contábil inválidos.');
+      expect(() => AccountingEntryPolicy.createPaymentEntries([] as any)).toThrow('Parâmetros da operação contábil inválidos.');
+      expect(() => AccountingEntryPolicy.createRefundEntries('string' as any)).toThrow('Parâmetros da operação contábil inválidos.');
+    });
+
+    it('deve rejeitar mesma conta em ambos os lados da operação (assertDistinctAccounts)', () => {
+      const money = Money256.fromBigInt(100n, 1);
+
+      // Depósito com treasury e user idênticos
+      expect(() => AccountingEntryPolicy.createDepositEntries({
+        treasuryAccountId: 5,
+        userAccountId: 5,
+        amount: money,
+        description: 'Mesma conta',
+      })).toThrow(/não podem ser idênticas em um depósito/);
+
+      // Retirada com treasury e user idênticos
+      expect(() => AccountingEntryPolicy.createWithdrawalEntries({
+        treasuryAccountId: 5,
+        userAccountId: 5,
+        amount: money,
+        description: 'Mesma conta',
+      })).toThrow(/não podem ser idênticas em uma retirada/);
+
+      // Pagamento com user e receita idênticos
+      expect(() => AccountingEntryPolicy.createPaymentEntries({
+        userAccountId: 10,
+        paymentRevenueAccountId: 10,
+        amount: money,
+        description: 'Mesma conta',
+      })).toThrow(/não podem ser idênticas/);
+
+      // Reembolso com despesa e user idênticos
+      expect(() => AccountingEntryPolicy.createRefundEntries({
+        refundExpenseAccountId: 20,
+        userAccountId: 20,
+        amount: money,
+        description: 'Mesma conta',
+      })).toThrow(/não podem ser idênticas/);
+
+      // Fee com user e fee account idênticos
+      expect(() => AccountingEntryPolicy.createFeeEntries({
+        userAccountId: 30,
+        feeAccountId: 30,
+        amount: money,
+        description: 'Mesma conta',
+      })).toThrow(/não podem ser idênticas/);
+
+      // Ajuste com débito e crédito idênticos
+      expect(() => AccountingEntryPolicy.createAdjustmentEntries({
+        debitAccountId: 40,
+        creditAccountId: 40,
+        amount: money,
+        reason: 'Ajuste mesma conta',
+        authorizedByUserId: 1,
+      })).toThrow(/não podem ser idênticas em um ajuste/);
+
+      // Opening Balance com destino e equity idênticos
+      expect(() => AccountingEntryPolicy.createOpeningBalanceEntries({
+        targetAccountId: 50,
+        openingEquityAccountId: 50,
+        amount: money,
+        description: 'Opening mesma conta',
+        authorizedByUserId: 1,
+      })).toThrow(/não podem ser idênticas/);
+    });
+
+    it('deve sanitizar caracteres de controle em normalizeDisplayName e normalizeDisplayCode', () => {
+      // AccountStatusPolicy com controle no nome
+      expect(() => AccountStatusPolicy.validateActive({
+        id: 1,
+        status: 'inactive',
+        name: 'Conta\u0000Injetada',
+      })).toThrow('(desconhecida)');
+
+      // AssetStatusPolicy com controle no código
+      expect(() => AssetStatusPolicy.validateActive({
+        id: 1,
+        status: 'inactive',
+        code: 'BRL\u0007Ctrl',
+      })).toThrow('(desconhecido)');
     });
   });
 });

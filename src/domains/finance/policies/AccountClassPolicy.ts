@@ -80,7 +80,9 @@ export class AccountClassPolicy {
     }
 
     if (
-      !AccountClassPolicy.isFinancialAccountClass(normalizedAccountClass)
+      !AccountClassPolicy.isFinancialAccountClass(
+        normalizedAccountClass
+      )
     ) {
       throw new InvalidAccountClassError(
         normalizedAccountType,
@@ -90,7 +92,11 @@ export class AccountClassPolicy {
 
     const allowed = PERMITTED_CLASSES[normalizedAccountType];
 
-    if (!allowed.includes(normalizedAccountClass)) {
+    if (
+      !(allowed as readonly string[]).includes(
+        normalizedAccountClass
+      )
+    ) {
       throw new InvalidAccountClassError(
         normalizedAccountType,
         normalizedAccountClass
@@ -100,8 +106,10 @@ export class AccountClassPolicy {
 
   /**
    * Retorna a classe default somente quando houver exatamente uma
-   * classe possível. Nunca escolhe arbitrariamente a primeira opção
-   * de uma matriz com múltiplas possibilidades.
+   * classe possível.
+   *
+   * Nunca escolhe arbitrariamente a primeira opção de uma matriz
+   * que possua múltiplas classes permitidas.
    */
   public static getDefaultClass(
     accountType: string
@@ -118,7 +126,11 @@ export class AccountClassPolicy {
 
     const normalizedAccountType = accountType.trim();
 
-    if (!AccountClassPolicy.isFinancialAccountType(normalizedAccountType)) {
+    if (
+      !AccountClassPolicy.isFinancialAccountType(
+        normalizedAccountType
+      )
+    ) {
       throw new InvalidAccountClassError(
         normalizedAccountType,
         'unknown'
@@ -168,20 +180,28 @@ export class AccountClassPolicy {
   }
 
   /**
-   * Retorna uma cópia imutável da matriz de classes permitidas.
+   * Retorna a lista imutável de classes permitidas para o tipo informado.
    *
-   * A cópia evita exposição direta da estrutura interna da policy.
+   * A estrutura retornada não pode ser modificada porque tanto a matriz
+   * externa quanto suas listas internas são Object.freeze().
    */
   public static getPermittedClasses(
     accountType: string
   ): readonly FinancialAccountClass[] {
     if (typeof accountType !== 'string') {
-      throw new InvalidAccountClassError(String(accountType), 'unknown');
+      throw new InvalidAccountClassError(
+        String(accountType),
+        'unknown'
+      );
     }
 
     const normalized = accountType.trim();
+
     if (!AccountClassPolicy.isFinancialAccountType(normalized)) {
-      throw new InvalidAccountClassError(normalized, 'unknown');
+      throw new InvalidAccountClassError(
+        normalized,
+        'unknown'
+      );
     }
 
     return PERMITTED_CLASSES[normalized];

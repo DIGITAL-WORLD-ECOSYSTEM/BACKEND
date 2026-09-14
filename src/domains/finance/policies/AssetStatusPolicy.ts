@@ -70,7 +70,7 @@ export class AssetStatusPolicy {
       const code =
         typeof context.code === 'string' &&
         context.code.trim().length > 0
-          ? context.code.trim()
+          ? AssetStatusPolicy.normalizeDisplayCode(context.code)
           : 'desconhecido';
 
       throw new AssetInactiveError(
@@ -90,10 +90,11 @@ export class AssetStatusPolicy {
     status: string
   ): Result<void> {
     try {
-      const normalizedAssetId = parsePositiveSafeIntegerId(
-        assetId,
-        'asset.id'
-      );
+      const normalizedAssetId =
+        parsePositiveSafeIntegerId(
+          assetId,
+          'asset.id'
+        );
 
       if (!AssetStatusPolicy.isAssetStatus(status)) {
         return Result.fail(
@@ -132,7 +133,8 @@ export class AssetStatusPolicy {
   }
 
   /**
-   * Normaliza as duas formas públicas de entrada em um único contrato interno.
+   * Normaliza as duas formas públicas de entrada em um único
+   * contrato interno.
    */
   private static normalizeContext(
     assetInput: AssetStatusContext | number | string,
@@ -145,7 +147,10 @@ export class AssetStatusPolicy {
     ) {
       const context = assetInput as AssetStatusContext;
 
-      if (!('id' in context) || !('status' in context)) {
+      if (
+        !('id' in context) ||
+        !('status' in context)
+      ) {
         throw new AssetInactiveError(
           'Contexto de ativo financeiro incompleto.'
         );
@@ -161,7 +166,10 @@ export class AssetStatusPolicy {
       };
     }
 
-    if (typeof assetInput === 'number' || typeof assetInput === 'string') {
+    if (
+      typeof assetInput === 'number' ||
+      typeof assetInput === 'string'
+    ) {
       if (typeof status !== 'string') {
         throw new AssetInactiveError(
           'Status do ativo financeiro é obrigatório.'
@@ -177,5 +185,30 @@ export class AssetStatusPolicy {
     throw new AssetInactiveError(
       'Contexto de ativo financeiro inválido.'
     );
+  }
+
+  /**
+   * Evita que dados de apresentação com caracteres de controle
+   * poluam mensagens de erro/log.
+   */
+  private static normalizeDisplayCode(
+    value: string
+  ): string {
+    const normalized = value.normalize('NFC').trim();
+
+    for (let index = 0; index < normalized.length; index += 1) {
+      const codeUnit = normalized.charCodeAt(index);
+
+      if (
+        (codeUnit >= 0 && codeUnit <= 8) ||
+        (codeUnit >= 11 && codeUnit <= 12) ||
+        (codeUnit >= 14 && codeUnit <= 31) ||
+        codeUnit === 127
+      ) {
+        return 'desconhecido';
+      }
+    }
+
+    return normalized;
   }
 }

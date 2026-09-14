@@ -39,10 +39,10 @@ export class AccountStatusPolicy {
   /**
    * Garante que uma conta possa participar de movimentações financeiras.
    *
-   * A implementação permanece propositalmente simples:
-   * esta policy decide apenas o estado da conta.
+   * Esta policy decide exclusivamente o estado operacional da conta.
    *
    * Não é responsabilidade desta classe:
+   * - autenticação;
    * - autorização;
    * - ownership;
    * - RBAC;
@@ -84,7 +84,7 @@ export class AccountStatusPolicy {
       const name =
         typeof account.name === 'string' &&
         account.name.trim().length > 0
-          ? account.name.trim()
+          ? AccountStatusPolicy.normalizeDisplayName(account.name)
           : 'desconhecida';
 
       throw new AccountInactiveError(
@@ -92,5 +92,31 @@ export class AccountStatusPolicy {
           'Movimentações somente são permitidas em contas ativas.'
       );
     }
+  }
+
+  /**
+   * Normaliza o nome utilizado exclusivamente em mensagens de erro/log.
+   *
+   * Não faz parte da persistência nem altera a entidade de conta.
+   */
+  private static normalizeDisplayName(
+    value: string
+  ): string {
+    const normalized = value.normalize('NFC').trim();
+
+    for (let index = 0; index < normalized.length; index += 1) {
+      const codeUnit = normalized.charCodeAt(index);
+
+      if (
+        (codeUnit >= 0 && codeUnit <= 8) ||
+        (codeUnit >= 11 && codeUnit <= 12) ||
+        (codeUnit >= 14 && codeUnit <= 31) ||
+        codeUnit === 127
+      ) {
+        return 'desconhecida';
+      }
+    }
+
+    return normalized;
   }
 }

@@ -284,8 +284,12 @@ export class RecordTreasuryTransactionUseCase {
             const origEntriesRes = await financeRepo.getTransactionEntries(origTxId);
             if (origEntriesRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(origEntriesRes.errorObject || origEntriesRes.error || 'Erro ao buscar lançamentos originais');
 
+            const sysPaymentRevRes = await financeRepo.getSystemAccount('payment_revenue');
+            if (sysPaymentRevRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysPaymentRevRes.errorObject || sysPaymentRevRes.error || 'Erro ao resolver conta de receita de pagamento');
+            const paymentRevenueAccountId = sysPaymentRevRes.getValue().id;
+
             const origEntries = origEntriesRes.getValue();
-            const originalPaymentMoney = AccountingEntryPolicy.extractRefundablePaymentAmount(origEntries, parsedAssetId);
+            const originalPaymentMoney = AccountingEntryPolicy.extractRefundablePaymentAmount(origEntries, parsedAssetId, paymentRevenueAccountId);
             const originalPaymentAmount = originalPaymentMoney.toBigInt();
 
             // Refund cumulative limit check. Concurrency safety is guaranteed by the UoW transaction boundary (BEGIN IMMEDIATE write lock).

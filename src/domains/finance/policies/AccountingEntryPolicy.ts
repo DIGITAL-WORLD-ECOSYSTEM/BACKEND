@@ -2,9 +2,12 @@ import {
   Money256,
   parsePositiveSafeIntegerId,
 } from '../value-objects/Money256';
+
 import { FinancialError } from '../errors/FinancialError';
-import { FinancialLedgerEntryRecord } from '../contracts/FinancialLedgerEntryRecord';
-import {
+
+import type { FinancialLedgerEntryRecord } from '../contracts/FinancialLedgerEntryRecord';
+
+import type {
   FinancialTransactionType,
   FinancialTransactionCategory,
 } from '../entities/LedgerTransaction';
@@ -51,6 +54,7 @@ const MAX_DESCRIPTION_LENGTH = 2000;
 export class AccountingEntryPolicy {
   /**
    * 1. DEPOSIT:
+   *
    * Dr Treasury Asset (+Ativo)
    * Cr User Available (+Passivo)
    */
@@ -60,14 +64,17 @@ export class AccountingEntryPolicy {
     amount: Money256;
     description: string;
   }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
     AccountingEntryPolicy.assertPositiveAmount(params.amount);
 
-    const amount = AccountingEntryPolicy.assertMoney256(
-      params.amount
-    );
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
 
     const description =
-      AccountingEntryPolicy.normalizeDescription(params.description);
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
 
     const treasuryAccountId =
       parsePositiveSafeIntegerId(
@@ -81,20 +88,28 @@ export class AccountingEntryPolicy {
         'userAccountId'
       );
 
+    AccountingEntryPolicy.assertDistinctAccounts(
+      treasuryAccountId,
+      userAccountId,
+      'A conta de treasury e a conta do usuário não podem ser idênticas em um depósito.'
+    );
+
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
         accountId: treasuryAccountId,
         assetId: amount.assetId,
         entryType: 'debit',
         amount,
-        description: `Deposit Treasury Debit: ${description}`,
+        description:
+          `Deposit Treasury Debit: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
         accountId: userAccountId,
         assetId: amount.assetId,
         entryType: 'credit',
         amount,
-        description: `Deposit User Credit: ${description}`,
+        description:
+          `Deposit User Credit: ${description}`,
       }),
     ];
 
@@ -105,6 +120,7 @@ export class AccountingEntryPolicy {
 
   /**
    * 2. WITHDRAWAL:
+   *
    * Dr User Available (-Passivo)
    * Cr Treasury Asset (-Ativo)
    */
@@ -114,14 +130,17 @@ export class AccountingEntryPolicy {
     amount: Money256;
     description: string;
   }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
     AccountingEntryPolicy.assertPositiveAmount(params.amount);
 
-    const amount = AccountingEntryPolicy.assertMoney256(
-      params.amount
-    );
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
 
     const description =
-      AccountingEntryPolicy.normalizeDescription(params.description);
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
 
     const treasuryAccountId =
       parsePositiveSafeIntegerId(
@@ -135,20 +154,28 @@ export class AccountingEntryPolicy {
         'userAccountId'
       );
 
+    AccountingEntryPolicy.assertDistinctAccounts(
+      treasuryAccountId,
+      userAccountId,
+      'A conta de treasury e a conta do usuário não podem ser idênticas em uma retirada.'
+    );
+
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
         accountId: userAccountId,
         assetId: amount.assetId,
         entryType: 'debit',
         amount,
-        description: `Withdrawal User Debit: ${description}`,
+        description:
+          `Withdrawal User Debit: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
         accountId: treasuryAccountId,
         assetId: amount.assetId,
         entryType: 'credit',
         amount,
-        description: `Withdrawal Treasury Credit: ${description}`,
+        description:
+          `Withdrawal Treasury Credit: ${description}`,
       }),
     ];
 
@@ -159,6 +186,7 @@ export class AccountingEntryPolicy {
 
   /**
    * 3. TRANSFER:
+   *
    * Dr Source User (-Passivo)
    * Cr Target User (+Passivo)
    */
@@ -168,30 +196,35 @@ export class AccountingEntryPolicy {
     amount: Money256;
     description: string;
   }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
     AccountingEntryPolicy.assertPositiveAmount(params.amount);
 
-    const amount = AccountingEntryPolicy.assertMoney256(
-      params.amount
-    );
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
 
     const description =
-      AccountingEntryPolicy.normalizeDescription(params.description);
-
-    const sourceAcc = parsePositiveSafeIntegerId(
-      params.sourceAccountId,
-      'sourceAccountId'
-    );
-
-    const destAcc = parsePositiveSafeIntegerId(
-      params.destinationAccountId,
-      'destinationAccountId'
-    );
-
-    if (sourceAcc === destAcc) {
-      throw new AccountingMatrixValidationError(
-        'Conta de origem e destino não podem ser idênticas em uma transferência.'
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
       );
-    }
+
+    const sourceAcc =
+      parsePositiveSafeIntegerId(
+        params.sourceAccountId,
+        'sourceAccountId'
+      );
+
+    const destAcc =
+      parsePositiveSafeIntegerId(
+        params.destinationAccountId,
+        'destinationAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      sourceAcc,
+      destAcc,
+      'Conta de origem e destino não podem ser idênticas em uma transferência.'
+    );
 
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
@@ -199,14 +232,16 @@ export class AccountingEntryPolicy {
         assetId: amount.assetId,
         entryType: 'debit',
         amount,
-        description: `Transfer Debit: ${description}`,
+        description:
+          `Transfer Debit: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
         accountId: destAcc,
         assetId: amount.assetId,
         entryType: 'credit',
         amount,
-        description: `Transfer Credit: ${description}`,
+        description:
+          `Transfer Credit: ${description}`,
       }),
     ];
 
@@ -217,6 +252,7 @@ export class AccountingEntryPolicy {
 
   /**
    * 4. PAYMENT:
+   *
    * Dr User Available (-Passivo)
    * Cr Payment Revenue (+Receita)
    */
@@ -226,35 +262,52 @@ export class AccountingEntryPolicy {
     amount: Money256;
     description: string;
   }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
     AccountingEntryPolicy.assertPositiveAmount(params.amount);
 
-    const amount = AccountingEntryPolicy.assertMoney256(
-      params.amount
-    );
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
 
     const description =
-      AccountingEntryPolicy.normalizeDescription(params.description);
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    const paymentRevenueAccountId =
+      parsePositiveSafeIntegerId(
+        params.paymentRevenueAccountId,
+        'paymentRevenueAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      userAccountId,
+      paymentRevenueAccountId,
+      'A conta do usuário e a conta de receita do pagamento não podem ser idênticas.'
+    );
 
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
-        accountId: parsePositiveSafeIntegerId(
-          params.userAccountId,
-          'userAccountId'
-        ),
+        accountId: userAccountId,
         assetId: amount.assetId,
         entryType: 'debit',
         amount,
-        description: `Payment User Debit: ${description}`,
+        description:
+          `Payment User Debit: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
-        accountId: parsePositiveSafeIntegerId(
-          params.paymentRevenueAccountId,
-          'paymentRevenueAccountId'
-        ),
+        accountId: paymentRevenueAccountId,
         assetId: amount.assetId,
         entryType: 'credit',
         amount,
-        description: `Payment Revenue Credit: ${description}`,
+        description:
+          `Payment Revenue Credit: ${description}`,
       }),
     ];
 
@@ -265,6 +318,7 @@ export class AccountingEntryPolicy {
 
   /**
    * 5. REFUND:
+   *
    * Dr Refund Expense (+Despesa)
    * Cr User Available (+Passivo)
    */
@@ -274,35 +328,52 @@ export class AccountingEntryPolicy {
     amount: Money256;
     description: string;
   }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
     AccountingEntryPolicy.assertPositiveAmount(params.amount);
 
-    const amount = AccountingEntryPolicy.assertMoney256(
-      params.amount
-    );
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
 
     const description =
-      AccountingEntryPolicy.normalizeDescription(params.description);
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const refundExpenseAccountId =
+      parsePositiveSafeIntegerId(
+        params.refundExpenseAccountId,
+        'refundExpenseAccountId'
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      refundExpenseAccountId,
+      userAccountId,
+      'A conta de despesa de refund e a conta do usuário não podem ser idênticas.'
+    );
 
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
-        accountId: parsePositiveSafeIntegerId(
-          params.refundExpenseAccountId,
-          'refundExpenseAccountId'
-        ),
+        accountId: refundExpenseAccountId,
         assetId: amount.assetId,
         entryType: 'debit',
         amount,
-        description: `Refund Expense Debit: ${description}`,
+        description:
+          `Refund Expense Debit: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
-        accountId: parsePositiveSafeIntegerId(
-          params.userAccountId,
-          'userAccountId'
-        ),
+        accountId: userAccountId,
         assetId: amount.assetId,
         entryType: 'credit',
         amount,
-        description: `Refund User Credit: ${description}`,
+        description:
+          `Refund User Credit: ${description}`,
       }),
     ];
 
@@ -313,6 +384,7 @@ export class AccountingEntryPolicy {
 
   /**
    * 6. FEE:
+   *
    * Dr User Available (-Passivo)
    * Cr Fees Revenue (+Receita)
    */
@@ -322,35 +394,52 @@ export class AccountingEntryPolicy {
     amount: Money256;
     description: string;
   }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
     AccountingEntryPolicy.assertPositiveAmount(params.amount);
 
-    const amount = AccountingEntryPolicy.assertMoney256(
-      params.amount
-    );
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
 
     const description =
-      AccountingEntryPolicy.normalizeDescription(params.description);
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    const feeAccountId =
+      parsePositiveSafeIntegerId(
+        params.feeAccountId,
+        'feeAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      userAccountId,
+      feeAccountId,
+      'A conta do usuário e a conta de receitas de fee não podem ser idênticas.'
+    );
 
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
-        accountId: parsePositiveSafeIntegerId(
-          params.userAccountId,
-          'userAccountId'
-        ),
+        accountId: userAccountId,
         assetId: amount.assetId,
         entryType: 'debit',
         amount,
-        description: `Fee User Debit: ${description}`,
+        description:
+          `Fee User Debit: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
-        accountId: parsePositiveSafeIntegerId(
-          params.feeAccountId,
-          'feeAccountId'
-        ),
+        accountId: feeAccountId,
         assetId: amount.assetId,
         entryType: 'credit',
         amount,
-        description: `Fee Revenue Credit: ${description}`,
+        description:
+          `Fee Revenue Credit: ${description}`,
       }),
     ];
 
@@ -361,6 +450,7 @@ export class AccountingEntryPolicy {
 
   /**
    * 7. REWARD:
+   *
    * Dr Reward Expense (+Despesa)
    * Cr User Available (+Passivo)
    */
@@ -370,35 +460,52 @@ export class AccountingEntryPolicy {
     amount: Money256;
     description: string;
   }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
     AccountingEntryPolicy.assertPositiveAmount(params.amount);
 
-    const amount = AccountingEntryPolicy.assertMoney256(
-      params.amount
-    );
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
 
     const description =
-      AccountingEntryPolicy.normalizeDescription(params.description);
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const rewardExpenseAccountId =
+      parsePositiveSafeIntegerId(
+        params.rewardExpenseAccountId,
+        'rewardExpenseAccountId'
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      rewardExpenseAccountId,
+      userAccountId,
+      'A conta de despesa de reward e a conta do usuário não podem ser idênticas.'
+    );
 
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
-        accountId: parsePositiveSafeIntegerId(
-          params.rewardExpenseAccountId,
-          'rewardExpenseAccountId'
-        ),
+        accountId: rewardExpenseAccountId,
         assetId: amount.assetId,
         entryType: 'debit',
         amount,
-        description: `Reward Expense Debit: ${description}`,
+        description:
+          `Reward Expense Debit: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
-        accountId: parsePositiveSafeIntegerId(
-          params.userAccountId,
-          'userAccountId'
-        ),
+        accountId: userAccountId,
         assetId: amount.assetId,
         entryType: 'credit',
         amount,
-        description: `Reward User Credit: ${description}`,
+        description:
+          `Reward User Credit: ${description}`,
       }),
     ];
 
@@ -409,6 +516,7 @@ export class AccountingEntryPolicy {
 
   /**
    * 8. YIELD:
+   *
    * Dr Yield Expense (+Despesa)
    * Cr User Available (+Passivo)
    */
@@ -418,35 +526,52 @@ export class AccountingEntryPolicy {
     amount: Money256;
     description: string;
   }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
     AccountingEntryPolicy.assertPositiveAmount(params.amount);
 
-    const amount = AccountingEntryPolicy.assertMoney256(
-      params.amount
-    );
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
 
     const description =
-      AccountingEntryPolicy.normalizeDescription(params.description);
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const yieldExpenseAccountId =
+      parsePositiveSafeIntegerId(
+        params.yieldExpenseAccountId,
+        'yieldExpenseAccountId'
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      yieldExpenseAccountId,
+      userAccountId,
+      'A conta de despesa de yield e a conta do usuário não podem ser idênticas.'
+    );
 
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
-        accountId: parsePositiveSafeIntegerId(
-          params.yieldExpenseAccountId,
-          'yieldExpenseAccountId'
-        ),
+        accountId: yieldExpenseAccountId,
         assetId: amount.assetId,
         entryType: 'debit',
         amount,
-        description: `Yield Expense Debit: ${description}`,
+        description:
+          `Yield Expense Debit: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
-        accountId: parsePositiveSafeIntegerId(
-          params.userAccountId,
-          'userAccountId'
-        ),
+        accountId: userAccountId,
         assetId: amount.assetId,
         entryType: 'credit',
         amount,
-        description: `Yield User Credit: ${description}`,
+        description:
+          `Yield User Credit: ${description}`,
       }),
     ];
 
@@ -464,8 +589,8 @@ export class AccountingEntryPolicy {
    * Leg 2 (ToAsset):
    *   Dr Clearing / Cr User
    *
-   * A cotação, slippage e taxa de câmbio continuam pertencendo
-   * ao Use Case Forex especializado.
+   * A cotação, slippage, taxa e demais regras econômicas da conversão
+   * continuam pertencendo ao Use Case Forex especializado.
    */
   public static createConversionEntries(params: {
     userAccountId: number;
@@ -474,16 +599,25 @@ export class AccountingEntryPolicy {
     toAmount: Money256;
     description: string;
   }): RawLedgerEntrySpec[] {
-    AccountingEntryPolicy.assertPositiveAmount(params.fromAmount);
-    AccountingEntryPolicy.assertPositiveAmount(params.toAmount);
+    AccountingEntryPolicy.assertOperationParams(params);
 
-    const fromAmount = AccountingEntryPolicy.assertMoney256(
+    AccountingEntryPolicy.assertPositiveAmount(
       params.fromAmount
     );
 
-    const toAmount = AccountingEntryPolicy.assertMoney256(
+    AccountingEntryPolicy.assertPositiveAmount(
       params.toAmount
     );
+
+    const fromAmount =
+      AccountingEntryPolicy.assertMoney256(
+        params.fromAmount
+      );
+
+    const toAmount =
+      AccountingEntryPolicy.assertMoney256(
+        params.toAmount
+      );
 
     if (fromAmount.assetId === toAmount.assetId) {
       throw new AccountingMatrixValidationError(
@@ -492,16 +626,26 @@ export class AccountingEntryPolicy {
     }
 
     const description =
-      AccountingEntryPolicy.normalizeDescription(params.description);
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
 
-    const userAcc = parsePositiveSafeIntegerId(
-      params.userAccountId,
-      'userAccountId'
-    );
+    const userAcc =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
 
-    const clearingAcc = parsePositiveSafeIntegerId(
-      params.clearingAccountId,
-      'clearingAccountId'
+    const clearingAcc =
+      parsePositiveSafeIntegerId(
+        params.clearingAccountId,
+        'clearingAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      userAcc,
+      clearingAcc,
+      'A conta do usuário e a conta de clearing não podem ser idênticas em uma conversão.'
     );
 
     const entries: RawLedgerEntrySpec[] = [
@@ -510,28 +654,32 @@ export class AccountingEntryPolicy {
         assetId: fromAmount.assetId,
         entryType: 'debit',
         amount: fromAmount,
-        description: `Conversion Debit FromAsset: ${description}`,
+        description:
+          `Conversion Debit FromAsset: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
         accountId: clearingAcc,
         assetId: fromAmount.assetId,
         entryType: 'credit',
         amount: fromAmount,
-        description: `Conversion Clearing Credit FromAsset: ${description}`,
+        description:
+          `Conversion Clearing Credit FromAsset: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
         accountId: clearingAcc,
         assetId: toAmount.assetId,
         entryType: 'debit',
         amount: toAmount,
-        description: `Conversion Clearing Debit ToAsset: ${description}`,
+        description:
+          `Conversion Clearing Debit ToAsset: ${description}`,
       }),
       AccountingEntryPolicy.createEntry({
         accountId: userAcc,
         assetId: toAmount.assetId,
         entryType: 'credit',
         amount: toAmount,
-        description: `Conversion Credit ToAsset: ${description}`,
+        description:
+          `Conversion Credit ToAsset: ${description}`,
       }),
     ];
 
@@ -542,11 +690,12 @@ export class AccountingEntryPolicy {
 
   /**
    * 10. ADJUSTMENT:
+   *
    * Lançamento de ajuste com identificação auditável explícita.
    *
    * IMPORTANTE:
-   * authorizedByUserId é evidência de identidade declarada,
-   * não prova de autorização.
+   * authorizedByUserId representa a identidade declarada do autor.
+   * Não representa, sozinho, autorização.
    *
    * A autorização efetiva deve ser garantida pelo Use Case/RBAC.
    */
@@ -557,6 +706,8 @@ export class AccountingEntryPolicy {
     reason: string;
     authorizedByUserId: number;
   }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
     AccountingEntryPolicy.assertPositiveAmount(params.amount);
 
     const reason =
@@ -571,19 +722,26 @@ export class AccountingEntryPolicy {
         'authorizedByUserId'
       );
 
-    const debAcc = parsePositiveSafeIntegerId(
-      params.debitAccountId,
-      'debitAccountId'
+    const debAcc =
+      parsePositiveSafeIntegerId(
+        params.debitAccountId,
+        'debitAccountId'
+      );
+
+    const credAcc =
+      parsePositiveSafeIntegerId(
+        params.creditAccountId,
+        'creditAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      debAcc,
+      credAcc,
+      'Conta de débito e conta de crédito não podem ser idênticas em um ajuste.'
     );
 
-    const credAcc = parsePositiveSafeIntegerId(
-      params.creditAccountId,
-      'creditAccountId'
-    );
-
-    const amount = AccountingEntryPolicy.assertMoney256(
-      params.amount
-    );
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
 
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
@@ -611,9 +769,10 @@ export class AccountingEntryPolicy {
 
   /**
    * 11. REVERSAL:
+   *
    * Inversão exata dos lançamentos da transação original.
    *
-   * A decisão de que uma determinada transação pode ser revertida
+   * A decisão de que determinada transação pode ser revertida
    * pertence à ReversalPolicy / State Machine / Orchestrator.
    */
   public static createReversalEntries(
@@ -629,7 +788,9 @@ export class AccountingEntryPolicy {
       );
     }
 
-    if (originalEntries.length > MAX_LEDGER_ENTRIES) {
+    if (
+      originalEntries.length > MAX_LEDGER_ENTRIES
+    ) {
       throw new AccountingMatrixValidationError(
         `A transação não pode possuir mais de ${MAX_LEDGER_ENTRIES} lançamentos.`
       );
@@ -641,56 +802,63 @@ export class AccountingEntryPolicy {
         'Estorno contábil exige justificativa auditável.'
       );
 
-    const reversalEntries = originalEntries.map((orig) => {
-      AccountingEntryPolicy.assertRawEntryShape(orig);
-
-      let entryType: LedgerEntryDirection;
-
-      if (orig.entryType === 'debit') {
-        entryType = 'credit';
-      } else if (orig.entryType === 'credit') {
-        entryType = 'debit';
-      } else {
-        throw new AccountingMatrixValidationError(
-          `Lançamento original possui entryType inválido: ${String(
-            orig.entryType
-          )}.`
-        );
-      }
-
-      const accountId = parsePositiveSafeIntegerId(
-        orig.accountId,
-        'orig.accountId'
-      );
-
-      const assetId = parsePositiveSafeIntegerId(
-        orig.assetId,
-        'orig.assetId'
-      );
-
-      const amount =
-        AccountingEntryPolicy.assertMoney256(orig.amount);
-
-      if (amount.assetId !== assetId) {
-        throw new AccountingMatrixValidationError(
-          `Incoerência de ativo no lançamento original: assetId (${assetId}) !== amount.assetId (${amount.assetId}).`
-        );
-      }
-
-      const description =
-        AccountingEntryPolicy.normalizeDescription(
-          orig.description
+    const reversalEntries =
+      originalEntries.map((orig) => {
+        AccountingEntryPolicy.assertRawEntryShape(
+          orig
         );
 
-      return {
-        accountId,
-        assetId,
-        entryType,
-        amount,
-        description:
-          `Reversal (${normalizedReason}): ${description}`,
-      };
-    });
+        let entryType: LedgerEntryDirection;
+
+        if (orig.entryType === 'debit') {
+          entryType = 'credit';
+        } else if (orig.entryType === 'credit') {
+          entryType = 'debit';
+        } else {
+          throw new AccountingMatrixValidationError(
+            `Lançamento original possui entryType inválido: ${String(
+              orig.entryType
+            )}.`
+          );
+        }
+
+        const accountId =
+          parsePositiveSafeIntegerId(
+            orig.accountId,
+            'orig.accountId'
+          );
+
+        const assetId =
+          parsePositiveSafeIntegerId(
+            orig.assetId,
+            'orig.assetId'
+          );
+
+        const amount =
+          AccountingEntryPolicy.assertMoney256(
+            orig.amount
+          );
+
+        if (amount.assetId !== assetId) {
+          throw new AccountingMatrixValidationError(
+            `Incoerência de ativo no lançamento original: assetId (${assetId}) !== amount.assetId (${amount.assetId}).`
+          );
+        }
+
+        const description =
+          AccountingEntryPolicy.normalizeDescription(
+            orig.description
+          );
+
+        return {
+          accountId,
+          assetId,
+          entryType,
+          amount,
+          description:
+            `Reversal (${normalizedReason}): ${description}`,
+        };
+      });
 
     AccountingEntryPolicy.validateEntriesBalance(
       reversalEntries
@@ -701,6 +869,7 @@ export class AccountingEntryPolicy {
 
   /**
    * 12. OPENING BALANCE:
+   *
    * Dr Asset Account
    * Cr Opening Equity
    *
@@ -714,11 +883,12 @@ export class AccountingEntryPolicy {
     description: string;
     authorizedByUserId: number;
   }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
     AccountingEntryPolicy.assertPositiveAmount(params.amount);
 
-    const amount = AccountingEntryPolicy.assertMoney256(
-      params.amount
-    );
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
 
     const description =
       AccountingEntryPolicy.normalizeDescription(
@@ -742,6 +912,12 @@ export class AccountingEntryPolicy {
         params.openingEquityAccountId,
         'openingEquityAccountId'
       );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      targetAcc,
+      equityAcc,
+      'A conta de destino e a conta de opening equity não podem ser idênticas.'
+    );
 
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
@@ -780,13 +956,18 @@ export class AccountingEntryPolicy {
   public static validateEntriesBalance(
     entries: RawLedgerEntrySpec[]
   ): void {
-    if (!Array.isArray(entries) || entries.length === 0) {
+    if (
+      !Array.isArray(entries) ||
+      entries.length === 0
+    ) {
       throw new AccountingMatrixValidationError(
         'A lista de lançamentos contábeis não pode ser vazia.'
       );
     }
 
-    if (entries.length > MAX_LEDGER_ENTRIES) {
+    if (
+      entries.length > MAX_LEDGER_ENTRIES
+    ) {
       throw new AccountingMatrixValidationError(
         `A lista de lançamentos não pode possuir mais de ${MAX_LEDGER_ENTRIES} itens.`
       );
@@ -796,16 +977,19 @@ export class AccountingEntryPolicy {
     const assetCredits = new Map<number, bigint>();
 
     for (const entry of entries) {
-      AccountingEntryPolicy.assertRawEntryShape(entry);
+      AccountingEntryPolicy.assertRawEntryShape(
+        entry
+      );
 
       const amount =
-        AccountingEntryPolicy.assertMoney256(entry.amount);
-
-      const accountId =
-        parsePositiveSafeIntegerId(
-          entry.accountId,
-          'entry.accountId'
+        AccountingEntryPolicy.assertMoney256(
+          entry.amount
         );
+
+      parsePositiveSafeIntegerId(
+        entry.accountId,
+        'entry.accountId'
+      );
 
       const assetId =
         parsePositiveSafeIntegerId(
@@ -821,7 +1005,9 @@ export class AccountingEntryPolicy {
         );
       }
 
-      AccountingEntryPolicy.assertPositiveAmount(amount);
+      AccountingEntryPolicy.assertPositiveAmount(
+        amount
+      );
 
       const amountBigInt = amount.toBigInt();
 
@@ -830,13 +1016,16 @@ export class AccountingEntryPolicy {
         amountBigInt > MAX_UINT256
       ) {
         throw new AccountingMatrixValidationError(
-          `Valor contábil fora do intervalo permitido uint256 positivo no lançamento da conta #${accountId}.`
+          `Valor contábil fora do intervalo permitido uint256 positivo no lançamento da conta #${entry.accountId}.`
         );
       }
 
       if (entry.entryType === 'debit') {
-        const current = assetDebits.get(assetId) ?? 0n;
-        const next = current + amountBigInt;
+        const current =
+          assetDebits.get(assetId) ?? 0n;
+
+        const next =
+          current + amountBigInt;
 
         if (next > MAX_UINT256) {
           throw new AccountingMatrixValidationError(
@@ -846,8 +1035,11 @@ export class AccountingEntryPolicy {
 
         assetDebits.set(assetId, next);
       } else if (entry.entryType === 'credit') {
-        const current = assetCredits.get(assetId) ?? 0n;
-        const next = current + amountBigInt;
+        const current =
+          assetCredits.get(assetId) ?? 0n;
+
+        const next =
+          current + amountBigInt;
 
         if (next > MAX_UINT256) {
           throw new AccountingMatrixValidationError(
@@ -858,7 +1050,7 @@ export class AccountingEntryPolicy {
         assetCredits.set(assetId, next);
       } else {
         /**
-         * NÃO usar "else = credit".
+         * Nunca usar "else = credit".
          *
          * Qualquer valor diferente de debit/credit é inválido.
          */
@@ -868,12 +1060,6 @@ export class AccountingEntryPolicy {
           )}.`
         );
       }
-
-      /**
-       * Mantém a variável explicitamente utilizada para deixar
-       * evidente que a validação do accountId faz parte da barreira.
-       */
-      void accountId;
     }
 
     const allAssetIds = new Set([
@@ -902,17 +1088,27 @@ export class AccountingEntryPolicy {
    * Identifica e extrai o montante reembolsável de uma transação
    * de pagamento original.
    *
-   * Se revenueAccountId for omitido, exige exatamente um crédito para aquele
-   * ativo, prevenindo seleção ambígua caso existam múltiplos créditos.
+   * Mantemos o parâmetro opcional na assinatura para não quebrar
+   * compile-time callers existentes, porém, em runtime, a conta
+   * de receita é obrigatória para uma seleção semanticamente segura.
    */
   public static extractRefundablePaymentAmount(
     entries: FinancialLedgerEntryRecord[],
     assetId: number,
     revenueAccountId?: number
   ): Money256 {
-    if (!Array.isArray(entries) || entries.length === 0) {
+    if (
+      !Array.isArray(entries) ||
+      entries.length === 0
+    ) {
       throw new AccountingMatrixValidationError(
         'A transação original não possui lançamentos contábeis.'
+      );
+    }
+
+    if (revenueAccountId === undefined) {
+      throw new AccountingMatrixValidationError(
+        'revenueAccountId é obrigatório para identificar o lançamento de receita de forma segura.'
       );
     }
 
@@ -923,44 +1119,43 @@ export class AccountingEntryPolicy {
       );
 
     const normalizedRevenueAccountId =
-      revenueAccountId !== undefined
-        ? parsePositiveSafeIntegerId(
-            revenueAccountId,
-            'revenueAccountId'
-          )
-        : undefined;
+      parsePositiveSafeIntegerId(
+        revenueAccountId,
+        'revenueAccountId'
+      );
 
-    const paymentCreditEntries = entries.filter(
-      (entry) =>
-        entry !== null &&
-        typeof entry === 'object' &&
-        entry.direction === 'credit' &&
-        entry.assetId === normalizedAssetId &&
-        (normalizedRevenueAccountId === undefined ||
-          entry.accountId === normalizedRevenueAccountId)
-    );
+    const paymentCreditEntries =
+      entries.filter(
+        (entry) =>
+          entry !== null &&
+          typeof entry === 'object' &&
+          entry.direction === 'credit' &&
+          entry.assetId === normalizedAssetId &&
+          entry.accountId ===
+            normalizedRevenueAccountId
+      );
 
     if (paymentCreditEntries.length === 0) {
       throw new AccountingMatrixValidationError(
-        `A transação original não possui lançamento de receita referente ao ativo #${normalizedAssetId}${
-          normalizedRevenueAccountId
-            ? ` e conta #${normalizedRevenueAccountId}`
-            : ''
-        }.`
+        `A transação original não possui lançamento de receita referente ao ativo #${normalizedAssetId} e conta #${normalizedRevenueAccountId}.`
       );
     }
 
     if (paymentCreditEntries.length > 1) {
       throw new AccountingMatrixValidationError(
-        `A transação original possui múltiplos lançamentos de crédito para o ativo #${normalizedAssetId}; informe a conta de receita (revenueAccountId) para desambiguação segura.`
+        `A transação original possui múltiplos lançamentos de receita para o ativo #${normalizedAssetId} e conta #${normalizedRevenueAccountId}; não é possível determinar um valor reembolsável de forma segura.`
       );
     }
 
-    const paymentCreditEntry = paymentCreditEntries[0];
+    const paymentCreditEntry =
+      paymentCreditEntries[0];
 
     if (
-      typeof paymentCreditEntry.amountBaseUnits !== 'string' ||
-      paymentCreditEntry.amountBaseUnits.trim().length === 0
+      typeof paymentCreditEntry.amountBaseUnits !==
+        'string' ||
+      paymentCreditEntry.amountBaseUnits
+        .trim()
+        .length === 0
     ) {
       throw new AccountingMatrixValidationError(
         'O valor-base do lançamento de receita é inválido.'
@@ -975,7 +1170,7 @@ export class AccountingEntryPolicy {
 
   /**
    * Garante que um amount recebido em runtime realmente seja
-   * uma instância de Money256.
+   * uma instância válida de Money256.
    */
   private static assertMoney256(
     amount: unknown
@@ -996,7 +1191,9 @@ export class AccountingEntryPolicy {
     amount: Money256
   ): void {
     const validatedAmount =
-      AccountingEntryPolicy.assertMoney256(amount);
+      AccountingEntryPolicy.assertMoney256(
+        amount
+      );
 
     if (!validatedAmount.isPositive()) {
       throw new AccountingMatrixValidationError(
@@ -1006,7 +1203,8 @@ export class AccountingEntryPolicy {
   }
 
   /**
-   * Valida a estrutura mínima de um RawLedgerEntrySpec.
+   * Valida estrutura mínima de um RawLedgerEntrySpec
+   * recebida em runtime.
    */
   private static assertRawEntryShape(
     entry: unknown
@@ -1021,7 +1219,8 @@ export class AccountingEntryPolicy {
       );
     }
 
-    const raw = entry as Partial<RawLedgerEntrySpec>;
+    const raw =
+      entry as Partial<RawLedgerEntrySpec>;
 
     if (
       typeof raw.entryType !== 'string' ||
@@ -1038,7 +1237,10 @@ export class AccountingEntryPolicy {
     }
 
     if (
-      !Object.prototype.hasOwnProperty.call(raw, 'amount') ||
+      !Object.prototype.hasOwnProperty.call(
+        raw,
+        'amount'
+      ) ||
       !(raw.amount instanceof Money256)
     ) {
       throw new AccountingMatrixValidationError(
@@ -1060,9 +1262,52 @@ export class AccountingEntryPolicy {
   }
 
   /**
+   * Valida o objeto de parâmetros antes que um builder
+   * tente acessar suas propriedades.
+   *
+   * Evita TypeError em casos de null/undefined/malformed runtime input.
+   */
+  private static assertOperationParams(
+    params: unknown
+  ): asserts params is object {
+    if (
+      params === null ||
+      typeof params !== 'object' ||
+      Array.isArray(params)
+    ) {
+      throw new AccountingMatrixValidationError(
+        'Parâmetros da operação contábil inválidos.'
+      );
+    }
+  }
+
+  /**
+   * Impede lançamentos economicamente sem efeito causados
+   * pela utilização da mesma conta nos dois lados da operação.
+   */
+  private static assertDistinctAccounts(
+    firstAccountId: number,
+    secondAccountId: number,
+    message: string
+  ): void {
+    if (firstAccountId === secondAccountId) {
+      throw new AccountingMatrixValidationError(
+        message
+      );
+    }
+  }
+
+  /**
    * Construtor interno de entries.
    *
-   * Centraliza invariantes comuns a todos os builders.
+   * Centraliza invariantes comuns:
+   * - accountId;
+   * - assetId;
+   * - entryType;
+   * - Money256;
+   * - positividade;
+   * - consistência do ativo;
+   * - descrição.
    */
   private static createEntry(params: {
     accountId: number;
@@ -1105,7 +1350,9 @@ export class AccountingEntryPolicy {
       );
     }
 
-    AccountingEntryPolicy.assertPositiveAmount(amount);
+    AccountingEntryPolicy.assertPositiveAmount(
+      amount
+    );
 
     const description =
       AccountingEntryPolicy.normalizeDescription(
@@ -1124,7 +1371,7 @@ export class AccountingEntryPolicy {
   /**
    * Normalização/validação textual compartilhada.
    *
-   * Mantém o domínio protegido contra:
+   * Protege contra:
    * - null/undefined;
    * - strings vazias;
    * - caracteres ASCII de controle;
@@ -1149,20 +1396,31 @@ export class AccountingEntryPolicy {
       );
     }
 
-    if (normalized.length > MAX_DESCRIPTION_LENGTH) {
+    if (
+      normalized.length >
+      MAX_DESCRIPTION_LENGTH
+    ) {
       throw new AccountingMatrixValidationError(
         `A descrição do lançamento contábil não pode exceder ${MAX_DESCRIPTION_LENGTH} caracteres.`
       );
     }
 
-    for (let index = 0; index < normalized.length; index += 1) {
-      const codePoint = normalized.charCodeAt(index);
+    for (
+      let index = 0;
+      index < normalized.length;
+      index += 1
+    ) {
+      const codeUnit =
+        normalized.charCodeAt(index);
 
       if (
-        (codePoint >= 0 && codePoint <= 8) ||
-        (codePoint >= 11 && codePoint <= 12) ||
-        (codePoint >= 14 && codePoint <= 31) ||
-        codePoint === 127
+        (codeUnit >= 0 &&
+          codeUnit <= 8) ||
+        (codeUnit >= 11 &&
+          codeUnit <= 12) ||
+        (codeUnit >= 14 &&
+          codeUnit <= 31) ||
+        codeUnit === 127
       ) {
         throw new AccountingMatrixValidationError(
           'A descrição do lançamento contábil contém caractere de controle inválido.'
@@ -1189,6 +1447,8 @@ export class AccountingEntryPolicy {
       );
     }
 
-    return AccountingEntryPolicy.normalizeDescription(value);
+    return AccountingEntryPolicy.normalizeDescription(
+      value
+    );
   }
 }
