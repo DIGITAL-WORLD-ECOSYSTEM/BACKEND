@@ -8,8 +8,9 @@ export class RecordLedgerTransactionUseCase {
   constructor(private readonly unitOfWork: IUnitOfWork) {}
 
   /**
-   * P0: Single Financial Posting Authority.
-   * Única porta de entrada autorizada na camada de aplicação para efetuar escrita no ledger.
+   * Application entry point for generic ledger posting.
+   * Valida a integridade do hash do cliente (se fornecido) e delega a execução
+   * transacional para a Autoridade Física Central (FinancialTransactionOrchestrator).
    */
   async execute(
     transaction: LedgerTransaction,

@@ -8,9 +8,15 @@ import {
   OptimisticConcurrencyError,
   InsufficientBalanceError,
   InvalidLedgerTransactionError,
+  InvalidStateTransitionError,
 } from '../../../domains/finance/errors/FinancialError';
 import { LedgerImbalanceError } from '../../../domains/finance/errors/LedgerImbalanceError';
 import { CanonicalRequestHashService } from './CanonicalRequestHashService';
+import { AccountStatusPolicy } from '../../../domains/finance/policies/AccountStatusPolicy';
+import { AssetStatusPolicy } from '../../../domains/finance/policies/AssetStatusPolicy';
+import { AccountClassPolicy } from '../../../domains/finance/policies/AccountClassPolicy';
+import { FinancialTransactionStateMachine } from '../../../domains/finance/services/FinancialTransactionStateMachine';
+import { parsePositiveSafeIntegerId } from '../../../domains/finance/value-objects/Money256';
 
 export interface OrchestratorResult {
   transactionId: number;
@@ -24,6 +30,8 @@ function assertNever(value: never): never {
 export class FinancialTransactionOrchestrator {
   /**
    * O Orchestrator exige um repositório transacional vinculado ao Unit of Work (BEGIN IMMEDIATE).
+   * Ele atua como a Autoridade Física Central de escrita no ledger financeiro.
+   *
    * Todas as etapas de persistência (Claim Idempotency, Insert Transaction, Insert Entries, OCC Balance Updates,
    * Outbox Event e Complete Idempotency) ocorrem obrigatoriamente dentro do mesmo boundary transacional do banco.
    */
@@ -56,19 +64,84 @@ export class FinancialTransactionOrchestrator {
   }
 
   /**
+   * Pré-validação obrigatória de todas as entidades participantes (contas e ativos).
+   * Executada ANTES da reivindicação de idempotência e de qualquer escrita no banco de dados.
+   *
+   * Garante que:
+   * 1. Todos os ativos únicos existem e estão 'active' (AssetStatusPolicy).
+   * 2. Todas as contas únicas existem e estão 'active' (AccountStatusPolicy).
+   * 3. Todas as contas possuem classificação contábil compatível com seu tipo (AccountClassPolicy).
+   *
+   * Como é executada sobre o conjunto de IDs únicos da transação, elimina a brecha
+   * do delta zero (onde debitSum === creditSum fazia o OCC pular a validação da conta).
+   */
+  private async preValidateEntities(transaction: LedgerTransaction): Promise<void> {
+    const accountIds = new Set<number>();
+    const assetIds = new Set<number>();
+
+    for (const entry of transaction.entries) {
+      const parsedAccId = parsePositiveSafeIntegerId(entry.accountId, 'entry.accountId');
+      accountIds.add(parsedAccId);
+      assetIds.add(entry.amount.assetId);
+    }
+
+    // 1. Validar todos os ativos participantes
+    for (const assetId of assetIds) {
+      const assetRes = await this.financeRepo.getAssetById(assetId);
+      if (assetRes.isFailure) {
+        throw new Error(
+          assetRes.error || `Ativo financeiro #${assetId} não encontrado.`
+        );
+      }
+      const asset = assetRes.getValue();
+      AssetStatusPolicy.validateActive({
+        id: asset.id,
+        status: asset.status,
+        code: asset.code,
+      });
+    }
+
+    // 2. Validar todas as contas participantes
+    for (const accountId of accountIds) {
+      const accountRes = await this.financeRepo.getAccountById(accountId);
+      if (accountRes.isFailure) {
+        throw new Error(
+          accountRes.error || `Conta financeira #${accountId} não encontrada.`
+        );
+      }
+      const account = accountRes.getValue();
+
+      // Validação de status operacional: pode movimentar?
+      AccountStatusPolicy.validateActive({
+        id: account.id,
+        status: account.status,
+        name: account.name,
+      });
+
+      // Validação de classe contábil: classificação compatível?
+      if (account.accountClass) {
+        AccountClassPolicy.validate(account.accountType, account.accountClass);
+      }
+    }
+  }
+
+  /**
    * Executa o fluxo atômico de escrita no ledger:
-   * 1. Validação estrita do invariante do Ledger (mínimo 2 lançamentos, ao menos 1 débito e 1 crédito, e balanço nulo).
-   * 2. Cálculo servidor obrigatório do Hash Canônico do payload financeiro (P0-1).
-   * 3. Reclamação atômica de Idempotência.
-   * 4. Inserção do registro pai da transação financeira em 'processing'.
-   * 5. Inserção dos lançamentos contábeis imutáveis.
-   * 6. Atualização dos saldos materializados via OCC com ordenação determinística por (accountId, assetId) para prevenção de deadlock.
-   * 7. Transição de status para 'completed'.
-   * 8. Registro de evento no Outbox.
-   * 9. Conclusão da Idempotência.
+   * 0. Validação estrita do invariante do Ledger (mínimo 2 lançamentos, ao menos 1 débito e 1 crédito, e balanço nulo).
+   * 1. PRE-POSTING GATE: Pré-validação de todas as contas e ativos participantes (elimina bypass de delta-zero).
+   * 2. Validação da transição de estado da transação: pending -> processing via State Machine.
+   * 3. Cálculo do Hash Canônico do payload financeiro.
+   * 4. Reclamação atômica de Idempotência.
+   * 5. Inserção do registro da transação financeira em 'processing'.
+   * 6. Inserção dos lançamentos contábeis imutáveis.
+   * 7. Atualização dos saldos materializados via OCC com ordenação determinística por (accountId, assetId).
+   * 8. Transição de status para 'completed' via State Machine.
+   * 9. Registro de evento no Outbox.
+   * 10. Conclusão da Idempotência.
    */
   public async executePosting(
-    transaction: LedgerTransaction
+    transaction: LedgerTransaction,
+    requestHashOverride?: string
   ): Promise<OrchestratorResult> {
     // Invariante FIN-001: Validação do número mínimo de lançamentos
     if (!transaction.entries || transaction.entries.length < 2) {
@@ -96,10 +169,25 @@ export class FinancialTransactionOrchestrator {
 
     this.validateDoubleEntry(transaction);
 
-    // P0-1: O Hash de idempotência é obrigatoriamente derivado pelo servidor a partir do aggregate
-    const computedHash = CanonicalRequestHashService.calculateHash(transaction);
+    // 1. PRE-POSTING GATE: Pré-validação obrigatória de entidades (elimina brecha do delta zero)
+    await this.preValidateEntities(transaction);
 
-    // 1. Claim Idempotency Key
+    // 2. State Machine: validação da transição inicial para 'processing'
+    const processingTransition = FinancialTransactionStateMachine.transition(
+      transaction.status,
+      'processing'
+    );
+    if (processingTransition.isFailure) {
+      throw new InvalidStateTransitionError(
+        processingTransition.error || 'Transição de estado para processing inválida.'
+      );
+    }
+    const processingStatus = processingTransition.getValue();
+
+    // 3. Hash canônico calculado pelo servidor (ou override fornecido para testes)
+    const computedHash = requestHashOverride || CanonicalRequestHashService.calculateHash(transaction);
+
+    // 4. Claim Idempotency Key
     const claimed = await this.financeRepo.claimIdempotency(
       transaction.idempotencyKey,
       transaction.userId,
@@ -123,13 +211,13 @@ export class FinancialTransactionOrchestrator {
       }
     }
 
-    // 2. Insert transaction record (status = 'processing')
+    // 5. Inserção do registro pai da transação com o status derivado da State Machine
     const txResult = await this.financeRepo.insertTransaction({
       userId: transaction.userId ?? null,
       type: transaction.transactionType ?? 'adjustment',
       category: transaction.category || 'operational',
       description: transaction.description,
-      status: 'processing',
+      status: processingStatus,
       reversalOfTransactionId: transaction.reversalOfTransactionId,
       refundOfTransactionId: transaction.refundOfTransactionId,
     });
@@ -138,13 +226,13 @@ export class FinancialTransactionOrchestrator {
     }
     const transactionId = txResult.getValue();
 
-    // 3. Insert immutable ledger entries
+    // 6. Inserção dos lançamentos contábeis imutáveis
     const entriesResult = await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
     if (entriesResult.isFailure) {
       throw new Error(entriesResult.typedError?.message || entriesResult.error || 'Falha ao inserir lançamentos contábeis.');
     }
 
-    // 4. Consolidação e agregação de saldos por (accountId, assetId) para evitar falhas de saldo intermediário (intra-transaction) e otimizar I/O.
+    // 7. Consolidação e agregação de saldos por (accountId, assetId) para evitar falhas de saldo intermediário (intra-transaction) e otimizar I/O.
     interface AccountAssetKey {
       accountId: string;
       assetId: number;
@@ -179,6 +267,7 @@ export class FinancialTransactionOrchestrator {
       return a.assetId < b.assetId ? -1 : a.assetId > b.assetId ? 1 : 0;
     });
 
+    // 8. Execução do OCC de saldos apenas para deltas líquidos não-nulos (contas já pré-validadas na etapa 1)
     for (const delta of sortedDeltas) {
       if (delta.debitSum === delta.creditSum) {
         continue; // Débitos e créditos idênticos na mesma conta cancelam-se com variação nula de saldo
@@ -213,10 +302,22 @@ export class FinancialTransactionOrchestrator {
       }
     }
 
-    // 5. Update transaction status to 'completed'
-    await this.financeRepo.updateTransactionStatus(transactionId, 'completed');
+    // 9. State Machine: validação da transição para 'completed'
+    const completedTransition = FinancialTransactionStateMachine.transition(
+      processingStatus,
+      'completed'
+    );
+    if (completedTransition.isFailure) {
+      throw new InvalidStateTransitionError(
+        completedTransition.error || 'Transição de estado para completed inválida.'
+      );
+    }
+    const completedStatus = completedTransition.getValue();
 
-    // 6. Persist Outbox Event
+    // 10. Atualização do status da transação para 'completed'
+    await this.financeRepo.updateTransactionStatus(transactionId, completedStatus);
+
+    // 11. Persistência de Evento no Outbox
     if (this.outboxRepo) {
       await this.outboxRepo.saveEvent(
         {
@@ -232,7 +333,7 @@ export class FinancialTransactionOrchestrator {
       );
     }
 
-    // 7. Complete Idempotency record
+    // 12. Conclusão do registro de Idempotência
     await this.financeRepo.completeIdempotency(transaction.idempotencyKey, 'finance', transactionId);
 
     return { transactionId, isReplayed: false };

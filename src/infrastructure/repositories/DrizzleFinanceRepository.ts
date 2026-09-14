@@ -185,6 +185,32 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     return this.db;
   }
 
+  async getAccountById(accountId: number): Promise<Result<FinancialAccountRecord>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(financialAccounts)
+        .where(eq(financialAccounts.id, accountId))
+        .limit(1);
+
+      if (!row) {
+        return Result.fail(`Conta financeira #${accountId} não encontrada.`);
+      }
+
+      return Result.ok({
+        id: row.id,
+        userId: row.userId,
+        accountType: row.accountType as any,
+        accountClass: row.accountClass as any,
+        status: row.status as any,
+        name: row.name,
+        version: row.version,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
   async getTreasuryAccount(): Promise<Result<FinancialAccountRecord>> {
     try {
       const [row] = await this.executor
@@ -206,6 +232,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         id: row.id,
         userId: row.userId,
         accountType: row.accountType as any,
+        accountClass: row.accountClass as any,
         status: row.status as any,
         name: row.name,
         version: row.version,
@@ -299,6 +326,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           id: row.id,
           userId: row.userId,
           accountType: row.accountType as any,
+          accountClass: row.accountClass as any,
           status: row.status as any,
           name: row.name,
           version: row.version,
@@ -421,6 +449,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         id: row.id,
         userId: row.userId,
         accountType: row.accountType as any,
+        accountClass: row.accountClass as any,
         status: row.status as any,
         name: row.name,
         version: row.version,

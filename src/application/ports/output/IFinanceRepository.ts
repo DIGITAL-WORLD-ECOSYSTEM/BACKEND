@@ -2,6 +2,7 @@ import { Result } from '../../../shared/kernel/Result';
 import { RepositoryError } from '../../../shared/kernel/RepositoryError';
 import { LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
 import { FinancialLedgerEntryRecord } from '../../../domains/finance/contracts/FinancialLedgerEntryRecord';
+import type { FinancialAccountClass } from '../../../domains/finance/policies/AccountClassPolicy';
 
 export type SystemAccountType =
   | 'treasury'
@@ -79,6 +80,7 @@ export interface FinancialAccountRecord {
   id: number;
   userId: number | null;
   accountType: SystemAccountType | 'user_available';
+  accountClass: FinancialAccountClass;
   status: FinancialAccountStatus;
   name: string;
   version: number;
@@ -106,6 +108,7 @@ export interface FinancialTransactionRecord {
 }
 
 export interface IFinanceRepository {
+  getAccountById(accountId: number): Promise<Result<FinancialAccountRecord>>;
   getTreasuryAccount(): Promise<Result<FinancialAccountRecord>>;
   getOrCreateUserAccount(userId: number): Promise<Result<FinancialAccountRecord>>;
   getOrCreateOperatingAccount(): Promise<Result<FinancialAccountRecord>>;
