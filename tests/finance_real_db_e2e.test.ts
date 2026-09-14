@@ -79,10 +79,12 @@ describe('Finance Core E2E Certification (Real DB)', () => {
     const reqHash = 'hash123';
     const amount = Money256.fromString('5000', 1);
 
-    const tx = new LedgerTransaction({
+    const tx = LedgerTransaction.create({
       idempotencyKey: idemKey,
       userId: 1,
       description: 'Test Deposit',
+      transactionType: 'deposit',
+      category: 'deposit',
       entries: [
         new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
         new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' })
@@ -118,10 +120,12 @@ describe('Finance Core E2E Certification (Real DB)', () => {
     const initialState = await getFullState();
     const amount = Money256.fromString('99999', 1);
 
-    const tx = new LedgerTransaction({
+    const tx = LedgerTransaction.create({
       idempotencyKey: 'rollback-key',
       userId: 1,
       description: 'Will fail due to insufficient funds / bad logic',
+      transactionType: 'deposit',
+      category: 'deposit',
       entries: [
         new LedgerEntry({ accountId: '1', amount: amount as any, type: 'credit' }), 
         new LedgerEntry({ accountId: '2', amount: amount as any, type: 'debit' })   
@@ -148,10 +152,12 @@ describe('Finance Core E2E Certification (Real DB)', () => {
     const idemKey = 'happy-path-key';
     const amount = Money256.fromString('5000', 1);
     
-    const tx = new LedgerTransaction({
+    const tx = LedgerTransaction.create({
       idempotencyKey: idemKey,
       userId: 1,
       description: 'Test Deposit',
+      transactionType: 'deposit',
+      category: 'deposit',
       entries: [
         new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
         new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' })
@@ -173,10 +179,12 @@ describe('Finance Core E2E Certification (Real DB)', () => {
     const idemKey = 'happy-path-key';
     const amount = Money256.fromString('100', 1);
     
-    const tx = new LedgerTransaction({
+    const tx = LedgerTransaction.create({
       idempotencyKey: idemKey,
       userId: 1,
       description: 'Modified Deposit',
+      transactionType: 'deposit',
+      category: 'deposit',
       entries: [
         new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
         new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' })

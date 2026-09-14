@@ -49,6 +49,10 @@ export class RecordTransferUseCase {
         const sourceAccountId = sourceAcc.id;
         const destinationAccountId = destAcc.id;
 
+        if (sourceAccountId === destinationAccountId) {
+          throw new Error('Auto-transferência para a mesma conta é proibida.');
+        }
+
         const rawEntries = AccountingEntryPolicy.createTransferEntries({
           sourceAccountId,
           destinationAccountId,
@@ -56,7 +60,7 @@ export class RecordTransferUseCase {
           description: command.description,
         });
 
-        const ledgerEntries = rawEntries.map(
+        const ledgerEntries: LedgerEntry[] = rawEntries.map(
           (r) =>
             new LedgerEntry({
               accountId: String(r.accountId),
@@ -66,11 +70,12 @@ export class RecordTransferUseCase {
             })
         );
 
-        const transaction = new LedgerTransaction({
+        const transaction = LedgerTransaction.create({
           idempotencyKey: command.idempotencyKey,
           description: command.description,
           entries: ledgerEntries,
           transactionType: 'transfer',
+          category: 'operational',
           userId: command.sourceUserId,
         });
 

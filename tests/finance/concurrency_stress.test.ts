@@ -87,11 +87,12 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
           })
       );
 
-      const tx = new LedgerTransaction({
+      const tx = LedgerTransaction.create({
         idempotencyKey: 'deposit-init-42',
         description: 'Initial Deposit',
         entries: ledgerEntries,
         transactionType: 'deposit',
+        category: 'deposit',
         userId: 42,
       });
 
@@ -127,11 +128,12 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
               })
           );
 
-          const tx = new LedgerTransaction({
+          const tx = LedgerTransaction.create({
             idempotencyKey: `debit-concurrent-${idx + 1}`,
             description: `Debit #${idx + 1}`,
             entries: ledgerEntries,
             transactionType: 'withdrawal',
+            category: 'withdrawal',
             userId: 42,
           });
 
@@ -220,11 +222,12 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
         (r) => new LedgerEntry({ accountId: String(r.accountId), amount: r.amount as any, type: r.entryType, description: r.description })
       );
 
-      const tx = new LedgerTransaction({
+      const tx = LedgerTransaction.create({
         idempotencyKey: 'deposit-init-55',
         description: 'Initial Deposit User 55',
         entries: ledgerEntries,
         transactionType: 'deposit',
+        category: 'deposit',
         userId: 55,
       });
 
@@ -278,11 +281,12 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
             (r) => new LedgerEntry({ accountId: String(r.accountId), amount: r.amount as any, type: r.entryType, description: r.description })
           );
 
-          const tx = new LedgerTransaction({
+          const tx = LedgerTransaction.create({
             idempotencyKey: `multi-client-debit-${idx + 1}`,
             description: `Multi-Client Debit #${idx + 1}`,
             entries: ledgerEntries,
             transactionType: 'withdrawal',
+            category: 'withdrawal',
             userId: 55,
           });
 

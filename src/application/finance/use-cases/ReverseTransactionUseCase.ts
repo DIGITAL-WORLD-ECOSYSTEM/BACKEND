@@ -77,11 +77,12 @@ export class ReverseTransactionUseCase {
             })
         );
 
-        const reversalTx = new LedgerTransaction({
+        const reversalTx = LedgerTransaction.create({
           idempotencyKey: input.idempotencyKey,
           description: `Estorno da Transação #${input.originalTransactionId}: ${input.reason}`,
           entries: reverseLedgerEntries,
           transactionType: 'reversal',
+          category: 'operational',
           userId: originalTx.userId,
           reversalOfTransactionId: input.originalTransactionId,
         });

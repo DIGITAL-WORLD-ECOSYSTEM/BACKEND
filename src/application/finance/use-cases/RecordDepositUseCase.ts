@@ -55,11 +55,12 @@ export class RecordDepositUseCase {
             })
         );
 
-        const transaction = new LedgerTransaction({
+        const transaction = LedgerTransaction.create({
           idempotencyKey: command.idempotencyKey,
           description: command.description,
           entries: ledgerEntries,
           transactionType: 'deposit',
+          category: 'deposit',
           userId: command.userId,
         });
 

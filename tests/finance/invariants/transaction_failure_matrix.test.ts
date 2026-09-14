@@ -77,10 +77,12 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
     const initialState = await getDBCounts();
     const excessiveAmount = Money256.fromString('50000', 1);
 
-    const invalidTx = new LedgerTransaction({
+    const invalidTx = LedgerTransaction.create({
       idempotencyKey: 'fail-step4-key',
       userId: 10,
       description: 'Test Step 4 Overdraft Fail',
+      transactionType: 'deposit',
+      category: 'deposit',
       entries: [
         new LedgerEntry({ accountId: '1', amount: excessiveAmount as any, type: 'debit' }),
         new LedgerEntry({ accountId: '2', amount: excessiveAmount as any, type: 'credit' })
@@ -108,10 +110,12 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
     const initialState = await getDBCounts();
     const amount = Money256.fromString('100', 1);
 
-    const tx = new LedgerTransaction({
+    const tx = LedgerTransaction.create({
       idempotencyKey: 'fail-step6-key',
       userId: 10,
       description: 'Test Step 6 Fail',
+      transactionType: 'deposit',
+      category: 'deposit',
       entries: [
         new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
         new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' })

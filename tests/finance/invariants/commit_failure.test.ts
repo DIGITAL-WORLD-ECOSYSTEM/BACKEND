@@ -145,11 +145,12 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
           })
       );
 
-      const tx = new LedgerTransaction({
+      const tx = LedgerTransaction.create({
         idempotencyKey: 'fault-idempotency-key-1',
         description: 'Deposit with Fault Injection',
         entries: ledgerEntries,
         transactionType: 'deposit',
+        category: 'deposit',
         userId: 99,
       });
 

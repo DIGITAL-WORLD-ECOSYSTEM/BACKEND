@@ -415,7 +415,7 @@ export class RecordTreasuryTransactionUseCase {
             })
         );
 
-        const transaction = new LedgerTransaction({
+        const transaction = LedgerTransaction.create({
           idempotencyKey,
           description,
           entries: ledgerEntries,

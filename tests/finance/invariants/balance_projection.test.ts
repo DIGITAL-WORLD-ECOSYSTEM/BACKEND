@@ -67,9 +67,11 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
 
   it('DOD-04: Saldo materializado em account_balances deve coincidir 100% com a soma projetada do ledger por accountClass', async () => {
     // 1. Depósito 500 para User 1 (Conta 2) vindo da Operating (Conta 1)
-    const tx1 = new LedgerTransaction({
+    const tx1 = LedgerTransaction.create({
       idempotencyKey: 'proj-tx-1',
       description: 'Deposit User 1',
+      transactionType: 'deposit',
+      category: 'deposit',
       entries: [
         new LedgerEntry({ accountId: '1', amount: Money256.fromString('500', 1) as any, type: 'debit' }),
         new LedgerEntry({ accountId: '2', amount: Money256.fromString('500', 1) as any, type: 'credit' }),
@@ -84,9 +86,11 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
     expect(res1.transactionId).toBeDefined();
 
     // 2. Transferência 200 de User 1 (Conta 2) para User 2 (Conta 3)
-    const tx2 = new LedgerTransaction({
+    const tx2 = LedgerTransaction.create({
       idempotencyKey: 'proj-tx-2',
       description: 'Transfer User 1 -> User 2',
+      transactionType: 'transfer',
+      category: 'operational',
       entries: [
         new LedgerEntry({ accountId: '2', amount: Money256.fromString('200', 1) as any, type: 'debit' }),
         new LedgerEntry({ accountId: '3', amount: Money256.fromString('200', 1) as any, type: 'credit' }),
@@ -101,9 +105,11 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
     expect(res2.transactionId).toBeDefined();
 
     // 3. Taxa 10 cobrada de User 1 (Conta 2) enviada para Fees Revenue (Conta 4)
-    const tx3 = new LedgerTransaction({
+    const tx3 = LedgerTransaction.create({
       idempotencyKey: 'proj-tx-3',
       description: 'Fee Charge User 1',
+      transactionType: 'fee',
+      category: 'fee',
       entries: [
         new LedgerEntry({ accountId: '2', amount: Money256.fromString('10', 1) as any, type: 'debit' }),
         new LedgerEntry({ accountId: '4', amount: Money256.fromString('10', 1) as any, type: 'credit' }),

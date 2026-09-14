@@ -69,9 +69,11 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
     // 1. Executa transação original de depósito (100 base units de Operating para User 1)
     const amount = Money256.fromString('100', 1);
 
-    const originalTx = new LedgerTransaction({
+    const originalTx = LedgerTransaction.create({
       idempotencyKey: 'orig-dep-100',
       description: 'Original Deposit 100',
+      transactionType: 'deposit',
+      category: 'deposit',
       entries: [
         new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
         new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' }),
