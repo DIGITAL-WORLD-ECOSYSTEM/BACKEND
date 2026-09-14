@@ -29,6 +29,67 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
       expect(res.error).toContain("Transição de estado inválida: 'completed' -> 'processing'");
     });
 
+    it('deve proibir estritamente cancelamento após início do processamento (processing -> cancelled)', () => {
+      const res = FinancialTransactionStateMachine.transition('processing', 'cancelled');
+      expect(res.isFailure).toBe(true);
+      expect(res.error).toContain("Transição de estado inválida: 'processing' -> 'cancelled'");
+      expect(FinancialTransactionStateMachine.canTransition('processing', 'cancelled')).toBe(false);
+    });
+
+    it('deve permitir cancelamento antes do processamento (pending -> cancelled)', () => {
+      const res = FinancialTransactionStateMachine.transition('pending', 'cancelled');
+      expect(res.isSuccess).toBe(true);
+      expect(res.getValue()).toBe('cancelled');
+    });
+
+    it('deve permitir falha a partir de pending e processing', () => {
+      expect(FinancialTransactionStateMachine.transition('pending', 'failed').isSuccess).toBe(true);
+      expect(FinancialTransactionStateMachine.transition('processing', 'failed').isSuccess).toBe(true);
+    });
+
+    it('deve tratar self-transition como no-op idempotente', () => {
+      const resPending = FinancialTransactionStateMachine.transition('pending', 'pending');
+      expect(resPending.isSuccess).toBe(true);
+      expect(resPending.getValue()).toBe('pending');
+
+      const resCompleted = FinancialTransactionStateMachine.transition('completed', 'completed');
+      expect(resCompleted.isSuccess).toBe(true);
+      expect(resCompleted.getValue()).toBe('completed');
+    });
+
+    it('deve rejeitar status atual ou de destino desconhecido em runtime', () => {
+      const resInvalidCurrent = FinancialTransactionStateMachine.transition('inexistente' as any, 'completed');
+      expect(resInvalidCurrent.isFailure).toBe(true);
+      expect(resInvalidCurrent.error).toContain('Status de transação financeira atual inválido.');
+
+      const resInvalidTarget = FinancialTransactionStateMachine.transition('pending', 'inexistente' as any);
+      expect(resInvalidTarget.isFailure).toBe(true);
+      expect(resInvalidTarget.error).toContain('Status de transação financeira de destino inválido.');
+    });
+
+    it('deve identificar corretamente estados terminais via isTerminal()', () => {
+      expect(FinancialTransactionStateMachine.isTerminal('failed')).toBe(true);
+      expect(FinancialTransactionStateMachine.isTerminal('cancelled')).toBe(true);
+      expect(FinancialTransactionStateMachine.isTerminal('reversed')).toBe(true);
+
+      expect(FinancialTransactionStateMachine.isTerminal('pending')).toBe(false);
+      expect(FinancialTransactionStateMachine.isTerminal('processing')).toBe(false);
+      expect(FinancialTransactionStateMachine.isTerminal('completed')).toBe(false);
+    });
+
+    it('deve retornar lista imutável e correta via getAllowedTransitions()', () => {
+      const pendingTransitions = FinancialTransactionStateMachine.getAllowedTransitions('pending');
+      expect(pendingTransitions).toEqual(['processing', 'failed', 'cancelled']);
+      expect(Object.isFrozen(pendingTransitions)).toBe(true);
+
+      const processingTransitions = FinancialTransactionStateMachine.getAllowedTransitions('processing');
+      expect(processingTransitions).toEqual(['completed', 'failed']);
+      expect(processingTransitions).not.toContain('cancelled');
+
+      const failedTransitions = FinancialTransactionStateMachine.getAllowedTransitions('failed');
+      expect(failedTransitions).toEqual([]);
+    });
+
     it('deve proibir transição a partir de estado terminal (failed -> completed)', () => {
       const res = FinancialTransactionStateMachine.transition('failed', 'completed');
       expect(res.isFailure).toBe(true);

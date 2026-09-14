@@ -17,6 +17,7 @@ import {
   InvalidLedgerTransactionError,
   InvalidMoneyFormatError,
   InvalidIdentifierError,
+  Money256OverflowError,
 } from '../errors/FinancialError';
 
 describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', () => {
@@ -492,7 +493,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
             new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
           ],
         });
-      }).toThrowError('Financial transaction type "conversion" is not supported in the current operational release.');
+      }).toThrowError('Invalid or unsupported financial transaction type.');
     });
 
     it('deve rejeitar transactionType que seja categoria e não tipo (ex: operational)', () => {
@@ -760,7 +761,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
             new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(10n, 1), type: 'credit' }),
           ],
         });
-      }).toThrowError('Invalid status on rehydration: "posted".');
+      }).toThrowError('Invalid status on rehydration.');
     });
 
     it('deve rejeitar reidratação com databaseId não-positivo', () => {
@@ -868,10 +869,8 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
 
   describe('07. BaseUnits Value Object (uint256 canonical bounds)', () => {
     it('deve fazer parse de base units canônicas corretas', () => {
-      expect(parseCanonicalBaseUnits('0')).toBe(0n);
-      expect(parseCanonicalBaseUnits('100')).toBe(100n);
-      expect(parseCanonicalBaseUnits(500)).toBe(500n);
-      expect(parseCanonicalBaseUnits(1000n)).toBe(1000n);
+      expect(parseCanonicalBaseUnits('0')).toBe('0');
+      expect(parseCanonicalBaseUnits('100')).toBe('100');
     });
 
     it('deve rejeitar base units com casas decimais ou caracteres inválidos', () => {
@@ -883,15 +882,15 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
 
     it('deve validar limites máximos de uint256 (2^256 - 1)', () => {
       const maxUint256 = (1n << 256n) - 1n;
-      expect(parseCanonicalBaseUnits(maxUint256.toString())).toBe(maxUint256);
+      expect(parseCanonicalBaseUnits(maxUint256.toString())).toBe(maxUint256.toString());
 
       const overflowUint256 = maxUint256 + 1n;
-      expect(() => parseCanonicalBaseUnits(overflowUint256.toString())).toThrowError('exceeds uint256');
+      expect(() => parseCanonicalBaseUnits(overflowUint256.toString())).toThrowError(Money256OverflowError);
     });
 
     it('deve exigir estritamente positivo em parsePositiveCanonicalBaseUnits', () => {
-      expect(parsePositiveCanonicalBaseUnits('1')).toBe(1n);
-      expect(() => parsePositiveCanonicalBaseUnits('0')).toThrowError('must be strictly positive');
+      expect(parsePositiveCanonicalBaseUnits('1')).toBe('1');
+      expect(() => parsePositiveCanonicalBaseUnits('0')).toThrowError(InvalidMoneyFormatError);
     });
   });
 });

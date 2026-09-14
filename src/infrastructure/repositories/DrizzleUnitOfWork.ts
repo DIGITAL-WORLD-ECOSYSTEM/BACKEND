@@ -71,7 +71,8 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
   constructor(private db: any) {}
 
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
-    const isD1 = Boolean(
+    const isLibSQL = (this.db as any)?.session?.constructor?.name === 'LibSQLSession';
+    const isD1 = !isLibSQL && Boolean(
       (this.db as any)?.session?.client?.batch ||
       (this.db as any)?.$client?.batch ||
       typeof (this.db as any)?.session?.client?.dump === 'function' ||
