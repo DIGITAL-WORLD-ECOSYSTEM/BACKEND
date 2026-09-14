@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { FinancialTransactionStateMachine } from '../../src/domains/finance/services/FinancialTransactionStateMachine';
+import { AccountClassPolicy } from '../../src/domains/finance/policies/AccountClassPolicy';
 import { AccountStatusPolicy } from '../../src/domains/finance/policies/AccountStatusPolicy';
 import { AssetStatusPolicy } from '../../src/domains/finance/policies/AssetStatusPolicy';
 import {
@@ -7,6 +8,12 @@ import {
   AccountingMatrixValidationError,
 } from '../../src/domains/finance/policies/AccountingEntryPolicy';
 import { Money256 } from '../../src/domains/finance/value-objects/Money256';
+import {
+  InvalidAccountClassError,
+  AccountInactiveError,
+  AssetInactiveError,
+  InvalidIdentifierError,
+} from '../../src/domains/finance/errors/FinancialError';
 
 describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-12)', () => {
   describe('DOD-12: FinancialTransactionStateMachine', () => {
@@ -97,28 +104,183 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
     });
   });
 
+  describe('DOD-10: AccountClassPolicy (Strict Accounting Matrix)', () => {
+    it('deve validar corretamente combinações autorizadas de accountType e accountClass', () => {
+      expect(() => AccountClassPolicy.validate('treasury', 'asset')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('user_available', 'liability')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('operating', 'asset')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('fees', 'revenue')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('reserve', 'asset')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('reserve', 'liability')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('clearing', 'asset')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('clearing', 'liability')).not.toThrow();
+    });
+
+    it('deve rejeitar combinações incompatíveis', () => {
+      expect(() => AccountClassPolicy.validate('treasury', 'liability')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.validate('user_available', 'asset')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.validate('fees', 'expense')).toThrow(InvalidAccountClassError);
+    });
+
+    it('deve rejeitar tipos ou classes não reconhecidos ou vazios', () => {
+      expect(() => AccountClassPolicy.validate('', 'asset')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.validate('treasury', '')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.validate('tipo_invalido', 'asset')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.validate('treasury', 'classe_invalida')).toThrow(InvalidAccountClassError);
+    });
+
+    it('deve retornar default determinístico apenas quando houver exatamente uma classe possível', () => {
+      expect(AccountClassPolicy.getDefaultClass('treasury')).toBe('asset');
+      expect(AccountClassPolicy.getDefaultClass('user_available')).toBe('liability');
+      expect(AccountClassPolicy.getDefaultClass('fees')).toBe('revenue');
+
+      // Tipos multi-classe devem rejeitar default arbitrário
+      expect(() => AccountClassPolicy.getDefaultClass('reserve')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.getDefaultClass('clearing')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.getDefaultClass('opening_balance_equity')).toThrow(InvalidAccountClassError);
+    });
+
+    it('deve garantir imutabilidade da matriz de classes permitidas', () => {
+      const classes = AccountClassPolicy.getPermittedClasses('treasury');
+      expect(classes).toEqual(['asset']);
+      expect(Object.isFrozen(classes)).toBe(true);
+    });
+  });
+
   describe('DOD-10: AccountStatusPolicy & AssetStatusPolicy', () => {
     it('deve permitir contas e ativos ativas', () => {
       expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'active' })).not.toThrow();
       expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'active' })).not.toThrow();
+      expect(() => AssetStatusPolicy.validateActive(10, 'active')).not.toThrow();
     });
 
-    it('deve rejeitar contas inativas ou suspensas', () => {
-      expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'inactive' })).toThrow(/Movimentações somente são permitidas em contas ativas/);
+    it('deve rejeitar contas inativas ou suspensas com AccountInactiveError', () => {
+      expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'inactive' })).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'suspended' })).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'blocked' })).toThrow(AccountInactiveError);
     });
 
-    it('deve rejeitar ativos inativos', () => {
-      expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'suspended' })).toThrow(/Operações financeiras exigem que o ativo esteja ativo/);
+    it('deve rejeitar contexto de conta malformado ou ID não-positivo em AccountStatusPolicy', () => {
+      expect(() => AccountStatusPolicy.validateActive(null as any)).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: 0, status: 'active' })).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: -1, status: 'active' })).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: 1.5, status: 'active' })).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'status_invalido' as any })).toThrow(AccountInactiveError);
+    });
+
+    it('deve rejeitar ativos inativos com AssetInactiveError', () => {
+      expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'suspended' })).toThrow(AssetInactiveError);
+      expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'inactive' })).toThrow(AssetInactiveError);
+      expect(() => AssetStatusPolicy.validateActive(10, 'suspended')).toThrow(AssetInactiveError);
+    });
+
+    it('deve validar assetId positivo seguro e status conhecido em AssetStatusPolicy', () => {
+      expect(() => AssetStatusPolicy.validateActive({ id: 0, status: 'active' })).toThrow(InvalidIdentifierError);
+      expect(() => AssetStatusPolicy.validateActive({ id: -5, status: 'active' })).toThrow(InvalidIdentifierError);
+      expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'status_fantasma' as any })).toThrow(AssetInactiveError);
+    });
+
+    it('deve validar status via Result kernel em AssetStatusPolicy.validateActiveResult', () => {
+      const okRes = AssetStatusPolicy.validateActiveResult(1, 'active');
+      expect(okRes.isSuccess).toBe(true);
+
+      const failRes = AssetStatusPolicy.validateActiveResult(1, 'suspended');
+      expect(failRes.isFailure).toBe(true);
+      expect(failRes.error).toContain("esperado: 'active'");
+
+      const invalidStatusRes = AssetStatusPolicy.validateActiveResult(1, 'invalido');
+      expect(invalidStatusRes.isFailure).toBe(true);
+      expect(invalidStatusRes.error).toContain('possui status inválido');
     });
   });
 
   describe('AccountingEntryPolicy (Strict Banking Invariants)', () => {
+    it('deve rejeitar estritamente entryType inválido (não inferir como crédito)', () => {
+      expect(() => {
+        AccountingEntryPolicy.validateEntriesBalance([
+          { accountId: 1, assetId: 1, entryType: 'debit', amount: Money256.fromBigInt(100n, 1), description: 'd' },
+          { accountId: 2, assetId: 1, entryType: 'DEBITTT' as any, amount: Money256.fromBigInt(100n, 1), description: 'c' },
+        ]);
+      }).toThrow(AccountingMatrixValidationError);
+
+      expect(() => {
+        AccountingEntryPolicy.validateEntriesBalance([
+          { accountId: 1, assetId: 1, entryType: 'debit', amount: Money256.fromBigInt(100n, 1), description: 'd' },
+          { accountId: 2, assetId: 1, entryType: 'foo' as any, amount: Money256.fromBigInt(100n, 1), description: 'c' },
+        ]);
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve rejeitar spoofing de Money256 em runtime', () => {
+      const fakeMoney = {
+        isPositive: () => true,
+        toBigInt: () => 100n,
+        assetId: 1,
+        toCanonicalString: () => '100',
+      };
+
+      expect(() => {
+        AccountingEntryPolicy.validateEntriesBalance([
+          { accountId: 1, assetId: 1, entryType: 'debit', amount: fakeMoney as any, description: 'spoof' },
+          { accountId: 2, assetId: 1, entryType: 'credit', amount: fakeMoney as any, description: 'spoof' },
+        ]);
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve rejeitar lista de lançamentos com mais de 100 itens (proteção DoS)', () => {
+      const entries = Array.from({ length: 102 }, (_, i) => ({
+        accountId: i + 1,
+        assetId: 1,
+        entryType: (i % 2 === 0 ? 'debit' : 'credit') as const,
+        amount: Money256.fromBigInt(10n, 1),
+        description: `Entry ${i}`,
+      }));
+
+      expect(() => AccountingEntryPolicy.validateEntriesBalance(entries)).toThrow(
+        /não pode possuir mais de 100/
+      );
+    });
+
     it('deve rejeitar incoerência de assetId entre spec e Money256', () => {
       expect(() => {
         AccountingEntryPolicy.validateEntriesBalance([
           { accountId: 1, assetId: 1, entryType: 'debit', amount: Money256.fromBigInt(100n, 2), description: 'mismatch' },
           { accountId: 2, assetId: 1, entryType: 'credit', amount: Money256.fromBigInt(100n, 2), description: 'mismatch' },
         ]);
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve rejeitar auto-transferência (mesma conta origem e destino)', () => {
+      expect(() => {
+        AccountingEntryPolicy.createTransferEntries({
+          sourceAccountId: 1,
+          destinationAccountId: 1,
+          amount: Money256.fromBigInt(100n, 1),
+          description: 'Auto-transferência',
+        });
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve rejeitar conversão entre o mesmo ativo', () => {
+      expect(() => {
+        AccountingEntryPolicy.createConversionEntries({
+          userAccountId: 1,
+          clearingAccountId: 2,
+          fromAmount: Money256.fromBigInt(100n, 1),
+          toAmount: Money256.fromBigInt(100n, 1), // mesmo assetId!
+          description: 'Same asset conversion',
+        });
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve rejeitar descrição com caracteres de controle ASCII', () => {
+      expect(() => {
+        AccountingEntryPolicy.createDepositEntries({
+          treasuryAccountId: 1,
+          userAccountId: 2,
+          amount: Money256.fromBigInt(100n, 1),
+          description: 'Depósito com controle\u0000malicioso',
+        });
       }).toThrow(AccountingMatrixValidationError);
     });
 
@@ -142,6 +304,26 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
       expect(open[0].description).toContain('AuthUser #100');
     });
 
+    it('deve estornar invertendo debit e credit com validação estrita em createReversalEntries', () => {
+      const origEntries = [
+        { accountId: 1, assetId: 1, entryType: 'debit' as const, amount: Money256.fromBigInt(50n, 1), description: 'Orig Debit' },
+        { accountId: 2, assetId: 1, entryType: 'credit' as const, amount: Money256.fromBigInt(50n, 1), description: 'Orig Credit' },
+      ];
+
+      const rev = AccountingEntryPolicy.createReversalEntries(origEntries, 'Estorno solicitado');
+      expect(rev).toHaveLength(2);
+      expect(rev[0].entryType).toBe('credit');
+      expect(rev[1].entryType).toBe('debit');
+      expect(rev[0].description).toContain('Reversal (Estorno solicitado)');
+
+      // Rejeita reversal com entryType inválido no original
+      expect(() => {
+        AccountingEntryPolicy.createReversalEntries([
+          { accountId: 1, assetId: 1, entryType: 'invalido' as any, amount: Money256.fromBigInt(50n, 1), description: 'Bad' },
+        ], 'Motivo');
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
     it('deve filtrar lançamento de receita por revenueAccountId em extractRefundablePaymentAmount', () => {
       const entries = [
         { accountId: 5, direction: 'credit', assetId: 1, amountBaseUnits: '5' },  // Fee revenue
@@ -152,6 +334,11 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
       expect(res.toCanonicalString()).toBe('95');
 
       expect(() => AccountingEntryPolicy.extractRefundablePaymentAmount(entries as any, 1, 999)).toThrow(AccountingMatrixValidationError);
+
+      // Múltiplos créditos sem revenueAccountId devem lançar erro de ambiguidade
+      expect(() => AccountingEntryPolicy.extractRefundablePaymentAmount(entries as any, 1)).toThrow(
+        /múltiplos lançamentos de crédito/
+      );
     });
   });
 });
