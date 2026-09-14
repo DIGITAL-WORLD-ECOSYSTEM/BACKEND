@@ -578,7 +578,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
       expect(() => {
         // Deliberadamente bypassa TypeScript para testar a fronteira runtime
         new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'other' as any });
-      }).toThrowError('Invalid LedgerEntry direction: "other". Must be "debit" or "credit".');
+      }).toThrowError('Invalid LedgerEntry direction. Must be "debit" or "credit".');
     });
 
     it('deve rejeitar description de LedgerEntry com caracteres de controle', () => {
@@ -639,7 +639,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
             new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
           ],
         });
-      }).toThrowError('reversalOfTransactionId is only valid for reversal transactions, got "deposit".');
+      }).toThrowError('reversalOfTransactionId is only valid for reversal transactions.');
     });
 
     it('deve permitir reversal com reversalOfTransactionId positivo válido', () => {
@@ -686,7 +686,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
             new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
           ],
         });
-      }).toThrowError('refundOfTransactionId is only valid for refund transactions, got "transfer".');
+      }).toThrowError('refundOfTransactionId is only valid for refund transactions.');
     });
   });
 
@@ -820,7 +820,49 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
             new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
           ],
         });
-      }).toThrowError('Invalid createdAtEpochMs on rehydration.');
+      }).toThrowError('createdAtEpochMs on rehydration must be a valid positive safe integer timestamp.');
+    });
+
+    it('deve rejeitar reidratação com auto-reversão (FIN-001 / auto-reversal)', () => {
+      expect(() => {
+        LedgerTransaction.rehydrate({
+          databaseId: 42,
+          publicId: crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Auto reversal inválido',
+          status: 'reversed',
+          createdAtEpochMs: Date.now(),
+          userId: 1,
+          transactionType: 'reversal',
+          category: 'operational',
+          reversalOfTransactionId: 42, // mesmo que databaseId!
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('A transaction cannot reverse itself.');
+    });
+
+    it('deve rejeitar reidratação com auto-reembolso (FIN-001 / auto-refund)', () => {
+      expect(() => {
+        LedgerTransaction.rehydrate({
+          databaseId: 42,
+          publicId: crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Auto refund inválido',
+          status: 'completed',
+          createdAtEpochMs: Date.now(),
+          userId: 1,
+          transactionType: 'refund',
+          category: 'operational',
+          refundOfTransactionId: 42, // mesmo que databaseId!
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('A transaction cannot refund itself.');
     });
   });
 
