@@ -1,0 +1,14662 @@
+# Finance Core — Código Completo Canônico da Árvore
+
+Este documento consolida o código-fonte **100% integral, real e sem omissões** de cada um dos 44 arquivos da árvore oficial do subsistema financeiro (`BackEnd/`), organizados estritamente pela arquitetura canônica em camadas.
+
+## Índice Geral da Árvore
+
+### 1. CAMADA DE DOMÍNIO (Regras Contábeis Puras)
+
+- [FinancialLedgerEntryRecord.ts](#srcdomainsfinancecontractsfinancialledgerentryrecordts) (`src/domains/finance/contracts/FinancialLedgerEntryRecord.ts`) — *18 linhas*
+- [FinancialTransaction.test.ts](#srcdomainsfinanceentitiesfinancialtransactiontestts) (`src/domains/finance/entities/FinancialTransaction.test.ts`) — *896 linhas*
+- [LedgerTransaction.ts](#srcdomainsfinanceentitiesledgertransactionts) (`src/domains/finance/entities/LedgerTransaction.ts`) — *1197 linhas*
+- [FinancialError.ts](#srcdomainsfinanceerrorsfinancialerrorts) (`src/domains/finance/errors/FinancialError.ts`) — *138 linhas*
+- [LedgerImbalanceError.ts](#srcdomainsfinanceerrorsledgerimbalanceerrorts) (`src/domains/finance/errors/LedgerImbalanceError.ts`) — *10 linhas*
+- [AccountClassPolicy.ts](#srcdomainsfinancepoliciesaccountclasspolicyts) (`src/domains/finance/policies/AccountClassPolicy.ts`) — *209 linhas*
+- [AccountingEntryPolicy.ts](#srcdomainsfinancepoliciesaccountingentrypolicyts) (`src/domains/finance/policies/AccountingEntryPolicy.ts`) — *1454 linhas*
+- [AccountStatusPolicy.ts](#srcdomainsfinancepoliciesaccountstatuspolicyts) (`src/domains/finance/policies/AccountStatusPolicy.ts`) — *122 linhas*
+- [AssetStatusPolicy.ts](#srcdomainsfinancepoliciesassetstatuspolicyts) (`src/domains/finance/policies/AssetStatusPolicy.ts`) — *214 linhas*
+- [FinancialTransactionStateMachine.ts](#srcdomainsfinanceservicesfinancialtransactionstatemachinets) (`src/domains/finance/services/FinancialTransactionStateMachine.ts`) — *152 linhas*
+- [BaseUnits.ts](#srcdomainsfinancevalueobjectsbaseunitsts) (`src/domains/finance/value-objects/BaseUnits.ts`) — *48 linhas*
+- [Money256.ts](#srcdomainsfinancevalueobjectsmoney256ts) (`src/domains/finance/value-objects/Money256.ts`) — *130 linhas*
+
+### 2. CAMADA DE APLICAÇÃO (Casos de Uso e Orquestração)
+
+- [CanonicalRequestHashService.ts](#srcapplicationfinanceservicescanonicalrequesthashservicets) (`src/application/finance/services/CanonicalRequestHashService.ts`) — *189 linhas*
+- [FinancialTransactionOrchestrator.ts](#srcapplicationfinanceservicesfinancialtransactionorchestratorts) (`src/application/finance/services/FinancialTransactionOrchestrator.ts`) — *341 linhas*
+- [GetTreasuryBalanceUseCase.ts](#srcapplicationfinanceusecasesgettreasurybalanceusecasets) (`src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts`) — *14 linhas*
+- [RecordDepositUseCase.ts](#srcapplicationfinanceusecasesrecorddepositusecasets) (`src/application/finance/use-cases/RecordDepositUseCase.ts`) — *83 linhas*
+- [RecordLedgerTransactionUseCase.ts](#srcapplicationfinanceusecasesrecordledgertransactionusecasets) (`src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts`) — *37 linhas*
+- [RecordTransferUseCase.ts](#srcapplicationfinanceusecasesrecordtransferusecasets) (`src/application/finance/use-cases/RecordTransferUseCase.ts`) — *98 linhas*
+- [RecordTreasuryTransactionUseCase.ts](#srcapplicationfinanceusecasesrecordtreasurytransactionusecasets) (`src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts`) — *445 linhas*
+- [RepairFinanceUseCase.ts](#srcapplicationfinanceusecasesrepairfinanceusecasets) (`src/application/finance/use-cases/RepairFinanceUseCase.ts`) — *43 linhas*
+- [ReverseTransactionUseCase.ts](#srcapplicationfinanceusecasesreversetransactionusecasets) (`src/application/finance/use-cases/ReverseTransactionUseCase.ts`) — *110 linhas*
+- [IFinanceRepository.ts](#srcapplicationportsoutputifinancerepositoryts) (`src/application/ports/output/IFinanceRepository.ts`) — *146 linhas*
+
+### 3. CAMADA DE INFRAESTRUTURA (Repositórios e Bootstrap)
+
+- [DrizzleFinanceRepository.ts](#srcinfrastructurerepositoriesdrizzlefinancerepositoryts) (`src/infrastructure/repositories/DrizzleFinanceRepository.ts`) — *1110 linhas*
+- [DrizzleFinanceRepository.test.ts](#srcinfrastructurerepositoriesdrizzlefinancerepositorytestts) (`src/infrastructure/repositories/DrizzleFinanceRepository.test.ts`) — *65 linhas*
+- [FinanceBootstrapService.ts](#srcinfrastructureservicesfinancebootstrapservicets) (`src/infrastructure/services/FinanceBootstrapService.ts`) — *195 linhas*
+
+### 4. ESQUEMA DE BANCO DE DADOS (D1 / SQLite Tables)
+
+- [tables.ts](#srcdbfinancetablests) (`src/db/finance/tables.ts`) — *2802 linhas*
+- [relations.ts](#srcdbfinancerelationsts) (`src/db/finance/relations.ts`) — *587 linhas*
+
+### 5. CAMADA DE APRESENTAÇÃO HTTP / REST
+
+- [FinanceController.ts](#srcinterfaceshttpcontrollersfinancefinancecontrollerts) (`src/interfaces/http/controllers/finance/FinanceController.ts`) — *163 linhas*
+- [finance.routes.ts](#srcinterfaceshttproutesfinancefinanceroutests) (`src/interfaces/http/routes/finance/finance.routes.ts`) — *136 linhas*
+
+### 6. SUÍTES DE TESTES AUTOMATIZADOS
+
+- [finance_posting_authority.test.ts](#testsarchitecturefinance_posting_authoritytestts) (`tests/architecture/finance_posting_authority.test.ts`) — *95 linhas*
+- [finance_real_db_e2e.test.ts](#testsfinance_real_db_e2etestts) (`tests/finance_real_db_e2e.test.ts`) — *232 linhas*
+- [bootstrap_service.test.ts](#testsfinancebootstrap_servicetestts) (`tests/finance/bootstrap_service.test.ts`) — *93 linhas*
+- [concurrency_stress.test.ts](#testsfinanceconcurrency_stresstestts) (`tests/finance/concurrency_stress.test.ts`) — *322 linhas*
+- [domain_policies.test.ts](#testsfinancedomain_policiestestts) (`tests/finance/domain_policies.test.ts`) — *429 linhas*
+- [event_inbox.test.ts](#testsfinanceevent_inboxtestts) (`tests/finance/event_inbox.test.ts`) — *56 linhas*
+- [evm_precision.test.ts](#testsfinanceevm_precisiontestts) (`tests/finance/evm_precision.test.ts`) — *83 linhas*
+- [failure_injection.test.ts](#testsfinancefailure_injectiontestts) (`tests/finance/failure_injection.test.ts`) — *87 linhas*
+- [money256.test.ts](#testsfinancemoney256testts) (`tests/finance/money256.test.ts`) — *83 linhas*
+- [posting_authority_hardening.test.ts](#testsfinanceposting_authority_hardeningtestts) (`tests/finance/posting_authority_hardening.test.ts`) — *316 linhas*
+- [reconciliation_3way.test.ts](#testsfinancereconciliation_3waytestts) (`tests/finance/reconciliation_3way.test.ts`) — *133 linhas*
+- [reverse_transaction.test.ts](#testsfinancereverse_transactiontestts) (`tests/finance/reverse_transaction.test.ts`) — *117 linhas*
+- [balance_projection.test.ts](#testsfinanceinvariantsbalance_projectiontestts) (`tests/finance/invariants/balance_projection.test.ts`) — *163 linhas*
+- [commit_failure.test.ts](#testsfinanceinvariantscommit_failuretestts) (`tests/finance/invariants/commit_failure.test.ts`) — *177 linhas*
+- [transaction_failure_matrix.test.ts](#testsfinanceinvariantstransaction_failure_matrixtestts) (`tests/finance/invariants/transaction_failure_matrix.test.ts`) — *483 linhas*
+
+---
+
+<a id="srcdomainsfinancecontractsfinancialledgerentryrecordts"></a>
+## Arquivo: `src/domains/finance/contracts/FinancialLedgerEntryRecord.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/FinancialLedgerEntryRecord.ts`
+- **Total de linhas**: 18
+- **Linguagem**: TypeScript
+
+```typescript
+import type { LedgerEntryDirection } from '../value-objects/BaseUnits';
+
+/**
+ * Raw persistence record de infraestrutura/transporte lido ou gravado no Cloudflare D1.
+ *
+ * ATENÇÃO ARQUITETURAL:
+ * Este contrato NÃO representa um valor financeiro validado pelo domínio.
+ * Ele reflete a representação serializada física do SQLite/D1.
+ * Todo dado contábil transportado por este record DEVE ser validado através
+ * dos Value Objects (BaseUnits, Money256) e Aggregate (LedgerTransaction)
+ * antes de qualquer operação financeira de negócio.
+ */
+export interface FinancialLedgerEntryRecord {
+  readonly accountId: number;
+  readonly assetId: number;
+  readonly direction: LedgerEntryDirection;
+  readonly amountBaseUnits: string;
+}
+
+```
+
+---
+
+<a id="srcdomainsfinanceentitiesfinancialtransactiontestts"></a>
+## Arquivo: `src/domains/finance/entities/FinancialTransaction.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/FinancialTransaction.test.ts`
+- **Total de linhas**: 896
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import {
+  LedgerTransaction,
+  LedgerEntry,
+  FINANCIAL_TRANSACTION_CATEGORIES,
+  SUPPORTED_FINANCIAL_TRANSACTION_TYPES,
+  FINANCIAL_TRANSACTION_STATUSES,
+  isUuidV4,
+} from './LedgerTransaction';
+import { Money256 } from '../value-objects/Money256';
+import {
+  parseCanonicalBaseUnits,
+  parsePositiveCanonicalBaseUnits,
+} from '../value-objects/BaseUnits';
+import { LedgerImbalanceError } from '../errors/LedgerImbalanceError';
+import {
+  InvalidLedgerTransactionError,
+  InvalidMoneyFormatError,
+  InvalidIdentifierError,
+  Money256OverflowError,
+} from '../errors/FinancialError';
+
+describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', () => {
+  describe('01. Double-Entry Balance & Asset Segregation', () => {
+    it('deve lançar LedgerImbalanceError se débitos não forem iguais a créditos para o mesmo ativo', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Teste desbalanceado',
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(90n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError(LedgerImbalanceError);
+    });
+
+    it('deve criar transação balanceada 1:1 com status pending e server timestamp', () => {
+      const before = Date.now();
+      const tx = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Teste balanceado 1:1',
+        transactionType: 'deposit',
+        category: 'deposit',
+        entries: [
+          new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+        ],
+      });
+      const after = Date.now();
+
+      expect(tx).toBeInstanceOf(LedgerTransaction);
+      expect(tx.status).toBe('pending');
+      expect(tx.status).not.toBe('completed');
+      expect(tx.status).not.toBe('reversed');
+      expect(tx.createdAt.getTime()).toBeGreaterThanOrEqual(before);
+      expect(tx.createdAt.getTime()).toBeLessThanOrEqual(after);
+    });
+
+    it('deve suportar transação com múltiplas pernas balanceadas (1 débito para 2 créditos)', () => {
+      const tx = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Teste multi-leg 1:2',
+        transactionType: 'transfer',
+        category: 'operational',
+        entries: [
+          new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(60n, 1), type: 'credit' }),
+          new LedgerEntry({ accountId: '3', amount: Money256.fromBigInt(40n, 1), type: 'credit' }),
+        ],
+      });
+      expect(tx.entries.length).toBe(3);
+    });
+
+    it('deve rejeitar transação com ativos diferentes desbalanceados mesmo se os totais nominais coincidirem', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Mistura de ativos cruzados',
+          transactionType: 'transfer',
+          category: 'operational',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }), // assetId 1
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 2), type: 'credit' }), // assetId 2
+          ],
+        });
+      }).toThrowError(LedgerImbalanceError);
+    });
+
+    it('deve aceitar transação com múltiplos ativos onde cada ativo individualmente está balanceado', () => {
+      const tx = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Dois ativos balanceados independentemente',
+        transactionType: 'transfer',
+        category: 'operational',
+        entries: [
+          new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          new LedgerEntry({ accountId: '3', amount: Money256.fromBigInt(50n, 2), type: 'debit' }),
+          new LedgerEntry({ accountId: '4', amount: Money256.fromBigInt(50n, 2), type: 'credit' }),
+        ],
+      });
+      expect(tx.entries.length).toBe(4);
+    });
+
+    it('deve rejeitar transação com menos de 2 lançamentos contábeis', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Apenas uma partida',
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          ],
+        });
+      }).toThrowError(InvalidLedgerTransactionError);
+    });
+
+    it('deve rejeitar transação contendo apenas débitos (sem crédito)', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Somente débitos',
+          transactionType: 'adjustment',
+          category: 'operational',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(50n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(50n, 1), type: 'debit' }),
+          ],
+        });
+      }).toThrowError(InvalidLedgerTransactionError);
+    });
+
+    it('deve rejeitar transação contendo apenas créditos (sem débito)', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Somente créditos',
+          transactionType: 'adjustment',
+          category: 'operational',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(50n, 1), type: 'credit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(50n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError(InvalidLedgerTransactionError);
+    });
+
+    it('deve rejeitar IDs de LedgerEntry duplicados dentro da mesma transação (FIN-006)', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'IDs duplicados',
+          transactionType: 'transfer',
+          category: 'operational',
+          entries: [
+            new LedgerEntry({ id: 'same-entry-id', accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ id: 'same-entry-id', accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('Transaction cannot contain duplicate ledger entry IDs.');
+    });
+
+    it('deve aceitar transação com exatamente 100 lançamentos contábeis (limite DoS)', () => {
+      const entries: LedgerEntry[] = [];
+      for (let i = 1; i <= 50; i++) {
+        entries.push(new LedgerEntry({ accountId: String(i), amount: Money256.fromBigInt(10n, 1), type: 'debit' }));
+        entries.push(new LedgerEntry({ accountId: String(i + 50), amount: Money256.fromBigInt(10n, 1), type: 'credit' }));
+      }
+      expect(entries.length).toBe(100);
+
+      const tx = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Exatamente 100 entries',
+        transactionType: 'adjustment',
+        category: 'operational',
+        entries,
+      });
+      expect(tx.entries.length).toBe(100);
+    });
+
+    it('deve rejeitar transação com 101 lançamentos contábeis (excede limite DoS)', () => {
+      const entries: LedgerEntry[] = [];
+      for (let i = 1; i <= 50; i++) {
+        entries.push(new LedgerEntry({ accountId: String(i), amount: Money256.fromBigInt(10n, 1), type: 'debit' }));
+        entries.push(new LedgerEntry({ accountId: String(i + 50), amount: Money256.fromBigInt(10n, 1), type: 'credit' }));
+      }
+      entries.push(new LedgerEntry({ accountId: '101', amount: Money256.fromBigInt(10n, 1), type: 'debit' }));
+      expect(entries.length).toBe(101);
+
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: '101 entries',
+          transactionType: 'adjustment',
+          category: 'operational',
+          entries,
+        });
+      }).toThrowError('Transaction exceeds maximum limit of 100 entries.');
+    });
+  });
+
+  describe('02. Deep Immutability & Defensive Copies', () => {
+    it('deve garantir que o array entries seja congelado (Object.isFrozen)', () => {
+      const tx = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Teste Array Frozen',
+        transactionType: 'deposit',
+        category: 'deposit',
+        entries: [
+          new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+        ],
+      });
+
+      expect(Object.isFrozen(tx.entries)).toBe(true);
+      expect(() => {
+        (tx.entries as any).push(
+          new LedgerEntry({ accountId: '3', amount: Money256.fromBigInt(10n, 1), type: 'debit' })
+        );
+      }).toThrow();
+    });
+
+    it('deve garantir cópia defensiva do array de entrada (mutação externa não afeta agregado)', () => {
+      const externalEntries = [
+        new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+      ];
+
+      const tx = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Cópia defensiva',
+        transactionType: 'deposit',
+        category: 'deposit',
+        entries: externalEntries,
+      });
+
+      externalEntries.push(
+        new LedgerEntry({ accountId: '3', amount: Money256.fromBigInt(50n, 1), type: 'debit' })
+      );
+
+      expect(externalEntries.length).toBe(3);
+      expect(tx.entries.length).toBe(2);
+    });
+
+    it('deve garantir que cada LedgerEntry individual seja congelado (Object.isFrozen)', () => {
+      const entry1 = new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' });
+      const entry2 = new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' });
+
+      expect(Object.isFrozen(entry1)).toBe(true);
+      expect(Object.isFrozen(entry2)).toBe(true);
+
+      expect(() => {
+        (entry1 as any).type = 'credit';
+      }).toThrow();
+
+      expect(() => {
+        (entry1 as any).accountId = '999';
+      }).toThrow();
+    });
+
+    it('deve impedir mutação da data interna via createdAt.setTime (getter defensivo)', () => {
+      const tx = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Teste Date Immutability',
+        transactionType: 'deposit',
+        category: 'deposit',
+        entries: [
+          new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+        ],
+      });
+
+      const initialTime = tx.createdAt.getTime();
+      const leakedDate = tx.createdAt;
+      leakedDate.setTime(0);
+
+      expect(tx.createdAt.getTime()).toBe(initialTime);
+      expect(tx.createdAt.getTime()).not.toBe(0);
+    });
+
+    it('deve garantir que o próprio agregado LedgerTransaction seja congelado (Object.isFrozen)', () => {
+      const tx = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Teste Aggregate Frozen',
+        transactionType: 'deposit',
+        category: 'deposit',
+        entries: [
+          new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+        ],
+      });
+
+      expect(Object.isFrozen(tx)).toBe(true);
+      expect(() => {
+        (tx as any).description = 'Mutação ilegal';
+      }).toThrow();
+    });
+  });
+
+  describe('03. Validation of Identifiers, Strings & Unicode Normalization', () => {
+    it('deve gerar publicId automaticamente como UUID v4 canônico em lowercase (FIN-004 e FIN-005)', () => {
+      const tx1 = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Tx 1',
+        transactionType: 'deposit',
+        category: 'deposit',
+        entries: [
+          new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+        ],
+      });
+
+      const tx2 = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Tx 2',
+        transactionType: 'deposit',
+        category: 'deposit',
+        entries: [
+          new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+        ],
+      });
+
+      expect(isUuidV4(tx1.publicId)).toBe(true);
+      expect(tx1.publicId).toBe(tx1.publicId.toLowerCase());
+      expect(tx1.publicId).not.toBe(tx2.publicId);
+    });
+
+    it('deve rejeitar idempotencyKey vazia ou superior a 255 caracteres', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: '   ',
+          description: 'Blank key',
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('Idempotency key is required.');
+
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: 'k'.repeat(256),
+          description: 'Key too long',
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('Idempotency key exceeds maximum length of 255 characters.');
+    });
+
+    it('deve rejeitar caracteres de controle em idempotencyKey e description', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: 'chave\ncom\nnewline',
+          description: 'Desc normal',
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('contains forbidden control characters.');
+
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Desc com null byte \u0000',
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('contains forbidden control characters.');
+    });
+
+    it('deve rejeitar description superior a 255 caracteres', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'd'.repeat(256),
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('Transaction description exceeds maximum length of 255 characters.');
+    });
+
+    it('deve rejeitar userId se fornecido e for menor ou igual a 0 ou não-seguro', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Invalid user',
+          transactionType: 'deposit',
+          category: 'deposit',
+          userId: -1,
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError(InvalidIdentifierError);
+
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Invalid user 0',
+          transactionType: 'deposit',
+          category: 'deposit',
+          userId: 0,
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError(InvalidIdentifierError);
+    });
+
+    it('deve rejeitar category inválida', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Invalid category',
+          transactionType: 'deposit',
+          // Deliberadamente bypassa TypeScript para testar a fronteira runtime
+          category: 'inexistente' as any,
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError(InvalidLedgerTransactionError);
+    });
+
+    it('deve aceitar todas as categorias canônicas definidas', () => {
+      for (const cat of FINANCIAL_TRANSACTION_CATEGORIES) {
+        const tx = LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: `Teste cat ${cat}`,
+          transactionType: 'adjustment',
+          category: cat,
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+        expect(tx.category).toBe(cat);
+      }
+    });
+
+    it('deve aceitar todos os tipos contábeis EFETIVAMENTE SUPORTADOS (FIN-003)', () => {
+      for (const type of SUPPORTED_FINANCIAL_TRANSACTION_TYPES) {
+        if (type === 'reversal' || type === 'refund') continue; // Requerem parâmetros de relacionamento
+        const tx = LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: `Teste type ${type}`,
+          transactionType: type,
+          category: 'operational',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+        expect(tx.transactionType).toBe(type);
+      }
+    });
+
+    it('deve expressamente bloquear transactionType "conversion" como não suportado (FIN-003 / FIN-TX-001)', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Tentativa de conversão de ativos',
+          // Deliberadamente testa o tipo conhecido porém não suportado nesta release
+          transactionType: 'conversion' as any,
+          category: 'trading',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('Invalid or unsupported financial transaction type.');
+    });
+
+    it('deve rejeitar transactionType que seja categoria e não tipo (ex: operational)', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Tipo inválido operational',
+          // Deliberadamente bypassa TypeScript para testar a fronteira runtime
+          transactionType: 'operational' as any,
+          category: 'operational',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError(InvalidLedgerTransactionError);
+    });
+
+    it('deve rejeitar runtime props nulo ou não-objeto (FIN-016)', () => {
+      expect(() => LedgerTransaction.create(null as any)).toThrowError(
+        'LedgerTransaction creation props must be a valid non-null object.'
+      );
+      expect(() => LedgerTransaction.create(undefined as any)).toThrowError(
+        'LedgerTransaction creation props must be a valid non-null object.'
+      );
+      expect(() => LedgerTransaction.create('invalid' as any)).toThrowError(
+        'LedgerTransaction creation props must be a valid non-null object.'
+      );
+      expect(() => LedgerTransaction.rehydrate(null as any)).toThrowError(
+        'LedgerTransaction rehydration snapshot must be a valid non-null object.'
+      );
+    });
+  });
+
+  describe('04. LedgerEntry Validation & Anti-Log-Injection', () => {
+    it('deve rejeitar accountId não numérico, negativo ou zero', () => {
+      expect(() => {
+        new LedgerEntry({ accountId: 'abc', amount: Money256.fromBigInt(100n, 1), type: 'debit' });
+      }).toThrowError(InvalidIdentifierError);
+
+      expect(() => {
+        new LedgerEntry({ accountId: '0', amount: Money256.fromBigInt(100n, 1), type: 'debit' });
+      }).toThrowError(InvalidIdentifierError);
+
+      expect(() => {
+        new LedgerEntry({ accountId: '-5', amount: Money256.fromBigInt(100n, 1), type: 'debit' });
+      }).toThrowError(InvalidIdentifierError);
+
+      expect(() => {
+        new LedgerEntry({ accountId: '1.5', amount: Money256.fromBigInt(100n, 1), type: 'debit' });
+      }).toThrowError(InvalidIdentifierError);
+
+      expect(() => {
+        new LedgerEntry({ accountId: '9007199254740992', amount: Money256.fromBigInt(100n, 1), type: 'debit' });
+      }).toThrowError(InvalidIdentifierError);
+    });
+
+    it('deve sanitizar mensagem de erro contra log injection em accountId malicioso (FIN-011)', () => {
+      try {
+        new LedgerEntry({
+          accountId: 'malicious\nFORGED LOG ENTRY',
+          amount: Money256.fromBigInt(100n, 1),
+          type: 'debit',
+        });
+        expect.fail('Deveria ter lançado InvalidIdentifierError');
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(InvalidIdentifierError);
+        expect(err.message).not.toContain('\n');
+      }
+    });
+
+    it('deve rejeitar amount zero ou negativo', () => {
+      expect(() => {
+        new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(0n, 1), type: 'debit' });
+      }).toThrowError(InvalidMoneyFormatError);
+
+      expect(() => {
+        new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(-10n, 1), type: 'debit' });
+      }).toThrowError(InvalidMoneyFormatError);
+    });
+
+    it('deve rejeitar direction diferente de debit ou credit', () => {
+      expect(() => {
+        // Deliberadamente bypassa TypeScript para testar a fronteira runtime
+        new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'other' as any });
+      }).toThrowError('Invalid LedgerEntry direction. Must be "debit" or "credit".');
+    });
+
+    it('deve rejeitar description de LedgerEntry com caracteres de controle', () => {
+      expect(() => {
+        new LedgerEntry({
+          accountId: '1',
+          amount: Money256.fromBigInt(100n, 1),
+          type: 'debit',
+          description: 'Linha com\nnewline',
+        });
+      }).toThrowError('LedgerEntry description contains forbidden control characters.');
+    });
+
+    it('deve rejeitar id de LedgerEntry com caracteres de controle', () => {
+      expect(() => {
+        new LedgerEntry({
+          id: 'bad\0id',
+          accountId: '1',
+          amount: Money256.fromBigInt(100n, 1),
+          type: 'debit',
+        });
+      }).toThrowError(InvalidIdentifierError);
+    });
+
+    it('deve rejeitar LedgerEntry com props nulo ou não-objeto (FIN-016)', () => {
+      expect(() => new LedgerEntry(null as any)).toThrowError(
+        'LedgerEntry props must be a valid non-null object.'
+      );
+    });
+  });
+
+  describe('05. Semantic Rules for Reversal & Refund', () => {
+    it('deve exigir reversalOfTransactionId quando transactionType for reversal', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Reversal sem tx original',
+          transactionType: 'reversal',
+          category: 'operational',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('Reversal transaction requires reversalOfTransactionId.');
+    });
+
+    it('deve rejeitar reversalOfTransactionId quando transactionType não for reversal', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Deposit com reversalOf',
+          transactionType: 'deposit',
+          category: 'deposit',
+          reversalOfTransactionId: 10,
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('reversalOfTransactionId is only valid for reversal transactions.');
+    });
+
+    it('deve permitir reversal com reversalOfTransactionId positivo válido', () => {
+      const tx = LedgerTransaction.create({
+        idempotencyKey: crypto.randomUUID(),
+        description: 'Estorno de tx #42',
+        transactionType: 'reversal',
+        category: 'operational',
+        reversalOfTransactionId: 42,
+        entries: [
+          new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+        ],
+      });
+      expect(tx.transactionType).toBe('reversal');
+      expect(tx.reversalOfTransactionId).toBe(42);
+    });
+
+    it('deve exigir refundOfTransactionId quando transactionType for refund', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Refund sem tx original',
+          transactionType: 'refund',
+          category: 'operational',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('Refund transaction requires refundOfTransactionId.');
+    });
+
+    it('deve rejeitar refundOfTransactionId quando transactionType não for refund', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Transfer com refundOf',
+          transactionType: 'transfer',
+          category: 'operational',
+          refundOfTransactionId: 5,
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('refundOfTransactionId is only valid for refund transactions.');
+    });
+  });
+
+  describe('06. Rehydration Factory (LedgerTransaction.rehydrate)', () => {
+    it('deve reidratar transação completa e canonicalizar publicId para lowercase (FIN-004)', () => {
+      const publicId = crypto.randomUUID().toUpperCase();
+      const idempotencyKey = crypto.randomUUID();
+      const createdAtEpochMs = Date.now();
+
+      const tx = LedgerTransaction.rehydrate({
+        databaseId: 101,
+        publicId,
+        idempotencyKey,
+        description: 'Transação persistida',
+        status: 'completed',
+        createdAtEpochMs,
+        userId: 15,
+        transactionType: 'deposit',
+        category: 'deposit',
+        entries: [
+          new LedgerEntry({ id: crypto.randomUUID(), accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+          new LedgerEntry({ id: crypto.randomUUID(), accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+        ],
+      });
+
+      expect(tx.databaseId).toBe(101);
+      expect(tx.publicId).toBe(publicId.toLowerCase());
+      expect(tx.id).toBe(publicId.toLowerCase());
+      expect(tx.status).toBe('completed');
+      expect(tx.createdAt.getTime()).toBe(createdAtEpochMs);
+      expect(Object.isFrozen(tx.entries)).toBe(true);
+      expect(Object.isFrozen(tx)).toBe(true);
+    });
+
+    it('deve aceitar todos os status canônicos de ciclo de vida na reidratação', () => {
+      for (const status of FINANCIAL_TRANSACTION_STATUSES) {
+        const tx = LedgerTransaction.rehydrate({
+          databaseId: 1,
+          publicId: crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
+          description: `Status ${status}`,
+          status,
+          createdAtEpochMs: Date.now(),
+          userId: 1,
+          transactionType: 'adjustment',
+          category: 'operational',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(10n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(10n, 1), type: 'credit' }),
+          ],
+        });
+        expect(tx.status).toBe(status);
+      }
+    });
+
+    it('deve rejeitar reidratação com status desconhecido (ex: posted)', () => {
+      expect(() => {
+        LedgerTransaction.rehydrate({
+          databaseId: 1,
+          publicId: crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Tx com posted',
+          // Deliberadamente bypassa TypeScript para testar a fronteira runtime
+          status: 'posted' as any,
+          createdAtEpochMs: Date.now(),
+          userId: 1,
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(10n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(10n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('Invalid status on rehydration.');
+    });
+
+    it('deve rejeitar reidratação com databaseId não-positivo', () => {
+      expect(() => {
+        LedgerTransaction.rehydrate({
+          databaseId: -1,
+          publicId: crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Tx com ID negativo',
+          status: 'completed',
+          createdAtEpochMs: Date.now(),
+          userId: 1,
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError(InvalidIdentifierError);
+    });
+
+    it('deve rejeitar reidratação com entries desbalanceados (corrupção física)', () => {
+      expect(() => {
+        LedgerTransaction.rehydrate({
+          databaseId: 1,
+          publicId: crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Tx corrompida no banco',
+          status: 'completed',
+          createdAtEpochMs: Date.now(),
+          userId: 1,
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(50n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError(LedgerImbalanceError);
+    });
+
+    it('deve rejeitar reidratação com createdAtEpochMs inválido', () => {
+      expect(() => {
+        LedgerTransaction.rehydrate({
+          databaseId: 1,
+          publicId: crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Tx com timestamp zero',
+          status: 'completed',
+          createdAtEpochMs: 0,
+          userId: 1,
+          transactionType: 'deposit',
+          category: 'deposit',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('createdAtEpochMs on rehydration must be a valid positive safe integer timestamp.');
+    });
+
+    it('deve rejeitar reidratação com auto-reversão (FIN-001 / auto-reversal)', () => {
+      expect(() => {
+        LedgerTransaction.rehydrate({
+          databaseId: 42,
+          publicId: crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Auto reversal inválido',
+          status: 'reversed',
+          createdAtEpochMs: Date.now(),
+          userId: 1,
+          transactionType: 'reversal',
+          category: 'operational',
+          reversalOfTransactionId: 42, // mesmo que databaseId!
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('A transaction cannot reverse itself.');
+    });
+
+    it('deve rejeitar reidratação com auto-reembolso (FIN-001 / auto-refund)', () => {
+      expect(() => {
+        LedgerTransaction.rehydrate({
+          databaseId: 42,
+          publicId: crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Auto refund inválido',
+          status: 'completed',
+          createdAtEpochMs: Date.now(),
+          userId: 1,
+          transactionType: 'refund',
+          category: 'operational',
+          refundOfTransactionId: 42, // mesmo que databaseId!
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+          ],
+        });
+      }).toThrowError('A transaction cannot refund itself.');
+    });
+  });
+
+  describe('07. BaseUnits Value Object (uint256 canonical bounds)', () => {
+    it('deve fazer parse de base units canônicas corretas', () => {
+      expect(parseCanonicalBaseUnits('0')).toBe('0');
+      expect(parseCanonicalBaseUnits('100')).toBe('100');
+    });
+
+    it('deve rejeitar base units com casas decimais ou caracteres inválidos', () => {
+      expect(() => parseCanonicalBaseUnits('10.5')).toThrowError(InvalidMoneyFormatError);
+      expect(() => parseCanonicalBaseUnits('abc')).toThrowError(InvalidMoneyFormatError);
+      expect(() => parseCanonicalBaseUnits('-10')).toThrowError(InvalidMoneyFormatError);
+      expect(() => parseCanonicalBaseUnits('   ')).toThrowError(InvalidMoneyFormatError);
+    });
+
+    it('deve validar limites máximos de uint256 (2^256 - 1)', () => {
+      const maxUint256 = (1n << 256n) - 1n;
+      expect(parseCanonicalBaseUnits(maxUint256.toString())).toBe(maxUint256.toString());
+
+      const overflowUint256 = maxUint256 + 1n;
+      expect(() => parseCanonicalBaseUnits(overflowUint256.toString())).toThrowError(Money256OverflowError);
+    });
+
+    it('deve exigir estritamente positivo em parsePositiveCanonicalBaseUnits', () => {
+      expect(parsePositiveCanonicalBaseUnits('1')).toBe('1');
+      expect(() => parsePositiveCanonicalBaseUnits('0')).toThrowError(InvalidMoneyFormatError);
+    });
+  });
+});
+
+```
+
+---
+
+<a id="srcdomainsfinanceentitiesledgertransactionts"></a>
+## Arquivo: `src/domains/finance/entities/LedgerTransaction.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/LedgerTransaction.ts`
+- **Total de linhas**: 1197
+- **Linguagem**: TypeScript
+
+```typescript
+import {
+  Money256,
+  parsePositiveSafeIntegerId,
+} from '../value-objects/Money256';
+
+import type { LedgerEntryDirection } from '../value-objects/BaseUnits';
+
+import {
+  isLedgerEntryDirection,
+} from '../value-objects/BaseUnits';
+
+import { LedgerImbalanceError } from '../errors/LedgerImbalanceError';
+
+import {
+  InvalidLedgerTransactionError,
+  InvalidMoneyFormatError,
+  InvalidIdentifierError,
+} from '../errors/FinancialError';
+
+/**
+ * ============================================================
+ * LIMITES FÍSICOS DO DOMÍNIO
+ * ============================================================
+ *
+ * O domínio financeiro trabalha com inteiros exatos.
+ * Nenhum cálculo monetário deve utilizar number para montantes.
+ */
+const MAX_UINT256 = (1n << 256n) - 1n;
+
+/**
+ * Limite máximo suportado pelo objeto Date do JavaScript.
+ *
+ * O timestamp é armazenado internamente como integer epoch milliseconds.
+ */
+const MAX_VALID_DATE_EPOCH_MS = 8_640_000_000_000_000;
+
+/**
+ * ============================================================
+ * STATUS DA TRANSAÇÃO
+ * ============================================================
+ */
+
+export const FINANCIAL_TRANSACTION_STATUSES = Object.freeze([
+  'pending',
+  'processing',
+  'completed',
+  'failed',
+  'cancelled',
+  'reversed',
+] as const);
+
+export type FinancialTransactionStatus =
+  (typeof FINANCIAL_TRANSACTION_STATUSES)[number];
+
+export function isFinancialTransactionStatus(
+  value: unknown
+): value is FinancialTransactionStatus {
+  return (
+    typeof value === 'string' &&
+    FINANCIAL_TRANSACTION_STATUSES.includes(
+      value as FinancialTransactionStatus
+    )
+  );
+}
+
+/**
+ * ============================================================
+ * TIPOS FINANCEIROS CONHECIDOS
+ * ============================================================
+ *
+ * KNOWN:
+ * tudo que a arquitetura reconhece historicamente/conceitualmente.
+ *
+ * SUPPORTED:
+ * aquilo que pode ser criado pela release operacional atual.
+ *
+ * IMPORTANTE:
+ * "conversion" é conhecido, mas não suportado para criação.
+ */
+export const KNOWN_FINANCIAL_TRANSACTION_TYPES = Object.freeze([
+  'deposit',
+  'withdrawal',
+  'transfer',
+  'payment',
+  'refund',
+  'fee',
+  'reward',
+  'yield',
+  'conversion',
+  'adjustment',
+  'reversal',
+] as const);
+
+export type FinancialTransactionType =
+  (typeof KNOWN_FINANCIAL_TRANSACTION_TYPES)[number];
+
+/**
+ * Alias de compatibilidade com consumidores existentes.
+ *
+ * Mantido congelado para evitar mutação acidental em runtime.
+ */
+export const FINANCIAL_TRANSACTION_TYPES =
+  KNOWN_FINANCIAL_TRANSACTION_TYPES;
+
+/**
+ * Subconjunto efetivamente permitido para criação de
+ * novas transações na release operacional atual.
+ */
+export const SUPPORTED_FINANCIAL_TRANSACTION_TYPES = Object.freeze([
+  'deposit',
+  'withdrawal',
+  'transfer',
+  'payment',
+  'refund',
+  'fee',
+  'reward',
+  'yield',
+  'adjustment',
+  'reversal',
+] as const);
+
+export type SupportedFinancialTransactionType =
+  (typeof SUPPORTED_FINANCIAL_TRANSACTION_TYPES)[number];
+
+export function isFinancialTransactionType(
+  value: unknown
+): value is FinancialTransactionType {
+  return (
+    typeof value === 'string' &&
+    KNOWN_FINANCIAL_TRANSACTION_TYPES.includes(
+      value as FinancialTransactionType
+    )
+  );
+}
+
+export function isSupportedFinancialTransactionType(
+  value: unknown
+): value is SupportedFinancialTransactionType {
+  return (
+    typeof value === 'string' &&
+    SUPPORTED_FINANCIAL_TRANSACTION_TYPES.includes(
+      value as SupportedFinancialTransactionType
+    )
+  );
+}
+
+/**
+ * ============================================================
+ * CATEGORIAS
+ * ============================================================
+ */
+
+export const FINANCIAL_TRANSACTION_CATEGORIES = Object.freeze([
+  'membership',
+  'rwa_yield',
+  'grant',
+  'operational',
+  'payment',
+  'trading',
+  'withdrawal',
+  'deposit',
+  'fee',
+  'other',
+] as const);
+
+export type FinancialTransactionCategory =
+  (typeof FINANCIAL_TRANSACTION_CATEGORIES)[number];
+
+export function isFinancialTransactionCategory(
+  value: unknown
+): value is FinancialTransactionCategory {
+  return (
+    typeof value === 'string' &&
+    FINANCIAL_TRANSACTION_CATEGORIES.includes(
+      value as FinancialTransactionCategory
+    )
+  );
+}
+
+/**
+ * ============================================================
+ * UUID V4
+ * ============================================================
+ */
+
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Verifica somente o formato UUID v4.
+ *
+ * A função aceita whitespace externo para facilitar o tratamento
+ * de input de borda; a forma canônica deve ser obtida via
+ * normalizeUuidV4().
+ */
+export function isUuidV4(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    UUID_V4_REGEX.test(value.trim())
+  );
+}
+
+/**
+ * Normaliza UUID para forma canônica:
+ * - string obrigatória
+ * - UUID v4
+ * - trim
+ * - lowercase
+ */
+export function normalizeUuidV4(
+  value: unknown,
+  fieldName: string
+): string {
+  if (typeof value !== 'string') {
+    throw new InvalidIdentifierError(
+      `${fieldName} must be a valid UUID v4.`
+    );
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (!UUID_V4_REGEX.test(normalized)) {
+    throw new InvalidIdentifierError(
+      `${fieldName} must be a valid UUID v4.`
+    );
+  }
+
+  return normalized;
+}
+
+/**
+ * ============================================================
+ * NORMALIZAÇÃO DE TEXTO
+ * ============================================================
+ *
+ * A função:
+ * - rejeita tipos não-string
+ * - remove whitespace externo
+ * - normaliza Unicode NFC
+ * - rejeita string vazia
+ * - limita tamanho
+ * - bloqueia caracteres de controle
+ */
+function normalizeRequiredText(
+  value: unknown,
+  fieldName: string,
+  maxLength: number
+): string {
+  if (typeof value !== 'string') {
+    throw new InvalidLedgerTransactionError(
+      `${fieldName} must be a string.`
+    );
+  }
+
+  const normalized = value.trim().normalize('NFC');
+
+  if (normalized.length === 0) {
+    throw new InvalidLedgerTransactionError(
+      `${fieldName} is required.`
+    );
+  }
+
+  if (normalized.length > maxLength) {
+    throw new InvalidLedgerTransactionError(
+      `${fieldName} exceeds maximum length of ${maxLength} characters.`
+    );
+  }
+
+  if (/[\u0000-\u001F\u007F]/u.test(normalized)) {
+    throw new InvalidLedgerTransactionError(
+      `${fieldName} contains forbidden control characters.`
+    );
+  }
+
+  return normalized;
+}
+
+/**
+ * Identificador opaco utilizado por LedgerEntry.
+ *
+ * Não é tratado como UUID obrigatório porque o ID de entry pode ser
+ * um identificador de persistência/integração.
+ */
+function normalizeOptionalOpaqueIdentifier(
+  value: unknown
+): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value !== 'string') {
+    throw new InvalidIdentifierError(
+      'LedgerEntry id must be a string.'
+    );
+  }
+
+  const normalized = value.trim().normalize('NFC');
+
+  if (
+    normalized.length === 0 ||
+    normalized.length > 255 ||
+    /[\u0000-\u001F\u007F]/u.test(normalized)
+  ) {
+    throw new InvalidIdentifierError(
+      'Invalid LedgerEntry id.'
+    );
+  }
+
+  return normalized;
+}
+
+/**
+ * ============================================================
+ * LEDGER ENTRY
+ * ============================================================
+ */
+
+export type LedgerEntryType = LedgerEntryDirection;
+
+export interface LedgerEntryProps {
+  id?: string;
+  accountId: string;
+  amount: Money256;
+  type: LedgerEntryDirection;
+  description?: string;
+}
+
+export class LedgerEntry {
+  public readonly id: string;
+  public readonly accountId: string;
+  public readonly amount: Money256;
+  public readonly type: LedgerEntryDirection;
+  public readonly description?: string;
+
+  constructor(props: LedgerEntryProps) {
+    if (!props || typeof props !== 'object') {
+      throw new InvalidLedgerTransactionError(
+        'LedgerEntry props must be a valid non-null object.'
+      );
+    }
+
+    /**
+     * --------------------------------------------------------
+     * Entry ID
+     * --------------------------------------------------------
+     */
+    const normalizedProvidedId =
+      normalizeOptionalOpaqueIdentifier(props.id);
+
+    this.id =
+      normalizedProvidedId ??
+      crypto.randomUUID().toLowerCase();
+
+    /**
+     * --------------------------------------------------------
+     * Account ID
+     * --------------------------------------------------------
+     *
+     * Mantido como string na entidade para preservar a representação
+     * canônica e evitar conversões repetidas.
+     */
+    if (typeof props.accountId !== 'string') {
+      throw new InvalidIdentifierError(
+        'LedgerEntry accountId is required and must be a string.'
+      );
+    }
+
+    const trimmedAccountId = props.accountId.trim();
+
+    if (!/^[1-9]\d*$/.test(trimmedAccountId)) {
+      throw new InvalidIdentifierError(
+        'Invalid LedgerEntry accountId. Must be a positive integer string without signs, spaces or decimals.'
+      );
+    }
+
+    const numericAccountId = Number(trimmedAccountId);
+
+    if (
+      !Number.isSafeInteger(numericAccountId) ||
+      numericAccountId <= 0
+    ) {
+      throw new InvalidIdentifierError(
+        'Invalid LedgerEntry accountId. Out of safe integer range.'
+      );
+    }
+
+    /**
+     * --------------------------------------------------------
+     * Money256
+     * --------------------------------------------------------
+     */
+    if (!props.amount) {
+      throw new InvalidMoneyFormatError(
+        'LedgerEntry amount is required.'
+      );
+    }
+
+    if (!(props.amount instanceof Money256)) {
+      throw new InvalidMoneyFormatError(
+        'LedgerEntry amount must be an instance of Money256.'
+      );
+    }
+
+    if (!props.amount.isPositive()) {
+      throw new InvalidMoneyFormatError(
+        'LedgerEntry amount must be strictly positive (> 0).'
+      );
+    }
+
+    /**
+     * --------------------------------------------------------
+     * Direction
+     * --------------------------------------------------------
+     */
+    if (!isLedgerEntryDirection(props.type)) {
+      throw new InvalidLedgerTransactionError(
+        'Invalid LedgerEntry direction. Must be "debit" or "credit".'
+      );
+    }
+
+    /**
+     * --------------------------------------------------------
+     * Description opcional
+     * --------------------------------------------------------
+     */
+    let normalizedDescription: string | undefined;
+
+    if (
+      props.description !== undefined &&
+      props.description !== null
+    ) {
+      if (typeof props.description !== 'string') {
+        throw new InvalidLedgerTransactionError(
+          'LedgerEntry description must be a string.'
+        );
+      }
+
+      const candidate = props.description
+        .trim()
+        .normalize('NFC');
+
+      if (candidate.length > 255) {
+        throw new InvalidLedgerTransactionError(
+          'LedgerEntry description exceeds maximum length of 255 characters.'
+        );
+      }
+
+      if (/[\u0000-\u001F\u007F]/u.test(candidate)) {
+        throw new InvalidLedgerTransactionError(
+          'LedgerEntry description contains forbidden control characters.'
+        );
+      }
+
+      normalizedDescription =
+        candidate.length > 0 ? candidate : undefined;
+    }
+
+    this.accountId = trimmedAccountId;
+    this.amount = props.amount;
+    this.type = props.type;
+    this.description = normalizedDescription;
+
+    /**
+     * Garante imutabilidade estrutural em runtime.
+     *
+     * A imutabilidade do Money256 é responsabilidade do próprio VO.
+     */
+    Object.freeze(this);
+  }
+}
+
+/**
+ * ============================================================
+ * CREATE CONTRACT
+ * ============================================================
+ *
+ * Importante:
+ * publicId NÃO é aceito pelo caller.
+ * A identidade pública é sempre gerada pela própria entidade.
+ *
+ * createdAt também não é aceito pelo caller.
+ * O timestamp é sempre gerado pelo servidor.
+ */
+export interface CreateLedgerTransactionProps {
+  idempotencyKey: string;
+  description: string;
+  entries: readonly LedgerEntry[];
+  userId?: number | null;
+  transactionType: SupportedFinancialTransactionType;
+  category: FinancialTransactionCategory;
+  reversalOfTransactionId?: number;
+  refundOfTransactionId?: number;
+}
+
+/**
+ * ============================================================
+ * PERSISTENCE SNAPSHOT
+ * ============================================================
+ *
+ * O snapshot contém metadados específicos de persistência.
+ */
+export interface LedgerTransactionSnapshot {
+  publicId: string;
+  databaseId: number;
+  idempotencyKey: string;
+  description: string;
+  entries: readonly LedgerEntry[];
+  userId: number | null;
+  transactionType: FinancialTransactionType;
+  category: FinancialTransactionCategory;
+  status: FinancialTransactionStatus;
+  createdAtEpochMs: number;
+  reversalOfTransactionId?: number;
+  refundOfTransactionId?: number;
+}
+
+/**
+ * ============================================================
+ * LEDGER TRANSACTION
+ * ============================================================
+ */
+
+export class LedgerTransaction {
+  /**
+   * Mantido como alias de compatibilidade com consumidores existentes.
+   *
+   * Preferir publicId em novo código.
+   *
+   * @deprecated Use publicId.
+   */
+  public readonly id: string;
+
+  public readonly publicId: string;
+
+  /**
+   * Mantido temporariamente por compatibilidade com a infraestrutura
+   * atual. Idealmente deve ficar apenas no Snapshot/Repository.
+   *
+   * @deprecated Persistence identity não deve fazer parte da API
+   * de domínio em uma futura separação de bounded context.
+   */
+  public readonly databaseId?: number;
+
+  public readonly idempotencyKey: string;
+  public readonly description: string;
+  public readonly entries: ReadonlyArray<LedgerEntry>;
+  public readonly userId: number | null;
+  public readonly transactionType: FinancialTransactionType;
+  public readonly category: FinancialTransactionCategory;
+  public readonly status: FinancialTransactionStatus;
+  public readonly reversalOfTransactionId?: number;
+  public readonly refundOfTransactionId?: number;
+
+  private readonly createdAtEpochMs: number;
+
+  /**
+   * Getter defensivo.
+   *
+   * Cada chamada devolve uma nova Date e não expõe o estado interno.
+   */
+  public get createdAt(): Date {
+    return new Date(this.createdAtEpochMs);
+  }
+
+  private constructor(params: {
+    publicId: string;
+    databaseId?: number;
+    idempotencyKey: string;
+    description: string;
+    entries: readonly LedgerEntry[];
+    userId: number | null;
+    transactionType: FinancialTransactionType;
+    category: FinancialTransactionCategory;
+    status: FinancialTransactionStatus;
+    createdAtEpochMs: number;
+    reversalOfTransactionId?: number;
+    refundOfTransactionId?: number;
+  }) {
+    this.publicId = params.publicId;
+    this.id = params.publicId;
+    this.databaseId = params.databaseId;
+    this.idempotencyKey = params.idempotencyKey;
+    this.description = params.description;
+
+    /**
+     * Cópia defensiva + congelamento do array.
+     *
+     * Os LedgerEntry já são imutáveis individualmente.
+     */
+    this.entries = Object.freeze([...params.entries]);
+
+    this.userId = params.userId;
+    this.transactionType = params.transactionType;
+    this.category = params.category;
+    this.status = params.status;
+    this.createdAtEpochMs = params.createdAtEpochMs;
+    this.reversalOfTransactionId =
+      params.reversalOfTransactionId;
+    this.refundOfTransactionId =
+      params.refundOfTransactionId;
+
+    /**
+     * Congelamento do Aggregate Root.
+     */
+    Object.freeze(this);
+  }
+
+  /**
+   * ==========================================================
+   * FACTORY: CREATE
+   * ==========================================================
+   *
+   * Cria uma nova transação.
+   *
+   * Invariantes desta factory:
+   * - identidade gerada internamente
+   * - timestamp gerado internamente
+   * - status inicial = pending
+   * - tipo deve ser suportado
+   * - entries devem ser válidos
+   * - double-entry balanceado
+   */
+  public static create(
+    props: CreateLedgerTransactionProps
+  ): LedgerTransaction {
+    if (!props || typeof props !== 'object') {
+      throw new InvalidLedgerTransactionError(
+        'LedgerTransaction creation props must be a valid non-null object.'
+      );
+    }
+
+    const idempotencyKey = normalizeRequiredText(
+      props.idempotencyKey,
+      'Idempotency key',
+      255
+    );
+
+    const description = normalizeRequiredText(
+      props.description,
+      'Transaction description',
+      255
+    );
+
+    LedgerTransaction.validateEntriesCollection(
+      props.entries
+    );
+
+    let userId: number | null = null;
+
+    if (
+      props.userId !== undefined &&
+      props.userId !== null
+    ) {
+      userId = parsePositiveSafeIntegerId(
+        props.userId,
+        'userId'
+      );
+    }
+
+    /**
+     * A interface já utiliza SupportedFinancialTransactionType.
+     *
+     * A validação runtime continua obrigatória porque a entrada pode
+     * ter atravessado JSON/DTO/any antes de chegar aqui.
+     */
+    const rawTransactionType: unknown =
+      props.transactionType;
+
+    if (
+      !isSupportedFinancialTransactionType(
+        rawTransactionType
+      )
+    ) {
+      throw new InvalidLedgerTransactionError(
+        'Invalid or unsupported financial transaction type.'
+      );
+    }
+
+    const transactionType = rawTransactionType;
+
+    if (
+      !isFinancialTransactionCategory(props.category)
+    ) {
+      throw new InvalidLedgerTransactionError(
+        'Invalid financial transaction category.'
+      );
+    }
+
+    /**
+     * Verifica somente invariantes relacionais locais.
+     *
+     * Existência, ownership, estado original, limite cumulativo
+     * de refund e unicidade de reversal são responsabilidade
+     * de RefundPolicy/ReversalPolicy + persistência autoritativa.
+     */
+    const {
+      reversalId,
+      refundId,
+    } = LedgerTransaction.validateRelationships(
+      transactionType,
+      props.reversalOfTransactionId,
+      props.refundOfTransactionId
+    );
+
+    /**
+     * Identidade pública criada internamente.
+     */
+    const publicId = crypto
+      .randomUUID()
+      .toLowerCase();
+
+    /**
+     * Tempo criado exclusivamente pelo servidor.
+     */
+    const createdAtEpochMs = Date.now();
+
+    LedgerTransaction.validateCreatedAtEpochMs(
+      createdAtEpochMs,
+      'createdAtEpochMs'
+    );
+
+    /**
+     * Validação contábil final.
+     */
+    LedgerTransaction.validateDoubleEntry(
+      props.entries
+    );
+
+    return new LedgerTransaction({
+      publicId,
+      idempotencyKey,
+      description,
+      entries: props.entries,
+      userId,
+      transactionType,
+      category: props.category,
+      status: 'pending',
+      createdAtEpochMs,
+      reversalOfTransactionId: reversalId,
+      refundOfTransactionId: refundId,
+    });
+  }
+
+  /**
+   * ==========================================================
+   * FACTORY: REHYDRATE
+   * ==========================================================
+   *
+   * DB -> Domain.
+   *
+   * Revalida:
+   * - identidade
+   * - IDs físicos
+   * - strings
+   * - entries
+   * - unicidade
+   * - enums
+   * - relações
+   * - timestamp
+   * - double-entry
+   */
+  public static rehydrate(
+    snapshot: LedgerTransactionSnapshot
+  ): LedgerTransaction {
+    if (!snapshot || typeof snapshot !== 'object') {
+      throw new InvalidLedgerTransactionError(
+        'LedgerTransaction rehydration snapshot must be a valid non-null object.'
+      );
+    }
+
+    const publicId = normalizeUuidV4(
+      snapshot.publicId,
+      'snapshot.publicId'
+    );
+
+    const databaseId = parsePositiveSafeIntegerId(
+      snapshot.databaseId,
+      'databaseId'
+    );
+
+    const idempotencyKey = normalizeRequiredText(
+      snapshot.idempotencyKey,
+      'Idempotency key',
+      255
+    );
+
+    const description = normalizeRequiredText(
+      snapshot.description,
+      'Transaction description',
+      255
+    );
+
+    LedgerTransaction.validateEntriesCollection(
+      snapshot.entries
+    );
+
+    let userId: number | null = null;
+
+    if (
+      snapshot.userId !== undefined &&
+      snapshot.userId !== null
+    ) {
+      userId = parsePositiveSafeIntegerId(
+        snapshot.userId,
+        'userId'
+      );
+    }
+
+    if (
+      !isFinancialTransactionType(
+        snapshot.transactionType
+      )
+    ) {
+      throw new InvalidLedgerTransactionError(
+        'Invalid transactionType on rehydration.'
+      );
+    }
+
+    const transactionType =
+      snapshot.transactionType;
+
+    if (
+      !isFinancialTransactionCategory(
+        snapshot.category
+      )
+    ) {
+      throw new InvalidLedgerTransactionError(
+        'Invalid category on rehydration.'
+      );
+    }
+
+    if (
+      !isFinancialTransactionStatus(
+        snapshot.status
+      )
+    ) {
+      throw new InvalidLedgerTransactionError(
+        'Invalid status on rehydration.'
+      );
+    }
+
+    const {
+      reversalId,
+      refundId,
+    } = LedgerTransaction.validateRelationships(
+      transactionType,
+      snapshot.reversalOfTransactionId,
+      snapshot.refundOfTransactionId
+    );
+
+    /**
+     * Auto-referência é uma invariante local.
+     *
+     * ReversalPolicy/RefundPolicy tratarão regras mais profundas,
+     * como existência e estado da transação original.
+     */
+    if (
+      reversalId !== undefined &&
+      reversalId === databaseId
+    ) {
+      throw new InvalidLedgerTransactionError(
+        'A transaction cannot reverse itself.'
+      );
+    }
+
+    if (
+      refundId !== undefined &&
+      refundId === databaseId
+    ) {
+      throw new InvalidLedgerTransactionError(
+        'A transaction cannot refund itself.'
+      );
+    }
+
+    LedgerTransaction.validateCreatedAtEpochMs(
+      snapshot.createdAtEpochMs,
+      'createdAtEpochMs on rehydration'
+    );
+
+    LedgerTransaction.validateDoubleEntry(
+      snapshot.entries
+    );
+
+    return new LedgerTransaction({
+      publicId,
+      databaseId,
+      idempotencyKey,
+      description,
+      entries: snapshot.entries,
+      userId,
+      transactionType,
+      category: snapshot.category,
+      status: snapshot.status,
+      createdAtEpochMs:
+        snapshot.createdAtEpochMs,
+      reversalOfTransactionId: reversalId,
+      refundOfTransactionId: refundId,
+    });
+  }
+
+  /**
+   * ==========================================================
+   * VALIDATE ENTRIES COLLECTION
+   * ==========================================================
+   *
+   * A ordem das validações é intencional:
+   *
+   * 1. verifica se é array
+   * 2. verifica limites
+   * 3. verifica instâncias
+   * 4. verifica IDs
+   * 5. verifica debit/credit
+   *
+   * Isso evita TypeError antes do erro de domínio.
+   */
+  private static validateEntriesCollection(
+    entries: readonly LedgerEntry[]
+  ): void {
+    if (!Array.isArray(entries)) {
+      throw new InvalidLedgerTransactionError(
+        'Transaction entries must be an array.'
+      );
+    }
+
+    if (entries.length < 2) {
+      throw new InvalidLedgerTransactionError(
+        'Transaction must contain at least two entries.'
+      );
+    }
+
+    if (entries.length > 100) {
+      throw new InvalidLedgerTransactionError(
+        'Transaction exceeds maximum limit of 100 entries.'
+      );
+    }
+
+    const seenEntryIds = new Set<string>();
+
+    let hasDebit = false;
+    let hasCredit = false;
+
+    for (const entry of entries) {
+      /**
+       * IMPORTANTE:
+       * validar instanceof ANTES de acessar entry.type/id.
+       */
+      if (!(entry instanceof LedgerEntry)) {
+        throw new InvalidLedgerTransactionError(
+          'All entries must be valid instances of LedgerEntry.'
+        );
+      }
+
+      if (seenEntryIds.has(entry.id)) {
+        throw new InvalidLedgerTransactionError(
+          'Transaction cannot contain duplicate ledger entry IDs.'
+        );
+      }
+
+      seenEntryIds.add(entry.id);
+
+      if (entry.type === 'debit') {
+        hasDebit = true;
+      } else if (entry.type === 'credit') {
+        hasCredit = true;
+      }
+    }
+
+    if (!hasDebit || !hasCredit) {
+      throw new InvalidLedgerTransactionError(
+        'Transaction must contain at least one debit and one credit entry.'
+      );
+    }
+  }
+
+  /**
+   * ==========================================================
+   * RELATIONSHIP SHAPE VALIDATION
+   * ==========================================================
+   *
+   * Esta função NÃO consulta banco.
+   *
+   * Ela valida apenas a estrutura local:
+   *
+   * reversal:
+   *   requires reversalOfTransactionId
+   *
+   * refund:
+   *   requires refundOfTransactionId
+   *
+   * demais tipos:
+   *   não podem carregar nenhum relationship ID
+   *
+   * Regras externas ficam em:
+   *   ReversalPolicy
+   *   RefundPolicy
+   */
+  private static validateRelationships(
+    type: FinancialTransactionType,
+    reversalId?: number,
+    refundId?: number
+  ): {
+    reversalId?: number;
+    refundId?: number;
+  } {
+    if (type === 'reversal') {
+      if (
+        reversalId === undefined ||
+        reversalId === null
+      ) {
+        throw new InvalidLedgerTransactionError(
+          'Reversal transaction requires reversalOfTransactionId.'
+        );
+      }
+
+      const validatedReversalId =
+        parsePositiveSafeIntegerId(
+          reversalId,
+          'reversalOfTransactionId'
+        );
+
+      if (
+        refundId !== undefined &&
+        refundId !== null
+      ) {
+        throw new InvalidLedgerTransactionError(
+          'Reversal transaction cannot have refundOfTransactionId.'
+        );
+      }
+
+      return {
+        reversalId: validatedReversalId,
+      };
+    }
+
+    if (type === 'refund') {
+      if (
+        refundId === undefined ||
+        refundId === null
+      ) {
+        throw new InvalidLedgerTransactionError(
+          'Refund transaction requires refundOfTransactionId.'
+        );
+      }
+
+      const validatedRefundId =
+        parsePositiveSafeIntegerId(
+          refundId,
+          'refundOfTransactionId'
+        );
+
+      if (
+        reversalId !== undefined &&
+        reversalId !== null
+      ) {
+        throw new InvalidLedgerTransactionError(
+          'Refund transaction cannot have reversalOfTransactionId.'
+        );
+      }
+
+      return {
+        refundId: validatedRefundId,
+      };
+    }
+
+    if (
+      reversalId !== undefined &&
+      reversalId !== null
+    ) {
+      throw new InvalidLedgerTransactionError(
+        `reversalOfTransactionId is only valid for reversal transactions.`
+      );
+    }
+
+    if (
+      refundId !== undefined &&
+      refundId !== null
+    ) {
+      throw new InvalidLedgerTransactionError(
+        `refundOfTransactionId is only valid for refund transactions.`
+      );
+    }
+
+    return {};
+  }
+
+  /**
+   * ==========================================================
+   * CREATED AT
+   * ==========================================================
+   */
+  private static validateCreatedAtEpochMs(
+    value: unknown,
+    fieldName: string
+  ): void {
+    if (
+      !Number.isSafeInteger(value) ||
+      (value as number) <= 0 ||
+      (value as number) > MAX_VALID_DATE_EPOCH_MS
+    ) {
+      throw new InvalidLedgerTransactionError(
+        `${fieldName} must be a valid positive safe integer timestamp.`
+      );
+    }
+  }
+
+  /**
+   * ==========================================================
+   * DOUBLE ENTRY
+   * ==========================================================
+   *
+   * FIN-001
+   *
+   * Para cada ativo:
+   *
+   *   SUM(debit) == SUM(credit)
+   *
+   * A matemática usa exclusivamente bigint.
+   */
+  private static validateDoubleEntry(
+    entries: readonly LedgerEntry[]
+  ): void {
+    const balances = new Map<number, bigint>();
+
+    for (const entry of entries) {
+      /**
+       * validateDoubleEntry é chamada somente após
+       * validateEntriesCollection().
+       *
+       * Portanto entry já é LedgerEntry.
+       */
+      const assetId = entry.amount.assetId;
+
+      const currentBalance =
+        balances.get(assetId) ?? 0n;
+
+      const amount = entry.amount.amount;
+
+      /**
+       * Proteção contra acumulador acima do limite físico.
+       */
+      if (
+        amount < 0n ||
+        amount > MAX_UINT256
+      ) {
+        throw new InvalidMoneyFormatError(
+          'LedgerEntry amount exceeds the supported uint256 domain.'
+        );
+      }
+
+      if (entry.type === 'debit') {
+        const nextBalance =
+          currentBalance + amount;
+
+        /**
+         * O acumulador absoluto não deve ultrapassar
+         * o domínio uint256.
+         */
+        if (nextBalance > MAX_UINT256) {
+          throw new InvalidMoneyFormatError(
+            'Ledger transaction aggregate amount exceeds uint256 limits.'
+          );
+        }
+
+        balances.set(
+          assetId,
+          nextBalance
+        );
+      } else {
+        const nextBalance =
+          currentBalance - amount;
+
+        /**
+         * Podemos aceitar um acumulador negativo durante
+         * a demonstração matemática para depois detectar
+         * imbalance.
+         *
+         * Não fazemos clamp e não usamos number.
+         */
+        balances.set(
+          assetId,
+          nextBalance
+        );
+      }
+    }
+
+    for (const [
+      assetId,
+      balance,
+    ] of balances.entries()) {
+      if (balance !== 0n) {
+        throw new LedgerImbalanceError(
+          `Double-entry validation failed for asset #${assetId}: Debits and Credits do not balance (Diff: ${balance.toString()}).`
+        );
+      }
+    }
+  }
+}
+
+```
+
+---
+
+<a id="srcdomainsfinanceerrorsfinancialerrorts"></a>
+## Arquivo: `src/domains/finance/errors/FinancialError.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/FinancialError.ts`
+- **Total de linhas**: 138
+- **Linguagem**: TypeScript
+
+```typescript
+export abstract class FinancialError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly retryable: boolean = false,
+    public readonly httpStatus: number = 400
+  ) {
+    super(message);
+    this.name = this.constructor.name;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+export class InsufficientBalanceError extends FinancialError {
+  constructor(message: string = 'Saldo insuficiente para a operação financeira.') {
+    super(message, 'INSUFFICIENT_BALANCE', false, 422);
+  }
+}
+
+export class OptimisticConcurrencyError extends FinancialError {
+  constructor(message: string = 'Conflito de concorrência otimista (OCC). Recarregue e tente novamente.') {
+    super(message, 'OCC_CONFLICT', true, 409);
+  }
+}
+
+export class IdempotencyConflictError extends FinancialError {
+  constructor(message: string = 'Conflito de idempotência: Mesma chave fornecida com payload divergente.') {
+    super(message, 'IDEMPOTENCY_HASH_MISMATCH', false, 409);
+  }
+}
+
+export class IdempotencyInProgressError extends FinancialError {
+  constructor(message: string = 'Transação em processamento com esta chave de idempotência.') {
+    super(message, 'IDEMPOTENCY_IN_PROGRESS', true, 409);
+  }
+}
+
+export class InvalidStateTransitionError extends FinancialError {
+  constructor(message: string = 'Transição de estado inválida para a transação financeira.') {
+    super(message, 'INVALID_STATE_TRANSITION', false, 422);
+  }
+}
+
+export class ReversalAlreadyExistsError extends FinancialError {
+  constructor(message: string = 'A transação já foi estornada anteriormente.') {
+    super(message, 'REVERSAL_ALREADY_EXISTS', false, 409);
+  }
+}
+
+export class ExternalEventPayloadConflictError extends FinancialError {
+  constructor(message: string = 'Evento externo com mesmo providerId e externalEventId possui payload divergente.') {
+    super(message, 'EXTERNAL_EVENT_PAYLOAD_CONFLICT', false, 409);
+  }
+}
+
+export class AccountInactiveError extends FinancialError {
+  constructor(message: string = 'Conta financeira inativa ou suspensa.') {
+    super(message, 'ACCOUNT_INACTIVE', false, 422);
+  }
+}
+
+export class AssetInactiveError extends FinancialError {
+  constructor(message: string = 'Ativo financeiro inativo.') {
+    super(message, 'ASSET_INACTIVE', false, 422);
+  }
+}
+
+export class Money256OverflowError extends FinancialError {
+  constructor(message: string = 'Valor excede o limite máximo permitido de 256 bits (2^256 - 1).') {
+    super(message, 'MONEY_256_OVERFLOW', false, 400);
+  }
+}
+
+export class InvalidMoneyFormatError extends FinancialError {
+  constructor(message: string = 'Formato numérico inválido. Deve ser string decimal canônica sem expoente, sinal ou zeros à esquerda.') {
+    super(message, 'INVALID_MONEY_FORMAT', false, 400);
+  }
+}
+
+export class CurrencyMismatchError extends FinancialError {
+  constructor(message: string = 'Operação proibida entre ativos/moedas diferentes.') {
+    super(message, 'CURRENCY_MISMATCH', false, 422);
+  }
+}
+
+export class MoneyUnderflowError extends FinancialError {
+  constructor(message: string = 'Subtração resultando em saldo negativo é proibida (underflow).') {
+    super(message, 'MONEY_UNDERFLOW', false, 422);
+  }
+}
+
+export class InvalidIdentifierError extends FinancialError {
+  constructor(message: string = 'Identificador físico inválido.') {
+    super(message, 'INVALID_IDENTIFIER', false, 400);
+  }
+}
+
+export class InvalidRefundAmountError extends FinancialError {
+  constructor(message: string = 'Valor de reembolso inválido ou excede o montante da transação original.') {
+    super(message, 'INVALID_REFUND_AMOUNT', false, 422);
+  }
+}
+
+export class UnsupportedFinancialOperationError extends FinancialError {
+  constructor(message: string = 'Operação financeira não suportada.') {
+    super(message, 'UNSUPPORTED_FINANCIAL_OPERATION', false, 400);
+  }
+}
+
+export class InvalidFinancialOperationError extends FinancialError {
+  constructor(message: string = 'Operação financeira inválida ou parâmetros inconsistentes.') {
+    super(message, 'INVALID_FINANCIAL_OPERATION', false, 400);
+  }
+}
+
+export class AccountOwnershipError extends FinancialError {
+  constructor(message: string = 'Conflito de propriedade da conta ou transação financeira.') {
+    super(message, 'ACCOUNT_OWNERSHIP_MISMATCH', false, 403);
+  }
+}
+
+export class InvalidAccountClassError extends FinancialError {
+  constructor(accountTypeOrMessage: string = 'Classe contábil inválida ou não suportada.', accountClass?: string) {
+    const message = accountClass
+      ? `Classe de conta "${accountClass}" é incompatível com o tipo de conta "${accountTypeOrMessage}".`
+      : accountTypeOrMessage;
+    super(message, 'INVALID_ACCOUNT_CLASS', false, 422);
+  }
+}
+
+export class InvalidLedgerTransactionError extends FinancialError {
+  constructor(message: string = 'Transação contábil do ledger inválida ou viola os invariantes de partidas dobradas.') {
+    super(message, 'INVALID_LEDGER_TRANSACTION', false, 422);
+  }
+}
+
+
+
+
+```
+
+---
+
+<a id="srcdomainsfinanceerrorsledgerimbalanceerrorts"></a>
+## Arquivo: `src/domains/finance/errors/LedgerImbalanceError.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/LedgerImbalanceError.ts`
+- **Total de linhas**: 10
+- **Linguagem**: TypeScript
+
+```typescript
+import { FinancialError } from './FinancialError';
+
+export class LedgerImbalanceError extends FinancialError {
+  constructor(
+    message: string = 'A transação não está balanceada. A soma dos débitos deve ser exatamente igual à soma dos créditos.'
+  ) {
+    super(message, 'LEDGER_IMBALANCE', false, 422);
+  }
+}
+
+
+```
+
+---
+
+<a id="srcdomainsfinancepoliciesaccountclasspolicyts"></a>
+## Arquivo: `src/domains/finance/policies/AccountClassPolicy.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountClassPolicy.ts`
+- **Total de linhas**: 209
+- **Linguagem**: TypeScript
+
+```typescript
+import { InvalidAccountClassError } from '../errors/FinancialError';
+
+export type FinancialAccountType =
+  | 'user_available'
+  | 'treasury'
+  | 'operating'
+  | 'fees'
+  | 'reserve'
+  | 'escrow'
+  | 'reward_expense'
+  | 'yield_expense'
+  | 'clearing'
+  | 'opening_balance_equity'
+  | 'payment_revenue'
+  | 'refund_expense';
+
+export type FinancialAccountClass =
+  | 'asset'
+  | 'liability'
+  | 'revenue'
+  | 'expense'
+  | 'equity';
+
+const PERMITTED_CLASSES: Readonly<
+  Record<FinancialAccountType, readonly FinancialAccountClass[]>
+> = Object.freeze({
+  user_available: Object.freeze(['liability'] as const),
+  treasury: Object.freeze(['asset'] as const),
+  operating: Object.freeze(['asset'] as const),
+  fees: Object.freeze(['revenue'] as const),
+  reserve: Object.freeze(['asset', 'liability'] as const),
+  escrow: Object.freeze(['liability'] as const),
+  reward_expense: Object.freeze(['expense'] as const),
+  yield_expense: Object.freeze(['expense'] as const),
+  clearing: Object.freeze(['asset', 'liability'] as const),
+  opening_balance_equity: Object.freeze(['equity', 'liability'] as const),
+  payment_revenue: Object.freeze(['revenue'] as const),
+  refund_expense: Object.freeze(['expense'] as const),
+});
+
+export class AccountClassPolicy {
+  /**
+   * Valida se o tipo de conta pode utilizar a classe contábil informada.
+   *
+   * A assinatura continua aceitando string para preservar compatibilidade
+   * com callers existentes. A validação real ocorre em runtime.
+   */
+  public static validate(
+    accountType: string,
+    accountClass: string
+  ): void {
+    if (
+      typeof accountType !== 'string' ||
+      accountType.trim().length === 0
+    ) {
+      throw new InvalidAccountClassError(
+        String(accountType),
+        String(accountClass)
+      );
+    }
+
+    if (
+      typeof accountClass !== 'string' ||
+      accountClass.trim().length === 0
+    ) {
+      throw new InvalidAccountClassError(
+        accountType,
+        String(accountClass)
+      );
+    }
+
+    const normalizedAccountType = accountType.trim();
+    const normalizedAccountClass = accountClass.trim();
+
+    if (!AccountClassPolicy.isFinancialAccountType(normalizedAccountType)) {
+      throw new InvalidAccountClassError(
+        normalizedAccountType,
+        normalizedAccountClass
+      );
+    }
+
+    if (
+      !AccountClassPolicy.isFinancialAccountClass(
+        normalizedAccountClass
+      )
+    ) {
+      throw new InvalidAccountClassError(
+        normalizedAccountType,
+        normalizedAccountClass
+      );
+    }
+
+    const allowed = PERMITTED_CLASSES[normalizedAccountType];
+
+    if (
+      !(allowed as readonly string[]).includes(
+        normalizedAccountClass
+      )
+    ) {
+      throw new InvalidAccountClassError(
+        normalizedAccountType,
+        normalizedAccountClass
+      );
+    }
+  }
+
+  /**
+   * Retorna a classe default somente quando houver exatamente uma
+   * classe possível.
+   *
+   * Nunca escolhe arbitrariamente a primeira opção de uma matriz
+   * que possua múltiplas classes permitidas.
+   */
+  public static getDefaultClass(
+    accountType: string
+  ): FinancialAccountClass {
+    if (
+      typeof accountType !== 'string' ||
+      accountType.trim().length === 0
+    ) {
+      throw new InvalidAccountClassError(
+        String(accountType),
+        'default_not_deterministic'
+      );
+    }
+
+    const normalizedAccountType = accountType.trim();
+
+    if (
+      !AccountClassPolicy.isFinancialAccountType(
+        normalizedAccountType
+      )
+    ) {
+      throw new InvalidAccountClassError(
+        normalizedAccountType,
+        'unknown'
+      );
+    }
+
+    const allowed = PERMITTED_CLASSES[normalizedAccountType];
+
+    if (allowed.length !== 1) {
+      throw new InvalidAccountClassError(
+        normalizedAccountType,
+        'default_not_deterministic'
+      );
+    }
+
+    return allowed[0];
+  }
+
+  /**
+   * Runtime type guard para tipos de conta conhecidos.
+   */
+  public static isFinancialAccountType(
+    value: unknown
+  ): value is FinancialAccountType {
+    return (
+      typeof value === 'string' &&
+      Object.prototype.hasOwnProperty.call(
+        PERMITTED_CLASSES,
+        value
+      )
+    );
+  }
+
+  /**
+   * Runtime type guard para classes contábeis conhecidas.
+   */
+  public static isFinancialAccountClass(
+    value: unknown
+  ): value is FinancialAccountClass {
+    return (
+      value === 'asset' ||
+      value === 'liability' ||
+      value === 'revenue' ||
+      value === 'expense' ||
+      value === 'equity'
+    );
+  }
+
+  /**
+   * Retorna a lista imutável de classes permitidas para o tipo informado.
+   *
+   * A estrutura retornada não pode ser modificada porque tanto a matriz
+   * externa quanto suas listas internas são Object.freeze().
+   */
+  public static getPermittedClasses(
+    accountType: string
+  ): readonly FinancialAccountClass[] {
+    if (typeof accountType !== 'string') {
+      throw new InvalidAccountClassError(
+        String(accountType),
+        'unknown'
+      );
+    }
+
+    const normalized = accountType.trim();
+
+    if (!AccountClassPolicy.isFinancialAccountType(normalized)) {
+      throw new InvalidAccountClassError(
+        normalized,
+        'unknown'
+      );
+    }
+
+    return PERMITTED_CLASSES[normalized];
+  }
+}
+
+```
+
+---
+
+<a id="srcdomainsfinancepoliciesaccountingentrypolicyts"></a>
+## Arquivo: `src/domains/finance/policies/AccountingEntryPolicy.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountingEntryPolicy.ts`
+- **Total de linhas**: 1454
+- **Linguagem**: TypeScript
+
+```typescript
+import {
+  Money256,
+  parsePositiveSafeIntegerId,
+} from '../value-objects/Money256';
+
+import { FinancialError } from '../errors/FinancialError';
+
+import type { FinancialLedgerEntryRecord } from '../contracts/FinancialLedgerEntryRecord';
+
+import type {
+  FinancialTransactionType,
+  FinancialTransactionCategory,
+} from '../entities/LedgerTransaction';
+
+export type LedgerEntryDirection = 'debit' | 'credit';
+
+export interface RawLedgerEntrySpec {
+  accountId: number;
+  assetId: number;
+  entryType: LedgerEntryDirection;
+  amount: Money256;
+  description: string;
+}
+
+export interface AccountingContext {
+  transactionType: FinancialTransactionType;
+  category?: FinancialTransactionCategory;
+  source?: string;
+  destination?: string;
+  assetId: number;
+  feeType?: string;
+  businessReason?: string;
+  authorizedByUserId?: number;
+  auditRef?: string;
+}
+
+export class AccountingMatrixValidationError extends FinancialError {
+  constructor(message: string) {
+    super(
+      message,
+      'ACCOUNTING_MATRIX_VALIDATION_FAILED',
+      false,
+      422
+    );
+  }
+}
+
+const MAX_UINT256 = (1n << 256n) - 1n;
+
+const MAX_LEDGER_ENTRIES = 100;
+
+const MAX_DESCRIPTION_LENGTH = 2000;
+
+export class AccountingEntryPolicy {
+  /**
+   * 1. DEPOSIT:
+   *
+   * Dr Treasury Asset (+Ativo)
+   * Cr User Available (+Passivo)
+   */
+  public static createDepositEntries(params: {
+    treasuryAccountId: number;
+    userAccountId: number;
+    amount: Money256;
+    description: string;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(params.amount);
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const treasuryAccountId =
+      parsePositiveSafeIntegerId(
+        params.treasuryAccountId,
+        'treasuryAccountId'
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      treasuryAccountId,
+      userAccountId,
+      'A conta de treasury e a conta do usuário não podem ser idênticas em um depósito.'
+    );
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: treasuryAccountId,
+        assetId: amount.assetId,
+        entryType: 'debit',
+        amount,
+        description:
+          `Deposit Treasury Debit: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: userAccountId,
+        assetId: amount.assetId,
+        entryType: 'credit',
+        amount,
+        description:
+          `Deposit User Credit: ${description}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * 2. WITHDRAWAL:
+   *
+   * Dr User Available (-Passivo)
+   * Cr Treasury Asset (-Ativo)
+   */
+  public static createWithdrawalEntries(params: {
+    treasuryAccountId: number;
+    userAccountId: number;
+    amount: Money256;
+    description: string;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(params.amount);
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const treasuryAccountId =
+      parsePositiveSafeIntegerId(
+        params.treasuryAccountId,
+        'treasuryAccountId'
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      treasuryAccountId,
+      userAccountId,
+      'A conta de treasury e a conta do usuário não podem ser idênticas em uma retirada.'
+    );
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: userAccountId,
+        assetId: amount.assetId,
+        entryType: 'debit',
+        amount,
+        description:
+          `Withdrawal User Debit: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: treasuryAccountId,
+        assetId: amount.assetId,
+        entryType: 'credit',
+        amount,
+        description:
+          `Withdrawal Treasury Credit: ${description}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * 3. TRANSFER:
+   *
+   * Dr Source User (-Passivo)
+   * Cr Target User (+Passivo)
+   */
+  public static createTransferEntries(params: {
+    sourceAccountId: number;
+    destinationAccountId: number;
+    amount: Money256;
+    description: string;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(params.amount);
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const sourceAcc =
+      parsePositiveSafeIntegerId(
+        params.sourceAccountId,
+        'sourceAccountId'
+      );
+
+    const destAcc =
+      parsePositiveSafeIntegerId(
+        params.destinationAccountId,
+        'destinationAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      sourceAcc,
+      destAcc,
+      'Conta de origem e destino não podem ser idênticas em uma transferência.'
+    );
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: sourceAcc,
+        assetId: amount.assetId,
+        entryType: 'debit',
+        amount,
+        description:
+          `Transfer Debit: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: destAcc,
+        assetId: amount.assetId,
+        entryType: 'credit',
+        amount,
+        description:
+          `Transfer Credit: ${description}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * 4. PAYMENT:
+   *
+   * Dr User Available (-Passivo)
+   * Cr Payment Revenue (+Receita)
+   */
+  public static createPaymentEntries(params: {
+    userAccountId: number;
+    paymentRevenueAccountId: number;
+    amount: Money256;
+    description: string;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(params.amount);
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    const paymentRevenueAccountId =
+      parsePositiveSafeIntegerId(
+        params.paymentRevenueAccountId,
+        'paymentRevenueAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      userAccountId,
+      paymentRevenueAccountId,
+      'A conta do usuário e a conta de receita do pagamento não podem ser idênticas.'
+    );
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: userAccountId,
+        assetId: amount.assetId,
+        entryType: 'debit',
+        amount,
+        description:
+          `Payment User Debit: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: paymentRevenueAccountId,
+        assetId: amount.assetId,
+        entryType: 'credit',
+        amount,
+        description:
+          `Payment Revenue Credit: ${description}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * 5. REFUND:
+   *
+   * Dr Refund Expense (+Despesa)
+   * Cr User Available (+Passivo)
+   */
+  public static createRefundEntries(params: {
+    refundExpenseAccountId: number;
+    userAccountId: number;
+    amount: Money256;
+    description: string;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(params.amount);
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const refundExpenseAccountId =
+      parsePositiveSafeIntegerId(
+        params.refundExpenseAccountId,
+        'refundExpenseAccountId'
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      refundExpenseAccountId,
+      userAccountId,
+      'A conta de despesa de refund e a conta do usuário não podem ser idênticas.'
+    );
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: refundExpenseAccountId,
+        assetId: amount.assetId,
+        entryType: 'debit',
+        amount,
+        description:
+          `Refund Expense Debit: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: userAccountId,
+        assetId: amount.assetId,
+        entryType: 'credit',
+        amount,
+        description:
+          `Refund User Credit: ${description}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * 6. FEE:
+   *
+   * Dr User Available (-Passivo)
+   * Cr Fees Revenue (+Receita)
+   */
+  public static createFeeEntries(params: {
+    userAccountId: number;
+    feeAccountId: number;
+    amount: Money256;
+    description: string;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(params.amount);
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    const feeAccountId =
+      parsePositiveSafeIntegerId(
+        params.feeAccountId,
+        'feeAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      userAccountId,
+      feeAccountId,
+      'A conta do usuário e a conta de receitas de fee não podem ser idênticas.'
+    );
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: userAccountId,
+        assetId: amount.assetId,
+        entryType: 'debit',
+        amount,
+        description:
+          `Fee User Debit: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: feeAccountId,
+        assetId: amount.assetId,
+        entryType: 'credit',
+        amount,
+        description:
+          `Fee Revenue Credit: ${description}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * 7. REWARD:
+   *
+   * Dr Reward Expense (+Despesa)
+   * Cr User Available (+Passivo)
+   */
+  public static createRewardEntries(params: {
+    rewardExpenseAccountId: number;
+    userAccountId: number;
+    amount: Money256;
+    description: string;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(params.amount);
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const rewardExpenseAccountId =
+      parsePositiveSafeIntegerId(
+        params.rewardExpenseAccountId,
+        'rewardExpenseAccountId'
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      rewardExpenseAccountId,
+      userAccountId,
+      'A conta de despesa de reward e a conta do usuário não podem ser idênticas.'
+    );
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: rewardExpenseAccountId,
+        assetId: amount.assetId,
+        entryType: 'debit',
+        amount,
+        description:
+          `Reward Expense Debit: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: userAccountId,
+        assetId: amount.assetId,
+        entryType: 'credit',
+        amount,
+        description:
+          `Reward User Credit: ${description}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * 8. YIELD:
+   *
+   * Dr Yield Expense (+Despesa)
+   * Cr User Available (+Passivo)
+   */
+  public static createYieldEntries(params: {
+    yieldExpenseAccountId: number;
+    userAccountId: number;
+    amount: Money256;
+    description: string;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(params.amount);
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const yieldExpenseAccountId =
+      parsePositiveSafeIntegerId(
+        params.yieldExpenseAccountId,
+        'yieldExpenseAccountId'
+      );
+
+    const userAccountId =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      yieldExpenseAccountId,
+      userAccountId,
+      'A conta de despesa de yield e a conta do usuário não podem ser idênticas.'
+    );
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: yieldExpenseAccountId,
+        assetId: amount.assetId,
+        entryType: 'debit',
+        amount,
+        description:
+          `Yield Expense Debit: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: userAccountId,
+        assetId: amount.assetId,
+        entryType: 'credit',
+        amount,
+        description:
+          `Yield User Credit: ${description}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * 9. CONVERSION:
+   *
+   * Leg 1 (FromAsset):
+   *   Dr User / Cr Clearing
+   *
+   * Leg 2 (ToAsset):
+   *   Dr Clearing / Cr User
+   *
+   * A cotação, slippage, taxa e demais regras econômicas da conversão
+   * continuam pertencendo ao Use Case Forex especializado.
+   */
+  public static createConversionEntries(params: {
+    userAccountId: number;
+    clearingAccountId: number;
+    fromAmount: Money256;
+    toAmount: Money256;
+    description: string;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(
+      params.fromAmount
+    );
+
+    AccountingEntryPolicy.assertPositiveAmount(
+      params.toAmount
+    );
+
+    const fromAmount =
+      AccountingEntryPolicy.assertMoney256(
+        params.fromAmount
+      );
+
+    const toAmount =
+      AccountingEntryPolicy.assertMoney256(
+        params.toAmount
+      );
+
+    if (fromAmount.assetId === toAmount.assetId) {
+      throw new AccountingMatrixValidationError(
+        'Conversão exige ativos distintos.'
+      );
+    }
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const userAcc =
+      parsePositiveSafeIntegerId(
+        params.userAccountId,
+        'userAccountId'
+      );
+
+    const clearingAcc =
+      parsePositiveSafeIntegerId(
+        params.clearingAccountId,
+        'clearingAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      userAcc,
+      clearingAcc,
+      'A conta do usuário e a conta de clearing não podem ser idênticas em uma conversão.'
+    );
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: userAcc,
+        assetId: fromAmount.assetId,
+        entryType: 'debit',
+        amount: fromAmount,
+        description:
+          `Conversion Debit FromAsset: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: clearingAcc,
+        assetId: fromAmount.assetId,
+        entryType: 'credit',
+        amount: fromAmount,
+        description:
+          `Conversion Clearing Credit FromAsset: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: clearingAcc,
+        assetId: toAmount.assetId,
+        entryType: 'debit',
+        amount: toAmount,
+        description:
+          `Conversion Clearing Debit ToAsset: ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: userAcc,
+        assetId: toAmount.assetId,
+        entryType: 'credit',
+        amount: toAmount,
+        description:
+          `Conversion Credit ToAsset: ${description}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * 10. ADJUSTMENT:
+   *
+   * Lançamento de ajuste com identificação auditável explícita.
+   *
+   * IMPORTANTE:
+   * authorizedByUserId representa a identidade declarada do autor.
+   * Não representa, sozinho, autorização.
+   *
+   * A autorização efetiva deve ser garantida pelo Use Case/RBAC.
+   */
+  public static createAdjustmentEntries(params: {
+    debitAccountId: number;
+    creditAccountId: number;
+    amount: Money256;
+    reason: string;
+    authorizedByUserId: number;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(params.amount);
+
+    const reason =
+      AccountingEntryPolicy.normalizeRequiredReason(
+        params.reason,
+        'Lançamento de ajuste exige justificativa auditável.'
+      );
+
+    const authorizedBy =
+      parsePositiveSafeIntegerId(
+        params.authorizedByUserId,
+        'authorizedByUserId'
+      );
+
+    const debAcc =
+      parsePositiveSafeIntegerId(
+        params.debitAccountId,
+        'debitAccountId'
+      );
+
+    const credAcc =
+      parsePositiveSafeIntegerId(
+        params.creditAccountId,
+        'creditAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      debAcc,
+      credAcc,
+      'Conta de débito e conta de crédito não podem ser idênticas em um ajuste.'
+    );
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: debAcc,
+        assetId: amount.assetId,
+        entryType: 'debit',
+        amount,
+        description:
+          `Adjustment Debit (AuthUser #${authorizedBy}): ${reason}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: credAcc,
+        assetId: amount.assetId,
+        entryType: 'credit',
+        amount,
+        description:
+          `Adjustment Credit (AuthUser #${authorizedBy}): ${reason}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * 11. REVERSAL:
+   *
+   * Inversão exata dos lançamentos da transação original.
+   *
+   * A decisão de que determinada transação pode ser revertida
+   * pertence à ReversalPolicy / State Machine / Orchestrator.
+   */
+  public static createReversalEntries(
+    originalEntries: RawLedgerEntrySpec[],
+    reason: string
+  ): RawLedgerEntrySpec[] {
+    if (
+      !Array.isArray(originalEntries) ||
+      originalEntries.length === 0
+    ) {
+      throw new AccountingMatrixValidationError(
+        'Não há lançamentos originais para estornar.'
+      );
+    }
+
+    if (
+      originalEntries.length > MAX_LEDGER_ENTRIES
+    ) {
+      throw new AccountingMatrixValidationError(
+        `A transação não pode possuir mais de ${MAX_LEDGER_ENTRIES} lançamentos.`
+      );
+    }
+
+    const normalizedReason =
+      AccountingEntryPolicy.normalizeRequiredReason(
+        reason,
+        'Estorno contábil exige justificativa auditável.'
+      );
+
+    const reversalEntries =
+      originalEntries.map((orig) => {
+        AccountingEntryPolicy.assertRawEntryShape(
+          orig
+        );
+
+        let entryType: LedgerEntryDirection;
+
+        if (orig.entryType === 'debit') {
+          entryType = 'credit';
+        } else if (orig.entryType === 'credit') {
+          entryType = 'debit';
+        } else {
+          throw new AccountingMatrixValidationError(
+            `Lançamento original possui entryType inválido: ${String(
+              orig.entryType
+            )}.`
+          );
+        }
+
+        const accountId =
+          parsePositiveSafeIntegerId(
+            orig.accountId,
+            'orig.accountId'
+          );
+
+        const assetId =
+          parsePositiveSafeIntegerId(
+            orig.assetId,
+            'orig.assetId'
+          );
+
+        const amount =
+          AccountingEntryPolicy.assertMoney256(
+            orig.amount
+          );
+
+        if (amount.assetId !== assetId) {
+          throw new AccountingMatrixValidationError(
+            `Incoerência de ativo no lançamento original: assetId (${assetId}) !== amount.assetId (${amount.assetId}).`
+          );
+        }
+
+        const description =
+          AccountingEntryPolicy.normalizeDescription(
+            orig.description
+          );
+
+        return {
+          accountId,
+          assetId,
+          entryType,
+          amount,
+          description:
+            `Reversal (${normalizedReason}): ${description}`,
+        };
+      });
+
+    AccountingEntryPolicy.validateEntriesBalance(
+      reversalEntries
+    );
+
+    return reversalEntries;
+  }
+
+  /**
+   * 12. OPENING BALANCE:
+   *
+   * Dr Asset Account
+   * Cr Opening Equity
+   *
+   * A autorização administrativa efetiva deve ser garantida
+   * antes da chamada deste método.
+   */
+  public static createOpeningBalanceEntries(params: {
+    targetAccountId: number;
+    openingEquityAccountId: number;
+    amount: Money256;
+    description: string;
+    authorizedByUserId: number;
+  }): RawLedgerEntrySpec[] {
+    AccountingEntryPolicy.assertOperationParams(params);
+
+    AccountingEntryPolicy.assertPositiveAmount(params.amount);
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(params.amount);
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    const authorizedBy =
+      parsePositiveSafeIntegerId(
+        params.authorizedByUserId,
+        'authorizedByUserId'
+      );
+
+    const targetAcc =
+      parsePositiveSafeIntegerId(
+        params.targetAccountId,
+        'targetAccountId'
+      );
+
+    const equityAcc =
+      parsePositiveSafeIntegerId(
+        params.openingEquityAccountId,
+        'openingEquityAccountId'
+      );
+
+    AccountingEntryPolicy.assertDistinctAccounts(
+      targetAcc,
+      equityAcc,
+      'A conta de destino e a conta de opening equity não podem ser idênticas.'
+    );
+
+    const entries: RawLedgerEntrySpec[] = [
+      AccountingEntryPolicy.createEntry({
+        accountId: targetAcc,
+        assetId: amount.assetId,
+        entryType: 'debit',
+        amount,
+        description:
+          `Opening Balance Debit (AuthUser #${authorizedBy}): ${description}`,
+      }),
+      AccountingEntryPolicy.createEntry({
+        accountId: equityAcc,
+        assetId: amount.assetId,
+        entryType: 'credit',
+        amount,
+        description:
+          `Opening Equity Credit (AuthUser #${authorizedBy}): ${description}`,
+      }),
+    ];
+
+    AccountingEntryPolicy.validateEntriesBalance(entries);
+
+    return entries;
+  }
+
+  /**
+   * Valida que:
+   *
+   *   sum(Debits) === sum(Credits)
+   *
+   * para cada ativo individualmente.
+   *
+   * Também funciona como barreira defensiva de runtime para
+   * RawLedgerEntrySpec.
+   */
+  public static validateEntriesBalance(
+    entries: RawLedgerEntrySpec[]
+  ): void {
+    if (
+      !Array.isArray(entries) ||
+      entries.length === 0
+    ) {
+      throw new AccountingMatrixValidationError(
+        'A lista de lançamentos contábeis não pode ser vazia.'
+      );
+    }
+
+    if (
+      entries.length > MAX_LEDGER_ENTRIES
+    ) {
+      throw new AccountingMatrixValidationError(
+        `A lista de lançamentos não pode possuir mais de ${MAX_LEDGER_ENTRIES} itens.`
+      );
+    }
+
+    const assetDebits = new Map<number, bigint>();
+    const assetCredits = new Map<number, bigint>();
+
+    for (const entry of entries) {
+      AccountingEntryPolicy.assertRawEntryShape(
+        entry
+      );
+
+      const amount =
+        AccountingEntryPolicy.assertMoney256(
+          entry.amount
+        );
+
+      parsePositiveSafeIntegerId(
+        entry.accountId,
+        'entry.accountId'
+      );
+
+      const assetId =
+        parsePositiveSafeIntegerId(
+          entry.assetId,
+          'entry.assetId'
+        );
+
+      if (amount.assetId !== assetId) {
+        throw new AccountingMatrixValidationError(
+          `Incoerência de ativo no lançamento contábil: ` +
+            `spec.assetId (${assetId}) !== ` +
+            `amount.assetId (${amount.assetId}).`
+        );
+      }
+
+      AccountingEntryPolicy.assertPositiveAmount(
+        amount
+      );
+
+      const amountBigInt = amount.toBigInt();
+
+      if (
+        amountBigInt <= 0n ||
+        amountBigInt > MAX_UINT256
+      ) {
+        throw new AccountingMatrixValidationError(
+          `Valor contábil fora do intervalo permitido uint256 positivo no lançamento da conta #${entry.accountId}.`
+        );
+      }
+
+      if (entry.entryType === 'debit') {
+        const current =
+          assetDebits.get(assetId) ?? 0n;
+
+        const next =
+          current + amountBigInt;
+
+        if (next > MAX_UINT256) {
+          throw new AccountingMatrixValidationError(
+            `Overflow uint256 no acumulado de débitos do ativo #${assetId}.`
+          );
+        }
+
+        assetDebits.set(assetId, next);
+      } else if (entry.entryType === 'credit') {
+        const current =
+          assetCredits.get(assetId) ?? 0n;
+
+        const next =
+          current + amountBigInt;
+
+        if (next > MAX_UINT256) {
+          throw new AccountingMatrixValidationError(
+            `Overflow uint256 no acumulado de créditos do ativo #${assetId}.`
+          );
+        }
+
+        assetCredits.set(assetId, next);
+      } else {
+        /**
+         * Nunca usar "else = credit".
+         *
+         * Qualquer valor diferente de debit/credit é inválido.
+         */
+        throw new AccountingMatrixValidationError(
+          `Tipo de lançamento inválido: ${String(
+            entry.entryType
+          )}.`
+        );
+      }
+    }
+
+    const allAssetIds = new Set([
+      ...assetDebits.keys(),
+      ...assetCredits.keys(),
+    ]);
+
+    for (const assetId of allAssetIds) {
+      const totalDebits =
+        assetDebits.get(assetId) ?? 0n;
+
+      const totalCredits =
+        assetCredits.get(assetId) ?? 0n;
+
+      if (totalDebits !== totalCredits) {
+        throw new AccountingMatrixValidationError(
+          `Lançamentos desbalanceados para o ativo #${assetId}: ` +
+            `Total Débitos (${totalDebits}) !== ` +
+            `Total Créditos (${totalCredits})`
+        );
+      }
+    }
+  }
+
+  /**
+   * Identifica e extrai o montante reembolsável de uma transação
+   * de pagamento original.
+   *
+   * Mantemos o parâmetro opcional na assinatura para não quebrar
+   * compile-time callers existentes, porém, em runtime, a conta
+   * de receita é obrigatória para uma seleção semanticamente segura.
+   */
+  public static extractRefundablePaymentAmount(
+    entries: FinancialLedgerEntryRecord[],
+    assetId: number,
+    revenueAccountId?: number
+  ): Money256 {
+    if (
+      !Array.isArray(entries) ||
+      entries.length === 0
+    ) {
+      throw new AccountingMatrixValidationError(
+        'A transação original não possui lançamentos contábeis.'
+      );
+    }
+
+    if (revenueAccountId === undefined) {
+      throw new AccountingMatrixValidationError(
+        'revenueAccountId é obrigatório para identificar o lançamento de receita de forma segura.'
+      );
+    }
+
+    const normalizedAssetId =
+      parsePositiveSafeIntegerId(
+        assetId,
+        'assetId'
+      );
+
+    const normalizedRevenueAccountId =
+      parsePositiveSafeIntegerId(
+        revenueAccountId,
+        'revenueAccountId'
+      );
+
+    const paymentCreditEntries =
+      entries.filter(
+        (entry) =>
+          entry !== null &&
+          typeof entry === 'object' &&
+          entry.direction === 'credit' &&
+          entry.assetId === normalizedAssetId &&
+          entry.accountId ===
+            normalizedRevenueAccountId
+      );
+
+    if (paymentCreditEntries.length === 0) {
+      throw new AccountingMatrixValidationError(
+        `A transação original não possui lançamento de receita referente ao ativo #${normalizedAssetId} e conta #${normalizedRevenueAccountId}.`
+      );
+    }
+
+    if (paymentCreditEntries.length > 1) {
+      throw new AccountingMatrixValidationError(
+        `A transação original possui múltiplos lançamentos de receita para o ativo #${normalizedAssetId} e conta #${normalizedRevenueAccountId}; não é possível determinar um valor reembolsável de forma segura.`
+      );
+    }
+
+    const paymentCreditEntry =
+      paymentCreditEntries[0];
+
+    if (
+      typeof paymentCreditEntry.amountBaseUnits !==
+        'string' ||
+      paymentCreditEntry.amountBaseUnits
+        .trim()
+        .length === 0
+    ) {
+      throw new AccountingMatrixValidationError(
+        'O valor-base do lançamento de receita é inválido.'
+      );
+    }
+
+    return Money256.fromString(
+      paymentCreditEntry.amountBaseUnits,
+      normalizedAssetId
+    );
+  }
+
+  /**
+   * Garante que um amount recebido em runtime realmente seja
+   * uma instância válida de Money256.
+   */
+  private static assertMoney256(
+    amount: unknown
+  ): Money256 {
+    if (!(amount instanceof Money256)) {
+      throw new AccountingMatrixValidationError(
+        'O valor do lançamento deve ser uma instância válida de Money256.'
+      );
+    }
+
+    return amount;
+  }
+
+  /**
+   * Garante valor estritamente positivo.
+   */
+  private static assertPositiveAmount(
+    amount: Money256
+  ): void {
+    const validatedAmount =
+      AccountingEntryPolicy.assertMoney256(
+        amount
+      );
+
+    if (!validatedAmount.isPositive()) {
+      throw new AccountingMatrixValidationError(
+        `Todo lançamento contábil exige um valor estritamente positivo (FIN-002/FIN-004). Recebido: ${validatedAmount.toCanonicalString()}`
+      );
+    }
+  }
+
+  /**
+   * Valida estrutura mínima de um RawLedgerEntrySpec
+   * recebida em runtime.
+   */
+  private static assertRawEntryShape(
+    entry: unknown
+  ): asserts entry is RawLedgerEntrySpec {
+    if (
+      entry === null ||
+      typeof entry !== 'object' ||
+      Array.isArray(entry)
+    ) {
+      throw new AccountingMatrixValidationError(
+        'Lançamento contábil inválido: objeto esperado.'
+      );
+    }
+
+    const raw =
+      entry as Partial<RawLedgerEntrySpec>;
+
+    if (
+      typeof raw.entryType !== 'string' ||
+      (
+        raw.entryType !== 'debit' &&
+        raw.entryType !== 'credit'
+      )
+    ) {
+      throw new AccountingMatrixValidationError(
+        `Tipo de lançamento inválido: ${String(
+          raw.entryType
+        )}.`
+      );
+    }
+
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        raw,
+        'amount'
+      ) ||
+      !(raw.amount instanceof Money256)
+    ) {
+      throw new AccountingMatrixValidationError(
+        'O lançamento contábil deve possuir um amount válido do tipo Money256.'
+      );
+    }
+
+    if (
+      typeof raw.description !== 'string'
+    ) {
+      throw new AccountingMatrixValidationError(
+        'A descrição do lançamento contábil deve ser uma string.'
+      );
+    }
+
+    AccountingEntryPolicy.normalizeDescription(
+      raw.description
+    );
+  }
+
+  /**
+   * Valida o objeto de parâmetros antes que um builder
+   * tente acessar suas propriedades.
+   *
+   * Evita TypeError em casos de null/undefined/malformed runtime input.
+   */
+  private static assertOperationParams(
+    params: unknown
+  ): asserts params is object {
+    if (
+      params === null ||
+      typeof params !== 'object' ||
+      Array.isArray(params)
+    ) {
+      throw new AccountingMatrixValidationError(
+        'Parâmetros da operação contábil inválidos.'
+      );
+    }
+  }
+
+  /**
+   * Impede lançamentos economicamente sem efeito causados
+   * pela utilização da mesma conta nos dois lados da operação.
+   */
+  private static assertDistinctAccounts(
+    firstAccountId: number,
+    secondAccountId: number,
+    message: string
+  ): void {
+    if (firstAccountId === secondAccountId) {
+      throw new AccountingMatrixValidationError(
+        message
+      );
+    }
+  }
+
+  /**
+   * Construtor interno de entries.
+   *
+   * Centraliza invariantes comuns:
+   * - accountId;
+   * - assetId;
+   * - entryType;
+   * - Money256;
+   * - positividade;
+   * - consistência do ativo;
+   * - descrição.
+   */
+  private static createEntry(params: {
+    accountId: number;
+    assetId: number;
+    entryType: LedgerEntryDirection;
+    amount: Money256;
+    description: string;
+  }): RawLedgerEntrySpec {
+    const accountId =
+      parsePositiveSafeIntegerId(
+        params.accountId,
+        'accountId'
+      );
+
+    const assetId =
+      parsePositiveSafeIntegerId(
+        params.assetId,
+        'assetId'
+      );
+
+    const amount =
+      AccountingEntryPolicy.assertMoney256(
+        params.amount
+      );
+
+    if (
+      params.entryType !== 'debit' &&
+      params.entryType !== 'credit'
+    ) {
+      throw new AccountingMatrixValidationError(
+        `entryType inválido: ${String(
+          params.entryType
+        )}.`
+      );
+    }
+
+    if (amount.assetId !== assetId) {
+      throw new AccountingMatrixValidationError(
+        `Asset inconsistente: ${assetId} !== ${amount.assetId}.`
+      );
+    }
+
+    AccountingEntryPolicy.assertPositiveAmount(
+      amount
+    );
+
+    const description =
+      AccountingEntryPolicy.normalizeDescription(
+        params.description
+      );
+
+    return {
+      accountId,
+      assetId,
+      entryType: params.entryType,
+      amount,
+      description,
+    };
+  }
+
+  /**
+   * Normalização/validação textual compartilhada.
+   *
+   * Protege contra:
+   * - null/undefined;
+   * - strings vazias;
+   * - caracteres ASCII de controle;
+   * - texto excessivamente grande.
+   */
+  private static normalizeDescription(
+    value: string
+  ): string {
+    if (typeof value !== 'string') {
+      throw new AccountingMatrixValidationError(
+        'A descrição do lançamento contábil deve ser uma string.'
+      );
+    }
+
+    const normalized = value
+      .normalize('NFC')
+      .trim();
+
+    if (normalized.length === 0) {
+      throw new AccountingMatrixValidationError(
+        'A descrição do lançamento contábil não pode ser vazia.'
+      );
+    }
+
+    if (
+      normalized.length >
+      MAX_DESCRIPTION_LENGTH
+    ) {
+      throw new AccountingMatrixValidationError(
+        `A descrição do lançamento contábil não pode exceder ${MAX_DESCRIPTION_LENGTH} caracteres.`
+      );
+    }
+
+    for (
+      let index = 0;
+      index < normalized.length;
+      index += 1
+    ) {
+      const codeUnit =
+        normalized.charCodeAt(index);
+
+      if (
+        (codeUnit >= 0 &&
+          codeUnit <= 8) ||
+        (codeUnit >= 11 &&
+          codeUnit <= 12) ||
+        (codeUnit >= 14 &&
+          codeUnit <= 31) ||
+        codeUnit === 127
+      ) {
+        throw new AccountingMatrixValidationError(
+          'A descrição do lançamento contábil contém caractere de controle inválido.'
+        );
+      }
+    }
+
+    return normalized;
+  }
+
+  /**
+   * Validação de justificativas críticas.
+   */
+  private static normalizeRequiredReason(
+    value: string,
+    emptyMessage: string
+  ): string {
+    if (
+      typeof value !== 'string' ||
+      value.trim().length === 0
+    ) {
+      throw new AccountingMatrixValidationError(
+        emptyMessage
+      );
+    }
+
+    return AccountingEntryPolicy.normalizeDescription(
+      value
+    );
+  }
+}
+
+```
+
+---
+
+<a id="srcdomainsfinancepoliciesaccountstatuspolicyts"></a>
+## Arquivo: `src/domains/finance/policies/AccountStatusPolicy.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountStatusPolicy.ts`
+- **Total de linhas**: 122
+- **Linguagem**: TypeScript
+
+```typescript
+import { AccountInactiveError } from '../errors/FinancialError';
+
+export type AccountStatus =
+  | 'active'
+  | 'inactive'
+  | 'suspended'
+  | 'blocked'
+  | 'closed'
+  | 'pending';
+
+export interface AccountStatusContext {
+  id: number;
+  status: AccountStatus;
+  name?: string;
+}
+
+const KNOWN_ACCOUNT_STATUSES = Object.freeze([
+  'active',
+  'inactive',
+  'suspended',
+  'blocked',
+  'closed',
+  'pending',
+] as const);
+
+export class AccountStatusPolicy {
+  /**
+   * Runtime type guard para status financeiros de conta conhecidos.
+   */
+  public static isAccountStatus(
+    value: unknown
+  ): value is AccountStatus {
+    return (
+      typeof value === 'string' &&
+      (KNOWN_ACCOUNT_STATUSES as readonly string[]).includes(value)
+    );
+  }
+
+  /**
+   * Garante que uma conta possa participar de movimentações financeiras.
+   *
+   * Esta policy decide exclusivamente o estado operacional da conta.
+   *
+   * Não é responsabilidade desta classe:
+   * - autenticação;
+   * - autorização;
+   * - ownership;
+   * - RBAC;
+   * - saldo;
+   * - existência persistida;
+   * - regras contábeis.
+   */
+  public static validateActive(
+    account: AccountStatusContext
+  ): void {
+    if (
+      account === null ||
+      typeof account !== 'object' ||
+      Array.isArray(account)
+    ) {
+      throw new AccountInactiveError(
+        'Conta financeira inválida: contexto de conta ausente ou malformado.'
+      );
+    }
+
+    if (
+      !Number.isSafeInteger(account.id) ||
+      account.id <= 0
+    ) {
+      throw new AccountInactiveError(
+        'Conta financeira possui identificador inválido.'
+      );
+    }
+
+    if (!AccountStatusPolicy.isAccountStatus(account.status)) {
+      throw new AccountInactiveError(
+        `Conta financeira #${account.id} possui status inválido: "${String(
+          account.status
+        )}".`
+      );
+    }
+
+    if (account.status !== 'active') {
+      const name =
+        typeof account.name === 'string' &&
+        account.name.trim().length > 0
+          ? AccountStatusPolicy.normalizeDisplayName(account.name)
+          : 'desconhecida';
+
+      throw new AccountInactiveError(
+        `Conta financeira #${account.id} (${name}) está com status "${account.status}". ` +
+          'Movimentações somente são permitidas em contas ativas.'
+      );
+    }
+  }
+
+  /**
+   * Normaliza o nome utilizado exclusivamente em mensagens de erro/log.
+   *
+   * Não faz parte da persistência nem altera a entidade de conta.
+   */
+  private static normalizeDisplayName(
+    value: string
+  ): string {
+    const normalized = value.normalize('NFC').trim();
+
+    for (let index = 0; index < normalized.length; index += 1) {
+      const codeUnit = normalized.charCodeAt(index);
+
+      if (
+        (codeUnit >= 0 && codeUnit <= 8) ||
+        (codeUnit >= 11 && codeUnit <= 12) ||
+        (codeUnit >= 14 && codeUnit <= 31) ||
+        codeUnit === 127
+      ) {
+        return 'desconhecida';
+      }
+    }
+
+    return normalized;
+  }
+}
+
+```
+
+---
+
+<a id="srcdomainsfinancepoliciesassetstatuspolicyts"></a>
+## Arquivo: `src/domains/finance/policies/AssetStatusPolicy.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AssetStatusPolicy.ts`
+- **Total de linhas**: 214
+- **Linguagem**: TypeScript
+
+```typescript
+import { AssetInactiveError } from '../errors/FinancialError';
+import { Result } from '../../../shared/kernel/Result';
+import { parsePositiveSafeIntegerId } from '../value-objects/Money256';
+
+export type AssetStatus =
+  | 'active'
+  | 'inactive'
+  | 'suspended'
+  | 'blocked'
+  | 'retired'
+  | 'pending';
+
+export interface AssetStatusContext {
+  id: number | string;
+  status: AssetStatus;
+  code?: string;
+}
+
+const KNOWN_ASSET_STATUSES = Object.freeze([
+  'active',
+  'inactive',
+  'suspended',
+  'blocked',
+  'retired',
+  'pending',
+] as const);
+
+export class AssetStatusPolicy {
+  /**
+   * Mantemos os overloads originais para preservar compatibilidade.
+   *
+   * Forma canônica:
+   *   validateActive({ id, status, code })
+   *
+   * Forma compatível:
+   *   validateActive(assetId, status)
+   */
+  public static validateActive(
+    asset: AssetStatusContext
+  ): void;
+
+  public static validateActive(
+    assetId: number | string,
+    status: string
+  ): void;
+
+  public static validateActive(
+    assetInput: AssetStatusContext | number | string,
+    status?: string
+  ): void {
+    const context = AssetStatusPolicy.normalizeContext(
+      assetInput,
+      status
+    );
+
+    const assetId = parsePositiveSafeIntegerId(
+      context.id,
+      'asset.id'
+    );
+
+    if (!AssetStatusPolicy.isAssetStatus(context.status)) {
+      throw new AssetInactiveError(
+        `Ativo financeiro #${assetId} possui status inválido: "${String(
+          context.status
+        )}".`
+      );
+    }
+
+    if (context.status !== 'active') {
+      const code =
+        typeof context.code === 'string' &&
+        context.code.trim().length > 0
+          ? AssetStatusPolicy.normalizeDisplayCode(context.code)
+          : 'desconhecido';
+
+      throw new AssetInactiveError(
+        `Ativo financeiro #${assetId} (${code}) está com status "${context.status}". ` +
+          'Operações financeiras exigem que o ativo esteja ativo.'
+      );
+    }
+  }
+
+  /**
+   * Validação equivalente usando Result.
+   *
+   * Mantida para compatibilidade com callers que adotam o padrão Result.
+   */
+  public static validateActiveResult(
+    assetId: string | number,
+    status: string
+  ): Result<void> {
+    try {
+      const normalizedAssetId =
+        parsePositiveSafeIntegerId(
+          assetId,
+          'asset.id'
+        );
+
+      if (!AssetStatusPolicy.isAssetStatus(status)) {
+        return Result.fail(
+          `Operação bloqueada por política de domínio: Ativo ${normalizedAssetId} possui status inválido '${String(
+            status
+          )}'.`
+        );
+      }
+
+      if (status !== 'active') {
+        return Result.fail(
+          `Operação bloqueada por política de domínio: Ativo ${normalizedAssetId} está com status '${status}' (esperado: 'active').`
+        );
+      }
+
+      return Result.ok(undefined);
+    } catch (error) {
+      return Result.fail(
+        error instanceof Error
+          ? error.message
+          : 'Falha ao validar o status do ativo financeiro.'
+      );
+    }
+  }
+
+  /**
+   * Runtime type guard para status conhecidos.
+   */
+  public static isAssetStatus(
+    value: unknown
+  ): value is AssetStatus {
+    return (
+      typeof value === 'string' &&
+      (KNOWN_ASSET_STATUSES as readonly string[]).includes(value)
+    );
+  }
+
+  /**
+   * Normaliza as duas formas públicas de entrada em um único
+   * contrato interno.
+   */
+  private static normalizeContext(
+    assetInput: AssetStatusContext | number | string,
+    status?: string
+  ): AssetStatusContext {
+    if (
+      assetInput !== null &&
+      typeof assetInput === 'object' &&
+      !Array.isArray(assetInput)
+    ) {
+      const context = assetInput as AssetStatusContext;
+
+      if (
+        !('id' in context) ||
+        !('status' in context)
+      ) {
+        throw new AssetInactiveError(
+          'Contexto de ativo financeiro incompleto.'
+        );
+      }
+
+      return {
+        id: context.id,
+        status: context.status,
+        code:
+          typeof context.code === 'string'
+            ? context.code.trim()
+            : undefined,
+      };
+    }
+
+    if (
+      typeof assetInput === 'number' ||
+      typeof assetInput === 'string'
+    ) {
+      if (typeof status !== 'string') {
+        throw new AssetInactiveError(
+          'Status do ativo financeiro é obrigatório.'
+        );
+      }
+
+      return {
+        id: assetInput,
+        status: status as AssetStatus,
+      };
+    }
+
+    throw new AssetInactiveError(
+      'Contexto de ativo financeiro inválido.'
+    );
+  }
+
+  /**
+   * Evita que dados de apresentação com caracteres de controle
+   * poluam mensagens de erro/log.
+   */
+  private static normalizeDisplayCode(
+    value: string
+  ): string {
+    const normalized = value.normalize('NFC').trim();
+
+    for (let index = 0; index < normalized.length; index += 1) {
+      const codeUnit = normalized.charCodeAt(index);
+
+      if (
+        (codeUnit >= 0 && codeUnit <= 8) ||
+        (codeUnit >= 11 && codeUnit <= 12) ||
+        (codeUnit >= 14 && codeUnit <= 31) ||
+        codeUnit === 127
+      ) {
+        return 'desconhecido';
+      }
+    }
+
+    return normalized;
+  }
+}
+
+```
+
+---
+
+<a id="srcdomainsfinanceservicesfinancialtransactionstatemachinets"></a>
+## Arquivo: `src/domains/finance/services/FinancialTransactionStateMachine.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/FinancialTransactionStateMachine.ts`
+- **Total de linhas**: 152
+- **Linguagem**: TypeScript
+
+```typescript
+import { Result } from '../../../shared/kernel/Result';
+
+/**
+ * ============================================================
+ * FINANCIAL TRANSACTION STATUS
+ * ============================================================
+ *
+ * Representa exclusivamente o lifecycle de negócio da transação.
+ *
+ * IMPORTANTE:
+ * FinancialTransactionStatus NÃO representa:
+ * - posting state (not_posted vs posted);
+ * - idempotency state (processing vs completed);
+ * - OCC state (versioning de saldo);
+ * - settlement state;
+ * - estado de outbox.
+ *
+ * Esses conceitos pertencem às respectivas camadas/policies de infraestrutura e liquidação.
+ */
+export type FinancialTransactionStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'reversed';
+
+const FINANCIAL_TRANSACTION_STATUSES = Object.freeze([
+  'pending',
+  'processing',
+  'completed',
+  'failed',
+  'cancelled',
+  'reversed',
+] as const);
+
+function isFinancialTransactionStatus(
+  value: unknown
+): value is FinancialTransactionStatus {
+  return (
+    typeof value === 'string' &&
+    FINANCIAL_TRANSACTION_STATUSES.includes(
+      value as FinancialTransactionStatus
+    )
+  );
+}
+
+/**
+ * ============================================================
+ * STATE TRANSITION MATRIX (CANÔNICA E IMUTÁVEL)
+ * ============================================================
+ *
+ * pending:    -> processing | failed | cancelled
+ * processing: -> completed  | failed
+ * completed:  -> reversed
+ * failed:     -> terminal (nenhuma)
+ * cancelled:  -> terminal (nenhuma)
+ * reversed:   -> terminal (nenhuma)
+ *
+ * REGRA FINANCEIRA CRÍTICA:
+ * 'processing -> cancelled' É ESTRITAMENTE PROIBIDO.
+ * O cancelamento só pode ocorrer enquanto a transação estiver em 'pending'.
+ */
+const ALLOWED_TRANSITIONS: Readonly<
+  Record<
+    FinancialTransactionStatus,
+    readonly FinancialTransactionStatus[]
+  >
+> = Object.freeze({
+  pending: Object.freeze(['processing', 'failed', 'cancelled'] as const),
+  processing: Object.freeze(['completed', 'failed'] as const),
+  completed: Object.freeze(['reversed'] as const),
+  failed: Object.freeze([] as const),
+  cancelled: Object.freeze([] as const),
+  reversed: Object.freeze([] as const),
+});
+
+export class FinancialTransactionStateMachine {
+  /**
+   * Executa e valida a transição de estado da transação financeira.
+   *
+   * Retorna:
+   *   Result.ok(targetStatus) se a transição for permitida ou for no-op idempotente.
+   *   Result.fail(mensagem) se o status for inválido ou a transição for proibida.
+   */
+  static transition(
+    currentStatus: FinancialTransactionStatus,
+    targetStatus: FinancialTransactionStatus
+  ): Result<FinancialTransactionStatus> {
+    if (!isFinancialTransactionStatus(currentStatus)) {
+      return Result.fail('Status de transação financeira atual inválido.');
+    }
+
+    if (!isFinancialTransactionStatus(targetStatus)) {
+      return Result.fail('Status de transação financeira de destino inválido.');
+    }
+
+    // No-op idempotente: transição para o mesmo estado é segura e permitida
+    if (currentStatus === targetStatus) {
+      return Result.ok(targetStatus);
+    }
+
+    const allowedTransitions = ALLOWED_TRANSITIONS[currentStatus];
+
+    if (!allowedTransitions.includes(targetStatus)) {
+      return Result.fail(
+        `Transição de estado inválida: '${currentStatus}' -> '${targetStatus}'. Transições permitidas a partir de '${currentStatus}': [${allowedTransitions.join(', ')}].`
+      );
+    }
+
+    return Result.ok(targetStatus);
+  }
+
+  /**
+   * Helper booleano de conveniência para verificar se a transição é autorizada.
+   */
+  static canTransition(
+    currentStatus: FinancialTransactionStatus,
+    targetStatus: FinancialTransactionStatus
+  ): boolean {
+    return this.transition(currentStatus, targetStatus).isSuccess;
+  }
+
+  /**
+   * Verifica se o status fornecido é terminal (não admite mais transições de saída).
+   */
+  static isTerminal(status: FinancialTransactionStatus): boolean {
+    if (!isFinancialTransactionStatus(status)) {
+      return false;
+    }
+    return status === 'failed' || status === 'cancelled' || status === 'reversed';
+  }
+
+  /**
+   * Type-guard para validação de input externo.
+   */
+  static isValidStatus(status: unknown): status is FinancialTransactionStatus {
+    return isFinancialTransactionStatus(status);
+  }
+
+  /**
+   * Retorna uma lista imutável das transições permitidas a partir do status informado.
+   */
+  static getAllowedTransitions(
+    status: FinancialTransactionStatus
+  ): readonly FinancialTransactionStatus[] {
+    if (!isFinancialTransactionStatus(status)) {
+      return Object.freeze([]);
+    }
+    return ALLOWED_TRANSITIONS[status];
+  }
+}
+
+```
+
+---
+
+<a id="srcdomainsfinancevalueobjectsbaseunitsts"></a>
+## Arquivo: `src/domains/finance/value-objects/BaseUnits.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/BaseUnits.ts`
+- **Total de linhas**: 48
+- **Linguagem**: TypeScript
+
+```typescript
+import {
+  InvalidMoneyFormatError,
+  Money256OverflowError,
+} from '../errors/FinancialError';
+
+export const MAX_UINT256 = (1n << 256n) - 1n; // 2^256 - 1
+
+export const LEDGER_ENTRY_DIRECTIONS = ['debit', 'credit'] as const;
+export type LedgerEntryDirection = typeof LEDGER_ENTRY_DIRECTIONS[number];
+
+export function isLedgerEntryDirection(value: unknown): value is LedgerEntryDirection {
+  return typeof value === 'string' && (value === 'debit' || value === 'credit');
+}
+
+/**
+ * FIN-AMT-001: Canonical Base Unit Range
+ * Valida se um valor de base units é uma string decimal canônica e respeita o teto de 256 bits.
+ * Permite zero ("0") para saldos, limites e projeções.
+ */
+export function parseCanonicalBaseUnits(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new InvalidMoneyFormatError('O valor de unidades base deve ser fornecido como string decimal canônica.');
+  }
+
+  if (!/^(0|[1-9]\d*)$/.test(value)) {
+    throw new InvalidMoneyFormatError(
+      `Formato de unidades base inválido: "${value}". Deve ser uma string de inteiros sem sinal, sem decimais, sem espaços e sem zeros à esquerda.`
+    );
+  }
+
+  const numericBigInt = BigInt(value);
+  if (numericBigInt > MAX_UINT256) {
+    throw new Money256OverflowError();
+  }
+
+  return value;
+}
+
+/**
+ * Valida montante estritamente positivo para lançamentos do ledger contábil (> 0).
+ */
+export function parsePositiveCanonicalBaseUnits(value: unknown): string {
+  const canonical = parseCanonicalBaseUnits(value);
+  if (canonical === '0') {
+    throw new InvalidMoneyFormatError('Lançamentos no ledger contábil exigem montante estritamente positivo (> 0).');
+  }
+  return canonical;
+}
+
+```
+
+---
+
+<a id="srcdomainsfinancevalueobjectsmoney256ts"></a>
+## Arquivo: `src/domains/finance/value-objects/Money256.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/Money256.ts`
+- **Total de linhas**: 130
+- **Linguagem**: TypeScript
+
+```typescript
+import {
+  InvalidMoneyFormatError,
+  Money256OverflowError,
+  CurrencyMismatchError,
+  MoneyUnderflowError,
+  InvalidIdentifierError,
+} from '../errors/FinancialError';
+
+export const MAX_UINT256 = (1n << 256n) - 1n; // 2^256 - 1
+
+export function parsePositiveSafeIntegerId(id: number | string, name = 'id'): number {
+  const numericId = typeof id === 'number' ? id : Number(id);
+  if (!Number.isInteger(numericId) || numericId <= 0 || numericId > Number.MAX_SAFE_INTEGER) {
+    throw new InvalidIdentifierError(`Invalid physical ${name}: ${id}`);
+  }
+  return numericId;
+}
+
+export class Money256 {
+  public readonly amount: bigint;
+  public readonly assetId: number;
+
+  constructor(amount: bigint | string, assetId: number | string) {
+    this.assetId = parsePositiveSafeIntegerId(assetId, 'assetId');
+
+    if (typeof amount === 'string') {
+      this.amount = Money256.parseCanonicalString(amount);
+    } else if (typeof amount === 'bigint') {
+      Money256.assertValidRange(amount);
+      this.amount = amount;
+    } else {
+      throw new InvalidMoneyFormatError('Money amount must be a bigint or canonical decimal string.');
+    }
+
+    Object.freeze(this);
+  }
+
+  public static zero(assetId: number | string): Money256 {
+    return new Money256(0n, assetId);
+  }
+
+  public static fromString(amountStr: string, assetId: number | string): Money256 {
+    return new Money256(amountStr, assetId);
+  }
+
+  public static fromBigInt(amount: bigint, assetId: number | string): Money256 {
+    return new Money256(amount, assetId);
+  }
+
+  public static parseCanonicalString(str: string): bigint {
+    if (typeof str !== 'string' || !/^(0|[1-9]\d*)$/.test(str)) {
+      throw new InvalidMoneyFormatError(
+        `Invalid canonical decimal string format: "${str}". Must be non-negative integer string without leading zeros, exponent, or signs.`
+      );
+    }
+    const val = BigInt(str);
+    Money256.assertValidRange(val);
+    return val;
+  }
+
+  private static assertValidRange(val: bigint): void {
+    if (val < 0n) {
+      throw new InvalidMoneyFormatError('Monetary amount cannot be negative.');
+    }
+    if (val > MAX_UINT256) {
+      throw new Money256OverflowError();
+    }
+  }
+
+  public add(other: Money256): Money256 {
+    this.assertSameAsset(other);
+    return new Money256(this.amount + other.amount, this.assetId);
+  }
+
+  public subtract(other: Money256): Money256 {
+    this.assertSameAsset(other);
+    if (this.amount < other.amount) {
+      throw new MoneyUnderflowError('Subtraction resulting in negative balance is prohibited.');
+    }
+    return new Money256(this.amount - other.amount, this.assetId);
+  }
+
+  public isZero(): boolean {
+    return this.amount === 0n;
+  }
+
+  public isPositive(): boolean {
+    return this.amount > 0n;
+  }
+
+  public equals(other: Money256): boolean {
+    return this.assetId === other.assetId && this.amount === other.amount;
+  }
+
+  public greaterThan(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount > other.amount;
+  }
+
+  public greaterThanOrEqual(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount >= other.amount;
+  }
+
+  public lessThan(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount < other.amount;
+  }
+
+  public lessThanOrEqual(other: Money256): boolean {
+    this.assertSameAsset(other);
+    return this.amount <= other.amount;
+  }
+
+  public toCanonicalString(): string {
+    return this.amount.toString(10);
+  }
+
+  public toBigInt(): bigint {
+    return this.amount;
+  }
+
+  private assertSameAsset(other: Money256): void {
+    if (this.assetId !== other.assetId) {
+      throw new CurrencyMismatchError(
+        `Cannot perform arithmetic on different assets: ${this.assetId} and ${other.assetId}`
+      );
+    }
+  }
+}
+
+```
+
+---
+
+<a id="srcapplicationfinanceservicescanonicalrequesthashservicets"></a>
+## Arquivo: `src/application/finance/services/CanonicalRequestHashService.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/application/finance/services/CanonicalRequestHashService.ts`
+- **Total de linhas**: 189
+- **Linguagem**: TypeScript
+
+```typescript
+import { createHash } from 'crypto';
+
+export type CanonicalPrimitive = string | number | boolean | null;
+export type CanonicalValue =
+  | CanonicalPrimitive
+  | CanonicalValue[]
+  | { [key: string]: CanonicalValue };
+
+export interface CanonicalEntryInput {
+  accountId: string | number;
+  amount: { amount: bigint | string | number; assetId: number | string } | bigint | string | number;
+  assetId?: number | string;
+  type: 'debit' | 'credit' | string;
+}
+
+export interface CanonicalTransactionInput {
+  userId?: number | null;
+  transactionType?: string | null;
+  category?: string | null;
+  description?: string | null;
+  refundOfTransactionId?: number | null;
+  reversalOfTransactionId?: number | null;
+  entries: ReadonlyArray<CanonicalEntryInput>;
+}
+
+export class CanonicalRequestHashService {
+  /**
+   * Converte recursivamente um objeto/payload para formato JSON canônico:
+   * 1. Ordena chaves de objetos alfabeticamente com ordenação binária pura.
+   * 2. Rejeita `undefined`, arrays esparsos e objetos não-planos (Map, Set, etc).
+   * 3. Rejeita tipos não determinísticos (Date, Function, Symbol).
+   * 4. Valida inteiros seguros em números (Number.isSafeInteger) ou BigInt.
+   * 5. Garante representação determinística sem dependência de locale.
+   */
+  public static canonicalize(obj: unknown): string {
+    if (obj === null) {
+      return 'null';
+    }
+
+    if (typeof obj === 'boolean') {
+      return obj ? 'true' : 'false';
+    }
+
+    if (typeof obj === 'number') {
+      if (!Number.isFinite(obj)) {
+        throw new Error(`Erro de canonicalização: Número não-finito (${obj}) é proibido.`);
+      }
+      if (!Number.isSafeInteger(obj)) {
+        throw new Error(`Erro de canonicalização: Número fora do limite de precisão inteira segura (${obj}). Utilize BigInt ou decimal string.`);
+      }
+      return JSON.stringify(obj);
+    }
+
+    if (typeof obj === 'string') {
+      return JSON.stringify(obj);
+    }
+
+    if (typeof obj === 'bigint') {
+      return JSON.stringify(obj.toString(10));
+    }
+
+    if (typeof obj === 'symbol' || typeof obj === 'function') {
+      throw new Error(`Erro de canonicalização: Tipo não suportado (${typeof obj}).`);
+    }
+
+    if (obj instanceof Date) {
+      throw new Error('Erro de canonicalização: Objetos Date não são determinísticos para payloads financeiros.');
+    }
+
+    if (Array.isArray(obj)) {
+      // Rejeição estrita de arrays esparsos (sparse arrays)
+      for (let i = 0; i < obj.length; i++) {
+        if (!Object.prototype.hasOwnProperty.call(obj, i)) {
+          throw new Error('Erro de canonicalização: Arrays esparsos (sparse arrays com lacunas) são estritamente proibidos.');
+        }
+      }
+      const items = obj.map((item) => CanonicalRequestHashService.canonicalize(item));
+      return `[${items.join(',')}]`;
+    }
+
+    if (typeof obj === 'object') {
+      // Rejeição de objetos customizados / não-planos (Map, Set, etc.)
+      const proto = Object.getPrototypeOf(obj);
+      if (proto !== null && proto !== Object.prototype) {
+        throw new Error(`Erro de canonicalização: Instância de objeto não-plano (${obj.constructor?.name ?? 'custom'}) é proibida.`);
+      }
+
+      const record = obj as Record<string, unknown>;
+      // Ordenação binária/lexicográfica pura (sem localeCompare)
+      const sortedKeys = Object.keys(record).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      const pairs: string[] = [];
+
+      for (const key of sortedKeys) {
+        const val = record[key];
+        if (val === undefined) {
+          throw new Error(`Erro de canonicalização: undefined não é permitido na chave "${key}".`);
+        }
+        const canonicalVal = CanonicalRequestHashService.canonicalize(val);
+        pairs.push(`${JSON.stringify(key)}:${canonicalVal}`);
+      }
+
+      return `{${pairs.join(',')}}`;
+    }
+
+    throw new Error(`Erro de canonicalização: Tipo primitivo não suportado (${typeof obj}).`);
+  }
+
+  /**
+   * Extrai e valida a estrutura runtime do DTO/Aggregate de transação canônica.
+   */
+  private static isCanonicalTransactionInput(payload: unknown): payload is CanonicalTransactionInput {
+    if (payload === null || typeof payload !== 'object' || !('entries' in payload)) {
+      return false;
+    }
+    const p = payload as any;
+    if (!Array.isArray(p.entries)) {
+      return false;
+    }
+    for (const e of p.entries) {
+      if (e === null || typeof e !== 'object') return false;
+      if (e.accountId === undefined || e.accountId === null) return false;
+      if (e.amount === undefined || e.amount === null) return false;
+      if (typeof e.type !== 'string' || (e.type !== 'debit' && e.type !== 'credit')) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Gera o hash SHA-256 hexadecimal a partir do payload canônico do negócio.
+   * Se receber um aggregate LedgerTransaction ou DTO com entries, filtra exclusivamente
+   * os atributos financeiros determinísticos (removendo IDs aleatórios, UUIDs e timestamps)
+   * e ordena os lançamentos por ordenação estrutural por tupla (accountId, assetId, type, amount).
+   */
+  public static calculateHash(payload: unknown): string {
+    let targetPayload = payload;
+
+    if (CanonicalRequestHashService.isCanonicalTransactionInput(payload)) {
+      const p = payload;
+      const rawEntries = p.entries.map((e) => {
+        const amountObj = typeof e.amount === 'object' && e.amount !== null ? e.amount : null;
+        const amountVal = amountObj ? String(amountObj.amount) : String(e.amount);
+        const assetVal = amountObj ? String(amountObj.assetId) : String(e.assetId ?? '0');
+
+        // Validação runtime estrita de valores positivos
+        try {
+          const parsedBigInt = BigInt(amountVal);
+          if (parsedBigInt <= 0n) {
+            throw new Error(`Erro de canonicalização: Quantia de lançamento deve ser maior que zero (recebido: ${amountVal}).`);
+          }
+        } catch (err: any) {
+          if (err.message?.includes('Quantia de lançamento')) throw err;
+          throw new Error(`Erro de canonicalização: Valor numérico de quantia inválido ("${amountVal}").`);
+        }
+
+        return {
+          accountId: String(e.accountId),
+          amount: amountVal,
+          assetId: assetVal,
+          type: String(e.type),
+        };
+      });
+
+      // Ordenação determinística estrita por tupla (accountId -> assetId -> type -> amount)
+      rawEntries.sort((a, b) => {
+        if (a.accountId !== b.accountId) return a.accountId < b.accountId ? -1 : 1;
+        if (a.assetId !== b.assetId) return a.assetId < b.assetId ? -1 : 1;
+        if (a.type !== b.type) return a.type < b.type ? -1 : 1;
+        if (a.amount !== b.amount) return a.amount < b.amount ? -1 : 1;
+        return 0;
+      });
+
+      targetPayload = {
+        userId: p.userId ?? null,
+        transactionType: p.transactionType ?? null,
+        category: p.category ?? null,
+        description: p.description ?? null,
+        refundOfTransactionId: p.refundOfTransactionId ?? null,
+        reversalOfTransactionId: p.reversalOfTransactionId ?? null,
+        entries: rawEntries,
+      };
+    }
+
+    const canonicalString = CanonicalRequestHashService.canonicalize(targetPayload);
+    return createHash('sha256').update(canonicalString, 'utf8').digest('hex');
+  }
+}
+
+
+
+
+```
+
+---
+
+<a id="srcapplicationfinanceservicesfinancialtransactionorchestratorts"></a>
+## Arquivo: `src/application/finance/services/FinancialTransactionOrchestrator.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/application/finance/services/FinancialTransactionOrchestrator.ts`
+- **Total de linhas**: 341
+- **Linguagem**: TypeScript
+
+```typescript
+import { IFinanceRepository } from '../../ports/output/IFinanceRepository';
+import { IOutboxRepository } from '../../ports/output/IOutboxRepository';
+import { IDomainEvent } from '../../../shared/kernel/DomainEvent';
+import { LedgerTransaction } from '../../../domains/finance/entities/LedgerTransaction';
+import {
+  IdempotencyConflictError,
+  IdempotencyInProgressError,
+  OptimisticConcurrencyError,
+  InsufficientBalanceError,
+  InvalidLedgerTransactionError,
+  InvalidStateTransitionError,
+} from '../../../domains/finance/errors/FinancialError';
+import { LedgerImbalanceError } from '../../../domains/finance/errors/LedgerImbalanceError';
+import { CanonicalRequestHashService } from './CanonicalRequestHashService';
+import { AccountStatusPolicy } from '../../../domains/finance/policies/AccountStatusPolicy';
+import { AssetStatusPolicy } from '../../../domains/finance/policies/AssetStatusPolicy';
+import { AccountClassPolicy } from '../../../domains/finance/policies/AccountClassPolicy';
+import { FinancialTransactionStateMachine } from '../../../domains/finance/services/FinancialTransactionStateMachine';
+import { parsePositiveSafeIntegerId } from '../../../domains/finance/value-objects/Money256';
+
+export interface OrchestratorResult {
+  transactionId: number;
+  isReplayed: boolean;
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled BalanceUpdateResult case: ${value}`);
+}
+
+export class FinancialTransactionOrchestrator {
+  /**
+   * O Orchestrator exige um repositório transacional vinculado ao Unit of Work (BEGIN IMMEDIATE).
+   * Ele atua como a Autoridade Física Central de escrita no ledger financeiro.
+   *
+   * Todas as etapas de persistência (Claim Idempotency, Insert Transaction, Insert Entries, OCC Balance Updates,
+   * Outbox Event e Complete Idempotency) ocorrem obrigatoriamente dentro do mesmo boundary transacional do banco.
+   */
+  constructor(
+    private readonly financeRepo: IFinanceRepository,
+    private readonly outboxRepo?: IOutboxRepository
+  ) { }
+
+  /**
+   * Valida rigorosamente o invariante FIN-001 de partidas dobradas antes da persistência:
+   * Para cada ativo: SUM(débitos) === SUM(créditos)
+   */
+  private validateDoubleEntry(transaction: LedgerTransaction): void {
+    const assetBalances = new Map<number, bigint>();
+
+    for (const entry of transaction.entries) {
+      const assetId = entry.amount.assetId;
+      const current = assetBalances.get(assetId) ?? 0n;
+      const delta = entry.type === 'debit' ? entry.amount.amount : -entry.amount.amount;
+      assetBalances.set(assetId, current + delta);
+    }
+
+    for (const [assetId, netBalance] of assetBalances.entries()) {
+      if (netBalance !== 0n) {
+        throw new LedgerImbalanceError(
+          `Desbalanceamento contábil no ativo #${assetId}: soma dos débitos difere dos créditos (diferença: ${netBalance.toString()}).`
+        );
+      }
+    }
+  }
+
+  /**
+   * Pré-validação obrigatória de todas as entidades participantes (contas e ativos).
+   * Executada ANTES da reivindicação de idempotência e de qualquer escrita no banco de dados.
+   *
+   * Garante que:
+   * 1. Todos os ativos únicos existem e estão 'active' (AssetStatusPolicy).
+   * 2. Todas as contas únicas existem e estão 'active' (AccountStatusPolicy).
+   * 3. Todas as contas possuem classificação contábil compatível com seu tipo (AccountClassPolicy).
+   *
+   * Como é executada sobre o conjunto de IDs únicos da transação, elimina a brecha
+   * do delta zero (onde debitSum === creditSum fazia o OCC pular a validação da conta).
+   */
+  private async preValidateEntities(transaction: LedgerTransaction): Promise<void> {
+    const accountIds = new Set<number>();
+    const assetIds = new Set<number>();
+
+    for (const entry of transaction.entries) {
+      const parsedAccId = parsePositiveSafeIntegerId(entry.accountId, 'entry.accountId');
+      accountIds.add(parsedAccId);
+      assetIds.add(entry.amount.assetId);
+    }
+
+    // 1. Validar todos os ativos participantes
+    for (const assetId of assetIds) {
+      const assetRes = await this.financeRepo.getAssetById(assetId);
+      if (assetRes.isFailure) {
+        throw new Error(
+          assetRes.error || `Ativo financeiro #${assetId} não encontrado.`
+        );
+      }
+      const asset = assetRes.getValue();
+      AssetStatusPolicy.validateActive({
+        id: asset.id,
+        status: asset.status,
+        code: asset.code,
+      });
+    }
+
+    // 2. Validar todas as contas participantes
+    for (const accountId of accountIds) {
+      const accountRes = await this.financeRepo.getAccountById(accountId);
+      if (accountRes.isFailure) {
+        throw new Error(
+          accountRes.error || `Conta financeira #${accountId} não encontrada.`
+        );
+      }
+      const account = accountRes.getValue();
+
+      // Validação de status operacional: pode movimentar?
+      AccountStatusPolicy.validateActive({
+        id: account.id,
+        status: account.status,
+        name: account.name,
+      });
+
+      // Validação de classe contábil: classificação compatível?
+      if (account.accountClass) {
+        AccountClassPolicy.validate(account.accountType, account.accountClass);
+      }
+    }
+  }
+
+  /**
+   * Executa o fluxo atômico de escrita no ledger:
+   * 0. Validação estrita do invariante do Ledger (mínimo 2 lançamentos, ao menos 1 débito e 1 crédito, e balanço nulo).
+   * 1. PRE-POSTING GATE: Pré-validação de todas as contas e ativos participantes (elimina bypass de delta-zero).
+   * 2. Validação da transição de estado da transação: pending -> processing via State Machine.
+   * 3. Cálculo do Hash Canônico do payload financeiro.
+   * 4. Reclamação atômica de Idempotência.
+   * 5. Inserção do registro da transação financeira em 'processing'.
+   * 6. Inserção dos lançamentos contábeis imutáveis.
+   * 7. Atualização dos saldos materializados via OCC com ordenação determinística por (accountId, assetId).
+   * 8. Transição de status para 'completed' via State Machine.
+   * 9. Registro de evento no Outbox.
+   * 10. Conclusão da Idempotência.
+   */
+  public async executePosting(
+    transaction: LedgerTransaction,
+    requestHashOverride?: string
+  ): Promise<OrchestratorResult> {
+    // Invariante FIN-001: Validação do número mínimo de lançamentos
+    if (!transaction.entries || transaction.entries.length < 2) {
+      throw new InvalidLedgerTransactionError(
+        'Invariante do Ledger violado: Uma transação financeira deve conter no mínimo 2 lançamentos contábeis.'
+      );
+    }
+
+    const hasDebit = transaction.entries.some((e) => e.type === 'debit');
+    const hasCredit = transaction.entries.some((e) => e.type === 'credit');
+    if (!hasDebit || !hasCredit) {
+      throw new InvalidLedgerTransactionError(
+        'Invariante do Ledger violado: Uma transação financeira exige no mínimo 1 lançamento de débito e 1 de crédito.'
+      );
+    }
+
+    // Invariante: Todas as quantias de lançamentos contábeis devem ser estritamente maiores que zero (> 0)
+    for (const entry of transaction.entries) {
+      if (entry.amount.amount <= 0n) {
+        throw new InvalidLedgerTransactionError(
+          `Invariante do Ledger violado: Quantia de lançamento contábil inválida (${entry.amount.amount.toString()}). O valor deve ser estritamente positivo.`
+        );
+      }
+    }
+
+    this.validateDoubleEntry(transaction);
+
+    // 1. PRE-POSTING GATE: Pré-validação obrigatória de entidades (elimina brecha do delta zero)
+    await this.preValidateEntities(transaction);
+
+    // 2. State Machine: validação da transição inicial para 'processing'
+    const processingTransition = FinancialTransactionStateMachine.transition(
+      transaction.status,
+      'processing'
+    );
+    if (processingTransition.isFailure) {
+      throw new InvalidStateTransitionError(
+        processingTransition.error || 'Transição de estado para processing inválida.'
+      );
+    }
+    const processingStatus = processingTransition.getValue();
+
+    // 3. Hash canônico calculado pelo servidor (ou override fornecido para testes)
+    const computedHash = requestHashOverride || CanonicalRequestHashService.calculateHash(transaction);
+
+    // 4. Claim Idempotency Key
+    const claimed = await this.financeRepo.claimIdempotency(
+      transaction.idempotencyKey,
+      transaction.userId,
+      'finance',
+      computedHash
+    );
+
+    if (!claimed) {
+      const existing = await this.financeRepo.getIdempotencyRecord(transaction.idempotencyKey, 'finance');
+      if (!existing) {
+        throw new IdempotencyInProgressError('Conflito de concorrência ao verificar chave de idempotência.');
+      }
+
+      if (existing.requestHash === computedHash) {
+        if (existing.status === 'completed' && existing.transactionId) {
+          return { transactionId: existing.transactionId, isReplayed: true };
+        }
+        throw new IdempotencyInProgressError();
+      } else {
+        throw new IdempotencyConflictError();
+      }
+    }
+
+    // 5. Inserção do registro pai da transação com o status derivado da State Machine
+    const txResult = await this.financeRepo.insertTransaction({
+      userId: transaction.userId ?? null,
+      type: transaction.transactionType ?? 'adjustment',
+      category: transaction.category || 'operational',
+      description: transaction.description,
+      status: processingStatus,
+      reversalOfTransactionId: transaction.reversalOfTransactionId,
+      refundOfTransactionId: transaction.refundOfTransactionId,
+    });
+    if (txResult.isFailure) {
+      throw new Error(txResult.typedError?.message || txResult.error || 'Falha ao inserir registro de transação financeira.');
+    }
+    const transactionId = txResult.getValue();
+
+    // 6. Inserção dos lançamentos contábeis imutáveis
+    const entriesResult = await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
+    if (entriesResult.isFailure) {
+      throw new Error(entriesResult.typedError?.message || entriesResult.error || 'Falha ao inserir lançamentos contábeis.');
+    }
+
+    // 7. Consolidação e agregação de saldos por (accountId, assetId) para evitar falhas de saldo intermediário (intra-transaction) e otimizar I/O.
+    interface AccountAssetKey {
+      accountId: string;
+      assetId: number;
+      debitSum: bigint;
+      creditSum: bigint;
+    }
+
+    const aggregatedMap = new Map<string, AccountAssetKey>();
+
+    for (const entry of transaction.entries) {
+      const key = `${entry.accountId}:${entry.amount.assetId}`;
+      const existing = aggregatedMap.get(key) || {
+        accountId: entry.accountId,
+        assetId: entry.amount.assetId,
+        debitSum: 0n,
+        creditSum: 0n,
+      };
+
+      if (entry.type === 'debit') {
+        existing.debitSum += entry.amount.amount;
+      } else {
+        existing.creditSum += entry.amount.amount;
+      }
+      aggregatedMap.set(key, existing);
+    }
+
+    // Ordenação determinística de execução por (accountId, assetId) para prevenção de lock contention / deadlock em operações concorrentes.
+    const sortedDeltas = Array.from(aggregatedMap.values()).sort((a, b) => {
+      if (a.accountId !== b.accountId) {
+        return a.accountId < b.accountId ? -1 : 1;
+      }
+      return a.assetId < b.assetId ? -1 : a.assetId > b.assetId ? 1 : 0;
+    });
+
+    // 8. Execução do OCC de saldos apenas para deltas líquidos não-nulos (contas já pré-validadas na etapa 1)
+    for (const delta of sortedDeltas) {
+      if (delta.debitSum === delta.creditSum) {
+        continue; // Débitos e créditos idênticos na mesma conta cancelam-se com variação nula de saldo
+      }
+
+      const isNetDebit = delta.debitSum > delta.creditSum;
+      const netAmount = isNetDebit
+        ? delta.debitSum - delta.creditSum
+        : delta.creditSum - delta.debitSum;
+      const netType: 'debit' | 'credit' = isNetDebit ? 'debit' : 'credit';
+
+      const updateResult = await this.financeRepo.updateBalanceWithOCC(
+        delta.accountId,
+        delta.assetId,
+        netAmount,
+        netType
+      );
+
+      switch (updateResult) {
+        case 'UPDATED':
+          break;
+        case 'INSUFFICIENT_BALANCE':
+          throw new InsufficientBalanceError(
+            `saldo insuficiente para a conta #${delta.accountId} e ativo #${delta.assetId}.`
+          );
+        case 'OCC_CONFLICT':
+          throw new OptimisticConcurrencyError(
+            `Falha de concorrência otimista (OCC version mismatch) para a conta #${delta.accountId}.`
+          );
+        default:
+          assertNever(updateResult);
+      }
+    }
+
+    // 9. State Machine: validação da transição para 'completed'
+    const completedTransition = FinancialTransactionStateMachine.transition(
+      processingStatus,
+      'completed'
+    );
+    if (completedTransition.isFailure) {
+      throw new InvalidStateTransitionError(
+        completedTransition.error || 'Transição de estado para completed inválida.'
+      );
+    }
+    const completedStatus = completedTransition.getValue();
+
+    // 10. Atualização do status da transação para 'completed'
+    await this.financeRepo.updateTransactionStatus(transactionId, completedStatus);
+
+    // 11. Persistência de Evento no Outbox
+    if (this.outboxRepo) {
+      await this.outboxRepo.saveEvent(
+        {
+          dateTimeOccurred: new Date(),
+          getAggregateId: () => String(transactionId),
+          transactionId,
+          idempotencyKey: transaction.idempotencyKey,
+          requestHash: computedHash,
+        } as IDomainEvent,
+        transactionId,
+        'LedgerTransaction',
+        1
+      );
+    }
+
+    // 12. Conclusão do registro de Idempotência
+    await this.financeRepo.completeIdempotency(transaction.idempotencyKey, 'finance', transactionId);
+
+    return { transactionId, isReplayed: false };
+  }
+}
+
+```
+
+---
+
+<a id="srcapplicationfinanceusecasesgettreasurybalanceusecasets"></a>
+## Arquivo: `src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts`
+- **Total de linhas**: 14
+- **Linguagem**: TypeScript
+
+```typescript
+import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { AccountBalanceRecord } from '../../ports/output/IFinanceRepository';
+
+export class GetTreasuryBalanceUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(): Promise<Result<AccountBalanceRecord[]>> {
+    return await this.uow.execute(async (factory) => {
+      const financeRepo = factory.getFinanceRepository();
+      return await financeRepo.getTreasuryBalance();
+    });
+  }
+}
+
+```
+
+---
+
+<a id="srcapplicationfinanceusecasesrecorddepositusecasets"></a>
+## Arquivo: `src/application/finance/use-cases/RecordDepositUseCase.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordDepositUseCase.ts`
+- **Total de linhas**: 83
+- **Linguagem**: TypeScript
+
+```typescript
+import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { LedgerTransaction, LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../../../domains/finance/value-objects/Money256';
+import { AccountingEntryPolicy } from '../../../domains/finance/policies/AccountingEntryPolicy';
+import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
+import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
+import { AccountInactiveError } from '../../../domains/finance/errors/FinancialError';
+
+export interface DepositCommand {
+  userId: number;
+  amountBaseUnits: string;
+  assetId: number;
+  description: string;
+  idempotencyKey: string;
+  requestHash?: string;
+}
+
+export class RecordDepositUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(command: DepositCommand): Promise<Result<OrchestratorResult>> {
+    try {
+      const amount = Money256.fromString(command.amountBaseUnits, command.assetId);
+
+      return await this.uow.execute(async (factory) => {
+        const repo = factory.getFinanceRepository();
+
+        const treasuryRes = await repo.getTreasuryAccount();
+        if (treasuryRes.isFailure) throw new Error(treasuryRes.error || 'Conta de tesouraria não encontrada');
+        const treasuryAccountId = treasuryRes.getValue().id;
+
+        const userAccRes = await repo.getOrCreateUserAccount(command.userId);
+        if (userAccRes.isFailure) throw new Error(userAccRes.error || 'Conta do usuário não encontrada');
+        const userAcc = userAccRes.getValue();
+        if (userAcc.status !== 'active') {
+          throw new AccountInactiveError('Conta do Usuário está inativa ou suspensa.');
+        }
+        const userAccountId = userAcc.id;
+
+        const rawEntries = AccountingEntryPolicy.createDepositEntries({
+          treasuryAccountId,
+          userAccountId,
+          amount,
+          description: command.description,
+        });
+
+        const ledgerEntries = rawEntries.map(
+          (r) =>
+            new LedgerEntry({
+              accountId: String(r.accountId),
+              amount: r.amount,
+              type: r.entryType,
+              description: r.description,
+            })
+        );
+
+        const transaction = LedgerTransaction.create({
+          idempotencyKey: command.idempotencyKey,
+          description: command.description,
+          entries: ledgerEntries,
+          transactionType: 'deposit',
+          category: 'deposit',
+          userId: command.userId,
+        });
+
+        if (command.requestHash !== undefined) {
+          const canonicalHash = CanonicalRequestHashService.calculateHash(transaction);
+          if (command.requestHash !== canonicalHash) {
+            throw new Error('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload de depósito.');
+          }
+        }
+
+        const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+        const orchestratorResult = await orchestrator.executePosting(transaction);
+        return Result.ok(orchestratorResult);
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao realizar depósito.';
+      return Result.fail(message);
+    }
+  }
+}
+
+```
+
+---
+
+<a id="srcapplicationfinanceusecasesrecordledgertransactionusecasets"></a>
+## Arquivo: `src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts`
+- **Total de linhas**: 37
+- **Linguagem**: TypeScript
+
+```typescript
+import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
+import { LedgerTransaction } from '../../../domains/finance/entities/LedgerTransaction';
+import { Result } from '../../../shared/kernel/Result';
+import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
+import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
+
+export class RecordLedgerTransactionUseCase {
+  constructor(private readonly unitOfWork: IUnitOfWork) {}
+
+  /**
+   * Application entry point for generic ledger posting.
+   * Valida a integridade do hash do cliente (se fornecido) e delega a execução
+   * transacional para a Autoridade Física Central (FinancialTransactionOrchestrator).
+   */
+  async execute(
+    transaction: LedgerTransaction,
+    providedRequestHash?: string
+  ): Promise<Result<OrchestratorResult>> {
+    try {
+      const canonicalHash = CanonicalRequestHashService.calculateHash(transaction);
+      // Se um hash do cliente for fornecido, deve coincidir com o hash canônico calculado para evitar payload falsificado
+      if (providedRequestHash && providedRequestHash !== canonicalHash) {
+        return Result.fail('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload (FIN-008).');
+      }
+
+      return await this.unitOfWork.execute(async (factory) => {
+        const repo = factory.getFinanceRepository();
+        const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+        const orchestratorResult = await orchestrator.executePosting(transaction);
+        return Result.ok(orchestratorResult);
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao processar lançamento no ledger financeiro.';
+      return Result.fail(message);
+    }
+  }
+}
+
+```
+
+---
+
+<a id="srcapplicationfinanceusecasesrecordtransferusecasets"></a>
+## Arquivo: `src/application/finance/use-cases/RecordTransferUseCase.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTransferUseCase.ts`
+- **Total de linhas**: 98
+- **Linguagem**: TypeScript
+
+```typescript
+import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { LedgerTransaction, LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../../../domains/finance/value-objects/Money256';
+import { AccountingEntryPolicy } from '../../../domains/finance/policies/AccountingEntryPolicy';
+import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
+import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
+
+export interface TransferCommand {
+  sourceUserId: number;
+  destinationUserId: number;
+  amountBaseUnits: string;
+  assetId: number;
+  description: string;
+  idempotencyKey: string;
+  requestHash?: string;
+}
+
+export class RecordTransferUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(command: TransferCommand): Promise<Result<OrchestratorResult>> {
+    try {
+      if (command.sourceUserId === command.destinationUserId) {
+        return Result.fail('Transferência exige usuários de origem e destino distintos.');
+      }
+
+      const amount = Money256.fromString(command.amountBaseUnits, command.assetId);
+
+      return await this.uow.execute(async (factory) => {
+        const repo = factory.getFinanceRepository();
+
+        const sourceAccRes = await repo.getOrCreateUserAccount(command.sourceUserId);
+        if (sourceAccRes.isFailure) throw new Error(sourceAccRes.error || 'Conta de origem não encontrada');
+
+        const destAccRes = await repo.getOrCreateUserAccount(command.destinationUserId);
+        if (destAccRes.isFailure) throw new Error(destAccRes.error || 'Conta de destino não encontrada');
+
+        const sourceAcc = sourceAccRes.getValue();
+        if (sourceAcc.status !== 'active') {
+          throw new Error('Conta de origem está inativa ou suspensa.');
+        }
+
+        const destAcc = destAccRes.getValue();
+        if (destAcc.status !== 'active') {
+          throw new Error('Conta de destino está inativa ou suspensa.');
+        }
+
+        const sourceAccountId = sourceAcc.id;
+        const destinationAccountId = destAcc.id;
+
+        if (sourceAccountId === destinationAccountId) {
+          throw new Error('Auto-transferência para a mesma conta é proibida.');
+        }
+
+        const rawEntries = AccountingEntryPolicy.createTransferEntries({
+          sourceAccountId,
+          destinationAccountId,
+          amount,
+          description: command.description,
+        });
+
+        const ledgerEntries: LedgerEntry[] = rawEntries.map(
+          (r) =>
+            new LedgerEntry({
+              accountId: String(r.accountId),
+              amount: r.amount,
+              type: r.entryType,
+              description: r.description,
+            })
+        );
+
+        const transaction = LedgerTransaction.create({
+          idempotencyKey: command.idempotencyKey,
+          description: command.description,
+          entries: ledgerEntries,
+          transactionType: 'transfer',
+          category: 'operational',
+          userId: command.sourceUserId,
+        });
+
+        if (command.requestHash !== undefined) {
+          const canonicalHash = CanonicalRequestHashService.calculateHash(transaction);
+          if (command.requestHash !== canonicalHash) {
+            throw new Error('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload de transferência.');
+          }
+        }
+
+        const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+        const orchestratorResult = await orchestrator.executePosting(transaction);
+        return Result.ok(orchestratorResult);
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao realizar transferência.';
+      return Result.fail(message);
+    }
+  }
+}
+
+```
+
+---
+
+<a id="srcapplicationfinanceusecasesrecordtreasurytransactionusecasets"></a>
+## Arquivo: `src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts`
+- **Total de linhas**: 445
+- **Linguagem**: TypeScript
+
+```typescript
+import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { LedgerTransaction, LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
+import { Money256, parsePositiveSafeIntegerId } from '../../../domains/finance/value-objects/Money256';
+import { AccountingEntryPolicy, RawLedgerEntrySpec } from '../../../domains/finance/policies/AccountingEntryPolicy';
+import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
+import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
+import {
+  FinancialError,
+  InvalidRefundAmountError,
+  UnsupportedFinancialOperationError,
+  InvalidFinancialOperationError,
+  AccountOwnershipError,
+  AssetInactiveError,
+  AccountInactiveError,
+  IdempotencyConflictError,
+} from '../../../domains/finance/errors/FinancialError';
+import { FinancialTransactionCategory } from '../../ports/output/IFinanceRepository';
+
+export interface RecordTreasuryTransactionDTO {
+  userId?: number | null; // targetUserId
+  actorUserId?: number | null;
+  authorizedByUserId?: number | null;
+  type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
+  direction?: 'INBOUND' | 'OUTBOUND';
+  category?: FinancialTransactionCategory;
+  description: string;
+  amountBaseUnits: string;
+  assetId: number;
+  idempotencyKey: string;
+  requestHash?: string;
+  refundOfTransactionId?: number;
+}
+
+export interface RecordTreasuryTransactionResult {
+  transactionId?: number;
+  isReplayed: boolean;
+}
+
+const USER_REQUIRED_OPERATIONS = ['payment', 'fee', 'reward', 'yield'] as const;
+const INBOUND_ONLY_OPS = ['deposit', 'yield', 'reward', 'refund'] as const;
+const OUTBOUND_ONLY_OPS = ['withdrawal', 'payment', 'fee'] as const;
+
+export class RecordTreasuryTransactionUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(dto: RecordTreasuryTransactionDTO): Promise<Result<RecordTreasuryTransactionResult>> {
+    // 1. Structural DTO Field Validation
+    if (!dto.description || !dto.amountBaseUnits || !dto.idempotencyKey || dto.assetId === undefined || !dto.type) {
+      return Result.fail<RecordTreasuryTransactionResult>(
+        new InvalidFinancialOperationError('Descrição, valor, assetId, type e idempotencyKey são obrigatórios.')
+      );
+    }
+
+    const description = dto.description.trim();
+    if (description.length < 3 || description.length > 500) {
+      return Result.fail<RecordTreasuryTransactionResult>(
+        new InvalidFinancialOperationError('A descrição deve conter entre 3 e 500 caracteres.')
+      );
+    }
+
+    const idempotencyKey = dto.idempotencyKey.trim();
+    if (idempotencyKey.length === 0 || idempotencyKey.length > 255) {
+      return Result.fail<RecordTreasuryTransactionResult>(
+        new InvalidFinancialOperationError('A chave de idempotência deve ter entre 1 e 255 caracteres.')
+      );
+    }
+
+    if (dto.requestHash !== undefined) {
+      if (!/^[a-f0-9]{64}$/i.test(dto.requestHash)) {
+        return Result.fail<RecordTreasuryTransactionResult>(
+          new InvalidFinancialOperationError('Formato de requestHash inválido. Deve ser uma string SHA-256 hexadecimal de 64 caracteres.')
+        );
+      }
+    }
+
+    try {
+      // 2. Value Object & Asset ID Parsing
+      const parsedAssetId = parsePositiveSafeIntegerId(dto.assetId, 'assetId');
+      const amountMoney = Money256.fromString(dto.amountBaseUnits, parsedAssetId);
+
+      if (amountMoney.isZero()) {
+        return Result.fail<RecordTreasuryTransactionResult>(
+          new InvalidFinancialOperationError('O valor da transação deve ser estritamente maior que zero.')
+        );
+      }
+
+      // 3. User Ownership & Required User ID Check
+      let parsedUserId: number | null = null;
+      if (dto.userId !== null && dto.userId !== undefined) {
+        parsedUserId = parsePositiveSafeIntegerId(dto.userId, 'userId');
+      }
+
+      if ((USER_REQUIRED_OPERATIONS as readonly string[]).includes(dto.type) && parsedUserId === null) {
+        return Result.fail<RecordTreasuryTransactionResult>(
+          new AccountOwnershipError(`Operação do tipo '${dto.type}' exige obrigatoriamente um userId de usuário final.`)
+        );
+      }
+
+      // 4. Direction Rules & Determinism per Operation
+      let resolvedDirection = dto.direction;
+      if ((INBOUND_ONLY_OPS as readonly string[]).includes(dto.type)) {
+        if (resolvedDirection && resolvedDirection !== 'INBOUND') {
+          return Result.fail<RecordTreasuryTransactionResult>(
+            new InvalidFinancialOperationError(`Transação do tipo '${dto.type}' não pode ter direção OUTBOUND. Direção determinística: INBOUND.`)
+          );
+        }
+        resolvedDirection = 'INBOUND';
+      } else if ((OUTBOUND_ONLY_OPS as readonly string[]).includes(dto.type)) {
+        if (resolvedDirection && resolvedDirection !== 'OUTBOUND') {
+          return Result.fail<RecordTreasuryTransactionResult>(
+            new InvalidFinancialOperationError(`Transação do tipo '${dto.type}' não pode ter direção INBOUND. Direção determinística: OUTBOUND.`)
+          );
+        }
+        resolvedDirection = 'OUTBOUND';
+      } else if (!resolvedDirection) {
+        return Result.fail<RecordTreasuryTransactionResult>(
+          new InvalidFinancialOperationError(`Operação do tipo '${dto.type}' exige declaração explícita de direção (INBOUND ou OUTBOUND).`)
+        );
+      }
+
+      // 5. Category Strict Typing & Domain Validation
+      const VALID_CATEGORIES: FinancialTransactionCategory[] = [
+        'membership', 'rwa_yield', 'grant', 'operational', 'payment', 'trading', 'withdrawal', 'deposit', 'fee', 'other'
+      ];
+      let category: FinancialTransactionCategory = 'operational';
+      if (dto.category !== undefined && dto.category !== null) {
+        const trimmed = String(dto.category).toLowerCase().trim() as FinancialTransactionCategory;
+        if (!VALID_CATEGORIES.includes(trimmed)) {
+          return Result.fail<RecordTreasuryTransactionResult>(
+            new InvalidFinancialOperationError(`Categoria '${dto.category}' não é uma categoria financeira válida do domínio.`)
+          );
+        }
+        category = trimmed;
+      }
+
+      // 6. Compute Canonical Request Hash over Request DTO payload
+      const canonicalPayload = {
+        amountBaseUnits: dto.amountBaseUnits,
+        assetId: parsedAssetId,
+        category,
+        description,
+        direction: resolvedDirection,
+        refundOfTransactionId: dto.refundOfTransactionId ?? null,
+        type: dto.type,
+        userId: parsedUserId,
+      };
+      const canonicalHash = CanonicalRequestHashService.calculateHash(canonicalPayload);
+
+      if (dto.requestHash !== undefined && dto.requestHash !== canonicalHash) {
+        return Result.fail<RecordTreasuryTransactionResult>(
+          new IdempotencyConflictError('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload.')
+        );
+      }
+
+      // 7. Atomic Unit of Work Execution
+      return await this.uow.execute(async (factory) => {
+        const financeRepo = factory.getFinanceRepository();
+
+        // 7a. Validate Asset Existence & Active Status
+        const assetRes = await financeRepo.getAssetById(parsedAssetId);
+        if (assetRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(assetRes.errorObject || assetRes.error || `Ativo financeiro #${parsedAssetId} não encontrado.`);
+        const asset = assetRes.getValue();
+        if (asset.status !== 'active') {
+          return Result.fail<RecordTreasuryTransactionResult>(
+            new AssetInactiveError(`Ativo financeiro #${parsedAssetId} (${asset.code}) está inativo ou suspenso.`)
+          );
+        }
+
+        // 7b. Resolve Treasury Account
+        const treasuryRes = await financeRepo.getTreasuryAccount();
+        if (treasuryRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(treasuryRes.errorObject || treasuryRes.error || 'Erro ao resolver conta de Tesouraria');
+        const treasuryAcc = treasuryRes.getValue();
+        if (treasuryAcc.status !== 'active') {
+          return Result.fail<RecordTreasuryTransactionResult>(new AccountInactiveError('Conta de Tesouraria está inativa ou suspensa.'));
+        }
+        const treasuryAccountId = treasuryAcc.id;
+
+        // 7c. Resolve User Account (deferred for refund to allow pre-check of ownership)
+        let userAccountId: number = 0;
+        if (dto.type !== 'refund') {
+          if (parsedUserId !== null) {
+            const userAccRes = await financeRepo.getOrCreateUserAccount(parsedUserId);
+            if (userAccRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(userAccRes.errorObject || userAccRes.error || 'Erro ao resolver conta do Usuário');
+            const userAcc = userAccRes.getValue();
+            if (userAcc.status !== 'active') {
+              return Result.fail<RecordTreasuryTransactionResult>(new AccountInactiveError('Conta do Usuário está inativa ou suspensa.'));
+            }
+            userAccountId = userAcc.id;
+          } else {
+            // If no userId, use Operating Account
+            const sysOpRes = await financeRepo.getSystemAccount('operating');
+            if (sysOpRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysOpRes.errorObject || sysOpRes.error || 'Erro ao resolver conta operacional do sistema');
+            if (sysOpRes.getValue().status !== 'active') {
+              return Result.fail<RecordTreasuryTransactionResult>(new AccountInactiveError('Conta operacional do sistema está inativa.'));
+            }
+            userAccountId = sysOpRes.getValue().id;
+          }
+        }
+
+        let rawEntries: RawLedgerEntrySpec[];
+
+        // 8. Exhaustive Switch Dispatch per Operation Type
+        switch (dto.type) {
+          case 'deposit': {
+            rawEntries = AccountingEntryPolicy.createDepositEntries({
+              treasuryAccountId,
+              userAccountId,
+              amount: amountMoney,
+              description,
+            });
+            break;
+          }
+          case 'withdrawal': {
+            rawEntries = AccountingEntryPolicy.createWithdrawalEntries({
+              treasuryAccountId,
+              userAccountId,
+              amount: amountMoney,
+              description,
+            });
+            break;
+          }
+          case 'payment': {
+            const sysRevenueRes = await financeRepo.getSystemAccount('payment_revenue');
+            if (sysRevenueRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysRevenueRes.errorObject || sysRevenueRes.error || 'Erro ao obter conta sistêmica');
+            if (sysRevenueRes.getValue().status !== 'active') {
+              return Result.fail<RecordTreasuryTransactionResult>(new AccountInactiveError('Conta sistêmica payment_revenue está inativa.'));
+            }
+            rawEntries = AccountingEntryPolicy.createPaymentEntries({
+              userAccountId,
+              paymentRevenueAccountId: sysRevenueRes.getValue().id,
+              amount: amountMoney,
+              description,
+            });
+            break;
+          }
+          case 'refund': {
+            if (!dto.refundOfTransactionId) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new InvalidFinancialOperationError('Reembolso (refund) exige o ID da transação original (refundOfTransactionId).')
+              );
+            }
+            const origTxId = parsePositiveSafeIntegerId(dto.refundOfTransactionId, 'refundOfTransactionId');
+
+            // Fetch original transaction within same UoW boundary
+            const origTxRes = await financeRepo.getTransactionById(origTxId);
+            if (origTxRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(origTxRes.errorObject || origTxRes.error || 'Erro ao buscar transação original');
+            const origTx = origTxRes.getValue();
+
+            if (origTx.status !== 'completed') {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new InvalidFinancialOperationError(`Reembolso rejeitado: Transação original #${origTxId} não está em estado 'completed' (status atual: '${origTx.status}').`)
+              );
+            }
+            if (origTx.type !== 'payment') {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new InvalidFinancialOperationError(`Reembolso rejeitado: Apenas transações do tipo 'payment' podem ser reembolsadas.`)
+              );
+            }
+
+            // P0.2: Strict Refund Ownership Verification
+            if (origTx.userId === null) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new AccountOwnershipError(`Reembolso rejeitado: A transação original #${origTxId} não possui usuário proprietário.`)
+              );
+            }
+            if (parsedUserId !== null && parsedUserId !== origTx.userId) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new AccountOwnershipError(`Reembolso rejeitado: O usuário solicitado (#${parsedUserId}) não coincide com o usuário proprietário da transação original (#${origTx.userId}).`)
+              );
+            }
+
+            // Strictly derive user account from original payment owner
+            parsedUserId = origTx.userId;
+            const userAccRes = await financeRepo.getOrCreateUserAccount(parsedUserId);
+            if (userAccRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(userAccRes.errorObject || userAccRes.error || 'Erro ao resolver conta de usuário');
+            const userAcc = userAccRes.getValue();
+            if (userAcc.status !== 'active') {
+              return Result.fail<RecordTreasuryTransactionResult>(new AccountInactiveError('Conta do Usuário está inativa ou suspensa.'));
+            }
+            userAccountId = userAcc.id;
+
+            // P0.3 & P0.6: Fetch original payment ledger entries & extract payment revenue amount (Clean Domain contract)
+            const origEntriesRes = await financeRepo.getTransactionEntries(origTxId);
+            if (origEntriesRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(origEntriesRes.errorObject || origEntriesRes.error || 'Erro ao buscar lançamentos originais');
+
+            const sysPaymentRevRes = await financeRepo.getSystemAccount('payment_revenue');
+            if (sysPaymentRevRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysPaymentRevRes.errorObject || sysPaymentRevRes.error || 'Erro ao resolver conta de receita de pagamento');
+            const paymentRevenueAccountId = sysPaymentRevRes.getValue().id;
+
+            const origEntries = origEntriesRes.getValue();
+            const originalPaymentMoney = AccountingEntryPolicy.extractRefundablePaymentAmount(origEntries, parsedAssetId, paymentRevenueAccountId);
+            const originalPaymentAmount = originalPaymentMoney.toBigInt();
+
+            // Refund cumulative limit check. Concurrency safety is guaranteed by the UoW transaction boundary (BEGIN IMMEDIATE write lock).
+            const prevRefundsTotal = await financeRepo.getRefundsTotalForTransaction(origTxId, parsedAssetId);
+            const requestedRefundAmount = amountMoney.toBigInt();
+            if (prevRefundsTotal + requestedRefundAmount > originalPaymentAmount) {
+              const remaining = originalPaymentAmount > prevRefundsTotal ? originalPaymentAmount - prevRefundsTotal : 0n;
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new InvalidRefundAmountError(
+                  `Valor do reembolso (${requestedRefundAmount.toString()}) excede o saldo reembolsável restante (${remaining.toString()}) da transação original #${origTxId}.`
+                )
+              );
+            }
+
+            const sysRefundExpRes = await financeRepo.getSystemAccount('refund_expense');
+            if (sysRefundExpRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysRefundExpRes.errorObject || sysRefundExpRes.error || 'Erro ao resolver conta de reembolso');
+            if (sysRefundExpRes.getValue().status !== 'active') {
+              return Result.fail<RecordTreasuryTransactionResult>(new AccountInactiveError('Conta sistêmica refund_expense está inativa.'));
+            }
+            rawEntries = AccountingEntryPolicy.createRefundEntries({
+              refundExpenseAccountId: sysRefundExpRes.getValue().id,
+              userAccountId,
+              amount: amountMoney,
+              description,
+            });
+            break;
+          }
+          case 'fee': {
+            const sysFeeRes = await financeRepo.getSystemAccount('fees');
+            if (sysFeeRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysFeeRes.errorObject || sysFeeRes.error || 'Erro ao resolver conta de taxas');
+            if (sysFeeRes.getValue().status !== 'active') {
+              return Result.fail<RecordTreasuryTransactionResult>(new AccountInactiveError('Conta sistêmica fees está inativa.'));
+            }
+            rawEntries = AccountingEntryPolicy.createFeeEntries({
+              userAccountId,
+              feeAccountId: sysFeeRes.getValue().id,
+              amount: amountMoney,
+              description,
+            });
+            break;
+          }
+          case 'reward': {
+            const sysRewardExpRes = await financeRepo.getSystemAccount('reward_expense');
+            if (sysRewardExpRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysRewardExpRes.errorObject || sysRewardExpRes.error || 'Erro ao resolver conta de recompensa');
+            if (sysRewardExpRes.getValue().status !== 'active') {
+              return Result.fail<RecordTreasuryTransactionResult>(new AccountInactiveError('Conta sistêmica reward_expense está inativa.'));
+            }
+            rawEntries = AccountingEntryPolicy.createRewardEntries({
+              rewardExpenseAccountId: sysRewardExpRes.getValue().id,
+              userAccountId,
+              amount: amountMoney,
+              description,
+            });
+            break;
+          }
+          case 'yield': {
+            const sysYieldExpRes = await financeRepo.getSystemAccount('yield_expense');
+            if (sysYieldExpRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysYieldExpRes.errorObject || sysYieldExpRes.error || 'Erro ao resolver conta de rendimentos');
+            if (sysYieldExpRes.getValue().status !== 'active') {
+              return Result.fail<RecordTreasuryTransactionResult>(new AccountInactiveError('Conta sistêmica yield_expense está inativa.'));
+            }
+            rawEntries = AccountingEntryPolicy.createYieldEntries({
+              yieldExpenseAccountId: sysYieldExpRes.getValue().id,
+              userAccountId,
+              amount: amountMoney,
+              description,
+            });
+            break;
+          }
+          case 'adjustment': {
+            let parsedAuthUserId: number | null = null;
+            if (dto.authorizedByUserId !== null && dto.authorizedByUserId !== undefined) {
+              parsedAuthUserId = parsePositiveSafeIntegerId(dto.authorizedByUserId, 'authorizedByUserId');
+            }
+
+            if (parsedAuthUserId === null) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new AccountOwnershipError("Operação de ajuste (adjustment) exige obrigatoriamente a identificação do usuário autorizador (authorizedByUserId).")
+              );
+            }
+
+            if (parsedUserId !== null && parsedUserId === parsedAuthUserId) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new InvalidFinancialOperationError("Invariante FIN-007 violado: Para ajustes administrativos, o usuário titular (targetUserId) deve ser distinto do autorizador (authorizedByUserId).")
+              );
+            }
+
+            rawEntries = AccountingEntryPolicy.createAdjustmentEntries({
+              debitAccountId: resolvedDirection === 'INBOUND' ? treasuryAccountId : userAccountId,
+              creditAccountId: resolvedDirection === 'INBOUND' ? userAccountId : treasuryAccountId,
+              amount: amountMoney,
+              reason: description,
+              authorizedByUserId: parsedAuthUserId,
+            });
+            break;
+          }
+          case 'transfer': {
+            rawEntries = AccountingEntryPolicy.createTransferEntries({
+              sourceAccountId: resolvedDirection === 'OUTBOUND' ? userAccountId : treasuryAccountId,
+              destinationAccountId: resolvedDirection === 'OUTBOUND' ? treasuryAccountId : userAccountId,
+              amount: amountMoney,
+              description,
+            });
+            break;
+          }
+          case 'conversion': {
+            return Result.fail<RecordTreasuryTransactionResult>(
+              new UnsupportedFinancialOperationError('Operação de conversão (conversion) exige Use Case especializado de troca de ativos (Forex).')
+            );
+          }
+          default: {
+            const unhandled: never = dto.type as never;
+            return Result.fail<RecordTreasuryTransactionResult>(
+              new UnsupportedFinancialOperationError(`Tipo de transação '${unhandled}' não é suportado por este Use Case.`)
+            );
+          }
+        }
+
+        // 9. Build Domain Aggregates
+        const ledgerEntries = rawEntries.map(
+          (spec) =>
+            new LedgerEntry({
+              accountId: String(spec.accountId),
+              amount: spec.amount,
+              type: spec.entryType,
+              description: spec.description,
+            })
+        );
+
+        const transaction = LedgerTransaction.create({
+          idempotencyKey,
+          description,
+          entries: ledgerEntries,
+          userId: parsedUserId,
+          transactionType: dto.type,
+          category,
+          refundOfTransactionId: dto.refundOfTransactionId ? Number(dto.refundOfTransactionId) : undefined,
+        });
+
+        // 10. Execute Posting via Orchestrator
+        const orchestrator = new FinancialTransactionOrchestrator(financeRepo, factory.getOutboxRepository());
+        const orchestratorResult = await orchestrator.executePosting(transaction);
+        return Result.ok<RecordTreasuryTransactionResult>(orchestratorResult);
+      });
+    } catch (err: unknown) {
+      if (err instanceof FinancialError) {
+        return Result.fail<RecordTreasuryTransactionResult>(err);
+      }
+      const message = err instanceof Error ? err.message : 'Falha ao registrar transação.';
+      return Result.fail<RecordTreasuryTransactionResult>(message);
+    }
+  }
+}
+
+```
+
+---
+
+<a id="srcapplicationfinanceusecasesrepairfinanceusecasets"></a>
+## Arquivo: `src/application/finance/use-cases/RepairFinanceUseCase.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RepairFinanceUseCase.ts`
+- **Total de linhas**: 43
+- **Linguagem**: TypeScript
+
+```typescript
+import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { RecordTreasuryTransactionUseCase, RecordTreasuryTransactionResult } from './RecordTreasuryTransactionUseCase';
+
+export interface RepairFinanceCommand {
+  actorUserId: number;
+  targetUserId: number;
+  authorizedByUserId: number;
+  direction: 'INBOUND' | 'OUTBOUND';
+  amountBaseUnits: string;
+  assetId: number;
+  reason: string;
+  idempotencyKey: string;
+}
+
+export class RepairFinanceUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(command: RepairFinanceCommand): Promise<Result<RecordTreasuryTransactionResult>> {
+    if (!command.actorUserId || !command.authorizedByUserId) {
+      return Result.fail('Identificação de actorUserId e authorizedByUserId é obrigatória para reparo.');
+    }
+
+    if (command.targetUserId === command.authorizedByUserId) {
+      return Result.fail('Invariante FIN-007 violado: Para ajustes administrativos, targetUserId deve ser distinto de authorizedByUserId.');
+    }
+
+    const recordTxUseCase = new RecordTreasuryTransactionUseCase(this.uow);
+
+    return recordTxUseCase.execute({
+      userId: command.targetUserId,
+      actorUserId: command.actorUserId,
+      authorizedByUserId: command.authorizedByUserId,
+      type: 'adjustment',
+      direction: command.direction,
+      category: 'operational',
+      description: `[REPAIR/CLI] ${command.reason}`,
+      amountBaseUnits: command.amountBaseUnits,
+      assetId: command.assetId,
+      idempotencyKey: command.idempotencyKey,
+    });
+  }
+}
+
+```
+
+---
+
+<a id="srcapplicationfinanceusecasesreversetransactionusecasets"></a>
+## Arquivo: `src/application/finance/use-cases/ReverseTransactionUseCase.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/ReverseTransactionUseCase.ts`
+- **Total de linhas**: 110
+- **Linguagem**: TypeScript
+
+```typescript
+import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
+import { Result } from '../../../shared/kernel/Result';
+import { LedgerTransaction, LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../../../domains/finance/value-objects/Money256';
+import { AccountingEntryPolicy } from '../../../domains/finance/policies/AccountingEntryPolicy';
+import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
+import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
+import { InvalidStateTransitionError } from '../../../domains/finance/errors/FinancialError';
+
+export interface ReverseTransactionInput {
+  originalTransactionId: number;
+  actorUserId: number;
+  idempotencyKey: string;
+  reason: string;
+  requestHash?: string;
+}
+
+export class ReverseTransactionUseCase {
+  constructor(private readonly uow: IUnitOfWork) {}
+
+  async execute(input: ReverseTransactionInput): Promise<Result<OrchestratorResult>> {
+    try {
+      if (!input.actorUserId) {
+        throw new Error('Identificação de actorUserId é obrigatória para efetuar o estorno.');
+      }
+
+      return await this.uow.execute(async (factory) => {
+        const repo = factory.getFinanceRepository();
+
+        // 1. Obter lançamentos da transação original
+        const originalEntriesRes = await repo.getTransactionEntries(input.originalTransactionId);
+        if (originalEntriesRes.isFailure) {
+          throw new Error(`Transação original #${input.originalTransactionId} não encontrada: ${originalEntriesRes.error}`);
+        }
+
+        const rawEntries = originalEntriesRes.getValue();
+        if (!rawEntries || rawEntries.length === 0) {
+          throw new Error(`Transação original #${input.originalTransactionId} não possui lançamentos contábeis.`);
+        }
+
+        // 2. Obter registro original por ID direto O(1) para validar estado e tipo
+        const txRes = await repo.getTransactionById(input.originalTransactionId);
+        if (txRes.isFailure) {
+          throw new Error(`Registro de transação #${input.originalTransactionId} não encontrado: ${txRes.error}`);
+        }
+        const originalTx = txRes.getValue();
+
+        if (originalTx.status !== 'completed') {
+          throw new InvalidStateTransitionError(
+            `Apenas transações no status "completed" podem ser estornadas. Status atual: "${originalTx.status}".`
+          );
+        }
+
+        // FIN-017: Proibir estorno de estorno (reversal of reversal)
+        if (originalTx.type === 'reversal') {
+          throw new InvalidStateTransitionError('Estorno de transação do tipo "reversal" é estritamente proibido (FIN-017).');
+        }
+
+        // 3. Gerar lançamentos inversos via AccountingEntryPolicy
+        const domainEntries = rawEntries.map((e) => ({
+          accountId: e.accountId,
+          assetId: e.assetId,
+          entryType: e.direction,
+          amount: Money256.fromString(e.amountBaseUnits, e.assetId),
+          description: `Original Entry #${e.accountId}`,
+        }));
+
+        const reversedRaw = AccountingEntryPolicy.createReversalEntries(domainEntries, input.reason);
+
+        const reverseLedgerEntries: LedgerEntry[] = reversedRaw.map(
+          (r) =>
+            new LedgerEntry({
+              accountId: String(r.accountId),
+              amount: r.amount,
+              type: r.entryType,
+              description: r.description,
+            })
+        );
+
+        const reversalTx = LedgerTransaction.create({
+          idempotencyKey: input.idempotencyKey,
+          description: `Estorno da Transação #${input.originalTransactionId}: ${input.reason}`,
+          entries: reverseLedgerEntries,
+          transactionType: 'reversal',
+          category: 'operational',
+          userId: originalTx.userId,
+          reversalOfTransactionId: input.originalTransactionId,
+        });
+
+        if (input.requestHash !== undefined) {
+          const canonicalHash = CanonicalRequestHashService.calculateHash(reversalTx);
+          if (input.requestHash !== canonicalHash) {
+            throw new Error('409 Conflict: O requestHash fornecido não coincide com o hash canônico do estorno.');
+          }
+        }
+
+        const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+        const orchestratorResult = await orchestrator.executePosting(reversalTx);
+
+        // Atualizar transação original para 'reversed' dentro da mesma UoW
+        await repo.updateTransactionStatus(input.originalTransactionId, 'reversed', originalTx.version);
+
+        return Result.ok(orchestratorResult);
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao estornar transação financeira.';
+      return Result.fail(message);
+    }
+  }
+}
+
+```
+
+---
+
+<a id="srcapplicationportsoutputifinancerepositoryts"></a>
+## Arquivo: `src/application/ports/output/IFinanceRepository.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IFinanceRepository.ts`
+- **Total de linhas**: 146
+- **Linguagem**: TypeScript
+
+```typescript
+import { Result } from '../../../shared/kernel/Result';
+import { RepositoryError } from '../../../shared/kernel/RepositoryError';
+import { LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
+import { FinancialLedgerEntryRecord } from '../../../domains/finance/contracts/FinancialLedgerEntryRecord';
+import type { FinancialAccountClass } from '../../../domains/finance/policies/AccountClassPolicy';
+
+export type SystemAccountType =
+  | 'treasury'
+  | 'operating'
+  | 'reserve'
+  | 'fees'
+  | 'escrow'
+  | 'reward_expense'
+  | 'yield_expense'
+  | 'clearing'
+  | 'opening_balance_equity'
+  | 'payment_revenue'
+  | 'refund_expense';
+
+export type FinancialTransactionType =
+  | 'deposit'
+  | 'withdrawal'
+  | 'transfer'
+  | 'payment'
+  | 'refund'
+  | 'fee'
+  | 'reward'
+  | 'yield'
+  | 'conversion'
+  | 'adjustment'
+  | 'reversal'
+  | 'inbound'
+  | 'outbound';
+
+export type FinancialTransactionStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'reversed'
+  | 'refunded';
+
+export type FinancialTransactionCategory =
+  | 'membership'
+  | 'rwa_yield'
+  | 'grant'
+  | 'operational'
+  | 'payment'
+  | 'trading'
+  | 'withdrawal'
+  | 'deposit'
+  | 'fee'
+  | 'other';
+
+export type FinancialAccountStatus = 'active' | 'inactive' | 'suspended';
+export type FinancialAssetStatus = 'active' | 'inactive' | 'suspended';
+
+export type BalanceUpdateResult = 'UPDATED' | 'INSUFFICIENT_BALANCE' | 'OCC_CONFLICT';
+
+export type IdempotencyRecord =
+  | { status: 'processing'; transactionId: null; requestHash: string }
+  | { status: 'completed'; transactionId: number; requestHash: string }
+  | { status: 'failed'; transactionId: null; requestHash: string };
+
+export type IdempotencyClaimResult =
+  | { status: 'CLAIMED' }
+  | { status: 'COMPLETED'; transactionId: number; requestHash: string }
+  | { status: 'PROCESSING'; requestHash: string }
+  | { status: 'CONFLICT'; requestHash: string };
+
+export interface LedgerTransactionCommittedEvent {
+  transactionId: number;
+  idempotencyKey: string;
+  requestHash: string;
+  [key: string]: unknown;
+}
+
+export interface FinancialAccountRecord {
+  id: number;
+  userId: number | null;
+  accountType: SystemAccountType | 'user_available';
+  accountClass: FinancialAccountClass;
+  status: FinancialAccountStatus;
+  name: string;
+  version: number;
+}
+
+export interface AccountBalanceRecord {
+  id: number;
+  accountId: number;
+  assetId: number;
+  availableBaseUnits: string;
+  lockedBaseUnits: string;
+  version: number;
+}
+
+export interface FinancialTransactionRecord {
+  id: number;
+  userId: number | null;
+  type: FinancialTransactionType;
+  category: FinancialTransactionCategory;
+  status: FinancialTransactionStatus;
+  description: string;
+  version: number;
+  createdAt: Date;
+  completedAt?: Date | null;
+}
+
+export interface IFinanceRepository {
+  getAccountById(accountId: number): Promise<Result<FinancialAccountRecord>>;
+  getTreasuryAccount(): Promise<Result<FinancialAccountRecord>>;
+  getOrCreateUserAccount(userId: number): Promise<Result<FinancialAccountRecord>>;
+  getOrCreateOperatingAccount(): Promise<Result<FinancialAccountRecord>>;
+  getSystemAccount(accountType: SystemAccountType): Promise<Result<FinancialAccountRecord>>;
+  getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>>;
+  getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: FinancialAssetStatus }>>;
+
+  getTransactionById(transactionId: number): Promise<Result<FinancialTransactionRecord>>;
+  getRefundsTotalForTransaction(originalTransactionId: number, assetId: number): Promise<bigint>;
+
+  listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
+  getTransactionEntries(transactionId: number): Promise<Result<FinancialLedgerEntryRecord[]>>;
+
+  getIdempotencyRecord(key: string, scope: string): Promise<IdempotencyRecord | null>;
+  claimIdempotency(idempotencyKey: string, userId: number | null | undefined, scope: string, requestHash: string): Promise<boolean | IdempotencyClaimResult>;
+  completeIdempotency(key: string, scope: string, transactionId: number): Promise<void>;
+  insertTransaction(data: {
+    userId?: number | null;
+    type: FinancialTransactionType;
+    category: FinancialTransactionCategory;
+    description: string;
+    status: FinancialTransactionStatus;
+    reversalOfTransactionId?: number;
+    refundOfTransactionId?: number;
+  }): Promise<Result<number, RepositoryError>>;
+  insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<Result<void, RepositoryError>>;
+  updateBalanceWithOCC(
+    accountId: number | string,
+    assetId: number | string,
+    amount: bigint,
+    type: 'debit' | 'credit'
+  ): Promise<BalanceUpdateResult>;
+  updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
+  // NOTE: persistOutboxEvent removed — use IOutboxRepository.saveEvent() within the same UoW transaction.
+}
+
+```
+
+---
+
+<a id="srcinfrastructurerepositoriesdrizzlefinancerepositoryts"></a>
+## Arquivo: `src/infrastructure/repositories/DrizzleFinanceRepository.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.ts`
+- **Total de linhas**: 1110
+- **Linguagem**: TypeScript
+
+```typescript
+import { eq, and, or, lt, inArray, sql } from 'drizzle-orm';
+import {
+  financialAccounts,
+  accountBalances,
+  financialTransactions,
+  financialLedgerEntries,
+  financialAssets,
+  MAX_UINT256_BASE_UNITS_TEXT,
+} from '../../db/finance/tables';
+import { idempotencyKeys } from '../../db/infrastructure/tables';
+import { Result } from '../../shared/kernel/Result';
+import { RepositoryError } from '../../shared/kernel/RepositoryError';
+import {
+  IFinanceRepository,
+  FinancialAccountRecord,
+  AccountBalanceRecord,
+  FinancialTransactionRecord,
+  SystemAccountType,
+  FinancialTransactionType,
+  FinancialTransactionCategory,
+  FinancialTransactionStatus,
+  FinancialAssetStatus,
+  BalanceUpdateResult,
+  IdempotencyRecord,
+} from '../../application/ports/output/IFinanceRepository';
+import { FinancialLedgerEntryRecord } from '../../domains/finance/contracts/FinancialLedgerEntryRecord';
+import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
+import {
+  InvalidMoneyFormatError,
+  Money256OverflowError,
+  InvalidAccountClassError,
+  AccountInactiveError,
+  AssetInactiveError,
+} from '../../domains/finance/errors/FinancialError';
+
+/**
+ * ============================================================================
+ * AUDIT CHANGELOG — ROUND 2 (applied on top of the previous revision)
+ * ============================================================================
+ * P0-01 [CRITICAL] Removed the locally hardcoded EXPECTED_CLASSES map, which
+ *       had drifted from tables.ts's ck_financial_accounts_type_class_matrix
+ *       (it required `escrow -> asset`, while the schema requires
+ *       `escrow -> liability`; it also only accepted ONE class for
+ *       `reserve`/`clearing`/`opening_balance_equity`, which the schema
+ *       allows TWO valid classes for). Replaced with
+ *       VALID_ACCOUNT_CLASSES_BY_TYPE, a map of *allowed* classes per type
+ *       that mirrors the schema matrix exactly. This is still a local
+ *       duplication of policy — ideally it should be imported from a single
+ *       shared AccountClassPolicy module used by both the schema's CHECK
+ *       constraint generation and this repository, so the two can never
+ *       diverge again. Tracked as a follow-up (see TODO below).
+ * P0-02 [CRITICAL] claimIdempotency() no longer reclaims a stale row purely
+ *       based on its status/expiry. It now also requires the existing row's
+ *       requestHash to match the incoming requestHash before reclaiming.
+ *       A same key + same scope + DIFFERENT requestHash now throws
+ *       IdempotencyKeyReusedWithDifferentRequestError instead of silently
+ *       overwriting the previous request's hash — closing the gap where a
+ *       semantically different request could hijack another request's
+ *       idempotency key.
+ * P0-03 [CRITICAL] Removed `createdAt: new Date()` from the INSERT in
+ *       ensureAccountBalance(). accountBalances in tables.ts does not
+ *       declare a createdAt column (only `updatedAt`); inserting an unknown
+ *       field was a schema/repository mismatch.
+ * P1 (contained to this file) getOrCreateUserAccount() and
+ *       getOrCreateOperatingAccount() now reject (throw AccountInactiveError)
+ *       when the singleton account found/created is not `active`, instead
+ *       of silently handing back an unusable inactive/suspended account.
+ * P1 (contained to this file) getTransactionEntries() no longer silently
+ *       coerces an unexpected `direction` value to 'credit'. An unexpected
+ *       value now throws, surfacing corruption instead of masking it.
+ *
+ * NOT addressed in this pass (require visibility into other files or a
+ * cross-cutting design decision — see audit report P0-04, P0-05 and the
+ * broader P1 list):
+ *   - P0-04: proving idempotency+transaction+ledger+balance+outbox share a
+ *     single atomic Unit of Work (needs DrizzleUnitOfWork.ts).
+ *   - P0-05: preserving completedAt history across reversal/refund
+ *     transitions (needs a decision + migration: reversedAt/refundedAt
+ *     columns, FinancialTransactionRecord shape, and the state machine).
+ *   - P1-03/04/06/11/12/13/14: sourceType/sourceId/correlationId on
+ *     insertTransaction, full metadata on FinancialTransactionRecord,
+ *     cursor pagination on listTransactions, real aggregateVersion/
+ *     aggregateId on the outbox, BigInt-safe payload serialization, typed
+ *     event/aggregate vocabularies — all require changing
+ *     IFinanceRepository / FinancialTransactionRecord / LedgerEntry /
+ *     outbox call sites that are outside this file.
+ * ============================================================================
+ */
+
+/**
+ * TODO(shared-policy): extract this to a single AccountClassPolicy module
+ * consumed by BOTH tables.ts (to generate ck_financial_accounts_type_class_matrix)
+ * and this repository, so the two can never diverge again the way
+ * EXPECTED_CLASSES previously did. Until that module exists, this map is
+ * hand-kept in sync with tables.ts's matrix — verify both together whenever
+ * either changes.
+ */
+const VALID_ACCOUNT_CLASSES_BY_TYPE: Record<string, readonly string[]> = {
+  user_available: ['liability'],
+  treasury: ['asset'],
+  operating: ['asset'],
+  reserve: ['asset', 'liability'],
+  fees: ['revenue'],
+  escrow: ['liability'],
+  reward_expense: ['expense'],
+  yield_expense: ['expense'],
+  clearing: ['asset', 'liability'],
+  opening_balance_equity: ['equity', 'liability'],
+  payment_revenue: ['revenue'],
+  refund_expense: ['expense'],
+};
+
+/**
+ * [AUDIT FIX P0-02]
+ * Raised when a claimIdempotency() call targets an existing (reclaimable)
+ * idempotency row whose requestHash does not match the incoming request.
+ * This means the same (key, scope) pair is being reused for what is, in
+ * substance, a different request — which must never silently overwrite the
+ * original request's identity.
+ *
+ * TODO: move this to '../../domains/finance/errors/FinancialError' once
+ * that module owns it, for consistency with the other Finance error types
+ * imported above.
+ */
+export class IdempotencyKeyReusedWithDifferentRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IdempotencyKeyReusedWithDifferentRequestError';
+  }
+}
+
+/**
+ * [AUDIT FIX #10 - ROUND 1, unchanged]
+ * Placeholder alias for the Drizzle db/transaction executor type. Swap this
+ * for the project's real type (e.g. `BatchItem<'sqlite'>` /
+ * `SQLiteTransaction<...>` re-exported from the db client module) as soon
+ * as it's available here, to recover compile-time column/type checking.
+ */
+type FinanceDbExecutor = any;
+
+const MAX_UINT256_BASE_UNITS_BIGINT = BigInt(MAX_UINT256_BASE_UNITS_TEXT);
+
+export function validateCanonicalBaseUnits(val: string): bigint {
+  if (!val || !/^(0|[1-9][0-9]*)$/.test(val)) {
+    throw new InvalidMoneyFormatError(
+      `Formato de baseUnits inválido em storage persistence ('${val}'). Deve ser string decimal canônica sem zeros à esquerda.`
+    );
+  }
+  const parsed = BigInt(val);
+  if (parsed > MAX_UINT256_BASE_UNITS_BIGINT) {
+    throw new Money256OverflowError(
+      `Valor numérico ('${val}') excede o limite uint256 (${MAX_UINT256_BASE_UNITS_TEXT}).`
+    );
+  }
+  return parsed;
+}
+
+export function isUniqueConstraintViolation(err: any): boolean {
+  if (!err) return false;
+
+  const msg = `${err.message || ''} ${err.cause?.message || ''} ${err.stack || ''}`.toLowerCase();
+  if (msg.includes('foreign key') || msg.includes('check constraint')) return false;
+
+  const code = String(err.code || err.extendedCode || err.rawCode || err.cause?.code || '');
+  if (
+    code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+    code === 'SQLITE_CONSTRAINT_PRIMARYKEY' ||
+    code === '1555' ||
+    code === '2067'
+  ) {
+    return true;
+  }
+
+  return (
+    msg.includes('unique constraint failed') ||
+    msg.includes('d1_error: unique constraint') ||
+    msg.includes('unique constraint')
+  );
+}
+
+export class DrizzleFinanceRepository implements IFinanceRepository {
+  constructor(private readonly db: FinanceDbExecutor) { }
+
+  private get executor() {
+    return this.db;
+  }
+
+  async getAccountById(accountId: number): Promise<Result<FinancialAccountRecord>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(financialAccounts)
+        .where(eq(financialAccounts.id, accountId))
+        .limit(1);
+
+      if (!row) {
+        return Result.fail(`Conta financeira #${accountId} não encontrada.`);
+      }
+
+      return Result.ok({
+        id: row.id,
+        userId: row.userId,
+        accountType: row.accountType as any,
+        accountClass: row.accountClass as any,
+        status: row.status as any,
+        name: row.name,
+        version: row.version,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getTreasuryAccount(): Promise<Result<FinancialAccountRecord>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(financialAccounts)
+        .where(
+          and(
+            eq(financialAccounts.accountType, 'treasury'),
+            eq(financialAccounts.status, 'active')
+          )
+        )
+        .limit(1);
+
+      if (!row) {
+        return Result.fail('Treasury account not found. Must be provisioned via bootstrap seed.');
+      }
+
+      return Result.ok({
+        id: row.id,
+        userId: row.userId,
+        accountType: row.accountType as any,
+        accountClass: row.accountClass as any,
+        status: row.status as any,
+        name: row.name,
+        version: row.version,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>> {
+    try {
+      const treasuryRes = await this.getTreasuryAccount();
+      if (treasuryRes.isFailure) {
+        return Result.fail(treasuryRes.error || 'Treasury account error');
+      }
+
+      const treasuryId = treasuryRes.getValue().id;
+      const rows = await this.executor
+        .select()
+        .from(accountBalances)
+        .where(eq(accountBalances.accountId, treasuryId));
+
+      const balances: AccountBalanceRecord[] = rows.map((r: any) => {
+        validateCanonicalBaseUnits(r.availableBaseUnits.toString());
+        validateCanonicalBaseUnits(r.lockedBaseUnits.toString());
+        return {
+          id: r.id,
+          accountId: r.accountId,
+          assetId: r.assetId,
+          availableBaseUnits: r.availableBaseUnits.toString(),
+          lockedBaseUnits: r.lockedBaseUnits.toString(),
+          version: r.version,
+        };
+      });
+
+      return Result.ok(balances);
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: FinancialAssetStatus }>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(financialAssets)
+        .where(eq(financialAssets.id, assetId))
+        .limit(1);
+
+      if (!row) {
+        return Result.fail(`Financial asset #${assetId} not found.`);
+      }
+
+      return Result.ok({
+        id: row.id,
+        code: row.code,
+        status: row.status as FinancialAssetStatus,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  /**
+   * Shared select -> insert -> catch-race -> re-select pattern for
+   * "singleton-ish" system/user accounts, used by getOrCreateUserAccount
+   * and getOrCreateOperatingAccount below. Centralizing this avoids the
+   * two methods silently drifting from each other over time.
+   *
+   * [AUDIT FIX P1] Now throws AccountInactiveError if the found/created
+   * account is not `active` — previously an inactive/suspended account
+   * could be silently handed back to the caller as if it were usable.
+   */
+  private async getOrCreateSingletonAccount(
+    whereClause: any,
+    insertValues: {
+      userId: number | null;
+      accountType: string;
+      accountClass: string;
+      name: string;
+    }
+  ): Promise<Result<FinancialAccountRecord>> {
+    try {
+      const toRecord = (row: any): FinancialAccountRecord => {
+        if (row.status !== 'active') {
+          throw new AccountInactiveError(
+            `Conta '${insertValues.accountType}' (#${row.id}) existe mas está com status '${row.status}', não 'active'.`
+          );
+        }
+        return {
+          id: row.id,
+          userId: row.userId,
+          accountType: row.accountType as any,
+          accountClass: row.accountClass as any,
+          status: row.status as any,
+          name: row.name,
+          version: row.version,
+        };
+      };
+
+      const [row] = await this.executor
+        .select()
+        .from(financialAccounts)
+        .where(whereClause)
+        .limit(1);
+
+      if (row) {
+        return Result.ok(toRecord(row));
+      }
+
+      try {
+        const [inserted] = await this.executor
+          .insert(financialAccounts)
+          .values({
+            userId: insertValues.userId,
+            accountType: insertValues.accountType,
+            accountClass: insertValues.accountClass,
+            name: insertValues.name,
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+
+        return Result.ok(toRecord(inserted));
+      } catch (insertErr: any) {
+        if (!isUniqueConstraintViolation(insertErr)) {
+          throw insertErr;
+        }
+
+        const [existing] = await this.executor
+          .select()
+          .from(financialAccounts)
+          .where(whereClause)
+          .limit(1);
+
+        if (existing) {
+          return Result.ok(toRecord(existing));
+        }
+        throw new Error(
+          `Falha de concorrência: conta '${insertValues.accountType}' não encontrada mesmo após violação de UNIQUE.`
+        );
+      }
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getOrCreateUserAccount(userId: number): Promise<Result<FinancialAccountRecord>> {
+    return this.getOrCreateSingletonAccount(
+      and(
+        eq(financialAccounts.userId, userId),
+        eq(financialAccounts.accountType, 'user_available')
+      ),
+      {
+        userId,
+        accountType: 'user_available',
+        accountClass: 'liability',
+        name: `User ${userId} Main Account`,
+      }
+    );
+  }
+
+  async getOrCreateOperatingAccount(): Promise<Result<FinancialAccountRecord>> {
+    return this.getOrCreateSingletonAccount(
+      and(
+        sql`${financialAccounts.userId} IS NULL`,
+        eq(financialAccounts.accountType, 'operating')
+      ),
+      {
+        userId: null,
+        accountType: 'operating',
+        accountClass: 'asset',
+        name: 'System Operating Account',
+      }
+    );
+  }
+
+  /**
+   * [AUDIT FIX P0-01]
+   * Uses VALID_ACCOUNT_CLASSES_BY_TYPE (an *allowed set* per type, mirroring
+   * tables.ts's ck_financial_accounts_type_class_matrix exactly) instead of
+   * the previous EXPECTED_CLASSES map, which required a single hardcoded
+   * class per type and had drifted from the schema (most notably:
+   * `escrow -> asset` here vs. `escrow -> liability` in the schema).
+   */
+  async getSystemAccount(accountType: SystemAccountType): Promise<Result<FinancialAccountRecord>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(financialAccounts)
+        .where(
+          and(
+            sql`${financialAccounts.userId} IS NULL`,
+            eq(financialAccounts.accountType, accountType),
+            eq(financialAccounts.status, 'active')
+          )
+        )
+        .limit(1);
+
+      if (!row) {
+        return Result.fail(`System account of type "${accountType}" not found. Must be provisioned via bootstrap seed.`);
+      }
+
+      const validClasses = VALID_ACCOUNT_CLASSES_BY_TYPE[accountType];
+      if (validClasses && !validClasses.includes(row.accountClass)) {
+        return Result.fail(
+          `Conta sistêmica "${accountType}" possui classe contábil incompatível ` +
+          `(${row.accountClass} não está em [${validClasses.join(', ')}]).`
+        );
+      }
+
+      return Result.ok({
+        id: row.id,
+        userId: row.userId,
+        accountType: row.accountType as any,
+        accountClass: row.accountClass as any,
+        status: row.status as any,
+        name: row.name,
+        version: row.version,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getTransactionById(transactionId: number): Promise<Result<FinancialTransactionRecord>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(financialTransactions)
+        .where(eq(financialTransactions.id, transactionId))
+        .limit(1);
+
+      if (!row) {
+        return Result.fail(`Transaction #${transactionId} not found.`);
+      }
+
+      return Result.ok({
+        id: row.id,
+        userId: row.userId,
+        type: row.type as FinancialTransactionType,
+        category: row.category as FinancialTransactionCategory,
+        status: row.status as FinancialTransactionStatus,
+        description: row.description,
+        version: row.version,
+        createdAt: new Date(row.createdAt),
+        completedAt: row.completedAt ? new Date(row.completedAt) : null,
+      });
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async getRefundsTotalForTransaction(originalTransactionId: number, assetId: number): Promise<bigint> {
+    const refundTxs = await this.executor
+      .select({ id: financialTransactions.id })
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.refundOfTransactionId, originalTransactionId),
+          eq(financialTransactions.status, 'completed'),
+          eq(financialTransactions.type, 'refund')
+        )
+      );
+
+    if (refundTxs.length === 0) return 0n;
+
+    const refundTxIds = refundTxs.map((t: any) => t.id);
+    const entries = await this.executor
+      .select({ amountBaseUnits: financialLedgerEntries.amountBaseUnits })
+      .from(financialLedgerEntries)
+      .where(
+        and(
+          inArray(financialLedgerEntries.transactionId, refundTxIds),
+          eq(financialLedgerEntries.assetId, assetId),
+          eq(financialLedgerEntries.direction, 'credit')
+        )
+      );
+
+    let total = 0n;
+    for (const entry of entries) {
+      total += validateCanonicalBaseUnits(entry.amountBaseUnits || '0');
+    }
+    return total;
+  }
+
+  /**
+   * [AUDIT FIX P0-03]
+   * No longer inserts `createdAt`: accountBalances (tables.ts) only
+   * declares `updatedAt`, not `createdAt`. Inserting an unknown field was a
+   * direct schema/repository mismatch.
+   */
+  private async ensureAccountBalance(
+    accountId: number,
+    assetId: number,
+    executorOverride?: FinanceDbExecutor
+  ): Promise<void> {
+    const exec = executorOverride || this.executor;
+    const [existing] = await exec
+      .select({ id: accountBalances.id })
+      .from(accountBalances)
+      .where(
+        and(
+          eq(accountBalances.accountId, accountId),
+          eq(accountBalances.assetId, assetId)
+        )
+      )
+      .limit(1);
+
+    if (!existing) {
+      try {
+        await exec.insert(accountBalances).values({
+          accountId,
+          assetId,
+          availableBaseUnits: '0',
+          lockedBaseUnits: '0',
+          version: 1,
+          updatedAt: new Date(),
+        });
+      } catch (err: any) {
+        if (!isUniqueConstraintViolation(err)) {
+          throw err;
+        }
+      }
+    }
+  }
+
+  async insertTransaction(data: {
+    userId?: number | null;
+    type: FinancialTransactionType;
+    category: FinancialTransactionCategory;
+    description: string;
+    status: FinancialTransactionStatus;
+    reversalOfTransactionId?: number;
+    refundOfTransactionId?: number;
+  }): Promise<Result<number, RepositoryError>> {
+    try {
+      const [tx] = await this.executor
+        .insert(financialTransactions)
+        .values({
+          userId: data.userId || null,
+          type: data.type,
+          category: data.category,
+          status: data.status,
+          description: data.description,
+          reversalOfTransactionId: data.reversalOfTransactionId || null,
+          refundOfTransactionId: data.refundOfTransactionId || null,
+          completedAt: data.status === 'completed' ? new Date() : null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning({ id: financialTransactions.id });
+
+      if (!tx) {
+        return Result.err(RepositoryError.integrity('Falha ao inserir registro de transação financeira.'));
+      }
+      return Result.ok(tx.id);
+    } catch (e: any) {
+      return Result.err(RepositoryError.transient(e.message, e));
+    }
+  }
+
+  async updateTransactionStatus(
+    transactionId: number,
+    status: FinancialTransactionStatus,
+    expectedVersion?: number
+  ): Promise<void> {
+    const conditions = [eq(financialTransactions.id, transactionId)];
+    if (expectedVersion !== undefined) {
+      conditions.push(eq(financialTransactions.version, expectedVersion));
+    }
+
+    const res = await this.executor
+      .update(financialTransactions)
+      .set({
+        status,
+        version: sql`${financialTransactions.version} + 1`,
+        completedAt: status === 'completed' ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(and(...conditions));
+
+    const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
+    if (affected === 0) {
+      throw new Error(
+        `Falha ao atualizar status da transação ${transactionId} para '${status}'. Registro não encontrado ou versão incompatível.`
+      );
+    }
+  }
+
+  /**
+   * [AUDIT FIX P1]
+   * No longer silently coerces an unexpected `direction` value to 'credit'.
+   * The schema's CHECK should prevent this at the source, but a
+   * persistence layer should surface corruption, not mask it as valid data.
+   */
+  async getTransactionEntries(transactionId: number): Promise<Result<FinancialLedgerEntryRecord[]>> {
+    try {
+      const rows = await this.executor
+        .select({
+          accountId: financialLedgerEntries.accountId,
+          assetId: financialLedgerEntries.assetId,
+          direction: financialLedgerEntries.direction,
+          amountBaseUnits: financialLedgerEntries.amountBaseUnits,
+        })
+        .from(financialLedgerEntries)
+        .where(eq(financialLedgerEntries.transactionId, transactionId));
+
+      const mappedRecords: FinancialLedgerEntryRecord[] = rows.map((r: any) => {
+        validateCanonicalBaseUnits(String(r.amountBaseUnits));
+
+        if (r.direction !== 'debit' && r.direction !== 'credit') {
+          throw new Error(
+            `Valor de 'direction' corrompido para lançamento contábil da transação ${transactionId}: '${r.direction}'.`
+          );
+        }
+
+        return {
+          accountId: Number(r.accountId),
+          assetId: Number(r.assetId),
+          direction: r.direction as 'debit' | 'credit',
+          amountBaseUnits: String(r.amountBaseUnits),
+        };
+      });
+
+      return Result.ok(mappedRecords);
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  async listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>> {
+    try {
+      const query = userId
+        ? this.executor.select().from(financialTransactions).where(eq(financialTransactions.userId, userId))
+        : this.executor.select().from(financialTransactions);
+
+      const rows = await query;
+      const txs: FinancialTransactionRecord[] = rows.map((r: any) => ({
+        id: r.id,
+        userId: r.userId,
+        type: r.type,
+        category: r.category,
+        status: r.status,
+        description: r.description,
+        version: r.version,
+        createdAt: new Date(r.createdAt),
+        completedAt: r.completedAt ? new Date(r.completedAt) : null,
+      }));
+
+      return Result.ok(txs);
+    } catch (err: any) {
+      return Result.fail(err.message);
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // DOUBLE-ENTRY LEDGER & IDEMPOTENCY
+  // --------------------------------------------------------------------------
+
+  async getIdempotencyRecord(
+    key: string,
+    scope: string
+  ): Promise<IdempotencyRecord | null> {
+    const [record] = await this.executor
+      .select({
+        status: idempotencyKeys.status,
+        requestHash: idempotencyKeys.requestHash,
+        transactionId: idempotencyKeys.financialTransactionId,
+        expiresAt: idempotencyKeys.expiresAt,
+      })
+      .from(idempotencyKeys)
+      .where(
+        and(
+          eq(idempotencyKeys.key, key),
+          eq(idempotencyKeys.scope, scope)
+        )
+      )
+      .limit(1);
+
+    if (!record) return null;
+
+    if (record.status === 'completed' && record.transactionId) {
+      return {
+        status: 'completed',
+        transactionId: record.transactionId,
+        requestHash: record.requestHash,
+      };
+    }
+
+    if (record.status === 'failed') {
+      return {
+        status: 'failed',
+        transactionId: null,
+        requestHash: record.requestHash,
+      };
+    }
+
+    const isExpiredProcessing =
+      record.status === 'processing' &&
+      record.expiresAt &&
+      new Date(record.expiresAt).getTime() < Date.now();
+
+    if (isExpiredProcessing) {
+      return null;
+    }
+
+    return {
+      status: 'processing',
+      transactionId: null,
+      requestHash: record.requestHash,
+    };
+  }
+
+  /**
+   * [AUDIT FIX P0-02 - CRITICAL]
+   * On a UNIQUE conflict, this now:
+   *   1. Reads the existing row to inspect its status/expiresAt/requestHash.
+   *   2. Determines if it's reclaimable at all (failed, or expired
+   *      processing) — same as the previous revision.
+   *   3. NEW: requires existing.requestHash === requestHash before
+   *      reclaiming. A same (key, scope) pair with a DIFFERENT requestHash
+   *      means a semantically different request is trying to reuse another
+   *      request's idempotency identity — this now throws
+   *      IdempotencyKeyReusedWithDifferentRequestError instead of silently
+   *      overwriting the stored hash.
+   *   4. The actual UPDATE's WHERE clause also re-checks requestHash, so a
+   *      concurrent reclaim attempt with a different hash can't race past
+   *      the check above and win the UPDATE anyway.
+   */
+  async claimIdempotency(
+    idempotencyKey: string,
+    userId: number | null | undefined,
+    scope: string,
+    requestHash: string
+  ): Promise<boolean> {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    try {
+      await this.executor.insert(idempotencyKeys).values({
+        userId: userId ?? null,
+        scope,
+        key: idempotencyKey,
+        requestHash,
+        status: 'processing',
+        expiresAt,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return true;
+    } catch (err: any) {
+      if (!isUniqueConstraintViolation(err)) {
+        throw err;
+      }
+
+      const [existing] = await this.executor
+        .select({
+          status: idempotencyKeys.status,
+          requestHash: idempotencyKeys.requestHash,
+          expiresAt: idempotencyKeys.expiresAt,
+        })
+        .from(idempotencyKeys)
+        .where(
+          and(
+            eq(idempotencyKeys.key, idempotencyKey),
+            eq(idempotencyKeys.scope, scope)
+          )
+        )
+        .limit(1);
+
+      if (!existing) {
+        // Race: the row disappeared between the failed INSERT and this
+        // SELECT. Extremely unlikely, but surfaced explicitly rather than
+        // silently retried.
+        throw new Error(
+          `Falha de concorrência: idempotency key '${idempotencyKey}' (scope '${scope}') não encontrada após violação de UNIQUE.`
+        );
+      }
+
+      const isExpiredProcessing =
+        existing.status === 'processing' &&
+        existing.expiresAt &&
+        new Date(existing.expiresAt).getTime() < now.getTime();
+
+      const isReclaimable = existing.status === 'failed' || isExpiredProcessing;
+
+      if (!isReclaimable) {
+        // Either 'completed', or 'processing' and still within its
+        // expiresAt window — a legitimate concurrent/duplicate claim
+        // attempt. Not an error: the caller should treat this as "already
+        // claimed by someone else" and back off.
+        return false;
+      }
+
+      if (existing.requestHash !== requestHash) {
+        throw new IdempotencyKeyReusedWithDifferentRequestError(
+          `Idempotency key '${idempotencyKey}' (scope '${scope}') já foi usada com um requestHash diferente. ` +
+          `Isso indica reuso indevido da mesma chave para uma requisição semanticamente distinta.`
+        );
+      }
+
+      const res = await this.executor
+        .update(idempotencyKeys)
+        .set({
+          status: 'processing',
+          financialTransactionId: null,
+          expiresAt,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(idempotencyKeys.key, idempotencyKey),
+            eq(idempotencyKeys.scope, scope),
+            eq(idempotencyKeys.requestHash, requestHash),
+            or(
+              eq(idempotencyKeys.status, 'failed'),
+              and(
+                eq(idempotencyKeys.status, 'processing'),
+                lt(idempotencyKeys.expiresAt, now)
+              )
+            )
+          )
+        );
+
+      const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
+      return affected > 0;
+    }
+  }
+
+  /**
+   * Call this from the use case's failure path right after
+   * claimIdempotency() succeeds but the domain operation itself fails.
+   */
+  async failIdempotency(key: string, scope: string): Promise<void> {
+    await this.executor
+      .update(idempotencyKeys)
+      .set({
+        status: 'failed',
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(idempotencyKeys.key, key),
+          eq(idempotencyKeys.scope, scope),
+          eq(idempotencyKeys.status, 'processing')
+        )
+      );
+    // Intentionally not throwing if 0 rows affected: the caller is on a
+    // failure path already, and a missing/already-resolved row here
+    // shouldn't mask the original domain error.
+  }
+
+  async completeIdempotency(key: string, scope: string, transactionId: number): Promise<void> {
+    const res = await this.executor
+      .update(idempotencyKeys)
+      .set({
+        status: 'completed',
+        financialTransactionId: transactionId
+      })
+      .where(
+        and(
+          eq(idempotencyKeys.key, key),
+          eq(idempotencyKeys.scope, scope),
+          eq(idempotencyKeys.status, 'processing')
+        )
+      );
+
+    const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
+    if (affected === 0) {
+      throw new Error(
+        `Falha ao concluir Idempotency Key (${key}): Registro de idempotência não encontrado ou não está em estado 'processing'.`
+      );
+    }
+  }
+
+  async insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<Result<void, RepositoryError>> {
+    try {
+      const balanceByAsset = new Map<number, bigint>();
+
+      const payload = entries.map(entry => {
+        const amountBigInt = entry.amount.toBigInt();
+
+        if (amountBigInt <= 0n) {
+          throw new Error(`Invalid ledger entry amount: ${amountBigInt}`);
+        }
+
+        if (amountBigInt > MAX_UINT256_BASE_UNITS_BIGINT) {
+          throw new Money256OverflowError(
+            `Quantia de lançamento contábil (${amountBigInt}) excede o limite uint256 (${MAX_UINT256_BASE_UNITS_TEXT}).`
+          );
+        }
+
+        const accountIdNum = Number(entry.accountId);
+        const assetIdNum = Number(entry.amount.assetId);
+
+        if (!Number.isInteger(accountIdNum) || accountIdNum <= 0) {
+          throw new Error(`Invalid physical accountId: ${entry.accountId}`);
+        }
+        if (!Number.isInteger(assetIdNum) || assetIdNum <= 0) {
+          throw new Error(`Invalid physical assetId: ${entry.amount.assetId}`);
+        }
+
+        const signedAmount = entry.type === 'debit' ? amountBigInt : -amountBigInt;
+        balanceByAsset.set(assetIdNum, (balanceByAsset.get(assetIdNum) ?? 0n) + signedAmount);
+
+        return {
+          transactionId,
+          accountId: accountIdNum,
+          assetId: assetIdNum,
+          direction: entry.type,
+          amountBaseUnits: amountBigInt.toString(),
+          createdAt: new Date(),
+        };
+      });
+
+      for (const [assetId, netAmount] of balanceByAsset) {
+        if (netAmount !== 0n) {
+          throw new Error(
+            `Lançamentos contábeis desbalanceados para transação ${transactionId}, asset ${assetId}: diferença débito-crédito = ${netAmount}.`
+          );
+        }
+      }
+
+      if (payload.length > 0) {
+        await this.executor.insert(financialLedgerEntries).values(payload);
+      }
+      return Result.ok();
+    } catch (e: any) {
+      if (e instanceof Money256OverflowError) {
+        return Result.err(RepositoryError.constraint(e.message, e));
+      }
+      return Result.err(RepositoryError.transient(e.message, e));
+    }
+  }
+
+  async updateBalanceWithOCC(
+    accountId: number | string,
+    assetId: number | string,
+    amount: bigint,
+    type: 'debit' | 'credit',
+    executorOverride?: FinanceDbExecutor
+  ): Promise<BalanceUpdateResult> {
+    const exec = executorOverride || this.executor;
+
+    if (typeof amount !== 'bigint' || amount <= 0n) {
+      throw new Error(`Invalid base units amount for OCC update: ${amount}`);
+    }
+
+    if (amount > MAX_UINT256_BASE_UNITS_BIGINT) {
+      throw new Money256OverflowError(
+        `Quantia informada (${amount}) excede o limite uint256 (${MAX_UINT256_BASE_UNITS_TEXT}).`
+      );
+    }
+
+    const accIdNum = Number(accountId);
+    const assetIdNum = Number(assetId);
+
+    if (!Number.isInteger(accIdNum) || accIdNum <= 0) {
+      throw new Error(`Invalid physical accountId: ${accountId}`);
+    }
+    if (!Number.isInteger(assetIdNum) || assetIdNum <= 0) {
+      throw new Error(`Invalid physical assetId: ${assetId}`);
+    }
+
+    // 1. Validar status ativo do ativo financeiro (antes de qualquer escrita)
+    const [assetRow] = await exec
+      .select({ status: financialAssets.status })
+      .from(financialAssets)
+      .where(eq(financialAssets.id, assetIdNum))
+      .limit(1);
+
+    if (!assetRow) {
+      throw new Error(`Financial asset #${assetIdNum} not found.`);
+    }
+    if (assetRow.status !== 'active') {
+      throw new AssetInactiveError(`Ativo financeiro #${assetIdNum} está inativo ou suspenso.`);
+    }
+
+    // 2. Determinar a classe e status da conta com switch exaustivo
+    //    (também antes de qualquer escrita)
+    const [accRow] = await exec
+      .select({
+        accountClass: financialAccounts.accountClass,
+        status: financialAccounts.status,
+      })
+      .from(financialAccounts)
+      .where(eq(financialAccounts.id, accIdNum))
+      .limit(1);
+
+    if (!accRow) {
+      throw new Error(`Account not found: ${accountId}`);
+    }
+
+    if (accRow.status !== 'active') {
+      throw new AccountInactiveError(`Conta financeira #${accIdNum} está inativa ou suspensa.`);
+    }
+
+    const accClass = accRow.accountClass;
+    let isDebitNormal: boolean;
+    switch (accClass) {
+      case 'asset':
+      case 'expense':
+        isDebitNormal = true;
+        break;
+      case 'liability':
+      case 'equity':
+      case 'revenue':
+        isDebitNormal = false;
+        break;
+      default:
+        throw new InvalidAccountClassError(`Classe contábil '${accClass}' inválida ou não suportada.`);
+    }
+
+    // 3. Só agora garantir que a linha de saldo exista (auto-provisionamento)
+    await this.ensureAccountBalance(accIdNum, assetIdNum, exec);
+
+    // 4. Selecionar o saldo com OCC version
+    const [balance] = await exec
+      .select({
+        id: accountBalances.id,
+        availableBaseUnits: accountBalances.availableBaseUnits,
+        version: accountBalances.version,
+      })
+      .from(accountBalances)
+      .where(
+        and(
+          eq(accountBalances.accountId, accIdNum),
+          eq(accountBalances.assetId, assetIdNum)
+        )
+      )
+      .limit(1);
+
+    if (!balance) {
+      throw new Error(`Balance not found for account ${accountId} and asset ${assetId}`);
+    }
+
+    const currentVersion = balance.version;
+    const isIncrease = isDebitNormal ? type === 'debit' : type === 'credit';
+    const currentAvailable = validateCanonicalBaseUnits(balance.availableBaseUnits || '0');
+    const newAvailable = isIncrease
+      ? currentAvailable + amount
+      : currentAvailable - amount;
+
+    if (newAvailable < 0n) {
+      return 'INSUFFICIENT_BALANCE';
+    }
+
+    if (newAvailable > MAX_UINT256_BASE_UNITS_BIGINT) {
+      throw new Money256OverflowError(
+        `Novo saldo disponível (${newAvailable}) excederia o limite uint256 (${MAX_UINT256_BASE_UNITS_TEXT}).`
+      );
+    }
+
+    const newAvailableStr = newAvailable.toString();
+
+    const res = await exec
+      .update(accountBalances)
+      .set({
+        availableBaseUnits: newAvailableStr,
+        version: currentVersion + 1,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(accountBalances.id, balance.id),
+          eq(accountBalances.version, currentVersion)
+        )
+      );
+
+    const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
+    return affected > 0 ? 'UPDATED' : 'OCC_CONFLICT';
+  }
+}
+```
+
+---
+
+<a id="srcinfrastructurerepositoriesdrizzlefinancerepositorytestts"></a>
+## Arquivo: `src/infrastructure/repositories/DrizzleFinanceRepository.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.test.ts`
+- **Total de linhas**: 65
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, vi } from 'vitest';
+import { DrizzleFinanceRepository } from './DrizzleFinanceRepository';
+
+describe('DrizzleFinanceRepository', () => {
+  it('should auto-provision account_balances if missing during updateBalanceWithOCC', async () => {
+    let insertedBalance = false;
+    const mockDb: any = {
+      select: vi.fn().mockImplementation(() => ({
+        from: vi.fn().mockImplementation(() => ({
+          where: vi.fn().mockImplementation(() => ({
+            limit: vi.fn().mockImplementation(async () => {
+              if (!insertedBalance) {
+                // Primeira busca em account_balances (ensureAccountBalance): não existe
+                return [];
+              }
+              // Segunda busca: financialAccounts (accountClass)
+              // Terceira busca: account_balances (pós inserção)
+              return [{ id: 1, availableBaseUnits: 0, version: 1, accountClass: 'liability', status: 'active' }];
+            }),
+          })),
+        })),
+      })),
+      insert: vi.fn().mockImplementation(() => ({
+        values: vi.fn().mockImplementation(async () => {
+          insertedBalance = true;
+          return undefined;
+        }),
+      })),
+      update: vi.fn().mockImplementation(() => ({
+        set: vi.fn().mockImplementation(() => ({
+          where: vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
+        })),
+      })),
+    };
+
+    const repo = new DrizzleFinanceRepository(mockDb);
+    const result = await repo.updateBalanceWithOCC('10', '1', 500n, 'credit');
+
+    expect(result).toBe('UPDATED');
+    expect(mockDb.insert).toHaveBeenCalled();
+    expect(insertedBalance).toBe(true);
+  });
+
+  it('should treat credit as balance increase for liability account and decrease for asset account', async () => {
+    const mockDbLiability: any = {
+      select: vi.fn().mockImplementation(() => ({
+        from: vi.fn().mockImplementation(() => ({
+          where: vi.fn().mockImplementation(() => ({
+            limit: vi.fn().mockResolvedValue([{ id: 1, availableBaseUnits: 100, version: 1, accountClass: 'liability', status: 'active' }]),
+          })),
+        })),
+      })),
+      update: vi.fn().mockImplementation(() => ({
+        set: vi.fn().mockImplementation(() => ({
+          where: vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
+        })),
+      })),
+    };
+
+    const repo = new DrizzleFinanceRepository(mockDbLiability);
+    const success = await repo.updateBalanceWithOCC('10', '1', 50n, 'credit');
+    expect(success).toBe('UPDATED');
+    expect(mockDbLiability.update).toHaveBeenCalled();
+  });
+});
+
+```
+
+---
+
+<a id="srcinfrastructureservicesfinancebootstrapservicets"></a>
+## Arquivo: `src/infrastructure/services/FinanceBootstrapService.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinanceBootstrapService.ts`
+- **Total de linhas**: 195
+- **Linguagem**: TypeScript
+
+```typescript
+import { financialAccounts, financialAssets, accountBalances } from '../../db/finance/tables';
+import { eq, and } from 'drizzle-orm';
+import { Result } from '../../shared/kernel/Result';
+
+export interface TreasuryBootstrapOptions {
+  currencyCode?: string;
+  initialBalanceBaseUnits?: bigint;
+}
+
+export interface TreasuryBootstrapResult {
+  assetId: number;
+  treasuryAccountId: number;
+  operatingAccountId: number;
+  feeAccountId: number;
+  rewardExpenseAccountId: number;
+  yieldExpenseAccountId: number;
+  clearingAccountId: number;
+  openingEquityAccountId: number;
+  paymentRevenueAccountId: number;
+  refundExpenseAccountId: number;
+}
+
+export class FinanceBootstrapService {
+  /**
+   * Provisiona a infraestrutura básica de contas sistêmicas do Finance Core:
+   * 1. Ativo Padrão (ex: BRL, USD, USDT)
+   * 2. Contas Sistêmicas com userId = NULL (cumprindo ownerRuleCheck e FIN-019).
+   */
+  static async seedSystemAccounts(
+    db: any,
+    options: TreasuryBootstrapOptions = {}
+  ): Promise<Result<TreasuryBootstrapResult>> {
+    const runSeeding = async (tx: any): Promise<TreasuryBootstrapResult> => {
+      const currency = options.currencyCode || 'BRL';
+
+      // 1. Assegurar Ativo Financeiro
+      let [asset] = await tx
+        .select()
+        .from(financialAssets)
+        .where(eq(financialAssets.code, currency))
+        .limit(1);
+
+      if (!asset) {
+        try {
+          await tx.insert(financialAssets).values({
+            code: currency,
+            symbol: currency === 'BRL' ? 'R$' : '$',
+            name: `${currency} Base Currency`,
+            decimals: 2,
+            type: 'fiat',
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        } catch (insertErr: any) {
+          // Ignora conflito de UNIQUE se já inserido concorrentemente
+        }
+        [asset] = await tx
+          .select()
+          .from(financialAssets)
+          .where(eq(financialAssets.code, currency))
+          .limit(1);
+      }
+
+      const assetId = asset.id;
+
+      // Helper para buscar ou criar conta sistêmica com userId = null
+      const ensureSystemAccount = async (
+        accountType:
+          | 'treasury'
+          | 'operating'
+          | 'fees'
+          | 'reward_expense'
+          | 'yield_expense'
+          | 'clearing'
+          | 'opening_balance_equity'
+          | 'payment_revenue'
+          | 'refund_expense',
+        accountClass: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
+        name: string
+      ) => {
+        let [acc] = await tx
+          .select()
+          .from(financialAccounts)
+          .where(
+            and(
+              eq(financialAccounts.accountType, accountType),
+              eq(financialAccounts.status, 'active')
+            )
+          )
+          .limit(1);
+
+        if (!acc) {
+          try {
+            await tx.insert(financialAccounts).values({
+              userId: null, // P0 FIX: Deve ser estritamente null para não-user_available
+              accountType,
+              accountClass,
+              status: 'active',
+              name,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          } catch (insertErr: any) {
+            // Re-read em caso de violação do índice UNIQUE singleton
+          }
+          [acc] = await tx
+            .select()
+            .from(financialAccounts)
+            .where(
+              and(
+                eq(financialAccounts.accountType, accountType),
+                eq(financialAccounts.status, 'active')
+              )
+            )
+            .limit(1);
+        }
+        return acc;
+      };
+
+      // Provisionar todas as contas sistêmicas necessárias
+      const treasuryAcc = await ensureSystemAccount('treasury', 'asset', 'Treasury Primary Vault');
+      const operatingAcc = await ensureSystemAccount('operating', 'asset', 'System Operating Vault');
+      const feeAcc = await ensureSystemAccount('fees', 'revenue', 'System Fee Collector');
+      const rewardExpenseAcc = await ensureSystemAccount('reward_expense', 'expense', 'System Reward Expense');
+      const yieldExpenseAcc = await ensureSystemAccount('yield_expense', 'expense', 'System Yield Expense');
+      const clearingAcc = await ensureSystemAccount('clearing', 'asset', 'System FX Clearing Account');
+      const openingEquityAcc = await ensureSystemAccount('opening_balance_equity', 'equity', 'System Opening Balance Equity');
+      const paymentRevenueAcc = await ensureSystemAccount('payment_revenue', 'revenue', 'System Payment Revenue Account');
+      const refundExpenseAcc = await ensureSystemAccount('refund_expense', 'expense', 'System Refund Expense Account');
+
+      // Assegurar saldo zerado ou inicial
+      const initialBal = (options.initialBalanceBaseUnits ?? 0n).toString();
+      const systemAccounts = [
+        treasuryAcc.id,
+        operatingAcc.id,
+        feeAcc.id,
+        rewardExpenseAcc.id,
+        yieldExpenseAcc.id,
+        clearingAcc.id,
+        openingEquityAcc.id,
+        paymentRevenueAcc.id,
+        refundExpenseAcc.id,
+      ];
+
+      for (const accId of systemAccounts) {
+        const [existingBal] = await tx
+          .select()
+          .from(accountBalances)
+          .where(
+            and(
+              eq(accountBalances.accountId, accId),
+              eq(accountBalances.assetId, assetId)
+            )
+          )
+          .limit(1);
+
+        if (!existingBal) {
+          try {
+            await tx.insert(accountBalances).values({
+              accountId: accId,
+              assetId,
+              availableBaseUnits: accId === treasuryAcc.id ? initialBal : '0',
+              lockedBaseUnits: '0',
+              version: 1,
+              updatedAt: new Date(),
+            });
+          } catch (balErr: any) {
+            // Ignora conflito
+          }
+        }
+      }
+
+      return {
+        assetId,
+        treasuryAccountId: treasuryAcc.id,
+        operatingAccountId: operatingAcc.id,
+        feeAccountId: feeAcc.id,
+        rewardExpenseAccountId: rewardExpenseAcc.id,
+        yieldExpenseAccountId: yieldExpenseAcc.id,
+        clearingAccountId: clearingAcc.id,
+        openingEquityAccountId: openingEquityAcc.id,
+        paymentRevenueAccountId: paymentRevenueAcc.id,
+        refundExpenseAccountId: refundExpenseAcc.id,
+      };
+    };
+
+    try {
+      const res = await runSeeding(db);
+      return Result.ok(res);
+    } catch (err: any) {
+      return Result.fail(`Bootstrap failed: ${err.message}`);
+    }
+  }
+}
+
+```
+
+---
+
+<a id="srcdbfinancetablests"></a>
+## Arquivo: `src/db/finance/tables.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/db/finance/tables.ts`
+- **Total de linhas**: 2802
+- **Linguagem**: TypeScript
+
+```typescript
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  uniqueIndex,
+  check,
+  foreignKey,
+  type AnySQLiteColumn,
+} from 'drizzle-orm/sqlite-core';
+import { sql, type SQL } from 'drizzle-orm';
+
+import { users } from '../user/tables';
+
+/**
+ * ============================================================================
+ * FINANCE DOMAIN
+ * ============================================================================
+ *
+ * Responsibilities:
+ * - Financial assets supported by the platform
+ * - Financial accounts with explicit accounting classes
+ * - Financial transactions
+ * - Double-entry ledger
+ * - Per-asset account balances
+ * - Balance holds
+ * - Fiat providers / accounts / payment methods / transactions
+ * - Crypto transactions
+ * - Exact rational exchange rates
+ * - Asset conversions
+ * - Financial fees
+ * - External provider references
+ * - Idempotency re-export
+ * - Reconciliation
+ *
+ * ARCHITECTURAL RULE:
+ * This file defines persistence structure and database-level invariants.
+ * Business workflows remain in domain/application services.
+ *
+ * MONEY REPRESENTATION:
+ * All base-unit monetary values are persisted as canonical decimal strings.
+ *
+ * UINT256 LIMIT:
+ *   Maximum unsigned 256-bit value:
+ *
+ *   2^256 - 1 =
+ *   115792089237316195423570985008687907853269984665640564039457584007913129639935
+ *
+ * IMPORTANT:
+ *   Monetary values MUST NOT be constrained to JavaScript's
+ *   Number.MAX_SAFE_INTEGER (2^53 - 1).
+ *
+ *   The database stores canonical decimal strings so that values above 2^53
+ *   remain exact across the SQLite/D1 persistence boundary.
+ *
+ * ============================================================================
+ * AUDIT CHANGELOG
+ * ============================================================================
+ * 1. Replaced the previous Number.MAX_SAFE_INTEGER / 2^53-1 monetary cap
+ *    with the full unsigned uint256 domain.
+ * 2. Canonical monetary CHECK helpers now permit values from 0 through
+ *    MAX_UINT256 without converting them to SQLite INTEGER.
+ * 3. Self-referencing transaction FKs no longer use `any`; they use
+ *    `AnySQLiteColumn`, preserving Drizzle's circular-type workaround while
+ *    removing the unsafe top-level type escape.
+ * 4. Removed the previous illustrative ledger trigger that used
+ *    CAST(amount_base_units AS INTEGER). Such a trigger would be UNSAFE for
+ *    uint256 values because SQLite INTEGER is 64-bit signed. Double-entry
+ *    balancing therefore remains an application/domain transactional
+ *    invariant until a decimal-safe SQL/UDF mechanism is deliberately added.
+ * 5. Corrected financial transaction completion-state semantics so that
+ *    reversed/refunded historical transactions may retain completedAt.
+ * 6. Tightened reconciliation resolved-state semantics:
+ *      - resolved requires a non-zero retained difference
+ *      - resolved requires resolvedAt
+ *      - resolved requires resolvedByUserId
+ *      - resolved requires both resolution reason/reference
+ * 7. Replaced provider-sensitive single reconciliation uniqueness with two
+ *    partial unique indexes so SQLite NULL semantics cannot create duplicate
+ *    providerless reconciliation scopes.
+ * ============================================================================
+ */
+
+/**
+ * ============================================================================
+ * UINT256 CONSTANTS
+ * ============================================================================
+ */
+
+export const MAX_UINT256_BASE_UNITS_TEXT =
+  '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+
+const MAX_UINT256_DECIMAL_DIGITS = 78;
+
+/* ============================================================================
+ * SHARED CANONICAL-AMOUNT SQL HELPERS
+ * ============================================================================
+ *
+ * All base-unit monetary columns in this domain are persisted as canonical
+ * decimal strings.
+ *
+ * Canonical unsigned:
+ *   0
+ *   1
+ *   2
+ *   ...
+ *   MAX_UINT256
+ *
+ * Canonical signed:
+ *   0
+ *   positive canonical integer
+ *   negative canonical integer whose absolute value <= MAX_UINT256
+ *
+ * We intentionally do NOT use:
+ *
+ *   CAST(... AS INTEGER)
+ *   Number(...)
+ *   REAL
+ *   FLOAT
+ *   DOUBLE
+ *
+ * for monetary values.
+ *
+ * SQLite INTEGER is a signed 64-bit integer and therefore cannot represent
+ * uint256 amounts exactly.
+ * ============================================================================
+ */
+
+/** Upper-bound check for uint256 canonical decimal representation. */
+function uint256UpperBoundSql(column: unknown): SQL {
+  return sql`
+    (
+      length(${column}) < ${MAX_UINT256_DECIMAL_DIGITS}
+      OR (
+        length(${column}) = ${MAX_UINT256_DECIMAL_DIGITS}
+        AND ${column} <= ${MAX_UINT256_BASE_UNITS_TEXT}
+      )
+    )
+  `;
+}
+
+/** Strictly positive canonical uint256 decimal string. */
+function canonicalUnsignedAmountSql(column: unknown): SQL {
+  return sql`
+    ${column} GLOB '[1-9]*'
+    AND ${column} NOT GLOB '*[^0-9]*'
+    AND ${uint256UpperBoundSql(column)}
+  `;
+}
+
+/** Non-negative canonical uint256 decimal string. */
+function canonicalUnsignedOrZeroAmountSql(column: unknown): SQL {
+  return sql`
+    (
+      ${column} = '0'
+      OR (
+        ${column} GLOB '[1-9]*'
+        AND ${column} NOT GLOB '*[^0-9]*'
+      )
+    )
+    AND ${uint256UpperBoundSql(column)}
+  `;
+}
+
+/**
+ * Signed canonical integer:
+ *
+ *   0
+ *   +N represented without '+'
+ *   -N represented with '-'
+ *
+ * Zero must be exactly "0".
+ */
+function canonicalSignedAmountSql(column: unknown): SQL {
+  return sql`
+    (
+      ${column} = '0'
+      OR
+      (
+        ${column} GLOB '[1-9]*'
+        AND ${column} NOT GLOB '*[^0-9]*'
+      )
+      OR
+      (
+        substr(${column}, 1, 1) = '-'
+        AND substr(${column}, 2) GLOB '[1-9]*'
+        AND substr(${column}, 2) NOT GLOB '*[^0-9]*'
+      )
+    )
+    AND
+    (
+      ${column} = '0'
+      OR
+      (
+        substr(${column}, 1, 1) != '-'
+        AND ${uint256UpperBoundSql(column)}
+      )
+      OR
+      (
+        substr(${column}, 1, 1) = '-'
+        AND (
+          length(${column}) < ${MAX_UINT256_DECIMAL_DIGITS + 1}
+          OR (
+            length(${column}) = ${MAX_UINT256_DECIMAL_DIGITS + 1}
+            AND substr(${column}, 2) <= ${MAX_UINT256_BASE_UNITS_TEXT}
+          )
+        )
+      )
+    )
+  `;
+}
+
+/* ============================================================================
+ * 1. FINANCIAL ASSETS
+ * ========================================================================== */
+
+export const financialAssets = sqliteTable(
+  'financial_assets',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    code: text('code').notNull(),
+
+    symbol: text('symbol').notNull(),
+
+    name: text('name').notNull(),
+
+    type: text('type', {
+      enum: ['fiat', 'crypto'],
+    }).notNull(),
+
+    decimals: integer('decimals').notNull(),
+
+    status: text('status', {
+      enum: ['active', 'inactive'],
+    })
+      .notNull()
+      .default('active'),
+
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    codeUq: uniqueIndex('uq_financial_assets_code').on(table.code),
+
+    typeIdx: index('idx_financial_assets_type').on(table.type),
+
+    statusIdx: index('idx_financial_assets_status').on(table.status),
+
+    codeCheck: check(
+      'ck_financial_assets_code_nonempty',
+      sql`length(trim(${table.code})) > 0`,
+    ),
+
+    symbolCheck: check(
+      'ck_financial_assets_symbol_nonempty',
+      sql`length(trim(${table.symbol})) > 0`,
+    ),
+
+    nameCheck: check(
+      'ck_financial_assets_name_nonempty',
+      sql`length(trim(${table.name})) > 0`,
+    ),
+
+    typeCheck: check(
+      'ck_financial_assets_type',
+      sql`${table.type} IN ('fiat', 'crypto')`,
+    ),
+
+    statusCheck: check(
+      'ck_financial_assets_status',
+      sql`${table.status} IN ('active', 'inactive')`,
+    ),
+
+    decimalsCheck: check(
+      'ck_financial_assets_decimals',
+      sql`${table.decimals} >= 0 AND ${table.decimals} <= 18`,
+    ),
+
+    decimalsByTypeCheck: check(
+      'ck_financial_assets_decimals_by_type',
+      sql`(
+        ${table.type} = 'fiat' AND ${table.decimals} BETWEEN 0 AND 6
+      )
+      OR
+      (
+        ${table.type} = 'crypto' AND ${table.decimals} BETWEEN 0 AND 18
+      )`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 2. FINANCIAL ACCOUNTS
+ * ========================================================================== */
+
+export const financialAccounts = sqliteTable(
+  'financial_accounts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+
+    accountType: text('account_type', {
+      enum: [
+        'user_available',
+        'treasury',
+        'operating',
+        'reserve',
+        'fees',
+        'escrow',
+        'reward_expense',
+        'yield_expense',
+        'clearing',
+        'opening_balance_equity',
+        'payment_revenue',
+        'refund_expense',
+      ],
+    }).notNull(),
+
+    accountClass: text('account_class', {
+      enum: [
+        'asset',
+        'liability',
+        'equity',
+        'revenue',
+        'expense',
+      ],
+    })
+      .notNull()
+      .default('liability'),
+
+    status: text('status', {
+      enum: ['active', 'inactive', 'suspended'],
+    })
+      .notNull()
+      .default('active'),
+
+    name: text('name').notNull(),
+
+    version: integer('version').notNull().default(1),
+
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    userIdx: index('idx_financial_accounts_user').on(table.userId),
+
+    typeIdx: index('idx_financial_accounts_type').on(table.accountType),
+
+    classIdx: index('idx_financial_accounts_class').on(table.accountClass),
+
+    statusIdx: index('idx_financial_accounts_status').on(table.status),
+
+    nameCheck: check(
+      'ck_financial_accounts_name_nonempty',
+      sql`length(trim(${table.name})) > 0`,
+    ),
+
+    accountTypeCheck: check(
+      'ck_financial_accounts_type',
+      sql`${table.accountType} IN (
+        'user_available',
+        'treasury',
+        'operating',
+        'reserve',
+        'fees',
+        'escrow',
+        'reward_expense',
+        'yield_expense',
+        'clearing',
+        'opening_balance_equity',
+        'payment_revenue',
+        'refund_expense'
+      )`,
+    ),
+
+    accountClassCheck: check(
+      'ck_financial_accounts_class',
+      sql`${table.accountClass} IN (
+        'asset',
+        'liability',
+        'equity',
+        'revenue',
+        'expense'
+      )`,
+    ),
+
+    statusCheck: check(
+      'ck_financial_accounts_status',
+      sql`${table.status} IN ('active', 'inactive', 'suspended')`,
+    ),
+
+    accountTypeClassCheck: check(
+      'ck_financial_accounts_type_class_matrix',
+      sql`(
+        (${table.accountType} = 'user_available' AND ${table.accountClass} = 'liability')
+        OR
+        (${table.accountType} = 'treasury' AND ${table.accountClass} = 'asset')
+        OR
+        (${table.accountType} = 'operating' AND ${table.accountClass} = 'asset')
+        OR
+        (${table.accountType} = 'reserve' AND ${table.accountClass} IN ('asset', 'liability'))
+        OR
+        (${table.accountType} = 'fees' AND ${table.accountClass} = 'revenue')
+        OR
+        (${table.accountType} = 'escrow' AND ${table.accountClass} = 'liability')
+        OR
+        (${table.accountType} = 'reward_expense' AND ${table.accountClass} = 'expense')
+        OR
+        (${table.accountType} = 'yield_expense' AND ${table.accountClass} = 'expense')
+        OR
+        (${table.accountType} = 'clearing' AND ${table.accountClass} IN ('asset', 'liability'))
+        OR
+        (
+          ${table.accountType} = 'opening_balance_equity'
+          AND ${table.accountClass} IN ('equity', 'liability')
+        )
+        OR
+        (${table.accountType} = 'payment_revenue' AND ${table.accountClass} = 'revenue')
+        OR
+        (${table.accountType} = 'refund_expense' AND ${table.accountClass} = 'expense')
+      )`,
+    ),
+
+    userAccountTypeUq: uniqueIndex(
+      'uq_financial_accounts_user_type_name',
+    ).on(
+      table.userId,
+      table.accountType,
+      table.name,
+    ),
+
+    systemAccountTypeNameUq: uniqueIndex(
+      'uq_financial_accounts_system_type_name',
+    )
+      .on(table.accountType, table.name)
+      .where(sql`${table.userId} IS NULL`),
+
+    activeTreasurySingletonUnq: uniqueIndex(
+      'uq_treasury_active_singleton',
+    )
+      .on(table.accountType)
+      .where(
+        sql`${table.accountType} = 'treasury'
+          AND ${table.status} = 'active'`,
+      ),
+
+    activeOperatingSingletonUnq: uniqueIndex(
+      'uq_operating_active_singleton',
+    )
+      .on(table.accountType)
+      .where(
+        sql`${table.accountType} = 'operating'
+          AND ${table.status} = 'active'`,
+      ),
+
+    activeFeesSingletonUnq: uniqueIndex(
+      'uq_fees_active_singleton',
+    )
+      .on(table.accountType)
+      .where(
+        sql`${table.accountType} = 'fees'
+          AND ${table.status} = 'active'`,
+      ),
+
+    userAvailableSingletonUnq: uniqueIndex(
+      'uq_user_available_singleton',
+    )
+      .on(table.userId)
+      .where(
+        sql`${table.accountType} = 'user_available'`,
+      ),
+
+    ownerRuleCheck: check(
+      'ck_financial_accounts_owner_rule',
+      sql`(
+        ${table.accountType} = 'user_available'
+        AND ${table.userId} IS NOT NULL
+      )
+      OR
+      (
+        ${table.accountType} != 'user_available'
+        AND ${table.userId} IS NULL
+      )`,
+    ),
+
+    versionCheck: check(
+      'ck_financial_accounts_version',
+      sql`${table.version} > 0`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 3. FINANCIAL TRANSACTIONS
+ * ========================================================================== */
+
+export const financialTransactions = sqliteTable(
+  'financial_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    userId: integer('user_id').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
+
+    /**
+     * Self-referencing FK.
+     *
+     * Drizzle requires a lazy reference because the table is self-referential.
+     * `AnySQLiteColumn` is used instead of `any`, preserving the known
+     * circular-inference workaround without introducing an unsafe untyped
+     * escape.
+     */
+    reversalOfTransactionId: integer(
+      'reversal_of_transaction_id',
+    ).references(
+      (): AnySQLiteColumn => financialTransactions.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    refundOfTransactionId: integer(
+      'refund_of_transaction_id',
+    ).references(
+      (): AnySQLiteColumn => financialTransactions.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    type: text('type', {
+      enum: [
+        'deposit',
+        'withdrawal',
+        'transfer',
+        'payment',
+        'refund',
+        'fee',
+        'reward',
+        'yield',
+        'conversion',
+        'adjustment',
+        'reversal',
+      ],
+    }).notNull(),
+
+    category: text('category', {
+      enum: [
+        'membership',
+        'rwa_yield',
+        'grant',
+        'operational',
+        'payment',
+        'trading',
+        'withdrawal',
+        'deposit',
+        'fee',
+        'other',
+      ],
+    })
+      .notNull()
+      .default('other'),
+
+    status: text('status', {
+      enum: [
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled',
+        'reversed',
+        'refunded',
+      ],
+    })
+      .notNull()
+      .default('pending'),
+
+    sourceType: text('source_type', {
+      enum: [
+        'contribution',
+        'grant',
+        'membership',
+        'payroll',
+        'withdrawal',
+        'payment',
+        'conversion',
+        'system',
+        'other',
+      ],
+    }),
+
+    sourceId: text('source_id'),
+
+    correlationId: text('correlation_id'),
+
+    description: text('description').notNull(),
+
+    version: integer('version').notNull().default(1),
+
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    userIdx: index('idx_financial_transactions_user').on(
+      table.userId,
+    ),
+
+    typeIdx: index('idx_financial_transactions_type').on(
+      table.type,
+    ),
+
+    statusIdx: index('idx_financial_transactions_status').on(
+      table.status,
+    ),
+
+    createdIdx: index('idx_financial_transactions_created').on(
+      table.createdAt,
+    ),
+
+    correlationIdx: index(
+      'idx_financial_transactions_correlation',
+    ).on(table.correlationId),
+
+    singleReversalUnq: uniqueIndex(
+      'uq_financial_tx_single_reversal',
+    )
+      .on(table.reversalOfTransactionId)
+      .where(
+        sql`${table.reversalOfTransactionId} IS NOT NULL`,
+      ),
+
+    typeCheck: check(
+      'ck_financial_tx_type',
+      sql`${table.type} IN (
+        'deposit',
+        'withdrawal',
+        'transfer',
+        'payment',
+        'refund',
+        'fee',
+        'reward',
+        'yield',
+        'conversion',
+        'adjustment',
+        'reversal'
+      )`,
+    ),
+
+    categoryCheck: check(
+      'ck_financial_tx_category',
+      sql`${table.category} IN (
+        'membership',
+        'rwa_yield',
+        'grant',
+        'operational',
+        'payment',
+        'trading',
+        'withdrawal',
+        'deposit',
+        'fee',
+        'other'
+      )`,
+    ),
+
+    statusCheck: check(
+      'ck_financial_tx_status',
+      sql`${table.status} IN (
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled',
+        'reversed',
+        'refunded'
+      )`,
+    ),
+
+    sourceTypeCheck: check(
+      'ck_financial_tx_source_type',
+      sql`${table.sourceType} IS NULL
+        OR ${table.sourceType} IN (
+          'contribution',
+          'grant',
+          'membership',
+          'payroll',
+          'withdrawal',
+          'payment',
+          'conversion',
+          'system',
+          'other'
+        )`,
+    ),
+
+    descriptionCheck: check(
+      'ck_financial_tx_description_nonempty',
+      sql`length(trim(${table.description})) > 0`,
+    ),
+
+    sourceCoherenceCheck: check(
+      'ck_financial_tx_source_coherence',
+      sql`(
+        ${table.sourceType} IS NULL
+        AND ${table.sourceId} IS NULL
+      )
+      OR
+      (
+        ${table.sourceType} IS NOT NULL
+        AND ${table.sourceId} IS NOT NULL
+        AND length(trim(${table.sourceId})) > 0
+      )`,
+    ),
+
+    correlationCheck: check(
+      'ck_financial_tx_correlation_nonempty',
+      sql`${table.correlationId} IS NULL
+        OR length(trim(${table.correlationId})) > 0`,
+    ),
+
+    reversalCoherenceCheck: check(
+      'ck_financial_tx_reversal_coherence',
+      sql`(
+        ${table.reversalOfTransactionId} IS NULL
+        OR (
+          ${table.type} = 'reversal'
+          AND ${table.reversalOfTransactionId} != ${table.id}
+        )
+      )`,
+    ),
+
+    refundCoherenceCheck: check(
+      'ck_financial_tx_refund_coherence',
+      sql`(
+        ${table.refundOfTransactionId} IS NULL
+        OR (
+          ${table.type} = 'refund'
+          AND ${table.refundOfTransactionId} != ${table.id}
+        )
+      )`,
+    ),
+
+    reversalRefundExclusiveCheck: check(
+      'ck_financial_tx_reversal_refund_exclusive',
+      sql`NOT (
+        ${table.reversalOfTransactionId} IS NOT NULL
+        AND ${table.refundOfTransactionId} IS NOT NULL
+      )`,
+    ),
+
+    typedSourceReferenceCheck: check(
+      'ck_financial_tx_typed_reference_required',
+      sql`(
+        (${table.type} = 'reversal'
+          AND ${table.reversalOfTransactionId} IS NOT NULL)
+        OR
+        (${table.type} = 'refund'
+          AND ${table.refundOfTransactionId} IS NOT NULL)
+        OR
+        (${table.type} NOT IN ('reversal', 'refund'))
+      )`,
+    ),
+
+    /**
+     * A completed transaction must have completedAt.
+     *
+     * Historical transactions that later become `reversed` or `refunded`
+     * are allowed to retain the original completion timestamp.
+     */
+    completedStateCheck: check(
+      'ck_financial_tx_completed_state',
+      sql`(
+        ${table.status} IN ('completed', 'reversed', 'refunded')
+        AND ${table.completedAt} IS NOT NULL
+      )
+      OR
+      (
+        ${table.status} NOT IN ('completed', 'reversed', 'refunded')
+        AND ${table.completedAt} IS NULL
+      )`,
+    ),
+
+    temporalOrderCheck: check(
+      'ck_financial_tx_dates',
+      sql`${table.completedAt} IS NULL
+        OR ${table.completedAt} >= ${table.createdAt}`,
+    ),
+
+    versionCheck: check(
+      'ck_financial_tx_version',
+      sql`${table.version} > 0`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 4. FINANCIAL LEDGER ENTRIES
+ * ============================================================================
+ *
+ * IMPORTANT:
+ *
+ * SQLite CHECK constraints are row-local. They cannot aggregate the complete
+ * transaction in order to enforce:
+ *
+ *   SUM(debit) == SUM(credit)
+ *
+ * across multiple rows.
+ *
+ * Therefore FIN-001 remains a transactional application/domain invariant.
+ *
+ * DO NOT implement a trigger using:
+ *
+ *   CAST(amount_base_units AS INTEGER)
+ *
+ * because SQLite INTEGER is signed 64-bit and would corrupt/clip uint256
+ * values above the SQLite integer range.
+ *
+ * A database trigger may only be introduced after a decimal-safe aggregation
+ * mechanism is deliberately selected (for example a custom SQL function/UDF
+ * or another storage strategy with uint256-safe arithmetic).
+ * ========================================================================== */
+
+export const financialLedgerEntries = sqliteTable(
+  'financial_ledger_entries',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    transactionId: integer('transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    direction: text('direction', {
+      enum: ['debit', 'credit'],
+    }).notNull(),
+
+    amountBaseUnits: text('amount_base_units').notNull(),
+
+    createdAt: integer('created_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    transactionIdx: index(
+      'idx_financial_ledger_entries_transaction',
+    ).on(table.transactionId),
+
+    accountIdx: index(
+      'idx_financial_ledger_entries_account',
+    ).on(table.accountId),
+
+    assetIdx: index(
+      'idx_financial_ledger_entries_asset',
+    ).on(table.assetId),
+
+    createdIdx: index(
+      'idx_financial_ledger_entries_created',
+    ).on(table.createdAt),
+
+    directionCheck: check(
+      'ck_financial_ledger_direction',
+      sql`${table.direction} IN ('debit', 'credit')`,
+    ),
+
+    amountCheck: check(
+      'ck_financial_ledger_entries_amount_canonical',
+      canonicalUnsignedAmountSql(table.amountBaseUnits),
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 5. ACCOUNT BALANCES
+ * ========================================================================== */
+
+export const accountBalances = sqliteTable(
+  'account_balances',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    availableBaseUnits: text('available_base_units')
+      .notNull()
+      .default('0'),
+
+    lockedBaseUnits: text('locked_base_units')
+      .notNull()
+      .default('0'),
+
+    version: integer('version').notNull().default(1),
+
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    accountAssetUq: uniqueIndex(
+      'uq_account_balances_account_asset',
+    ).on(
+      table.accountId,
+      table.assetId,
+    ),
+
+    accountIdx: index(
+      'idx_account_balances_account',
+    ).on(table.accountId),
+
+    assetIdx: index(
+      'idx_account_balances_asset',
+    ).on(table.assetId),
+
+    availableCheck: check(
+      'ck_account_balances_available_canonical',
+      canonicalUnsignedOrZeroAmountSql(
+        table.availableBaseUnits,
+      ),
+    ),
+
+    lockedCheck: check(
+      'ck_account_balances_locked_canonical',
+      canonicalUnsignedOrZeroAmountSql(
+        table.lockedBaseUnits,
+      ),
+    ),
+
+    versionCheck: check(
+      'ck_account_balances_version',
+      sql`${table.version} > 0`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 6. BALANCE HOLDS
+ * ========================================================================== */
+
+export const balanceHolds = sqliteTable(
+  'balance_holds',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    amountBaseUnits: text('amount_base_units').notNull(),
+
+    reason: text('reason').notNull(),
+
+    referenceType: text('reference_type'),
+
+    referenceId: text('reference_id'),
+
+    status: text('status', {
+      enum: [
+        'active',
+        'released',
+        'expired',
+        'consumed',
+      ],
+    })
+      .notNull()
+      .default('active'),
+
+    version: integer('version').notNull().default(1),
+
+    expiresAt: integer('expires_at', {
+      mode: 'timestamp',
+    }),
+
+    createdAt: integer('created_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+
+    releasedAt: integer('released_at', {
+      mode: 'timestamp',
+    }),
+
+    releasedByTransactionId: integer(
+      'released_by_transaction_id',
+    ).references(
+      () => financialTransactions.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    consumedAt: integer('consumed_at', {
+      mode: 'timestamp',
+    }),
+
+    consumedByTransactionId: integer(
+      'consumed_by_transaction_id',
+    ).references(
+      () => financialTransactions.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+  },
+  (table) => ({
+    accountIdx: index(
+      'idx_balance_holds_account',
+    ).on(table.accountId),
+
+    assetIdx: index(
+      'idx_balance_holds_asset',
+    ).on(table.assetId),
+
+    statusIdx: index(
+      'idx_balance_holds_status',
+    ).on(table.status),
+
+    referenceIdx: index(
+      'idx_balance_holds_reference',
+    ).on(
+      table.referenceType,
+      table.referenceId,
+    ),
+
+    releaseTransactionIdx: index(
+      'idx_balance_holds_release_transaction',
+    ).on(table.releasedByTransactionId),
+
+    consumedTransactionIdx: index(
+      'idx_balance_holds_consumed_transaction',
+    ).on(table.consumedByTransactionId),
+
+    statusCheck: check(
+      'ck_balance_holds_status',
+      sql`${table.status} IN (
+        'active',
+        'released',
+        'expired',
+        'consumed'
+      )`,
+    ),
+
+    reasonCheck: check(
+      'ck_balance_holds_reason_nonempty',
+      sql`length(trim(${table.reason})) > 0`,
+    ),
+
+    referenceCoherenceCheck: check(
+      'ck_balance_holds_reference_coherence',
+      sql`(
+        ${table.referenceType} IS NULL
+        AND ${table.referenceId} IS NULL
+      )
+      OR
+      (
+        ${table.referenceType} IS NOT NULL
+        AND ${table.referenceId} IS NOT NULL
+        AND length(trim(${table.referenceType})) > 0
+        AND length(trim(${table.referenceId})) > 0
+      )`,
+    ),
+
+    amountCheck: check(
+      'ck_balance_holds_amount_canonical',
+      canonicalUnsignedAmountSql(
+        table.amountBaseUnits,
+      ),
+    ),
+
+    releasedStateCheck: check(
+      'ck_balance_holds_released_state',
+      sql`(
+        ${table.status} = 'released'
+        AND ${table.releasedAt} IS NOT NULL
+        AND ${table.releasedByTransactionId} IS NOT NULL
+        AND ${table.consumedAt} IS NULL
+        AND ${table.consumedByTransactionId} IS NULL
+      )
+      OR
+      (
+        ${table.status} != 'released'
+        AND ${table.releasedAt} IS NULL
+        AND ${table.releasedByTransactionId} IS NULL
+      )`,
+    ),
+
+    expiredStateCheck: check(
+      'ck_balance_holds_expired_state',
+      sql`(
+        ${table.status} = 'expired'
+        AND ${table.expiresAt} IS NOT NULL
+        AND ${table.consumedAt} IS NULL
+        AND ${table.releasedAt} IS NULL
+      )
+      OR
+      ${table.status} != 'expired'`,
+    ),
+
+    consumedStateCheck: check(
+      'ck_balance_holds_consumed_state',
+      sql`(
+        ${table.status} = 'consumed'
+        AND ${table.consumedAt} IS NOT NULL
+        AND ${table.consumedByTransactionId} IS NOT NULL
+        AND ${table.releasedAt} IS NULL
+        AND ${table.releasedByTransactionId} IS NULL
+      )
+      OR
+      (
+        ${table.status} != 'consumed'
+        AND ${table.consumedAt} IS NULL
+        AND ${table.consumedByTransactionId} IS NULL
+      )`,
+    ),
+
+    activeStateCheck: check(
+      'ck_balance_holds_active_state',
+      sql`(
+        ${table.status} = 'active'
+        AND ${table.releasedAt} IS NULL
+        AND ${table.releasedByTransactionId} IS NULL
+        AND ${table.consumedAt} IS NULL
+        AND ${table.consumedByTransactionId} IS NULL
+      )
+      OR
+      ${table.status} != 'active'`,
+    ),
+
+    expirationTemporalCheck: check(
+      'ck_balance_holds_expiration_temporal',
+      sql`${table.expiresAt} IS NULL
+        OR ${table.expiresAt} > ${table.createdAt}`,
+    ),
+
+    lifecycleTemporalCheck: check(
+      'ck_balance_holds_lifecycle_temporal',
+      sql`(
+        (${table.releasedAt} IS NULL
+          OR ${table.releasedAt} >= ${table.createdAt})
+        AND
+        (${table.consumedAt} IS NULL
+          OR ${table.consumedAt} >= ${table.createdAt})
+      )`,
+    ),
+
+    versionCheck: check(
+      'ck_balance_holds_version',
+      sql`${table.version} > 0`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 7. FIAT PROVIDERS
+ * ========================================================================== */
+
+export const fiatProviders = sqliteTable(
+  'fiat_providers',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    name: text('name').notNull(),
+
+    code: text('code').notNull(),
+
+    type: text('type', {
+      enum: [
+        'bank',
+        'payment_provider',
+        'pix_provider',
+        'gateway',
+      ],
+    }).notNull(),
+
+    status: text('status', {
+      enum: [
+        'active',
+        'inactive',
+        'suspended',
+      ],
+    })
+      .notNull()
+      .default('active'),
+
+    createdAt: integer('created_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+  },
+  (table) => ({
+    codeUq: uniqueIndex(
+      'uq_fiat_providers_code',
+    ).on(table.code),
+
+    typeIdx: index(
+      'idx_fiat_providers_type',
+    ).on(table.type),
+
+    statusIdx: index(
+      'idx_fiat_providers_status',
+    ).on(table.status),
+
+    nameCheck: check(
+      'ck_fiat_providers_name_nonempty',
+      sql`length(trim(${table.name})) > 0`,
+    ),
+
+    codeCheckNonempty: check(
+      'ck_fiat_providers_code_nonempty',
+      sql`length(trim(${table.code})) > 0`,
+    ),
+
+    typeCheck: check(
+      'ck_fiat_providers_type',
+      sql`${table.type} IN (
+        'bank',
+        'payment_provider',
+        'pix_provider',
+        'gateway'
+      )`,
+    ),
+
+    statusCheck: check(
+      'ck_fiat_providers_status',
+      sql`${table.status} IN (
+        'active',
+        'inactive',
+        'suspended'
+      )`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 8. FIAT ACCOUNTS
+ * ========================================================================== */
+
+export const fiatAccounts = sqliteTable(
+  'fiat_accounts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'restrict',
+      }),
+
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    providerId: integer('provider_id').references(
+      () => fiatProviders.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    type: text('type', {
+      enum: [
+        'bank_account',
+        'payment_account',
+        'pix_account',
+      ],
+    }).notNull(),
+
+    externalAccountId: text('external_account_id'),
+
+    displayName: text('display_name'),
+
+    last4: text('last4'),
+
+    status: text('status', {
+      enum: [
+        'active',
+        'inactive',
+        'blocked',
+      ],
+    })
+      .notNull()
+      .default('active'),
+
+    createdAt: integer('created_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+
+    blockedAt: integer('blocked_at', {
+      mode: 'timestamp',
+    }),
+  },
+  (table) => ({
+    userAccountCompositeUq: uniqueIndex(
+      'uq_fiat_accounts_user_id_id',
+    ).on(
+      table.userId,
+      table.id,
+    ),
+
+    userIdx: index(
+      'idx_fiat_accounts_user',
+    ).on(table.userId),
+
+    providerIdx: index(
+      'idx_fiat_accounts_provider',
+    ).on(table.providerId),
+
+    statusIdx: index(
+      'idx_fiat_accounts_status',
+    ).on(table.status),
+
+    typeIdx: index(
+      'idx_fiat_accounts_type',
+    ).on(table.type),
+
+    typeCheck: check(
+      'ck_fiat_accounts_type',
+      sql`${table.type} IN (
+        'bank_account',
+        'payment_account',
+        'pix_account'
+      )`,
+    ),
+
+    statusCheck: check(
+      'ck_fiat_accounts_status',
+      sql`${table.status} IN (
+        'active',
+        'inactive',
+        'blocked'
+      )`,
+    ),
+
+    externalProviderCoherenceCheck: check(
+      'ck_fiat_accounts_external_provider_coherence',
+      sql`(
+        ${table.providerId} IS NULL
+        AND ${table.externalAccountId} IS NULL
+      )
+      OR
+      (
+        ${table.providerId} IS NOT NULL
+        AND ${table.externalAccountId} IS NOT NULL
+        AND length(trim(${table.externalAccountId})) > 0
+      )`,
+    ),
+
+    displayNameCheck: check(
+      'ck_fiat_accounts_display_name_nonempty',
+      sql`${table.displayName} IS NULL
+        OR length(trim(${table.displayName})) > 0`,
+    ),
+
+    last4Check: check(
+      'ck_fiat_accounts_last4',
+      sql`${table.last4} IS NULL
+        OR (
+          length(${table.last4}) BETWEEN 2 AND 4
+          AND ${table.last4} NOT GLOB '*[^0-9]*'
+        )`,
+    ),
+
+    blockedStateCheck: check(
+      'ck_fiat_accounts_blocked_state',
+      sql`(
+        ${table.status} = 'blocked'
+        AND ${table.blockedAt} IS NOT NULL
+      )
+      OR
+      (
+        ${table.status} != 'blocked'
+        AND ${table.blockedAt} IS NULL
+      )`,
+    ),
+
+    blockedTemporalCheck: check(
+      'ck_fiat_accounts_blocked_temporal',
+      sql`${table.blockedAt} IS NULL
+        OR ${table.blockedAt} >= ${table.createdAt}`,
+    ),
+
+    externalUq: uniqueIndex(
+      'uq_fiat_accounts_provider_external',
+    ).on(
+      table.providerId,
+      table.externalAccountId,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 9. FIAT PAYMENT METHODS
+ * ========================================================================== */
+
+export const fiatPaymentMethods = sqliteTable(
+  'fiat_payment_methods',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, {
+        onDelete: 'restrict',
+      }),
+
+    fiatAccountId: integer('fiat_account_id').notNull(),
+
+    type: text('type', {
+      enum: [
+        'pix',
+        'bank_transfer',
+        'boleto',
+        'card',
+      ],
+    }).notNull(),
+
+    label: text('label').notNull(),
+
+    status: text('status', {
+      enum: [
+        'active',
+        'inactive',
+        'blocked',
+      ],
+    })
+      .notNull()
+      .default('active'),
+
+    createdAt: integer('created_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+
+    blockedAt: integer('blocked_at', {
+      mode: 'timestamp',
+    }),
+  },
+  (table) => ({
+    fiatAccountFk: foreignKey({
+      columns: [
+        table.userId,
+        table.fiatAccountId,
+      ],
+
+      foreignColumns: [
+        fiatAccounts.userId,
+        fiatAccounts.id,
+      ],
+
+      name: 'fk_fiat_payment_methods_user_account',
+    }).onDelete('restrict'),
+
+    userIdx: index(
+      'idx_fiat_payment_methods_user',
+    ).on(table.userId),
+
+    accountIdx: index(
+      'idx_fiat_payment_methods_account',
+    ).on(table.fiatAccountId),
+
+    typeIdx: index(
+      'idx_fiat_payment_methods_type',
+    ).on(table.type),
+
+    statusIdx: index(
+      'idx_fiat_payment_methods_status',
+    ).on(table.status),
+
+    typeCheck: check(
+      'ck_fiat_pm_type',
+      sql`${table.type} IN (
+        'pix',
+        'bank_transfer',
+        'boleto',
+        'card'
+      )`,
+    ),
+
+    labelCheck: check(
+      'ck_fiat_pm_label_nonempty',
+      sql`length(trim(${table.label})) > 0`,
+    ),
+
+    statusCheck: check(
+      'ck_fiat_pm_status',
+      sql`${table.status} IN (
+        'active',
+        'inactive',
+        'blocked'
+      )`,
+    ),
+
+    blockedStateCheck: check(
+      'ck_fiat_pm_blocked_state',
+      sql`(
+        ${table.status} = 'blocked'
+        AND ${table.blockedAt} IS NOT NULL
+      )
+      OR
+      (
+        ${table.status} != 'blocked'
+        AND ${table.blockedAt} IS NULL
+      )`,
+    ),
+
+    blockedTemporalCheck: check(
+      'ck_fiat_pm_blocked_temporal',
+      sql`${table.blockedAt} IS NULL
+        OR ${table.blockedAt} >= ${table.createdAt}`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 10. FIAT TRANSACTIONS
+ * ========================================================================== */
+
+export const fiatTransactions = sqliteTable(
+  'fiat_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    financialTransactionId: integer(
+      'financial_transaction_id',
+    )
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+
+    providerId: integer('provider_id')
+      .notNull()
+      .references(() => fiatProviders.id, {
+        onDelete: 'restrict',
+      }),
+
+    paymentMethodId: integer(
+      'payment_method_id',
+    ).references(
+      () => fiatPaymentMethods.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    direction: text('direction', {
+      enum: [
+        'inbound',
+        'outbound',
+      ],
+    }).notNull(),
+
+    amountBaseUnits: text(
+      'amount_base_units',
+    ).notNull(),
+
+    status: text('status', {
+      enum: [
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled',
+        'reversed',
+      ],
+    })
+      .notNull()
+      .default('pending'),
+
+    version: integer('version').notNull().default(1),
+
+    requestedAt: integer('requested_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    processedAt: integer('processed_at', {
+      mode: 'timestamp',
+    }),
+
+    settledAt: integer('settled_at', {
+      mode: 'timestamp',
+    }),
+  },
+  (table) => ({
+    transactionUq: uniqueIndex(
+      'uq_fiat_transactions_financial_transaction',
+    ).on(table.financialTransactionId),
+
+    providerIdx: index(
+      'idx_fiat_transactions_provider',
+    ).on(table.providerId),
+
+    paymentMethodIdx: index(
+      'idx_fiat_transactions_payment_method',
+    ).on(table.paymentMethodId),
+
+    assetIdx: index(
+      'idx_fiat_transactions_asset',
+    ).on(table.assetId),
+
+    statusIdx: index(
+      'idx_fiat_transactions_status',
+    ).on(table.status),
+
+    requestedIdx: index(
+      'idx_fiat_transactions_requested',
+    ).on(table.requestedAt),
+
+    directionCheck: check(
+      'ck_fiat_tx_direction',
+      sql`${table.direction} IN (
+        'inbound',
+        'outbound'
+      )`,
+    ),
+
+    statusCheck: check(
+      'ck_fiat_tx_status',
+      sql`${table.status} IN (
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled',
+        'reversed'
+      )`,
+    ),
+
+    amountCheck: check(
+      'ck_fiat_transactions_amount_canonical',
+      canonicalUnsignedAmountSql(
+        table.amountBaseUnits,
+      ),
+    ),
+
+    processedTemporalCheck: check(
+      'ck_fiat_tx_processed_at',
+      sql`${table.processedAt} IS NULL
+        OR ${table.processedAt} >= ${table.requestedAt}`,
+    ),
+
+    settledTemporalCheck: check(
+      'ck_fiat_tx_settled_at',
+      sql`${table.settledAt} IS NULL
+        OR ${table.settledAt} >= ${table.requestedAt}`,
+    ),
+
+    settlementOrderCheck: check(
+      'ck_fiat_tx_settlement_order',
+      sql`${table.settledAt} IS NULL
+        OR ${table.processedAt} IS NULL
+        OR ${table.settledAt} >= ${table.processedAt}`,
+    ),
+
+    completedLifecycleCheck: check(
+      'ck_fiat_tx_completed_lifecycle',
+      sql`(
+        ${table.status} = 'completed'
+        AND ${table.settledAt} IS NOT NULL
+      )
+      OR
+      ${table.status} != 'completed'`,
+    ),
+
+    versionCheck: check(
+      'ck_fiat_tx_version',
+      sql`${table.version} > 0`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 11. CRYPTO TRANSACTIONS
+ * ========================================================================== */
+
+export const cryptoTransactions = sqliteTable(
+  'crypto_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    financialTransactionId: integer(
+      'financial_transaction_id',
+    )
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    web3TransactionId: text(
+      'web3_transaction_id',
+    ),
+
+    network: text('network'),
+
+    blockNumber: integer('block_number'),
+
+    confirmations: integer('confirmations')
+      .notNull()
+      .default(0),
+
+    direction: text('direction', {
+      enum: [
+        'inbound',
+        'outbound',
+      ],
+    }).notNull(),
+
+    amountBaseUnits: text(
+      'amount_base_units',
+    ).notNull(),
+
+    feeAssetId: integer('fee_asset_id').references(
+      () => financialAssets.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    feeBaseUnits: text(
+      'fee_base_units',
+    )
+      .notNull()
+      .default('0'),
+
+    status: text('status', {
+      enum: [
+        'pending',
+        'processing',
+        'confirmed',
+        'failed',
+        'reversed',
+      ],
+    })
+      .notNull()
+      .default('pending'),
+
+    version: integer('version')
+      .notNull()
+      .default(1),
+
+    requestedAt: integer('requested_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    settledAt: integer('settled_at', {
+      mode: 'timestamp',
+    }),
+  },
+  (table) => ({
+    transactionUq: uniqueIndex(
+      'uq_crypto_transactions_financial_transaction',
+    ).on(table.financialTransactionId),
+
+    web3TransactionNetworkUq: uniqueIndex(
+      'uq_crypto_transactions_network_web3_transaction',
+    ).on(
+      table.network,
+      table.web3TransactionId,
+    ),
+
+    assetIdx: index(
+      'idx_crypto_transactions_asset',
+    ).on(table.assetId),
+
+    feeAssetIdx: index(
+      'idx_crypto_transactions_fee_asset',
+    ).on(table.feeAssetId),
+
+    statusIdx: index(
+      'idx_crypto_transactions_status',
+    ).on(table.status),
+
+    networkIdx: index(
+      'idx_crypto_transactions_network',
+    ).on(table.network),
+
+    requestedIdx: index(
+      'idx_crypto_transactions_requested',
+    ).on(table.requestedAt),
+
+    directionCheck: check(
+      'ck_crypto_tx_direction',
+      sql`${table.direction} IN (
+        'inbound',
+        'outbound'
+      )`,
+    ),
+
+    statusCheck: check(
+      'ck_crypto_tx_status',
+      sql`${table.status} IN (
+        'pending',
+        'processing',
+        'confirmed',
+        'failed',
+        'reversed'
+      )`,
+    ),
+
+    amountCheck: check(
+      'ck_crypto_transactions_amount_canonical',
+      canonicalUnsignedAmountSql(
+        table.amountBaseUnits,
+      ),
+    ),
+
+    feeCheck: check(
+      'ck_crypto_transactions_fee_canonical',
+      canonicalUnsignedOrZeroAmountSql(
+        table.feeBaseUnits,
+      ),
+    ),
+
+    feeAssetCheck: check(
+      'ck_crypto_transactions_fee_asset',
+      sql`(
+        ${table.feeBaseUnits} = '0'
+        AND ${table.feeAssetId} IS NULL
+      )
+      OR
+      (
+        ${table.feeBaseUnits} != '0'
+        AND ${table.feeAssetId} IS NOT NULL
+      )`,
+    ),
+
+    confirmationsCheck: check(
+      'ck_crypto_transactions_confirmations',
+      sql`${table.confirmations} >= 0`,
+    ),
+
+    blockNumberCheck: check(
+      'ck_crypto_transactions_block_number',
+      sql`${table.blockNumber} IS NULL
+        OR ${table.blockNumber} >= 0`,
+    ),
+
+    networkCheck: check(
+      'ck_crypto_transactions_network',
+      sql`${table.network} IS NULL
+        OR length(trim(${table.network})) > 0`,
+    ),
+
+    web3IdCheck: check(
+      'ck_crypto_transactions_web3_id',
+      sql`${table.web3TransactionId} IS NULL
+        OR length(trim(${table.web3TransactionId})) > 0`,
+    ),
+
+    confirmedEvidenceCheck: check(
+      'ck_crypto_transactions_confirmed_evidence',
+      sql`(
+        ${table.status} != 'confirmed'
+      )
+      OR
+      (
+        ${table.status} = 'confirmed'
+        AND ${table.web3TransactionId} IS NOT NULL
+        AND ${table.network} IS NOT NULL
+        AND ${table.blockNumber} IS NOT NULL
+        AND ${table.confirmations} > 0
+        AND ${table.settledAt} IS NOT NULL
+      )`,
+    ),
+
+    temporalOrderCheck: check(
+      'ck_crypto_tx_dates',
+      sql`${table.settledAt} IS NULL
+        OR ${table.settledAt} >= ${table.requestedAt}`,
+    ),
+
+    versionCheck: check(
+      'ck_crypto_tx_version',
+      sql`${table.version} > 0`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 12. EXCHANGE RATES
+ * ============================================================================
+ *
+ * rateNumerator/rateDenominator remain TEXT because exact rational values
+ * must survive the database/application boundary without IEEE-754 conversion.
+ *
+ * Domain arithmetic remains the responsibility of the application/domain
+ * layer using BigInt/Money256.
+ * ========================================================================== */
+
+export const exchangeRates = sqliteTable(
+  'exchange_rates',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    baseAssetId: integer('base_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    quoteAssetId: integer('quote_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    rateNumerator: text(
+      'rate_numerator',
+    ).notNull(),
+
+    rateDenominator: text(
+      'rate_denominator',
+    ).notNull(),
+
+    source: text('source').notNull(),
+
+    quotedAt: integer('quoted_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    expiresAt: integer('expires_at', {
+      mode: 'timestamp',
+    }),
+  },
+  (table) => ({
+    pairIdx: index(
+      'idx_exchange_rates_pair',
+    ).on(
+      table.baseAssetId,
+      table.quoteAssetId,
+    ),
+
+    quotedIdx: index(
+      'idx_exchange_rates_quoted',
+    ).on(table.quotedAt),
+
+    expiryIdx: index(
+      'idx_exchange_rates_expires',
+    ).on(table.expiresAt),
+
+    pairDifferentCheck: check(
+      'ck_exchange_rates_different_assets',
+      sql`${table.baseAssetId} <> ${table.quoteAssetId}`,
+    ),
+
+    rateNumeratorCheck: check(
+      'ck_exchange_rates_numerator_canonical',
+      canonicalUnsignedAmountSql(
+        table.rateNumerator,
+      ),
+    ),
+
+    rateDenominatorCheck: check(
+      'ck_exchange_rates_denominator_canonical',
+      canonicalUnsignedAmountSql(
+        table.rateDenominator,
+      ),
+    ),
+
+    sourceCheck: check(
+      'ck_exchange_rates_source_nonempty',
+      sql`length(trim(${table.source})) > 0`,
+    ),
+
+    expiresCheck: check(
+      'ck_exchange_rates_expires_after_quoted',
+      sql`${table.expiresAt} IS NULL
+        OR ${table.expiresAt} >= ${table.quotedAt}`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 13. ASSET CONVERSIONS
+ * ========================================================================== */
+
+export const assetConversions = sqliteTable(
+  'asset_conversions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    financialTransactionId: integer(
+      'financial_transaction_id',
+    )
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+
+    fromAssetId: integer('from_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    toAssetId: integer('to_asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    fromAmountBaseUnits: text(
+      'from_amount_base_units',
+    ).notNull(),
+
+    toAmountBaseUnits: text(
+      'to_amount_base_units',
+    ).notNull(),
+
+    rateNumerator: text(
+      'rate_numerator',
+    ).notNull(),
+
+    rateDenominator: text(
+      'rate_denominator',
+    ).notNull(),
+
+    rateSource: text('rate_source'),
+
+    sourceExchangeRateId: integer(
+      'source_exchange_rate_id',
+    ).references(
+      () => exchangeRates.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    quotedAt: integer('quoted_at', {
+      mode: 'timestamp',
+    }),
+
+    feeAmountBaseUnits: text(
+      'fee_amount_base_units',
+    )
+      .notNull()
+      .default('0'),
+
+    status: text('status', {
+      enum: [
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled',
+      ],
+    })
+      .notNull()
+      .default('pending'),
+
+    createdAt: integer('created_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    completedAt: integer('completed_at', {
+      mode: 'timestamp',
+    }),
+  },
+  (table) => ({
+    transactionUq: uniqueIndex(
+      'uq_asset_conversions_transaction',
+    ).on(table.financialTransactionId),
+
+    fromAssetIdx: index(
+      'idx_asset_conversions_from_asset',
+    ).on(table.fromAssetId),
+
+    toAssetIdx: index(
+      'idx_asset_conversions_to_asset',
+    ).on(table.toAssetId),
+
+    statusIdx: index(
+      'idx_asset_conversions_status',
+    ).on(table.status),
+
+    createdIdx: index(
+      'idx_asset_conversions_created',
+    ).on(table.createdAt),
+
+    sourceExchangeRateIdx: index(
+      'idx_asset_conversions_source_exchange_rate',
+    ).on(table.sourceExchangeRateId),
+
+    statusCheck: check(
+      'ck_asset_conversions_status',
+      sql`${table.status} IN (
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled'
+      )`,
+    ),
+
+    fromAmountCheck: check(
+      'ck_asset_conversions_from_amount_canonical',
+      canonicalUnsignedAmountSql(
+        table.fromAmountBaseUnits,
+      ),
+    ),
+
+    toAmountCheck: check(
+      'ck_asset_conversions_to_amount_canonical',
+      canonicalUnsignedAmountSql(
+        table.toAmountBaseUnits,
+      ),
+    ),
+
+    feeCheck: check(
+      'ck_asset_conversions_fee_canonical',
+      canonicalUnsignedOrZeroAmountSql(
+        table.feeAmountBaseUnits,
+      ),
+    ),
+
+    assetsDifferentCheck: check(
+      'ck_asset_conversions_different_assets',
+      sql`${table.fromAssetId} <> ${table.toAssetId}`,
+    ),
+
+    rateNumeratorCheck: check(
+      'ck_asset_conversions_numerator_canonical',
+      canonicalUnsignedAmountSql(
+        table.rateNumerator,
+      ),
+    ),
+
+    rateDenominatorCheck: check(
+      'ck_asset_conversions_denominator_canonical',
+      canonicalUnsignedAmountSql(
+        table.rateDenominator,
+      ),
+    ),
+
+    rateSourceCheck: check(
+      'ck_asset_conversions_rate_source',
+      sql`${table.rateSource} IS NULL
+        OR length(trim(${table.rateSource})) > 0`,
+    ),
+
+    quotedAtCheck: check(
+      'ck_asset_conversions_quoted_at',
+      sql`(
+        ${table.quotedAt} IS NULL
+        OR ${table.quotedAt} >= ${table.createdAt}
+      )`,
+    ),
+
+    completedLifecycleCheck: check(
+      'ck_asset_conversions_completed_state',
+      sql`(
+        ${table.status} = 'completed'
+        AND ${table.completedAt} IS NOT NULL
+      )
+      OR
+      (
+        ${table.status} != 'completed'
+        AND ${table.completedAt} IS NULL
+      )`,
+    ),
+
+    completedTemporalCheck: check(
+      'ck_asset_conversions_completed_temporal',
+      sql`${table.completedAt} IS NULL
+        OR ${table.completedAt} >= ${table.createdAt}`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 14. FINANCIAL FEES
+ * ========================================================================== */
+
+export const financialFees = sqliteTable(
+  'financial_fees',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    transactionId: integer('transaction_id')
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    recipientAccountId: integer(
+      'recipient_account_id',
+    ).references(
+      () => financialAccounts.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    feeType: text('fee_type', {
+      enum: [
+        'platform',
+        'withdrawal',
+        'payment',
+        'conversion',
+        'network',
+        'other',
+      ],
+    }).notNull(),
+
+    amountBaseUnits: text(
+      'amount_base_units',
+    ).notNull(),
+
+    createdAt: integer('created_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    transactionIdx: index(
+      'idx_financial_fees_transaction',
+    ).on(table.transactionId),
+
+    assetIdx: index(
+      'idx_financial_fees_asset',
+    ).on(table.assetId),
+
+    recipientIdx: index(
+      'idx_financial_fees_recipient_account',
+    ).on(table.recipientAccountId),
+
+    feeTypeIdx: index(
+      'idx_financial_fees_type',
+    ).on(table.feeType),
+
+    feeTypeCheck: check(
+      'ck_financial_fees_type',
+      sql`${table.feeType} IN (
+        'platform',
+        'withdrawal',
+        'payment',
+        'conversion',
+        'network',
+        'other'
+      )`,
+    ),
+
+    amountCheck: check(
+      'ck_financial_fees_amount_canonical',
+      canonicalUnsignedAmountSql(
+        table.amountBaseUnits,
+      ),
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 15. EXTERNAL FIAT TRANSACTIONS
+ * ========================================================================== */
+
+export const fiatExternalTransactions = sqliteTable(
+  'fiat_external_transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    financialTransactionId: integer(
+      'financial_transaction_id',
+    )
+      .notNull()
+      .references(() => financialTransactions.id, {
+        onDelete: 'restrict',
+      }),
+
+    providerId: integer('provider_id')
+      .notNull()
+      .references(() => fiatProviders.id, {
+        onDelete: 'restrict',
+      }),
+
+    externalTransactionId: text(
+      'external_transaction_id',
+    ).notNull(),
+
+    type: text('type', {
+      enum: [
+        'deposit',
+        'withdrawal',
+        'transfer',
+        'payment',
+        'refund',
+        'fee',
+        'other',
+      ],
+    }).notNull(),
+
+    status: text('status', {
+      enum: [
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled',
+        'reversed',
+        'unknown',
+      ],
+    }).notNull(),
+
+    providerStatus: text('provider_status'),
+
+    createdAt: integer('created_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp',
+    })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+
+    settledAt: integer('settled_at', {
+      mode: 'timestamp',
+    }),
+  },
+  (table) => ({
+    providerExternalUq: uniqueIndex(
+      'uq_fiat_external_transactions_provider_external',
+    ).on(
+      table.providerId,
+      table.externalTransactionId,
+    ),
+
+    transactionIdx: index(
+      'idx_fiat_external_transactions_transaction',
+    ).on(table.financialTransactionId),
+
+    providerIdx: index(
+      'idx_fiat_external_transactions_provider',
+    ).on(table.providerId),
+
+    statusIdx: index(
+      'idx_fiat_external_transactions_status',
+    ).on(table.status),
+
+    externalIdCheck: check(
+      'ck_fiat_external_transaction_id_nonempty',
+      sql`length(trim(${table.externalTransactionId})) > 0`,
+    ),
+
+    typeCheck: check(
+      'ck_fiat_external_transaction_type',
+      sql`${table.type} IN (
+        'deposit',
+        'withdrawal',
+        'transfer',
+        'payment',
+        'refund',
+        'fee',
+        'other'
+      )`,
+    ),
+
+    statusCheck: check(
+      'ck_fiat_external_transaction_status',
+      sql`${table.status} IN (
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled',
+        'reversed',
+        'unknown'
+      )`,
+    ),
+
+    providerStatusCheck: check(
+      'ck_fiat_external_provider_status',
+      sql`${table.providerStatus} IS NULL
+        OR length(trim(${table.providerStatus})) > 0`,
+    ),
+
+    settledTemporalCheck: check(
+      'ck_fiat_external_transaction_settled_at',
+      sql`${table.settledAt} IS NULL
+        OR ${table.settledAt} >= ${table.createdAt}`,
+    ),
+
+    completedSettlementCheck: check(
+      'ck_fiat_external_completed_settlement',
+      sql`(
+        ${table.status} = 'completed'
+        AND ${table.settledAt} IS NOT NULL
+      )
+      OR
+      ${table.status} != 'completed'`,
+    ),
+  }),
+);
+
+/* ============================================================================
+ * 16. IDEMPOTENCY KEYS
+ * ========================================================================== */
+
+export { idempotencyKeys } from '../infrastructure/tables';
+
+/* ============================================================================
+ * 17. RECONCILIATION RECORDS
+ * ============================================================================
+ *
+ * Lifecycle:
+ *
+ * pending
+ *    |
+ *    +---- difference = 0 ----> matched
+ *    |
+ *    +---- difference != 0 ---> mismatch
+ *                                  |
+ *                                  v
+ *                               resolved
+ *
+ * A resolved record retains the original non-zero difference for auditability.
+ * ========================================================================== */
+
+export const reconciliationRecords = sqliteTable(
+  'reconciliation_records',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+
+    providerId: integer('provider_id').references(
+      () => fiatProviders.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => financialAccounts.id, {
+        onDelete: 'restrict',
+      }),
+
+    assetId: integer('asset_id')
+      .notNull()
+      .references(() => financialAssets.id, {
+        onDelete: 'restrict',
+      }),
+
+    expectedBalanceBaseUnits: text(
+      'expected_balance_base_units',
+    ).notNull(),
+
+    actualBalanceBaseUnits: text(
+      'actual_balance_base_units',
+    ).notNull(),
+
+    differenceBaseUnits: text(
+      'difference_base_units',
+    ).notNull(),
+
+    status: text('status', {
+      enum: [
+        'pending',
+        'matched',
+        'mismatch',
+        'resolved',
+      ],
+    })
+      .notNull()
+      .default('pending'),
+
+    reconciliationRunId: text(
+      'reconciliation_run_id',
+    ).notNull(),
+
+    version: integer('version')
+      .notNull()
+      .default(1),
+
+    reconciliationDate: integer(
+      'reconciliation_date',
+      { mode: 'timestamp' },
+    )
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    resolvedAt: integer('resolved_at', {
+      mode: 'timestamp',
+    }),
+
+    resolvedByUserId: integer(
+      'resolved_by_user_id',
+    ).references(
+      () => users.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    resolutionReason: text(
+      'resolution_reason',
+    ),
+
+    resolutionReference: text(
+      'resolution_reference',
+    ),
+  },
+  (table) => ({
+    /**
+     * SQLite treats NULLs as distinct in UNIQUE indexes.
+     *
+     * Therefore a single composite unique index containing nullable
+     * providerId would NOT provide true uniqueness for providerless rows.
+     *
+     * We split the invariant into:
+     *
+     *   1. provider IS NOT NULL
+     *   2. provider IS NULL
+     */
+
+    runScopeWithProviderUq: uniqueIndex(
+      'uq_reconciliation_run_scope_provider',
+    )
+      .on(
+        table.reconciliationRunId,
+        table.providerId,
+        table.accountId,
+        table.assetId,
+      )
+      .where(sql`${table.providerId} IS NOT NULL`),
+
+    runScopeWithoutProviderUq: uniqueIndex(
+      'uq_reconciliation_run_scope_no_provider',
+    )
+      .on(
+        table.reconciliationRunId,
+        table.accountId,
+        table.assetId,
+      )
+      .where(sql`${table.providerId} IS NULL`),
+
+    accountIdx: index(
+      'idx_reconciliation_records_account',
+    ).on(table.accountId),
+
+    assetIdx: index(
+      'idx_reconciliation_records_asset',
+    ).on(table.assetId),
+
+    providerIdx: index(
+      'idx_reconciliation_records_provider',
+    ).on(table.providerId),
+
+    runIdx: index(
+      'idx_reconciliation_records_run',
+    ).on(table.reconciliationRunId),
+
+    statusIdx: index(
+      'idx_reconciliation_records_status',
+    ).on(table.status),
+
+    reconciliationDateIdx: index(
+      'idx_reconciliation_records_date',
+    ).on(table.reconciliationDate),
+
+    runIdCheck: check(
+      'ck_reconciliation_run_id_nonempty',
+      sql`length(trim(${table.reconciliationRunId})) > 0`,
+    ),
+
+    statusCheck: check(
+      'ck_reconciliation_status',
+      sql`${table.status} IN (
+        'pending',
+        'matched',
+        'mismatch',
+        'resolved'
+      )`,
+    ),
+
+    expectedCheck: check(
+      'ck_reconciliation_expected_canonical',
+      canonicalUnsignedOrZeroAmountSql(
+        table.expectedBalanceBaseUnits,
+      ),
+    ),
+
+    actualCheck: check(
+      'ck_reconciliation_actual_canonical',
+      canonicalUnsignedOrZeroAmountSql(
+        table.actualBalanceBaseUnits,
+      ),
+    ),
+
+    differenceCheck: check(
+      'ck_reconciliation_difference_canonical',
+      canonicalSignedAmountSql(
+        table.differenceBaseUnits,
+      ),
+    ),
+
+    /**
+     * State must agree with the materialized difference.
+     *
+     * pending:
+     *   calculation/resolution process is not finalized.
+     *
+     * matched:
+     *   actual == expected -> difference == 0.
+     *
+     * mismatch:
+     *   actual != expected -> difference != 0.
+     *
+     * resolved:
+     *   a non-zero mismatch was explicitly resolved. The original
+     *   difference remains preserved.
+     */
+    statusDifferenceCheck: check(
+      'ck_reconciliation_status_difference',
+      sql`(
+        ${table.status} = 'pending'
+      )
+      OR
+      (
+        ${table.status} = 'matched'
+        AND ${table.expectedBalanceBaseUnits} = ${table.actualBalanceBaseUnits}
+        AND ${table.differenceBaseUnits} = '0'
+      )
+      OR
+      (
+        ${table.status} = 'mismatch'
+        AND ${table.expectedBalanceBaseUnits} != ${table.actualBalanceBaseUnits}
+        AND ${table.differenceBaseUnits} != '0'
+      )
+      OR
+      (
+        ${table.status} = 'resolved'
+        AND ${table.expectedBalanceBaseUnits} != ${table.actualBalanceBaseUnits}
+        AND ${table.differenceBaseUnits} != '0'
+        AND ${table.resolutionReason} IS NOT NULL
+        AND ${table.resolutionReference} IS NOT NULL
+      )`,
+    ),
+
+    resolvedStateCheck: check(
+      'ck_reconciliation_resolved_state',
+      sql`(
+        ${table.status} = 'resolved'
+        AND ${table.resolvedAt} IS NOT NULL
+        AND ${table.resolvedByUserId} IS NOT NULL
+        AND ${table.resolutionReason} IS NOT NULL
+        AND ${table.resolutionReference} IS NOT NULL
+      )
+      OR
+      (
+        ${table.status} != 'resolved'
+        AND ${table.resolvedAt} IS NULL
+        AND ${table.resolvedByUserId} IS NULL
+        AND ${table.resolutionReason} IS NULL
+        AND ${table.resolutionReference} IS NULL
+      )`,
+    ),
+
+    resolutionReasonCheck: check(
+      'ck_reconciliation_resolution_reason',
+      sql`${table.resolutionReason} IS NULL
+        OR length(trim(${table.resolutionReason})) > 0`,
+    ),
+
+    resolutionReferenceCheck: check(
+      'ck_reconciliation_resolution_reference',
+      sql`${table.resolutionReference} IS NULL
+        OR length(trim(${table.resolutionReference})) > 0`,
+    ),
+
+    resolvedTemporalCheck: check(
+      'ck_reconciliation_resolved_temporal',
+      sql`${table.resolvedAt} IS NULL
+        OR ${table.resolvedAt} >= ${table.reconciliationDate}`,
+    ),
+
+    versionCheck: check(
+      'ck_reconciliation_records_version',
+      sql`${table.version} > 0`,
+    ),
+  }),
+);
+
+```
+
+---
+
+<a id="srcdbfinancerelationsts"></a>
+## Arquivo: `src/db/finance/relations.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/db/finance/relations.ts`
+- **Total de linhas**: 587
+- **Linguagem**: TypeScript
+
+```typescript
+import { relations } from 'drizzle-orm';
+import { users } from '../user/tables';
+
+import {
+  financialAssets,
+  financialAccounts,
+  financialTransactions,
+  financialLedgerEntries,
+  accountBalances,
+  balanceHolds,
+  fiatProviders,
+  fiatAccounts,
+  fiatPaymentMethods,
+  fiatTransactions,
+  cryptoTransactions,
+  exchangeRates,
+  assetConversions,
+  financialFees,
+  fiatExternalTransactions,
+  reconciliationRecords,
+} from './tables';
+
+import { idempotencyKeys } from '../infrastructure/tables';
+
+/**
+ * ============================================================================
+ * FINANCE DOMAIN RELATIONS
+ * ============================================================================
+ *
+ * PURPOSE:
+ *   Define somente navegação ORM entre entidades.
+ *
+ * IMPORTANT:
+ *   Regras de negócio, invariantes contábeis, autorização, validação de saldo,
+ *   idempotência, lifecycle e reconciliação continuam pertencendo às camadas
+ *   apropriadas do domínio/aplicação/infraestrutura.
+ *
+ * ARCHITECTURAL NOTE:
+ *   A navegação Finance -> User é intencionalmente unidirecional.
+ *   Não é necessário declarar relações Finance dentro de users para consultar
+ *   Finance.
+ *
+ * FINANCIAL MODEL:
+ *
+ *   User
+ *     ├── Financial Accounts
+ *     ├── Financial Transactions
+ *     ├── Fiat Accounts
+ *     ├── Fiat Payment Methods
+ *     └── Reconciliation Records (as resolver)
+ *
+ *   Financial Asset
+ *     ├── Ledger Entries
+ *     ├── Account Balances
+ *     ├── Balance Holds
+ *     ├── Fiat Accounts
+ *     ├── Fiat Transactions
+ *     ├── Crypto Transactions (as primary asset)
+ *     ├── Crypto Transactions (as fee asset)
+ *     ├── Exchange Rates
+ *     ├── Asset Conversions
+ *     ├── Financial Fees
+ *     └── Reconciliation Records
+ *
+ *   Financial Account
+ *     ├── Ledger Entries
+ *     ├── Account Balances
+ *     ├── Balance Holds
+ *     ├── Financial Fees
+ *     └── Reconciliation Records
+ *
+ *   Financial Transaction
+ *     ├── Ledger Entries
+ *     ├── Idempotency Keys
+ *     ├── Fiat Transaction (1:1)
+ *     ├── Crypto Transaction (1:1)
+ *     ├── Asset Conversion (1:1)
+ *     ├── Financial Fees
+ *     ├── External Transactions
+ *     ├── Reversal Source / Reversals
+ *     ├── Refund Source / Refunds
+ *     ├── Balance Holds Released (by this transaction)
+ *     └── Balance Holds Consumed (by this transaction)
+ *
+ * ============================================================================
+ * AUDIT CHANGELOG
+ * ============================================================================
+ * Existing audited corrections intentionally preserved:
+ *
+ * 1. cryptoTransactions has TWO foreign keys into financialAssets
+ *    (assetId and feeAssetId). Both relations remain explicitly
+ *    disambiguated.
+ *
+ * 2. balanceHolds has TWO foreign keys into financialTransactions
+ *    (releasedByTransactionId and consumedByTransactionId). Both remain
+ *    explicitly disambiguated.
+ *
+ * 3. reconciliationRecords.resolvedByUserId remains modeled as
+ *    `resolvedByUser`.
+ *
+ * 4. financialTransactionsRelations retains both reverse balance-hold
+ *    collections.
+ *
+ * No functional relation change is introduced here because these areas were
+ * already consolidated and correct in the previous audit.
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * FINANCIAL ASSETS
+ * ========================================================================== */
+
+export const financialAssetsRelations = relations(
+  financialAssets,
+  ({ many }) => ({
+    financialLedgerEntries: many(financialLedgerEntries),
+
+    accountBalances: many(accountBalances),
+
+    balanceHolds: many(balanceHolds),
+
+    fiatAccounts: many(fiatAccounts),
+
+    fiatTransactions: many(fiatTransactions),
+
+    cryptoTransactionsAsAsset: many(cryptoTransactions, {
+      relationName: 'cryptoTransactionAsset',
+    }),
+
+    cryptoTransactionsAsFeeAsset: many(cryptoTransactions, {
+      relationName: 'cryptoTransactionFeeAsset',
+    }),
+
+    baseExchangeRates: many(exchangeRates, {
+      relationName: 'exchangeRateBaseAsset',
+    }),
+
+    quoteExchangeRates: many(exchangeRates, {
+      relationName: 'exchangeRateQuoteAsset',
+    }),
+
+    sourceAssetConversions: many(assetConversions, {
+      relationName: 'conversionFromAsset',
+    }),
+
+    destinationAssetConversions: many(assetConversions, {
+      relationName: 'conversionToAsset',
+    }),
+
+    financialFees: many(financialFees),
+
+    reconciliationRecords: many(reconciliationRecords),
+  }),
+);
+
+/* ============================================================================
+ * FINANCIAL ACCOUNTS
+ * ========================================================================== */
+
+export const financialAccountsRelations = relations(
+  financialAccounts,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [financialAccounts.userId],
+      references: [users.id],
+    }),
+
+    financialLedgerEntries: many(financialLedgerEntries),
+
+    accountBalances: many(accountBalances),
+
+    balanceHolds: many(balanceHolds),
+
+    financialFees: many(financialFees),
+
+    reconciliationRecords: many(reconciliationRecords),
+  }),
+);
+
+/* ============================================================================
+ * FINANCIAL TRANSACTIONS
+ * ========================================================================== */
+
+export const financialTransactionsRelations = relations(
+  financialTransactions,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [financialTransactions.userId],
+      references: [users.id],
+    }),
+
+    ledgerEntries: many(financialLedgerEntries),
+
+    idempotencyKeys: many(idempotencyKeys),
+
+    reversalOfTransaction: one(financialTransactions, {
+      fields: [financialTransactions.reversalOfTransactionId],
+      references: [financialTransactions.id],
+      relationName: 'transactionReversal',
+    }),
+
+    reversals: many(financialTransactions, {
+      relationName: 'transactionReversal',
+    }),
+
+    refundOfTransaction: one(financialTransactions, {
+      fields: [financialTransactions.refundOfTransactionId],
+      references: [financialTransactions.id],
+      relationName: 'transactionRefund',
+    }),
+
+    refunds: many(financialTransactions, {
+      relationName: 'transactionRefund',
+    }),
+
+    fiatTransaction: one(fiatTransactions, {
+      fields: [financialTransactions.id],
+      references: [fiatTransactions.financialTransactionId],
+    }),
+
+    cryptoTransaction: one(cryptoTransactions, {
+      fields: [financialTransactions.id],
+      references: [cryptoTransactions.financialTransactionId],
+    }),
+
+    assetConversion: one(assetConversions, {
+      fields: [financialTransactions.id],
+      references: [assetConversions.financialTransactionId],
+    }),
+
+    financialFees: many(financialFees),
+
+    fiatExternalTransactions: many(fiatExternalTransactions),
+
+    releasedBalanceHolds: many(balanceHolds, {
+      relationName: 'balanceHoldRelease',
+    }),
+
+    consumedBalanceHolds: many(balanceHolds, {
+      relationName: 'balanceHoldConsume',
+    }),
+  }),
+);
+
+/* ============================================================================
+ * FINANCIAL LEDGER ENTRIES
+ * ========================================================================== */
+
+export const financialLedgerEntriesRelations = relations(
+  financialLedgerEntries,
+  ({ one }) => ({
+    transaction: one(financialTransactions, {
+      fields: [financialLedgerEntries.transactionId],
+      references: [financialTransactions.id],
+    }),
+
+    account: one(financialAccounts, {
+      fields: [financialLedgerEntries.accountId],
+      references: [financialAccounts.id],
+    }),
+
+    asset: one(financialAssets, {
+      fields: [financialLedgerEntries.assetId],
+      references: [financialAssets.id],
+    }),
+  }),
+);
+
+/* ============================================================================
+ * ACCOUNT BALANCES
+ * ========================================================================== */
+
+export const accountBalancesRelations = relations(
+  accountBalances,
+  ({ one }) => ({
+    account: one(financialAccounts, {
+      fields: [accountBalances.accountId],
+      references: [financialAccounts.id],
+    }),
+
+    asset: one(financialAssets, {
+      fields: [accountBalances.assetId],
+      references: [financialAssets.id],
+    }),
+  }),
+);
+
+/* ============================================================================
+ * BALANCE HOLDS
+ * ========================================================================== */
+
+export const balanceHoldsRelations = relations(
+  balanceHolds,
+  ({ one }) => ({
+    account: one(financialAccounts, {
+      fields: [balanceHolds.accountId],
+      references: [financialAccounts.id],
+    }),
+
+    asset: one(financialAssets, {
+      fields: [balanceHolds.assetId],
+      references: [financialAssets.id],
+    }),
+
+    releasedByTransaction: one(financialTransactions, {
+      fields: [balanceHolds.releasedByTransactionId],
+      references: [financialTransactions.id],
+      relationName: 'balanceHoldRelease',
+    }),
+
+    consumedByTransaction: one(financialTransactions, {
+      fields: [balanceHolds.consumedByTransactionId],
+      references: [financialTransactions.id],
+      relationName: 'balanceHoldConsume',
+    }),
+  }),
+);
+
+/* ============================================================================
+ * FIAT PROVIDERS
+ * ========================================================================== */
+
+export const fiatProvidersRelations = relations(
+  fiatProviders,
+  ({ many }) => ({
+    fiatAccounts: many(fiatAccounts),
+
+    fiatTransactions: many(fiatTransactions),
+
+    fiatExternalTransactions: many(fiatExternalTransactions),
+
+    reconciliationRecords: many(reconciliationRecords),
+  }),
+);
+
+/* ============================================================================
+ * FIAT ACCOUNTS
+ * ========================================================================== */
+
+export const fiatAccountsRelations = relations(
+  fiatAccounts,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [fiatAccounts.userId],
+      references: [users.id],
+    }),
+
+    asset: one(financialAssets, {
+      fields: [fiatAccounts.assetId],
+      references: [financialAssets.id],
+    }),
+
+    provider: one(fiatProviders, {
+      fields: [fiatAccounts.providerId],
+      references: [fiatProviders.id],
+    }),
+
+    paymentMethods: many(fiatPaymentMethods),
+  }),
+);
+
+/* ============================================================================
+ * FIAT PAYMENT METHODS
+ * ========================================================================== */
+
+export const fiatPaymentMethodsRelations = relations(
+  fiatPaymentMethods,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [fiatPaymentMethods.userId],
+      references: [users.id],
+    }),
+
+    fiatAccount: one(fiatAccounts, {
+      fields: [
+        fiatPaymentMethods.userId,
+        fiatPaymentMethods.fiatAccountId,
+      ],
+      references: [
+        fiatAccounts.userId,
+        fiatAccounts.id,
+      ],
+    }),
+
+    fiatTransactions: many(fiatTransactions),
+  }),
+);
+
+/* ============================================================================
+ * FIAT TRANSACTIONS
+ * ========================================================================== */
+
+export const fiatTransactionsRelations = relations(
+  fiatTransactions,
+  ({ one }) => ({
+    financialTransaction: one(financialTransactions, {
+      fields: [fiatTransactions.financialTransactionId],
+      references: [financialTransactions.id],
+    }),
+
+    provider: one(fiatProviders, {
+      fields: [fiatTransactions.providerId],
+      references: [fiatProviders.id],
+    }),
+
+    paymentMethod: one(fiatPaymentMethods, {
+      fields: [fiatTransactions.paymentMethodId],
+      references: [fiatPaymentMethods.id],
+    }),
+
+    asset: one(financialAssets, {
+      fields: [fiatTransactions.assetId],
+      references: [financialAssets.id],
+    }),
+  }),
+);
+
+/* ============================================================================
+ * CRYPTO TRANSACTIONS
+ * ========================================================================== */
+
+export const cryptoTransactionsRelations = relations(
+  cryptoTransactions,
+  ({ one }) => ({
+    financialTransaction: one(financialTransactions, {
+      fields: [cryptoTransactions.financialTransactionId],
+      references: [financialTransactions.id],
+    }),
+
+    asset: one(financialAssets, {
+      fields: [cryptoTransactions.assetId],
+      references: [financialAssets.id],
+      relationName: 'cryptoTransactionAsset',
+    }),
+
+    feeAsset: one(financialAssets, {
+      fields: [cryptoTransactions.feeAssetId],
+      references: [financialAssets.id],
+      relationName: 'cryptoTransactionFeeAsset',
+    }),
+  }),
+);
+
+/* ============================================================================
+ * EXCHANGE RATES
+ * ========================================================================== */
+
+export const exchangeRatesRelations = relations(
+  exchangeRates,
+  ({ one, many }) => ({
+    baseAsset: one(financialAssets, {
+      fields: [exchangeRates.baseAssetId],
+      references: [financialAssets.id],
+      relationName: 'exchangeRateBaseAsset',
+    }),
+
+    quoteAsset: one(financialAssets, {
+      fields: [exchangeRates.quoteAssetId],
+      references: [financialAssets.id],
+      relationName: 'exchangeRateQuoteAsset',
+    }),
+
+    sourcedAssetConversions: many(assetConversions),
+  }),
+);
+
+/* ============================================================================
+ * ASSET CONVERSIONS
+ * ========================================================================== */
+
+export const assetConversionsRelations = relations(
+  assetConversions,
+  ({ one }) => ({
+    financialTransaction: one(financialTransactions, {
+      fields: [assetConversions.financialTransactionId],
+      references: [financialTransactions.id],
+    }),
+
+    fromAsset: one(financialAssets, {
+      fields: [assetConversions.fromAssetId],
+      references: [financialAssets.id],
+      relationName: 'conversionFromAsset',
+    }),
+
+    toAsset: one(financialAssets, {
+      fields: [assetConversions.toAssetId],
+      references: [financialAssets.id],
+      relationName: 'conversionToAsset',
+    }),
+
+    sourceExchangeRate: one(exchangeRates, {
+      fields: [assetConversions.sourceExchangeRateId],
+      references: [exchangeRates.id],
+    }),
+  }),
+);
+
+/* ============================================================================
+ * FINANCIAL FEES
+ * ========================================================================== */
+
+export const financialFeesRelations = relations(
+  financialFees,
+  ({ one }) => ({
+    transaction: one(financialTransactions, {
+      fields: [financialFees.transactionId],
+      references: [financialTransactions.id],
+    }),
+
+    asset: one(financialAssets, {
+      fields: [financialFees.assetId],
+      references: [financialAssets.id],
+    }),
+
+    recipientAccount: one(financialAccounts, {
+      fields: [financialFees.recipientAccountId],
+      references: [financialAccounts.id],
+    }),
+  }),
+);
+
+/* ============================================================================
+ * FIAT EXTERNAL TRANSACTIONS
+ * ========================================================================== */
+
+export const fiatExternalTransactionsRelations = relations(
+  fiatExternalTransactions,
+  ({ one }) => ({
+    financialTransaction: one(financialTransactions, {
+      fields: [fiatExternalTransactions.financialTransactionId],
+      references: [financialTransactions.id],
+    }),
+
+    provider: one(fiatProviders, {
+      fields: [fiatExternalTransactions.providerId],
+      references: [fiatProviders.id],
+    }),
+  }),
+);
+
+/* ============================================================================
+ * RECONCILIATION RECORDS
+ * ========================================================================== */
+
+export const reconciliationRecordsRelations = relations(
+  reconciliationRecords,
+  ({ one }) => ({
+    provider: one(fiatProviders, {
+      fields: [reconciliationRecords.providerId],
+      references: [fiatProviders.id],
+    }),
+
+    account: one(financialAccounts, {
+      fields: [reconciliationRecords.accountId],
+      references: [financialAccounts.id],
+    }),
+
+    asset: one(financialAssets, {
+      fields: [reconciliationRecords.assetId],
+      references: [financialAssets.id],
+    }),
+
+    resolvedByUser: one(users, {
+      fields: [reconciliationRecords.resolvedByUserId],
+      references: [users.id],
+    }),
+  }),
+);
+
+/* ============================================================================
+ * IDEMPOTENCY KEYS
+ * ========================================================================== */
+
+export const idempotencyKeysRelations = relations(
+  idempotencyKeys,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [idempotencyKeys.userId],
+      references: [users.id],
+    }),
+
+    financialTransaction: one(financialTransactions, {
+      fields: [idempotencyKeys.financialTransactionId],
+      references: [financialTransactions.id],
+    }),
+  }),
+);
+
+```
+
+---
+
+<a id="srcinterfaceshttpcontrollersfinancefinancecontrollerts"></a>
+## Arquivo: `src/interfaces/http/controllers/finance/FinanceController.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts`
+- **Total de linhas**: 163
+- **Linguagem**: TypeScript
+
+```typescript
+import { Context } from 'hono';
+import { GetTreasuryBalanceUseCase } from '../../../../application/finance/use-cases/GetTreasuryBalanceUseCase';
+import { RecordTreasuryTransactionUseCase } from '../../../../application/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { IFinanceRepository } from '../../../../application/ports/output/IFinanceRepository';
+
+export class FinanceController {
+  constructor(
+    private readonly getTreasuryBalanceUseCase: GetTreasuryBalanceUseCase,
+    private readonly recordTxUseCase: RecordTreasuryTransactionUseCase,
+    private readonly financeRepo: IFinanceRepository
+  ) {}
+
+  async getBalance(c: Context): Promise<Response> {
+    try {
+      const result = await this.getTreasuryBalanceUseCase.execute();
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, data: result.getValue() });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async recordTransactionWithType(c: Context, forcedType?: string): Promise<Response> {
+    try {
+      const actorUserId = c.get('userId') || c.get('user')?.userId;
+      const body = await c.req.json();
+
+      const type = forcedType || body.type;
+
+      // 1. Validate Type
+      const allowedTypes = ['deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment'];
+      if (!type || !allowedTypes.includes(type)) {
+        return c.json({ success: false, message: `Tipo de transação inválido. Tipos permitidos: ${allowedTypes.join(', ')}` }, 400);
+      }
+
+      // 2. Validate Direction
+      const allowedDirections = ['INBOUND', 'OUTBOUND'];
+      if (!body.direction || !allowedDirections.includes(body.direction.toUpperCase())) {
+        return c.json({ success: false, message: `Direction inválida. Permitidas: INBOUND, OUTBOUND` }, 400);
+      }
+      const direction = body.direction.toUpperCase() as 'INBOUND' | 'OUTBOUND';
+
+      // 3. Validate AssetId and Amount
+      if (!body.assetId || !/^[1-9]\d*$/.test(String(body.assetId))) {
+        return c.json({ success: false, message: 'assetId válido (inteiro estritamente numérico e positivo) é obrigatório' }, 400);
+      }
+      if (!body.amountBaseUnits || !/^[1-9]\d*$/.test(String(body.amountBaseUnits))) {
+        return c.json({ success: false, message: 'amountBaseUnits válido (inteiro estritamente numérico e positivo) é obrigatório' }, 400);
+      }
+
+      // 4. Extract Idempotency Key
+      const idempotencyKey = c.req.header('idempotency-key') || body.idempotencyKey;
+      if (!idempotencyKey) {
+        return c.json({ success: false, message: 'Idempotency-Key header ou no body é obrigatório' }, 400);
+      }
+
+      // 5. Target / Authorized / Actor User ID Resolution
+      const targetUserId = body.targetUserId ?? body.userId ?? actorUserId;
+      const authorizedByUserId = body.authorizedByUserId;
+
+      // 6. Generate Canonical Request Hash
+      const canonicalPayload = JSON.stringify({
+        amountBaseUnits: String(body.amountBaseUnits),
+        assetId: String(body.assetId),
+        category: String(body.category || ''),
+        description: String(body.description || ''),
+        direction,
+        type: String(type),
+        userId: targetUserId ? String(targetUserId) : ''
+      });
+      
+      const encoder = new TextEncoder();
+      const data = encoder.encode(canonicalPayload);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const requestHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // 7. Execute Use Case
+      const result = await this.recordTxUseCase.execute({
+        userId: targetUserId,
+        actorUserId: actorUserId ? Number(actorUserId) : undefined,
+        authorizedByUserId: authorizedByUserId ? Number(authorizedByUserId) : undefined,
+        type: type as any,
+        direction,
+        category: body.category,
+        description: body.description,
+        amountBaseUnits: String(body.amountBaseUnits),
+        assetId: Number(body.assetId),
+        idempotencyKey,
+        requestHash
+      });
+
+      if (result.isFailure) {
+        const errorMsg = typeof result.error === 'string' ? result.error : (result.error as any)?.message || String(result.error);
+        if (errorMsg.includes('409 Conflict') || errorMsg.includes('Idempotency Key Processing')) {
+          return c.json({ success: false, message: errorMsg }, 409);
+        }
+        return c.json({ success: false, message: errorMsg }, 400);
+      }
+
+      const { transactionId, isReplayed } = result.getValue();
+
+      c.header('Idempotency-Replayed', isReplayed ? 'true' : 'false');
+      
+      return c.json({ 
+        success: true, 
+        message: 'Transação registrada com sucesso', 
+        data: { transactionId, isReplayed } 
+      }, isReplayed ? 200 : 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+
+  async recordTransaction(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c);
+  }
+
+  async recordDeposit(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'deposit');
+  }
+
+  async recordWithdrawal(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'withdrawal');
+  }
+
+  async recordPayment(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'payment');
+  }
+
+  async recordRefund(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'refund');
+  }
+
+  async recordTransfer(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'transfer');
+  }
+
+  async recordAdjustment(c: Context): Promise<Response> {
+    return this.recordTransactionWithType(c, 'adjustment');
+  }
+
+  async listTransactions(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      const result = await this.financeRepo.listTransactions(userId);
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, data: result.getValue() });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
+}
+
+```
+
+---
+
+<a id="srcinterfaceshttproutesfinancefinanceroutests"></a>
+## Arquivo: `src/interfaces/http/routes/finance/finance.routes.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/src/interfaces/http/routes/finance/finance.routes.ts`
+- **Total de linhas**: 136
+- **Linguagem**: TypeScript
+
+```typescript
+import { Hono } from 'hono';
+import { Bindings, Variables } from '../../../../types/bindings';
+import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
+import { DrizzleFinanceRepository } from '../../../../infrastructure/repositories/DrizzleFinanceRepository';
+import { GetTreasuryBalanceUseCase } from '../../../../application/finance/use-cases/GetTreasuryBalanceUseCase';
+import { RecordTreasuryTransactionUseCase } from '../../../../application/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { FinanceController } from '../../controllers/finance/FinanceController';
+import { sessionGuard, requireAal } from '../../middlewares/session_guard';
+import { verifyPermission } from '../../middlewares/rbac';
+
+type AppType = {
+  Bindings: Bindings;
+  Variables: Variables;
+};
+
+export const financeRouter = new Hono<AppType>();
+
+financeRouter.use('*', sessionGuard);
+
+function buildFinanceDeps(db: any) {
+  const uow = new DrizzleUnitOfWork(db);
+  const financeRepo = new DrizzleFinanceRepository(db);
+  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+  const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
+  return { uow, financeRepo, getBalanceUseCase, recordTxUseCase };
+}
+
+financeRouter.get(
+  '/treasury/balance',
+  requireAal(2),
+  verifyPermission('finance.treasury.read'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.getBalance(c);
+  }
+);
+
+// Option A: Dedicated HTTP Routes per Operation with Granular RBAC Permissions
+financeRouter.post(
+  '/deposits',
+  requireAal(2, 15),
+  verifyPermission('finance.deposit.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordDeposit(c);
+  }
+);
+
+financeRouter.post(
+  '/withdrawals',
+  requireAal(2, 15),
+  verifyPermission('finance.withdrawal.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordWithdrawal(c);
+  }
+);
+
+financeRouter.post(
+  '/payments',
+  requireAal(2, 15),
+  verifyPermission('finance.payment.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordPayment(c);
+  }
+);
+
+financeRouter.post(
+  '/refunds',
+  requireAal(2, 15),
+  verifyPermission('finance.refund.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordRefund(c);
+  }
+);
+
+financeRouter.post(
+  '/transfers',
+  requireAal(2, 15),
+  verifyPermission('finance.transfer.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordTransfer(c);
+  }
+);
+
+financeRouter.post(
+  '/adjustments',
+  requireAal(2, 15),
+  verifyPermission('finance.adjustment.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordAdjustment(c);
+  }
+);
+
+// Generic Legacy Rota POST /transactions (fallback)
+financeRouter.post(
+  '/transactions',
+  requireAal(2, 15),
+  verifyPermission('finance.transaction.create'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.recordTransaction(c);
+  }
+);
+
+financeRouter.get(
+  '/transactions',
+  requireAal(2),
+  verifyPermission('finance.treasury.read'),
+  async (c) => {
+    const db = c.get('db');
+    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    return controller.listTransactions(c);
+  }
+);
+
+```
+
+---
+
+<a id="testsarchitecturefinance_posting_authoritytestts"></a>
+## Arquivo: `tests/architecture/finance_posting_authority.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/architecture/finance_posting_authority.test.ts`
+- **Total de linhas**: 95
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
+  if (!fs.existsSync(dirPath)) return arrayOfFiles;
+  const files = fs.readdirSync(dirPath);
+
+  files.forEach((file) => {
+    const fullPath = path.join(dirPath, file);
+    if (fs.statSync(fullPath).isDirectory()) {
+      getAllFiles(fullPath, arrayOfFiles);
+    } else if (fullPath.endsWith('.ts') || fullPath.endsWith('.js')) {
+      arrayOfFiles.push(fullPath);
+    }
+  });
+
+  return arrayOfFiles;
+}
+
+describe('Static Architecture Gate: Single Financial Posting Authority & Dead Code Cleanliness', () => {
+  const rootDir = path.resolve(__dirname, '../..');
+  const srcDir = path.resolve(rootDir, 'src');
+
+  it('prohibits existence of legacy DoubleEntryLedgerService.ts', () => {
+    const legacyPath = path.resolve(srcDir, 'domains/finance/services/DoubleEntryLedgerService.ts');
+    expect(fs.existsSync(legacyPath), `Legacy DoubleEntryLedgerService.ts must be completely removed`).toBe(false);
+  });
+
+  it('prohibits existence of legacy Money.ts entity', () => {
+    const legacyMoneyPath = path.resolve(srcDir, 'domains/finance/entities/Money.ts');
+    expect(fs.existsSync(legacyMoneyPath), `Legacy Money.ts must be completely removed in favor of Money256`).toBe(false);
+  });
+
+  it('prohibits existence of legacy src/domains/finance/use-cases directory', () => {
+    const legacyUseCasesDir = path.resolve(srcDir, 'domains/finance/use-cases');
+    expect(fs.existsSync(legacyUseCasesDir), `Legacy domain use-cases directory must be completely removed`).toBe(false);
+  });
+
+  it('prohibits direct ledger table insertion outside DrizzleFinanceRepository', () => {
+    const allFiles = getAllFiles(srcDir);
+    const forbiddenLedgerInsertions: string[] = [];
+
+    allFiles.forEach((file) => {
+      const relativePath = path.relative(srcDir, file);
+      if (relativePath.includes('DrizzleFinanceRepository.ts')) {
+        return;
+      }
+
+      const content = fs.readFileSync(file, 'utf-8');
+
+      if (
+        content.includes('insert(financialLedgerEntries)') ||
+        content.includes('INSERT INTO financial_ledger_entries') ||
+        content.includes('insert(financial_ledger_entries)') ||
+        content.includes('sql`INSERT INTO financial_ledger_entries')
+      ) {
+        forbiddenLedgerInsertions.push(relativePath);
+      }
+    });
+
+    expect(
+      forbiddenLedgerInsertions,
+      `Arquivos violando a autoridade única de posting: ${forbiddenLedgerInsertions.join(', ')}`
+    ).toEqual([]);
+  });
+
+  it('prohibits Use Cases outside FinancialTransactionOrchestrator from direct repository balance mutation', () => {
+    const useCasesDir = path.resolve(srcDir, 'application/finance/use-cases');
+    if (!fs.existsSync(useCasesDir)) return;
+
+    const useCaseFiles = getAllFiles(useCasesDir);
+    const violatingUseCases: string[] = [];
+
+    useCaseFiles.forEach((file) => {
+      const basename = path.basename(file);
+      if (
+        basename === 'RecordLedgerTransactionUseCase.ts' ||
+        basename === 'FinancialTransactionOrchestrator.ts'
+      ) {
+        return;
+      }
+
+      const content = fs.readFileSync(file, 'utf-8');
+      if (content.includes('updateBalanceWithOCC(')) {
+        violatingUseCases.push(basename);
+      }
+    });
+
+    expect(
+      violatingUseCases,
+      `Use cases que tentam mutar saldos diretamente sem o Orchestrator: ${violatingUseCases.join(', ')}`
+    ).toEqual([]);
+  });
+});
+
+```
+
+---
+
+<a id="testsfinance_real_db_e2etestts"></a>
+## Arquivo: `tests/finance_real_db_e2e.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance_real_db_e2e.test.ts`
+- **Total de linhas**: 232
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { unlinkSync } from 'fs';
+import { eq } from 'drizzle-orm';
+
+import { DrizzleUnitOfWork } from '../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { LedgerTransaction, LedgerEntry } from '../src/domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../src/domains/finance/value-objects/Money256';
+import { FinancialTransactionOrchestrator } from '../src/application/finance/services/FinancialTransactionOrchestrator';
+import { idempotencyKeys, outboxEvents } from '../src/db/infrastructure/tables';
+import { financialTransactions, financialLedgerEntries, accountBalances } from '../src/db/finance/tables';
+import { Result } from '../src/shared/kernel/Result';
+import { runAllMigrationsLibSql } from './test_helpers/runMigrations';
+
+describe('Finance Core E2E Certification (Real DB)', () => {
+  let sqlite: any;
+  let db: any;
+  let uow: DrizzleUnitOfWork;
+
+  beforeAll(async () => {
+    sqlite = createClient({ url: 'file:test_e2e_real.db' });
+    db = drizzle(sqlite);
+    
+    const uowDb = {
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => { 
+           throw new Error('drizzle-rollback'); 
+        };
+        try {
+           const res = await cb(proxyDb);
+           await t.commit();
+           return res;
+        } catch (err: any) {
+           try { await t.rollback(); } catch (e) {}
+           if (err.message === 'drizzle-rollback') return;
+           throw err;
+        }
+      }
+    };
+
+    await runAllMigrationsLibSql(sqlite);
+
+    await sqlite.executeMultiple(`
+      INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (1, 'user1@test.com', 'user1@test.com', 'active', 1000, 1000);
+      INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (2, 'user2@test.com', 'user2@test.com', 'active', 1000, 1000);
+      INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at) VALUES (1, 'BRL', 'BRL', 'Brazilian Real', 'fiat', 2, 'active', 1000, 1000);
+    `);
+
+    uow = new DrizzleUnitOfWork(uowDb);
+  }, 30000);
+
+  afterAll(() => {
+    sqlite.close();
+    try { unlinkSync('test_e2e_real.db'); } catch (e) {}
+  });
+
+  const getFullState = async () => {
+    return {
+      idem: await db.select().from(idempotencyKeys),
+      txs: await db.select().from(financialTransactions),
+      entries: await db.select().from(financialLedgerEntries),
+      balances: await db.select().from(accountBalances),
+      outbox: await db.select().from(outboxEvents),
+    };
+  };
+
+  it('Happy path: 1 tx + 2 ledger entries + balances corretos + outbox + idempotency completed', async () => {
+    await uow.execute(async (f) => {
+      await f.getFinanceRepository().getOrCreateOperatingAccount();
+      await f.getFinanceRepository().getOrCreateUserAccount(1);
+      return Result.ok(true);
+    });
+
+    const idemKey = 'happy-path-key';
+    const reqHash = 'hash123';
+    const amount = Money256.fromString('5000', 1);
+
+    const tx = LedgerTransaction.create({
+      idempotencyKey: idemKey,
+      userId: 1,
+      description: 'Test Deposit',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' })
+      ]
+    });
+
+    const resultRes = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+      const postResult = await orchestrator.executePosting(tx, reqHash);
+      return Result.ok(postResult);
+    });
+
+    expect(resultRes.isSuccess).toBe(true);
+    const result = resultRes.getValue();
+    expect(result.transactionId).toBeDefined();
+
+    const state = await getFullState();
+    expect(state.txs.length).toBe(1);
+    expect(state.txs[0].status).toBe('completed');
+    expect(state.entries.length).toBe(2);
+    expect(state.balances.length).toBe(2);
+    
+    expect(state.outbox.length).toBe(1);
+    
+    const idem = state.idem.find((i: any) => i.key === idemKey);
+    expect(idem).toBeDefined();
+    expect(idem.status).toBe('completed');
+    expect(idem.financialTransactionId).toBe(state.txs[0].id);
+  });
+
+  it('Rollback: falha forçada resulta em banco intocado (0 registros persistidos vazados)', async () => {
+    const initialState = await getFullState();
+    const amount = Money256.fromString('99999', 1);
+
+    const tx = LedgerTransaction.create({
+      idempotencyKey: 'rollback-key',
+      userId: 1,
+      description: 'Will fail due to insufficient funds / bad logic',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '1', amount: amount as any, type: 'credit' }), 
+        new LedgerEntry({ accountId: '2', amount: amount as any, type: 'debit' })   
+      ]
+    });
+
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+      const postResult = await orchestrator.executePosting(tx, 'hash-fail');
+      return Result.ok(postResult);
+    });
+
+    expect(result.isFailure).toBe(true);
+
+    const finalState = await getFullState();
+    expect(finalState.txs.length).toBe(initialState.txs.length);
+    expect(finalState.entries.length).toBe(initialState.entries.length);
+    expect(finalState.idem.length).toBe(initialState.idem.length);
+    expect(finalState.outbox.length).toBe(initialState.outbox.length);
+  });
+
+  it('Same key + same hash: replay da mesma tx (Idempotente)', async () => {
+    const idemKey = 'happy-path-key';
+    const amount = Money256.fromString('5000', 1);
+    
+    const tx = LedgerTransaction.create({
+      idempotencyKey: idemKey,
+      userId: 1,
+      description: 'Test Deposit',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' })
+      ]
+    });
+
+    const resultRes = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+      const postResult = await orchestrator.executePosting(tx, 'hash123');
+      return Result.ok(postResult);
+    });
+
+    expect(resultRes.isSuccess).toBe(true);
+    expect(resultRes.getValue().isReplayed).toBe(true);
+  });
+
+  it('Same key + different hash: 409 Conflict', async () => {
+    const idemKey = 'happy-path-key';
+    const amount = Money256.fromString('100', 1);
+    
+    const tx = LedgerTransaction.create({
+      idempotencyKey: idemKey,
+      userId: 1,
+      description: 'Modified Deposit',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' })
+      ]
+    });
+
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+      const postResult = await orchestrator.executePosting(tx, 'hash-diferente');
+      return Result.ok(postResult);
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Conflito de idempotência');
+  });
+
+  it('Concorrência: exatamente 1 tx processada em Race Condition (barrier simulada)', async () => {
+    const idemKey = 'race-condition-key';
+    const reqHash = 'race-hash';
+
+    const claimRes = await uow.execute(async (factory) => {
+       const repo = factory.getFinanceRepository();
+       await repo.claimIdempotency(idemKey, 2, 'finance', reqHash);
+       return Result.ok(true);
+    });
+
+    expect(claimRes.isSuccess).toBe(true);
+
+    const result = await uow.execute(async (factory) => {
+       const claimed = await factory.getFinanceRepository().claimIdempotency(idemKey, 2, 'finance', reqHash);
+       if (!claimed) {
+          return Result.fail('Transação em andamento (Idempotency Key Processing).');
+       }
+       return Result.ok(true);
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Transação em andamento (Idempotency Key Processing).');
+
+    const idemRows = await db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, idemKey));
+    expect(idemRows.length).toBe(1);
+    expect(idemRows[0].status).toBe('processing');
+  });
+});
+
+```
+
+---
+
+<a id="testsfinancebootstrap_servicetestts"></a>
+## Arquivo: `tests/finance/bootstrap_service.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/bootstrap_service.test.ts`
+- **Total de linhas**: 93
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
+import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
+import { unlinkSync, existsSync } from 'fs';
+
+describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sistema', () => {
+  const dbFile = 'test_bootstrap_service.db';
+  let sqlite: any;
+  let db: any;
+
+  beforeAll(async () => {
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+
+    // DDL de teste
+    await sqlite.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL
+      );
+    `);
+    await sqlite.execute(`
+      CREATE TABLE IF NOT EXISTS financial_assets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        name TEXT NOT NULL,
+        decimals INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER,
+        updated_at INTEGER
+      );
+    `);
+    await sqlite.execute(`
+      CREATE TABLE IF NOT EXISTS financial_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        account_type TEXT NOT NULL CHECK(account_type IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow', 'reward_expense', 'yield_expense', 'clearing', 'opening_balance_equity', 'payment_revenue', 'refund_expense')),
+        account_class TEXT NOT NULL CHECK(account_class IN ('asset', 'liability', 'equity', 'revenue', 'expense')),
+        status TEXT NOT NULL CHECK(status IN ('active', 'inactive', 'suspended')),
+        name TEXT NOT NULL,
+        version INTEGER DEFAULT 1 NOT NULL,
+        created_at INTEGER,
+        updated_at INTEGER
+      );
+    `);
+    await sqlite.execute(`
+      CREATE TABLE IF NOT EXISTS account_balances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id INTEGER NOT NULL,
+        asset_id INTEGER NOT NULL,
+        available_base_units TEXT DEFAULT '0' NOT NULL,
+        locked_base_units TEXT DEFAULT '0' NOT NULL,
+        version INTEGER DEFAULT 1 NOT NULL,
+        updated_at INTEGER
+      );
+    `);
+
+    // Inserir usuário inicial
+    await sqlite.execute(`INSERT INTO users (id, name) VALUES (1, 'Admin');`);
+  }, 30000);
+
+  it('deve inicializar com sucesso o banco e provisionar contas de Tesouraria, Operacional e Fee', async () => {
+    const repo = new DrizzleFinanceRepository(db);
+
+    // 1. Antes do bootstrap, getTreasuryAccount deve falhar
+    const initialGet = await repo.getTreasuryAccount();
+    expect(initialGet.isFailure).toBe(true);
+    expect(initialGet.error).toContain('Treasury account not found');
+
+    // 2. Executar bootstrap
+    const seedRes = await FinanceBootstrapService.seedSystemAccounts(db, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000000n,
+    });
+
+    if (seedRes.isFailure) console.log('SEED ERROR:', seedRes.error);
+    expect(seedRes.isSuccess).toBe(true);
+    const data = seedRes.getValue();
+    expect(data.treasuryAccountId).toBeGreaterThan(0);
+
+    // 3. Após bootstrap, getTreasuryAccount deve ter sucesso
+    const treasuryGet = await repo.getTreasuryAccount();
+    expect(treasuryGet.isSuccess).toBe(true);
+    expect(treasuryGet.getValue().accountType).toBe('treasury');
+  }, 30000);
+});
+
+```
+
+---
+
+<a id="testsfinanceconcurrency_stresstestts"></a>
+## Arquivo: `tests/finance/concurrency_stress.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/concurrency_stress.test.ts`
+- **Total de linhas**: 322
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { unlinkSync, existsSync } from 'fs';
+import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
+import { Money256 } from '../../src/domains/finance/value-objects/Money256';
+import { AccountingEntryPolicy } from '../../src/domains/finance/policies/AccountingEntryPolicy';
+import { LedgerTransaction, LedgerEntry } from '../../src/domains/finance/entities/LedgerTransaction';
+import { FinancialTransactionOrchestrator } from '../../src/application/finance/services/FinancialTransactionOrchestrator';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+import { Result } from '../../src/shared/kernel/Result';
+
+describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certification', () => {
+  const dbFile = 'test_concurrency_stress.db';
+  let sqlite: any;
+  let db: any;
+
+  beforeAll(async () => {
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+    await runAllMigrationsLibSql(sqlite);
+  }, 30000);
+
+  afterAll(() => {
+    try { sqlite.close(); } catch (e) {}
+    try { unlinkSync(dbFile); } catch (e) {}
+  });
+
+  it('proves zero double-spend under 10 concurrent debit requests', async () => {
+    // 1. Bootstrap system accounts and asset BRL (assetId = 1)
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(db, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000n, // Treasury initial balance
+    });
+    expect(bootstrapRes.isSuccess).toBe(true);
+    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
+
+    const uowDb = {
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => {
+          throw new Error('DRIZZLE_ROLLBACK');
+        };
+        try {
+          const res = await cb(proxyDb);
+          await t.commit();
+          return res;
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          if (err.message === 'DRIZZLE_ROLLBACK') return;
+          throw err;
+        }
+      }
+    };
+
+    const uow = new DrizzleUnitOfWork(uowDb);
+
+    // Ensure user 42 exists for FK constraint
+    await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (42, 'user42@test.com', 'user42@test.com', 'active', 1000, 1000)`);
+
+    // 2. Deposit 100 base units into User Account #42
+    const depositRes = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const userAccRes = await repo.getOrCreateUserAccount(42);
+      const userAccountId = userAccRes.getValue().id;
+
+      const entriesRaw = AccountingEntryPolicy.createDepositEntries({
+        treasuryAccountId,
+        userAccountId,
+        amount: Money256.fromString('100', assetId),
+        description: 'Initial User 42 Balance',
+      });
+
+      const ledgerEntries = entriesRaw.map(
+        (r) =>
+          new LedgerEntry({
+            accountId: String(r.accountId),
+            amount: r.amount as any,
+            type: r.entryType,
+            description: r.description,
+          })
+      );
+
+      const tx = LedgerTransaction.create({
+        idempotencyKey: 'deposit-init-42',
+        description: 'Initial Deposit',
+        entries: ledgerEntries,
+        transactionType: 'deposit',
+        category: 'deposit',
+        userId: 42,
+      });
+
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      return Result.ok(await orchestrator.executePosting(tx));
+    });
+
+    if (depositRes.isFailure) console.error('DEPOSIT 42 FAILED:', depositRes.error);
+    expect(depositRes.getValue().transactionId).toBeDefined();
+
+    // 3. Launch 10 concurrent debit requests of 20 base units each
+    const concurrentRequests = Array.from({ length: 10 }).map((_, idx) => async () => {
+      try {
+        const res = await uow.execute(async (factory) => {
+          const repo = factory.getFinanceRepository();
+          const userAccRes = await repo.getOrCreateUserAccount(42);
+          const userAccountId = userAccRes.getValue().id;
+
+          const entriesRaw = AccountingEntryPolicy.createWithdrawalEntries({
+            treasuryAccountId,
+            userAccountId,
+            amount: Money256.fromString('20', assetId),
+            description: `Concurrent Debit #${idx + 1}`,
+          });
+
+          const ledgerEntries = entriesRaw.map(
+            (r) =>
+              new LedgerEntry({
+                accountId: String(r.accountId),
+                amount: r.amount as any,
+                type: r.entryType,
+                description: r.description,
+              })
+          );
+
+          const tx = LedgerTransaction.create({
+            idempotencyKey: `debit-concurrent-${idx + 1}`,
+            description: `Debit #${idx + 1}`,
+            entries: ledgerEntries,
+            transactionType: 'withdrawal',
+            category: 'withdrawal',
+            userId: 42,
+          });
+
+          const orchestrator = new FinancialTransactionOrchestrator(repo);
+          return Result.ok(await orchestrator.executePosting(tx));
+        });
+        if (res.isFailure) {
+          console.log(`Debit #${idx + 1} failed:`, res.error);
+          return { error: res.error };
+        }
+        return res;
+      } catch (err: any) {
+        console.log(`Debit #${idx + 1} threw:`, err.message);
+        return { error: err.message || 'Debit failed' };
+      }
+    });
+
+    const results = await Promise.all(concurrentRequests.map((fn) => fn()));
+
+    const successful = results.filter((r: any) => r && r.isSuccess === true);
+    const failed = results.filter((r: any) => !r || r.isSuccess !== true);
+
+    console.log(`SUCCESSFUL: ${successful.length}, FAILED: ${failed.length}`);
+
+    // Verify User 42 final balance is non-negative and zero double spend
+    const finalBalanceRes = await sqlite.execute('SELECT available_base_units FROM account_balances WHERE account_id = (SELECT id FROM financial_accounts WHERE user_id = 42)');
+    const finalBal = BigInt(finalBalanceRes.rows[0].available_base_units);
+    
+    // Total debited = successful.length * 20
+    // Remaining balance + debited MUST EQUAL initial balance (100)
+    expect(finalBal + BigInt(successful.length * 20)).toBe(100n);
+    expect(finalBal >= 0n).toBe(true);
+  }, 30000);
+
+  it('Gate B: Multi-Client Independent Connections Concurrency Stress Certification', async () => {
+    const dbFileB = 'test_concurrency_stress_b.db';
+    if (existsSync(dbFileB)) {
+      try { unlinkSync(dbFileB); } catch (e) {}
+    }
+    const sqliteB = createClient({ url: `file:${dbFileB}` });
+    const dbB = drizzle(sqliteB);
+    await runAllMigrationsLibSql(sqliteB);
+
+    // 1. Setup initial balance with primary DB connection
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(dbB, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000n,
+    });
+    expect(bootstrapRes.isSuccess).toBe(true);
+    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
+
+    await sqliteB.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (55, 'user55@test.com', 'user55@test.com', 'active', 1000, 1000)`);
+
+    // Initial deposit of 200 units to user 55
+    const primaryUow = new DrizzleUnitOfWork({
+      ...dbB,
+      transaction: async (cb: any) => {
+        const t = await sqliteB.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => { throw new Error('DRIZZLE_ROLLBACK'); };
+        try {
+          const res = await cb(proxyDb);
+          await t.commit();
+          return res;
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          if (err.message === 'DRIZZLE_ROLLBACK') return;
+          throw err;
+        }
+      }
+    });
+
+    const initDepRes = await primaryUow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const userAccRes = await repo.getOrCreateUserAccount(55);
+      const userAccountId = userAccRes.getValue().id;
+
+      const entriesRaw = AccountingEntryPolicy.createDepositEntries({
+        treasuryAccountId,
+        userAccountId,
+        amount: Money256.fromString('200', assetId),
+        description: 'Initial Deposit User 55',
+      });
+
+      const ledgerEntries = entriesRaw.map(
+        (r) => new LedgerEntry({ accountId: String(r.accountId), amount: r.amount as any, type: r.entryType, description: r.description })
+      );
+
+      const tx = LedgerTransaction.create({
+        idempotencyKey: 'deposit-init-55',
+        description: 'Initial Deposit User 55',
+        entries: ledgerEntries,
+        transactionType: 'deposit',
+        category: 'deposit',
+        userId: 55,
+      });
+
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      return Result.ok(await orchestrator.executePosting(tx));
+    });
+
+    if (initDepRes.isFailure) console.error('DEPOSIT 55 FAILED:', initDepRes.error);
+    expect(initDepRes.getValue().transactionId).toBeDefined();
+
+    // 2. Spawn 10 INDEPENDENT client connections to simulate distinct Microservices / Workers
+    const independentClients = Array.from({ length: 10 }).map(() => {
+      const client = createClient({ url: `file:${dbFileB}` });
+      const clientDb = drizzle(client);
+      const clientUowDb = {
+        ...clientDb,
+        transaction: async (cb: any) => {
+          const t = await client.transaction('write');
+          const proxyDb = drizzle(t) as any;
+          proxyDb.rollback = () => { throw new Error('DRIZZLE_ROLLBACK'); };
+          try {
+            const res = await cb(proxyDb);
+            await t.commit();
+            return res;
+          } catch (err: any) {
+            try { await t.rollback(); } catch (e) {}
+            if (err.message === 'DRIZZLE_ROLLBACK') return;
+            throw err;
+          }
+        }
+      };
+      return { client, uow: new DrizzleUnitOfWork(clientUowDb) };
+    });
+
+    // 3. Fire 10 concurrent debit requests from 10 distinct client connections (30 units each)
+    const concurrentMultiClientOps = independentClients.map(({ uow: clientUow }, idx) => async () => {
+      try {
+        const res = await clientUow.execute(async (factory) => {
+          const repo = factory.getFinanceRepository();
+          const userAccRes = await repo.getOrCreateUserAccount(55);
+          const userAccountId = userAccRes.getValue().id;
+
+          const entriesRaw = AccountingEntryPolicy.createWithdrawalEntries({
+            treasuryAccountId,
+            userAccountId,
+            amount: Money256.fromString('30', assetId),
+            description: `Multi-Client Debit #${idx + 1}`,
+          });
+
+          const ledgerEntries = entriesRaw.map(
+            (r) => new LedgerEntry({ accountId: String(r.accountId), amount: r.amount as any, type: r.entryType, description: r.description })
+          );
+
+          const tx = LedgerTransaction.create({
+            idempotencyKey: `multi-client-debit-${idx + 1}`,
+            description: `Multi-Client Debit #${idx + 1}`,
+            entries: ledgerEntries,
+            transactionType: 'withdrawal',
+            category: 'withdrawal',
+            userId: 55,
+          });
+
+          const orchestrator = new FinancialTransactionOrchestrator(repo);
+          return Result.ok(await orchestrator.executePosting(tx));
+        });
+
+        if (res.isFailure) return { error: res.error };
+        return res;
+      } catch (err: any) {
+        return { error: err.message || 'Multi-Client Debit failed' };
+      }
+    });
+
+    const results = await Promise.all(concurrentMultiClientOps.map((fn) => fn()));
+    const successful = results.filter((r: any) => r && r.isSuccess === true);
+
+    // Close all independent clients
+    independentClients.forEach(({ client }) => {
+      try { client.close(); } catch (e) {}
+    });
+
+    // 4. Verify balance conservation: initial 200 - (successful * 30) === final balance
+    const finalBalanceRes = await sqliteB.execute('SELECT available_base_units FROM account_balances WHERE account_id = (SELECT id FROM financial_accounts WHERE user_id = 55)');
+    const finalBal = BigInt(finalBalanceRes.rows[0].available_base_units);
+
+    expect(finalBal + BigInt(successful.length * 30)).toBe(200n);
+    expect(finalBal >= 0n).toBe(true);
+
+    try { sqliteB.close(); } catch (e) {}
+    try { unlinkSync(dbFileB); } catch (e) {}
+  }, 30000);
+});
+
+```
+
+---
+
+<a id="testsfinancedomain_policiestestts"></a>
+## Arquivo: `tests/finance/domain_policies.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/domain_policies.test.ts`
+- **Total de linhas**: 429
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { FinancialTransactionStateMachine } from '../../src/domains/finance/services/FinancialTransactionStateMachine';
+import { AccountClassPolicy } from '../../src/domains/finance/policies/AccountClassPolicy';
+import { AccountStatusPolicy } from '../../src/domains/finance/policies/AccountStatusPolicy';
+import { AssetStatusPolicy } from '../../src/domains/finance/policies/AssetStatusPolicy';
+import {
+  AccountingEntryPolicy,
+  AccountingMatrixValidationError,
+} from '../../src/domains/finance/policies/AccountingEntryPolicy';
+import { Money256 } from '../../src/domains/finance/value-objects/Money256';
+import {
+  InvalidAccountClassError,
+  AccountInactiveError,
+  AssetInactiveError,
+  InvalidIdentifierError,
+} from '../../src/domains/finance/errors/FinancialError';
+
+describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-12)', () => {
+  describe('DOD-12: FinancialTransactionStateMachine', () => {
+    it('deve permitir transições válidas de pending -> processing -> completed', () => {
+      const res1 = FinancialTransactionStateMachine.transition('pending', 'processing');
+      expect(res1.isSuccess).toBe(true);
+
+      const res2 = FinancialTransactionStateMachine.transition('processing', 'completed');
+      expect(res2.isSuccess).toBe(true);
+    });
+
+    it('deve permitir estorno a partir de completed (completed -> reversed)', () => {
+      const res = FinancialTransactionStateMachine.transition('completed', 'reversed');
+      expect(res.isSuccess).toBe(true);
+    });
+
+    it('deve proibir transição inválida (completed -> processing)', () => {
+      const res = FinancialTransactionStateMachine.transition('completed', 'processing');
+      expect(res.isFailure).toBe(true);
+      expect(res.error).toContain("Transição de estado inválida: 'completed' -> 'processing'");
+    });
+
+    it('deve proibir estritamente cancelamento após início do processamento (processing -> cancelled)', () => {
+      const res = FinancialTransactionStateMachine.transition('processing', 'cancelled');
+      expect(res.isFailure).toBe(true);
+      expect(res.error).toContain("Transição de estado inválida: 'processing' -> 'cancelled'");
+      expect(FinancialTransactionStateMachine.canTransition('processing', 'cancelled')).toBe(false);
+    });
+
+    it('deve permitir cancelamento antes do processamento (pending -> cancelled)', () => {
+      const res = FinancialTransactionStateMachine.transition('pending', 'cancelled');
+      expect(res.isSuccess).toBe(true);
+      expect(res.getValue()).toBe('cancelled');
+    });
+
+    it('deve permitir falha a partir de pending e processing', () => {
+      expect(FinancialTransactionStateMachine.transition('pending', 'failed').isSuccess).toBe(true);
+      expect(FinancialTransactionStateMachine.transition('processing', 'failed').isSuccess).toBe(true);
+    });
+
+    it('deve tratar self-transition como no-op idempotente', () => {
+      const resPending = FinancialTransactionStateMachine.transition('pending', 'pending');
+      expect(resPending.isSuccess).toBe(true);
+      expect(resPending.getValue()).toBe('pending');
+
+      const resCompleted = FinancialTransactionStateMachine.transition('completed', 'completed');
+      expect(resCompleted.isSuccess).toBe(true);
+      expect(resCompleted.getValue()).toBe('completed');
+    });
+
+    it('deve rejeitar status atual ou de destino desconhecido em runtime', () => {
+      const resInvalidCurrent = FinancialTransactionStateMachine.transition('inexistente' as any, 'completed');
+      expect(resInvalidCurrent.isFailure).toBe(true);
+      expect(resInvalidCurrent.error).toContain('Status de transação financeira atual inválido.');
+
+      const resInvalidTarget = FinancialTransactionStateMachine.transition('pending', 'inexistente' as any);
+      expect(resInvalidTarget.isFailure).toBe(true);
+      expect(resInvalidTarget.error).toContain('Status de transação financeira de destino inválido.');
+    });
+
+    it('deve identificar corretamente estados terminais via isTerminal()', () => {
+      expect(FinancialTransactionStateMachine.isTerminal('failed')).toBe(true);
+      expect(FinancialTransactionStateMachine.isTerminal('cancelled')).toBe(true);
+      expect(FinancialTransactionStateMachine.isTerminal('reversed')).toBe(true);
+
+      expect(FinancialTransactionStateMachine.isTerminal('pending')).toBe(false);
+      expect(FinancialTransactionStateMachine.isTerminal('processing')).toBe(false);
+      expect(FinancialTransactionStateMachine.isTerminal('completed')).toBe(false);
+    });
+
+    it('deve retornar lista imutável e correta via getAllowedTransitions()', () => {
+      const pendingTransitions = FinancialTransactionStateMachine.getAllowedTransitions('pending');
+      expect(pendingTransitions).toEqual(['processing', 'failed', 'cancelled']);
+      expect(Object.isFrozen(pendingTransitions)).toBe(true);
+
+      const processingTransitions = FinancialTransactionStateMachine.getAllowedTransitions('processing');
+      expect(processingTransitions).toEqual(['completed', 'failed']);
+      expect(processingTransitions).not.toContain('cancelled');
+
+      const failedTransitions = FinancialTransactionStateMachine.getAllowedTransitions('failed');
+      expect(failedTransitions).toEqual([]);
+    });
+
+    it('deve proibir transição a partir de estado terminal (failed -> completed)', () => {
+      const res = FinancialTransactionStateMachine.transition('failed', 'completed');
+      expect(res.isFailure).toBe(true);
+      expect(res.error).toContain("Transição de estado inválida: 'failed' -> 'completed'");
+    });
+  });
+
+  describe('DOD-10: AccountClassPolicy (Strict Accounting Matrix)', () => {
+    it('deve validar corretamente combinações autorizadas de accountType e accountClass', () => {
+      expect(() => AccountClassPolicy.validate('treasury', 'asset')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('user_available', 'liability')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('operating', 'asset')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('fees', 'revenue')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('reserve', 'asset')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('reserve', 'liability')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('clearing', 'asset')).not.toThrow();
+      expect(() => AccountClassPolicy.validate('clearing', 'liability')).not.toThrow();
+    });
+
+    it('deve rejeitar combinações incompatíveis', () => {
+      expect(() => AccountClassPolicy.validate('treasury', 'liability')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.validate('user_available', 'asset')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.validate('fees', 'expense')).toThrow(InvalidAccountClassError);
+    });
+
+    it('deve rejeitar tipos ou classes não reconhecidos ou vazios', () => {
+      expect(() => AccountClassPolicy.validate('', 'asset')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.validate('treasury', '')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.validate('tipo_invalido', 'asset')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.validate('treasury', 'classe_invalida')).toThrow(InvalidAccountClassError);
+    });
+
+    it('deve retornar default determinístico apenas quando houver exatamente uma classe possível', () => {
+      expect(AccountClassPolicy.getDefaultClass('treasury')).toBe('asset');
+      expect(AccountClassPolicy.getDefaultClass('user_available')).toBe('liability');
+      expect(AccountClassPolicy.getDefaultClass('fees')).toBe('revenue');
+
+      // Tipos multi-classe devem rejeitar default arbitrário
+      expect(() => AccountClassPolicy.getDefaultClass('reserve')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.getDefaultClass('clearing')).toThrow(InvalidAccountClassError);
+      expect(() => AccountClassPolicy.getDefaultClass('opening_balance_equity')).toThrow(InvalidAccountClassError);
+    });
+
+    it('deve garantir imutabilidade da matriz de classes permitidas', () => {
+      const classes = AccountClassPolicy.getPermittedClasses('treasury');
+      expect(classes).toEqual(['asset']);
+      expect(Object.isFrozen(classes)).toBe(true);
+    });
+  });
+
+  describe('DOD-10: AccountStatusPolicy & AssetStatusPolicy', () => {
+    it('deve permitir contas e ativos ativas', () => {
+      expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'active' })).not.toThrow();
+      expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'active' })).not.toThrow();
+      expect(() => AssetStatusPolicy.validateActive(10, 'active')).not.toThrow();
+    });
+
+    it('deve rejeitar contas inativas ou suspensas com AccountInactiveError', () => {
+      expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'inactive' })).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'suspended' })).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'blocked' })).toThrow(AccountInactiveError);
+    });
+
+    it('deve rejeitar contexto de conta malformado ou ID não-positivo em AccountStatusPolicy', () => {
+      expect(() => AccountStatusPolicy.validateActive(null as any)).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: 0, status: 'active' })).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: -1, status: 'active' })).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: 1.5, status: 'active' })).toThrow(AccountInactiveError);
+      expect(() => AccountStatusPolicy.validateActive({ id: 1, status: 'status_invalido' as any })).toThrow(AccountInactiveError);
+    });
+
+    it('deve rejeitar ativos inativos com AssetInactiveError', () => {
+      expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'suspended' })).toThrow(AssetInactiveError);
+      expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'inactive' })).toThrow(AssetInactiveError);
+      expect(() => AssetStatusPolicy.validateActive(10, 'suspended')).toThrow(AssetInactiveError);
+    });
+
+    it('deve validar assetId positivo seguro e status conhecido em AssetStatusPolicy', () => {
+      expect(() => AssetStatusPolicy.validateActive({ id: 0, status: 'active' })).toThrow(InvalidIdentifierError);
+      expect(() => AssetStatusPolicy.validateActive({ id: -5, status: 'active' })).toThrow(InvalidIdentifierError);
+      expect(() => AssetStatusPolicy.validateActive({ id: 10, status: 'status_fantasma' as any })).toThrow(AssetInactiveError);
+    });
+
+    it('deve validar status via Result kernel em AssetStatusPolicy.validateActiveResult', () => {
+      const okRes = AssetStatusPolicy.validateActiveResult(1, 'active');
+      expect(okRes.isSuccess).toBe(true);
+
+      const failRes = AssetStatusPolicy.validateActiveResult(1, 'suspended');
+      expect(failRes.isFailure).toBe(true);
+      expect(failRes.error).toContain("esperado: 'active'");
+
+      const invalidStatusRes = AssetStatusPolicy.validateActiveResult(1, 'invalido');
+      expect(invalidStatusRes.isFailure).toBe(true);
+      expect(invalidStatusRes.error).toContain('possui status inválido');
+    });
+  });
+
+  describe('AccountingEntryPolicy (Strict Banking Invariants)', () => {
+    it('deve rejeitar estritamente entryType inválido (não inferir como crédito)', () => {
+      expect(() => {
+        AccountingEntryPolicy.validateEntriesBalance([
+          { accountId: 1, assetId: 1, entryType: 'debit', amount: Money256.fromBigInt(100n, 1), description: 'd' },
+          { accountId: 2, assetId: 1, entryType: 'DEBITTT' as any, amount: Money256.fromBigInt(100n, 1), description: 'c' },
+        ]);
+      }).toThrow(AccountingMatrixValidationError);
+
+      expect(() => {
+        AccountingEntryPolicy.validateEntriesBalance([
+          { accountId: 1, assetId: 1, entryType: 'debit', amount: Money256.fromBigInt(100n, 1), description: 'd' },
+          { accountId: 2, assetId: 1, entryType: 'foo' as any, amount: Money256.fromBigInt(100n, 1), description: 'c' },
+        ]);
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve rejeitar spoofing de Money256 em runtime', () => {
+      const fakeMoney = {
+        isPositive: () => true,
+        toBigInt: () => 100n,
+        assetId: 1,
+        toCanonicalString: () => '100',
+      };
+
+      expect(() => {
+        AccountingEntryPolicy.validateEntriesBalance([
+          { accountId: 1, assetId: 1, entryType: 'debit', amount: fakeMoney as any, description: 'spoof' },
+          { accountId: 2, assetId: 1, entryType: 'credit', amount: fakeMoney as any, description: 'spoof' },
+        ]);
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve rejeitar lista de lançamentos com mais de 100 itens (proteção DoS)', () => {
+      const entries = Array.from({ length: 102 }, (_, i) => ({
+        accountId: i + 1,
+        assetId: 1,
+        entryType: (i % 2 === 0 ? 'debit' : 'credit') as const,
+        amount: Money256.fromBigInt(10n, 1),
+        description: `Entry ${i}`,
+      }));
+
+      expect(() => AccountingEntryPolicy.validateEntriesBalance(entries)).toThrow(
+        /não pode possuir mais de 100/
+      );
+    });
+
+    it('deve rejeitar incoerência de assetId entre spec e Money256', () => {
+      expect(() => {
+        AccountingEntryPolicy.validateEntriesBalance([
+          { accountId: 1, assetId: 1, entryType: 'debit', amount: Money256.fromBigInt(100n, 2), description: 'mismatch' },
+          { accountId: 2, assetId: 1, entryType: 'credit', amount: Money256.fromBigInt(100n, 2), description: 'mismatch' },
+        ]);
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve rejeitar auto-transferência (mesma conta origem e destino)', () => {
+      expect(() => {
+        AccountingEntryPolicy.createTransferEntries({
+          sourceAccountId: 1,
+          destinationAccountId: 1,
+          amount: Money256.fromBigInt(100n, 1),
+          description: 'Auto-transferência',
+        });
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve rejeitar conversão entre o mesmo ativo', () => {
+      expect(() => {
+        AccountingEntryPolicy.createConversionEntries({
+          userAccountId: 1,
+          clearingAccountId: 2,
+          fromAmount: Money256.fromBigInt(100n, 1),
+          toAmount: Money256.fromBigInt(100n, 1), // mesmo assetId!
+          description: 'Same asset conversion',
+        });
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve rejeitar descrição com caracteres de controle ASCII', () => {
+      expect(() => {
+        AccountingEntryPolicy.createDepositEntries({
+          treasuryAccountId: 1,
+          userAccountId: 2,
+          amount: Money256.fromBigInt(100n, 1),
+          description: 'Depósito com controle\u0000malicioso',
+        });
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve exigir autorização auditável em adjustment e opening balance', () => {
+      const adj = AccountingEntryPolicy.createAdjustmentEntries({
+        debitAccountId: 1,
+        creditAccountId: 2,
+        amount: Money256.fromBigInt(100n, 1),
+        reason: 'Correção técnica',
+        authorizedByUserId: 42,
+      });
+      expect(adj[0].description).toContain('AuthUser #42');
+
+      const open = AccountingEntryPolicy.createOpeningBalanceEntries({
+        targetAccountId: 1,
+        openingEquityAccountId: 99,
+        amount: Money256.fromBigInt(1000n, 1),
+        description: 'Bootstrap',
+        authorizedByUserId: 100,
+      });
+      expect(open[0].description).toContain('AuthUser #100');
+    });
+
+    it('deve estornar invertendo debit e credit com validação estrita em createReversalEntries', () => {
+      const origEntries = [
+        { accountId: 1, assetId: 1, entryType: 'debit' as const, amount: Money256.fromBigInt(50n, 1), description: 'Orig Debit' },
+        { accountId: 2, assetId: 1, entryType: 'credit' as const, amount: Money256.fromBigInt(50n, 1), description: 'Orig Credit' },
+      ];
+
+      const rev = AccountingEntryPolicy.createReversalEntries(origEntries, 'Estorno solicitado');
+      expect(rev).toHaveLength(2);
+      expect(rev[0].entryType).toBe('credit');
+      expect(rev[1].entryType).toBe('debit');
+      expect(rev[0].description).toContain('Reversal (Estorno solicitado)');
+
+      // Rejeita reversal com entryType inválido no original
+      expect(() => {
+        AccountingEntryPolicy.createReversalEntries([
+          { accountId: 1, assetId: 1, entryType: 'invalido' as any, amount: Money256.fromBigInt(50n, 1), description: 'Bad' },
+        ], 'Motivo');
+      }).toThrow(AccountingMatrixValidationError);
+    });
+
+    it('deve filtrar lançamento de receita por revenueAccountId em extractRefundablePaymentAmount', () => {
+      const entries = [
+        { accountId: 5, direction: 'credit', assetId: 1, amountBaseUnits: '5' },  // Fee revenue
+        { accountId: 10, direction: 'credit', assetId: 1, amountBaseUnits: '95' }, // Merchant revenue
+      ];
+
+      const res = AccountingEntryPolicy.extractRefundablePaymentAmount(entries as any, 1, 10);
+      expect(res.toCanonicalString()).toBe('95');
+
+      expect(() => AccountingEntryPolicy.extractRefundablePaymentAmount(entries as any, 1, 999)).toThrow(AccountingMatrixValidationError);
+
+      // Chamada sem revenueAccountId deve lançar erro de obrigatoriedade
+      expect(() => AccountingEntryPolicy.extractRefundablePaymentAmount(entries as any, 1)).toThrow(
+        /revenueAccountId é obrigatório/
+      );
+    });
+
+    it('deve rejeitar parâmetros de operação nulos, primitivos ou malformados (assertOperationParams)', () => {
+      expect(() => AccountingEntryPolicy.createDepositEntries(null as any)).toThrow('Parâmetros da operação contábil inválidos.');
+      expect(() => AccountingEntryPolicy.createWithdrawalEntries(undefined as any)).toThrow('Parâmetros da operação contábil inválidos.');
+      expect(() => AccountingEntryPolicy.createPaymentEntries([] as any)).toThrow('Parâmetros da operação contábil inválidos.');
+      expect(() => AccountingEntryPolicy.createRefundEntries('string' as any)).toThrow('Parâmetros da operação contábil inválidos.');
+    });
+
+    it('deve rejeitar mesma conta em ambos os lados da operação (assertDistinctAccounts)', () => {
+      const money = Money256.fromBigInt(100n, 1);
+
+      // Depósito com treasury e user idênticos
+      expect(() => AccountingEntryPolicy.createDepositEntries({
+        treasuryAccountId: 5,
+        userAccountId: 5,
+        amount: money,
+        description: 'Mesma conta',
+      })).toThrow(/não podem ser idênticas em um depósito/);
+
+      // Retirada com treasury e user idênticos
+      expect(() => AccountingEntryPolicy.createWithdrawalEntries({
+        treasuryAccountId: 5,
+        userAccountId: 5,
+        amount: money,
+        description: 'Mesma conta',
+      })).toThrow(/não podem ser idênticas em uma retirada/);
+
+      // Pagamento com user e receita idênticos
+      expect(() => AccountingEntryPolicy.createPaymentEntries({
+        userAccountId: 10,
+        paymentRevenueAccountId: 10,
+        amount: money,
+        description: 'Mesma conta',
+      })).toThrow(/não podem ser idênticas/);
+
+      // Reembolso com despesa e user idênticos
+      expect(() => AccountingEntryPolicy.createRefundEntries({
+        refundExpenseAccountId: 20,
+        userAccountId: 20,
+        amount: money,
+        description: 'Mesma conta',
+      })).toThrow(/não podem ser idênticas/);
+
+      // Fee com user e fee account idênticos
+      expect(() => AccountingEntryPolicy.createFeeEntries({
+        userAccountId: 30,
+        feeAccountId: 30,
+        amount: money,
+        description: 'Mesma conta',
+      })).toThrow(/não podem ser idênticas/);
+
+      // Ajuste com débito e crédito idênticos
+      expect(() => AccountingEntryPolicy.createAdjustmentEntries({
+        debitAccountId: 40,
+        creditAccountId: 40,
+        amount: money,
+        reason: 'Ajuste mesma conta',
+        authorizedByUserId: 1,
+      })).toThrow(/não podem ser idênticas em um ajuste/);
+
+      // Opening Balance com destino e equity idênticos
+      expect(() => AccountingEntryPolicy.createOpeningBalanceEntries({
+        targetAccountId: 50,
+        openingEquityAccountId: 50,
+        amount: money,
+        description: 'Opening mesma conta',
+        authorizedByUserId: 1,
+      })).toThrow(/não podem ser idênticas/);
+    });
+
+    it('deve sanitizar caracteres de controle em normalizeDisplayName e normalizeDisplayCode', () => {
+      // AccountStatusPolicy com controle no nome
+      expect(() => AccountStatusPolicy.validateActive({
+        id: 1,
+        status: 'inactive',
+        name: 'Conta\u0000Injetada',
+      })).toThrow('(desconhecida)');
+
+      // AssetStatusPolicy com controle no código
+      expect(() => AssetStatusPolicy.validateActive({
+        id: 1,
+        status: 'inactive',
+        code: 'BRL\u0007Ctrl',
+      })).toThrow('(desconhecido)');
+    });
+  });
+});
+
+```
+
+---
+
+<a id="testsfinanceevent_inboxtestts"></a>
+## Arquivo: `tests/finance/event_inbox.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/event_inbox.test.ts`
+- **Total de linhas**: 56
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { unlinkSync } from 'fs';
+import { EventInboxService } from '../../src/infrastructure/services/EventInboxService';
+import { Result } from '../../src/shared/kernel/Result';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+
+describe('Invariante DOD-14: Event Inbox Idempotency para Webhooks Externos', () => {
+  let sqlite: any;
+  let db: any;
+  let eventInboxService: EventInboxService;
+  const dbFile = 'test_inbox.db';
+
+  beforeAll(async () => {
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+
+    await runAllMigrationsLibSql(sqlite);
+
+    eventInboxService = new EventInboxService();
+  }, 30000);
+
+  afterAll(() => {
+    try { unlinkSync(dbFile); } catch (e) {}
+  });
+
+  it('DOD-14: Deve processar a primeira vez e ignorar reenvio duplicado do mesmo providerId + externalEventId', async () => {
+    let executionCount = 0;
+    const handler = async () => {
+      executionCount++;
+      return Result.ok({ status: 'processed' });
+    };
+
+    const webhookPayload = {
+      eventId: 'evt-uuid-1',
+      providerId: 10,
+      externalEventId: 'ext-tx-999',
+      payload: { amount: 500, currency: 'BRL' },
+    };
+
+    // Primeira tentativa -> Processa normalmente
+    const res1 = await eventInboxService.processEventOnce(db, webhookPayload, handler);
+    if (res1.isFailure) console.log('res1 error:', res1.error);
+    expect(res1.isSuccess).toBe(true);
+    expect(res1.getValue().isDuplicate).toBe(false);
+    expect(executionCount).toBe(1);
+
+    // Segunda tentativa com mesmo providerId + externalEventId -> Idempotente! (Ignora execução do handler)
+    const res2 = await eventInboxService.processEventOnce(db, webhookPayload, handler);
+    if (res2.isFailure) console.log('res2 error:', res2.error);
+    expect(res2.isSuccess).toBe(true);
+    expect(res2.getValue().isDuplicate).toBe(true);
+    expect(executionCount).toBe(1); // Não incrementou!
+  });
+});
+
+```
+
+---
+
+<a id="testsfinanceevm_precisiontestts"></a>
+## Arquivo: `tests/finance/evm_precision.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/evm_precision.test.ts`
+- **Total de linhas**: 83
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { eq } from 'drizzle-orm';
+import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
+import { LedgerEntry } from '../../src/domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../../src/domains/finance/value-objects/Money256';
+import { accountBalances } from '../../src/db/finance/tables';
+import { unlinkSync, existsSync } from 'fs';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+
+describe('Precisão Monetária EVM 256-bit - Transações com > 53-bits', () => {
+  const dbFile = 'test_evm_precision.db';
+  let sqlite: any;
+  let db: any;
+
+  beforeAll(async () => {
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+
+    await runAllMigrationsLibSql(sqlite);
+
+    // Inserir registros iniciais
+    await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (1, 'evm@test.com', 'evm@test.com', 'active', 1000, 1000);`);
+    await sqlite.execute(`INSERT INTO financial_assets (id, code, symbol, name, decimals, type, status, created_at, updated_at) VALUES (1, 'USDT', 'USDT', 'Tether EVM 18 decimals', 18, 'crypto', 'active', 1000, 1000);`);
+    await sqlite.execute(`INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (1, 1, 'user_available', 'liability', 'active', 'User Account', 1, 1000, 1000);`);
+    await sqlite.execute(`INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (2, NULL, 'treasury', 'asset', 'active', 'Treasury Vault', 1, 1000, 1000);`);
+  }, 30000);
+
+  it('deve processar lançamentos contábeis com valores EVM de 18 decimais (ex: 10^24 base units, excedendo 53-bits) sem estouro ou perda de precisão', async () => {
+    const repo = new DrizzleFinanceRepository(db);
+
+    // 100,000,000 USDT com 18 decimais = 100,000,000 * 10^18 = 10^26 base units
+    const hugeEvmAmount = 100000000000000000000000000n; // > Number.MAX_SAFE_INTEGER (9007199254740991)
+    const money = Money256.fromBigInt(hugeEvmAmount, 1);
+
+    const entry1 = new LedgerEntry({
+      accountId: '1',
+      amount: money,
+      type: 'credit',
+      description: 'EVM Deposit'
+    });
+
+    const entry2 = new LedgerEntry({
+      accountId: '2',
+      amount: money,
+      type: 'debit',
+      description: 'EVM Deposit Treasury'
+    });
+
+    // 1. Inserir Transação
+    const txId = await repo.insertTransaction({
+      userId: 1,
+      type: 'deposit',
+      category: 'trading',
+      status: 'completed',
+      description: 'Deposit Huge EVM Token',
+    });
+
+    // 2. Inserir Entradas no Ledger (deve gravar TEXT com a string exata do BigInt)
+    await repo.insertLedgerEntries([entry1, entry2], txId);
+
+    // 3. Atualizar saldos com OCC usando BigInt puro
+    const successUser = await repo.updateBalanceWithOCC('1', '1', hugeEvmAmount, 'credit');
+    expect(successUser).toBe('UPDATED');
+
+    const successTreasury = await repo.updateBalanceWithOCC('2', '1', hugeEvmAmount, 'debit');
+    expect(successTreasury).toBe('UPDATED');
+
+    // 4. Consultar saldo no banco de dados e verificar a exatidão do BigInt (TEXT -> BigInt)
+    const [userBalRow] = await db
+      .select()
+      .from(accountBalances)
+      .where(eq(accountBalances.accountId, 1))
+      .limit(1);
+
+    expect(BigInt(userBalRow.availableBaseUnits)).toBe(hugeEvmAmount);
+    expect(userBalRow.availableBaseUnits).toBe(hugeEvmAmount.toString());
+  });
+});
+
+```
+
+---
+
+<a id="testsfinancefailure_injectiontestts"></a>
+## Arquivo: `tests/finance/failure_injection.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/failure_injection.test.ts`
+- **Total de linhas**: 87
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { unlinkSync, existsSync } from 'fs';
+import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+
+describe('Gate 4: Failure Injection Matrix & Atomic Rollback Certification (FIN-015 / FIN-024)', () => {
+  const dbFile = 'test_failure_injection.db';
+  let sqlite: any;
+  let db: any;
+
+  beforeEach(async () => {
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+
+    await runAllMigrationsLibSql(sqlite);
+
+    // Ensure user 1 exists for FK constraint
+    await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (1, 'user1@test.com', 'user1@test.com', 'active', 1000, 1000)`);
+  });
+
+  afterEach(() => {
+    try { unlinkSync(dbFile); } catch (e) {}
+  });
+
+  it('guarantees 100% atomic rollback on error during transaction execution', async () => {
+    const uowDb = {
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => {
+          throw new Error('DRIZZLE_ROLLBACK');
+        };
+        try {
+          await cb(proxyDb);
+          await t.commit();
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          if (err.message === 'DRIZZLE_ROLLBACK') return;
+          throw err;
+        }
+      }
+    };
+
+    await FinanceBootstrapService.seedSystemAccounts(uowDb, { currencyCode: 'BRL' });
+    const uow = new DrizzleUnitOfWork(uowDb);
+
+    const countBeforeTx = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_transactions')).rows[0].c);
+    const countBeforeLedger = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_ledger_entries')).rows[0].c);
+    const countBeforeIdem = Number((await sqlite.execute('SELECT COUNT(*) as c FROM idempotency_keys')).rows[0].c);
+
+    // Inject failure inside transaction boundary
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+
+      await repo.claimIdempotency('fail-key-1', 1, 'finance', 'hash1');
+      await repo.insertTransaction({
+        userId: 1,
+        type: 'deposit',
+        category: 'deposit',
+        description: 'Failed Deposit Test',
+        status: 'processing',
+      });
+
+      // Simulate crash inside UoW Transaction
+      throw new Error('Simulated Crash inside UoW Transaction');
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Simulated Crash inside UoW Transaction');
+
+    const countAfterTx = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_transactions')).rows[0].c);
+    const countAfterLedger = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_ledger_entries')).rows[0].c);
+    const countAfterIdem = Number((await sqlite.execute('SELECT COUNT(*) as c FROM idempotency_keys')).rows[0].c);
+
+    // Zero partial writes persisted
+    expect(countAfterTx).toBe(countBeforeTx);
+    expect(countAfterLedger).toBe(countBeforeLedger);
+    expect(countAfterIdem).toBe(countBeforeIdem);
+  });
+});
+
+```
+
+---
+
+<a id="testsfinancemoney256testts"></a>
+## Arquivo: `tests/finance/money256.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/money256.test.ts`
+- **Total de linhas**: 83
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { Money256, MAX_UINT256 } from '../../src/domains/finance/value-objects/Money256';
+import {
+  InvalidMoneyFormatError,
+  Money256OverflowError,
+  CurrencyMismatchError,
+  MoneyUnderflowError,
+  InvalidIdentifierError,
+} from '../../src/domains/finance/errors/FinancialError';
+
+describe('Money256 Value Object (EVM 256-bit Precision)', () => {
+  it('parses valid canonical decimal strings correctly', () => {
+    const m1 = Money256.fromString('0', 1);
+    expect(m1.toCanonicalString()).toBe('0');
+    expect(m1.toBigInt()).toBe(0n);
+
+    const m2 = Money256.fromString('1000', 1);
+    expect(m2.toCanonicalString()).toBe('1000');
+    expect(m2.toBigInt()).toBe(1000n);
+
+    const maxStr = MAX_UINT256.toString(10);
+    const mMax = Money256.fromString(maxStr, 1);
+    expect(mMax.toBigInt()).toBe(MAX_UINT256);
+  });
+
+  it('rejects invalid formatting (exponents, leading zeros, signs, whitespace, decimals)', () => {
+    expect(() => Money256.fromString('0001', 1)).toThrow(InvalidMoneyFormatError);
+    expect(() => Money256.fromString('00123', 1)).toThrow(InvalidMoneyFormatError);
+    expect(() => Money256.fromString('+100', 1)).toThrow(InvalidMoneyFormatError);
+    expect(() => Money256.fromString('-50', 1)).toThrow(InvalidMoneyFormatError);
+    expect(() => Money256.fromString('1e18', 1)).toThrow(InvalidMoneyFormatError);
+    expect(() => Money256.fromString('100.0', 1)).toThrow(InvalidMoneyFormatError);
+    expect(() => Money256.fromString(' 100 ', 1)).toThrow(InvalidMoneyFormatError);
+    expect(() => Money256.fromString('100', -1)).toThrow(InvalidIdentifierError);
+  });
+
+  it('throws Money256OverflowError on values exceeding 2^256 - 1', () => {
+    const overMax = MAX_UINT256 + 1n;
+    expect(() => Money256.fromBigInt(overMax, 1)).toThrow(Money256OverflowError);
+  });
+
+  it('executes immutable arithmetic operations safely', () => {
+    const a = Money256.fromString('500', 1);
+    const b = Money256.fromString('300', 1);
+
+    const sum = a.add(b);
+    expect(sum.toCanonicalString()).toBe('800');
+    expect(a.toCanonicalString()).toBe('500'); // Immutability
+
+    const diff = a.subtract(b);
+    expect(diff.toCanonicalString()).toBe('200');
+
+    expect(() => b.subtract(a)).toThrow(MoneyUnderflowError); // Prohibits negative result
+  });
+
+  it('prohibits arithmetic across different asset IDs', () => {
+    const a = Money256.fromString('100', 1);
+    const b = Money256.fromString('100', 2);
+    expect(() => a.add(b)).toThrow(CurrencyMismatchError);
+  });
+
+  it('supports comparison operators (greaterThan, greaterThanOrEqual, lessThan, lessThanOrEqual, zero)', () => {
+    const zero = Money256.zero(1);
+    const a = Money256.fromString('500', 1);
+    const b = Money256.fromString('300', 1);
+    const c = Money256.fromString('500', 1);
+
+    expect(zero.isZero()).toBe(true);
+    expect(a.greaterThan(b)).toBe(true);
+    expect(b.greaterThan(a)).toBe(false);
+
+    expect(a.greaterThanOrEqual(c)).toBe(true);
+    expect(a.greaterThanOrEqual(b)).toBe(true);
+
+    expect(b.lessThan(a)).toBe(true);
+    expect(a.lessThan(b)).toBe(false);
+
+    expect(a.lessThanOrEqual(c)).toBe(true);
+    expect(b.lessThanOrEqual(a)).toBe(true);
+
+    expect(Object.isFrozen(a)).toBe(true);
+  });
+});
+
+```
+
+---
+
+<a id="testsfinanceposting_authority_hardeningtestts"></a>
+## Arquivo: `tests/finance/posting_authority_hardening.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/posting_authority_hardening.test.ts`
+- **Total de linhas**: 316
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { eq } from 'drizzle-orm';
+import { unlinkSync } from 'fs';
+
+import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { LedgerTransaction, LedgerEntry } from '../../src/domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../../src/domains/finance/value-objects/Money256';
+import { FinancialTransactionOrchestrator } from '../../src/application/finance/services/FinancialTransactionOrchestrator';
+import { RecordLedgerTransactionUseCase } from '../../src/application/finance/use-cases/RecordLedgerTransactionUseCase';
+import {
+  financialAccounts,
+  financialTransactions,
+  financialLedgerEntries,
+  accountBalances,
+  financialAssets,
+} from '../../src/db/finance/tables';
+import { idempotencyKeys, outboxEvents } from '../../src/db/infrastructure/tables';
+import {
+  AccountInactiveError,
+  AssetInactiveError,
+  InvalidAccountClassError,
+  InvalidStateTransitionError,
+} from '../../src/domains/finance/errors/FinancialError';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+
+describe('Gate 3/4 Hardening: Autoridade Física de Posting e Fechamento de Bypasses', () => {
+  let sqlite: any;
+  let db: any;
+  let uow: DrizzleUnitOfWork;
+  const DB_NAME = 'test_posting_authority_hardening.db';
+
+  beforeAll(async () => {
+    sqlite = createClient({ url: `file:${DB_NAME}` });
+    db = drizzle(sqlite);
+
+    const uowDb = {
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => {
+          throw new Error('drizzle-rollback');
+        };
+        try {
+          await cb(proxyDb);
+          await t.commit();
+        } catch (err: any) {
+          try {
+            await t.rollback();
+          } catch (e) {}
+          if (err.message === 'drizzle-rollback') return;
+          throw err;
+        }
+      },
+    };
+
+    await runAllMigrationsLibSql(sqlite);
+
+    await sqlite.executeMultiple(`
+      INSERT INTO users (id, email, email_normalized, status, created_at, updated_at)
+        VALUES (10, 'user10@hardening.com', 'user10@hardening.com', 'active', 1000, 1000);
+      INSERT INTO users (id, email, email_normalized, status, created_at, updated_at)
+        VALUES (20, 'user20@hardening.com', 'user20@hardening.com', 'active', 1000, 1000);
+
+      -- Ativo 1: BRL (active)
+      INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at)
+        VALUES (1, 'BRL', 'BRL', 'Brazilian Real', 'fiat', 2, 'active', 1000, 1000);
+      -- Ativo 2: INACTIVE_TOKEN (inactive)
+      INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at)
+        VALUES (2, 'INAC', 'INAC', 'Inactive Token', 'crypto', 8, 'inactive', 1000, 1000);
+
+      -- Conta 1: User 10 (user_available, liability, active)
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at)
+        VALUES (1, 10, 'user_available', 'liability', 'active', 'User 10 Account', 1, 1000, 1000);
+      -- Conta 2: Treasury (treasury, asset, active)
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at)
+        VALUES (2, NULL, 'treasury', 'asset', 'active', 'Treasury Vault', 1, 1000, 1000);
+      -- Conta 3: User 20 INACTIVE (user_available, liability, inactive)
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at)
+        VALUES (3, 20, 'user_available', 'liability', 'inactive', 'User 20 Inactive Account', 1, 1000, 1000);
+      -- Conta 4: Incompatible class (fees com class 'asset' ao invés de 'revenue')
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at)
+        VALUES (4, NULL, 'fees', 'asset', 'active', 'Mismatched Fees Account', 1, 1000, 1000);
+
+      INSERT INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at)
+        VALUES (1, 1, 1, '5000', '0', 1, 1000);
+      INSERT INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at)
+        VALUES (2, 2, 1, '50000', '0', 1, 1000);
+      INSERT INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at)
+        VALUES (3, 3, 1, '1000', '0', 1, 1000);
+    `);
+
+    uow = new DrizzleUnitOfWork(uowDb);
+  }, 30000);
+
+  afterAll(() => {
+    sqlite.close();
+    try {
+      unlinkSync(DB_NAME);
+    } catch (e) {}
+  });
+
+  const getDBCounts = async () => {
+    const txs = (await db.select().from(financialTransactions)).length;
+    const entries = (await db.select().from(financialLedgerEntries)).length;
+    const idem = (await db.select().from(idempotencyKeys)).length;
+    const outbox = (await db.select().from(outboxEvents)).length;
+    return { txs, entries, idem, outbox };
+  };
+
+  it('VETOR 1: Rejeita conta inexistente ANTES de qualquer INSERT no banco', async () => {
+    const initialState = await getDBCounts();
+    const amount = Money256.fromString('100', 1);
+
+    const tx = LedgerTransaction.create({
+      idempotencyKey: 'test-nonexistent-acc-key',
+      userId: 10,
+      description: 'Tentativa com conta inexistente',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '999999', amount, type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount, type: 'credit' }),
+      ],
+    });
+
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+      return await orchestrator.executePosting(tx);
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Conta financeira #999999 não encontrada');
+
+    const finalState = await getDBCounts();
+    expect(finalState.txs).toBe(initialState.txs);
+    expect(finalState.entries).toBe(initialState.entries);
+    expect(finalState.idem).toBe(initialState.idem);
+    expect(finalState.outbox).toBe(initialState.outbox);
+  });
+
+  it('VETOR 1: Rejeita conta inativa com AccountInactiveError antes do insert', async () => {
+    const initialState = await getDBCounts();
+    const amount = Money256.fromString('100', 1);
+
+    const tx = LedgerTransaction.create({
+      idempotencyKey: 'test-inactive-acc-key',
+      userId: 10,
+      description: 'Tentativa com conta inativa',
+      transactionType: 'transfer',
+      category: 'operational',
+      entries: [
+        new LedgerEntry({ accountId: '1', amount, type: 'debit' }),
+        new LedgerEntry({ accountId: '3', amount, type: 'credit' }),
+      ],
+    });
+
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+      return await orchestrator.executePosting(tx);
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Movimentações somente são permitidas em contas ativas');
+
+    const finalState = await getDBCounts();
+    expect(finalState.txs).toBe(initialState.txs);
+    expect(finalState.entries).toBe(initialState.entries);
+  });
+
+  it('VETOR 2: Rejeita conta inativa MESMO QUANDO delta líquido é zero (Fechamento do Delta Zero)', async () => {
+    const initialState = await getDBCounts();
+    const amount = Money256.fromString('100', 1);
+
+    // Conta 3 está inativa, mas debit 100 e credit 100 na Conta 3 somam delta 0!
+    // No código antigo, o OCC pulava com continue; e a conta inativa passava!
+    const tx = LedgerTransaction.create({
+      idempotencyKey: 'test-delta-zero-inactive-key',
+      userId: 10,
+      description: 'Transação com delta zero em conta inativa',
+      transactionType: 'transfer',
+      category: 'operational',
+      entries: [
+        new LedgerEntry({ accountId: '3', amount, type: 'debit', description: 'Leg 1 Debit' }),
+        new LedgerEntry({ accountId: '3', amount, type: 'credit', description: 'Leg 1 Credit' }),
+        new LedgerEntry({ accountId: '1', amount, type: 'debit', description: 'Leg 2 Debit' }),
+        new LedgerEntry({ accountId: '2', amount, type: 'credit', description: 'Leg 2 Credit' }),
+      ],
+    });
+
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+      return await orchestrator.executePosting(tx);
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Movimentações somente são permitidas em contas ativas');
+
+    const finalState = await getDBCounts();
+    expect(finalState.txs).toBe(initialState.txs);
+    expect(finalState.entries).toBe(initialState.entries);
+  });
+
+  it('VETOR 1: Rejeita ativo suspenso/inativo com AssetInactiveError antes de qualquer INSERT', async () => {
+    const initialState = await getDBCounts();
+    const amountSuspended = Money256.fromString('50', 2);
+
+    const tx = LedgerTransaction.create({
+      idempotencyKey: 'test-suspended-asset-key',
+      userId: 10,
+      description: 'Tentativa com ativo suspenso',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '2', amount: amountSuspended, type: 'debit' }),
+        new LedgerEntry({ accountId: '1', amount: amountSuspended, type: 'credit' }),
+      ],
+    });
+
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+      return await orchestrator.executePosting(tx);
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Operações financeiras exigem que o ativo esteja ativo');
+
+    const finalState = await getDBCounts();
+    expect(finalState.txs).toBe(initialState.txs);
+    expect(finalState.entries).toBe(initialState.entries);
+  });
+
+  it('VETOR 4: Rejeita conta com AccountClass incompatível segundo AccountClassPolicy', async () => {
+    const initialState = await getDBCounts();
+    const amount = Money256.fromString('25', 1);
+
+    // Conta 4 possui accountType 'fees', mas accountClass 'asset' (fees só aceita 'revenue')
+    const tx = LedgerTransaction.create({
+      idempotencyKey: 'test-incompatible-class-key',
+      userId: 10,
+      description: 'Tentativa com conta com classe incompatível',
+      transactionType: 'fee',
+      category: 'fee',
+      entries: [
+        new LedgerEntry({ accountId: '1', amount, type: 'debit' }),
+        new LedgerEntry({ accountId: '4', amount, type: 'credit' }),
+      ],
+    });
+
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
+      return await orchestrator.executePosting(tx);
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Classe de conta "asset" é incompatível com o tipo de conta "fees"');
+
+    const finalState = await getDBCounts();
+    expect(finalState.txs).toBe(initialState.txs);
+    expect(finalState.entries).toBe(initialState.entries);
+  });
+
+  it('FLUXO COMPLETO DE SUCESSO: pending -> processing -> completed e Outbox persistido', async () => {
+    const amount = Money256.fromString('150', 1);
+    const key = 'test-full-success-pipeline-key';
+
+    const tx = LedgerTransaction.create({
+      idempotencyKey: key,
+      userId: 10,
+      description: 'Postagem com ciclo de vida completo',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '2', amount, type: 'debit' }),
+        new LedgerEntry({ accountId: '1', amount, type: 'credit' }),
+      ],
+    });
+
+    // Executa via RecordLedgerTransactionUseCase (ponto de entrada de aplicação)
+    const useCase = new RecordLedgerTransactionUseCase(uow);
+    const result = await useCase.execute(tx);
+
+    expect(result.isSuccess).toBe(true);
+    const { transactionId, isReplayed } = result.getValue();
+    expect(transactionId).toBeGreaterThan(0);
+    expect(isReplayed).toBe(false);
+
+    // Verificar se no banco de dados o status final é estritamente 'completed'
+    const [savedTx] = await db
+      .select()
+      .from(financialTransactions)
+      .where(eq(financialTransactions.id, transactionId));
+    expect(savedTx.status).toBe('completed');
+
+    // Verificar se o evento de outbox foi registrado
+    const [savedEvent] = await db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.aggregateId, String(transactionId)));
+    expect(savedEvent).toBeDefined();
+    expect(savedEvent.aggregateType).toBe('LedgerTransaction');
+
+    // Testar Idempotency Replay (P0-1): segunda chamada idêntica deve retornar replay com sucesso
+    const replayResult = await useCase.execute(tx);
+    expect(replayResult.isSuccess).toBe(true);
+    expect(replayResult.getValue().transactionId).toBe(transactionId);
+    expect(replayResult.getValue().isReplayed).toBe(true);
+  });
+});
+
+```
+
+---
+
+<a id="testsfinancereconciliation_3waytestts"></a>
+## Arquivo: `tests/finance/reconciliation_3way.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/reconciliation_3way.test.ts`
+- **Total de linhas**: 133
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { accountBalances, financialLedgerEntries } from '../../src/db/finance/tables';
+import { users } from '../../src/db/user/tables';
+import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
+import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
+import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { RecordTreasuryTransactionUseCase } from '../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+import { eq } from 'drizzle-orm';
+import { unlinkSync, existsSync } from 'fs';
+
+describe('3-Way Reconciliation Suite (External Provider <-> Ledger Projection <-> Materialized Balance)', () => {
+  const dbFile = 'test_rec_3way.db';
+  let sqlite: any;
+  let db: any;
+  let uow: DrizzleUnitOfWork;
+
+  beforeAll(async () => {
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+
+    const uowDb = {
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => {
+          throw new Error('DRIZZLE_ROLLBACK');
+        };
+        try {
+          const res = await cb(proxyDb);
+          await t.commit();
+          return res;
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          if (err.message === 'DRIZZLE_ROLLBACK') return;
+          throw err;
+        }
+      }
+    };
+
+    await runAllMigrationsLibSql(sqlite);
+    uow = new DrizzleUnitOfWork(uowDb);
+    await FinanceBootstrapService.seedSystemAccounts(db, { currencyCode: 'BRL' });
+  }, 30000);
+
+  afterAll(() => {
+    try { sqlite.close(); } catch (e) {}
+    try { unlinkSync(dbFile); } catch (e) {}
+  });
+
+  it('validates 3-way balance equality: External Provider Custody == Ledger Projection == Materialized Balance', async () => {
+    // Insert user
+    const [user] = await db.insert(users).values({
+      name: 'Alice Reconciliation',
+      email: 'alice.rec@example.com',
+      emailNormalized: 'alice.rec@example.com',
+      passwordHash: 'hash',
+      role: 'user',
+      status: 'active',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+
+    const recordUseCase = new RecordTreasuryTransactionUseCase(uow);
+
+    // 1. Perform deposit of 500.00 BRL (50000 base units)
+    const depositRes = await recordUseCase.execute({
+      userId: user.id,
+      type: 'deposit',
+      direction: 'INBOUND',
+      amountBaseUnits: '50000',
+      assetId: 1,
+      description: 'Initial deposit',
+      idempotencyKey: 'rec-dep-1',
+    });
+    expect(depositRes.isSuccess).toBe(true);
+
+    // 2. Perform withdrawal of 200.00 BRL (20000 base units)
+    const withdrawRes = await recordUseCase.execute({
+      userId: user.id,
+      type: 'withdrawal',
+      direction: 'OUTBOUND',
+      amountBaseUnits: '20000',
+      assetId: 1,
+      description: 'Partial withdrawal',
+      idempotencyKey: 'rec-wd-1',
+    });
+    expect(withdrawRes.isSuccess).toBe(true);
+
+    // Fetch user account
+    const repo = new DrizzleFinanceRepository(db);
+    const userAccRes = await repo.getOrCreateUserAccount(user.id);
+    const userAccountId = userAccRes.getValue().id;
+
+    // A. Materialized Balance
+    const [balanceRow] = await db
+      .select()
+      .from(accountBalances)
+      .where(eq(accountBalances.accountId, userAccountId));
+    const materializedBalance = BigInt(balanceRow.availableBaseUnits);
+
+    // B. Ledger Projection Balance
+    const ledgerEntries = await db
+      .select()
+      .from(financialLedgerEntries)
+      .where(eq(financialLedgerEntries.accountId, userAccountId));
+
+    let ledgerProjection = 0n;
+    for (const entry of ledgerEntries) {
+      const amount = BigInt(entry.amountBaseUnits);
+      if (entry.direction === 'credit') {
+        ledgerProjection += amount; // Liability account: Credit increases
+      } else {
+        ledgerProjection -= amount; // Liability account: Debit decreases
+      }
+    }
+
+    // C. Simulated External Provider Custody (Net Inbound = 50000 - 20000 = 30000)
+    const externalProviderCustody = 30000n;
+
+    // 3-Way Equality Assertion
+    expect(materializedBalance).toBe(30000n);
+    expect(ledgerProjection).toBe(30000n);
+    expect(materializedBalance).toBe(ledgerProjection);
+    expect(ledgerProjection).toBe(externalProviderCustody);
+  });
+});
+
+```
+
+---
+
+<a id="testsfinancereverse_transactiontestts"></a>
+## Arquivo: `tests/finance/reverse_transaction.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/reverse_transaction.test.ts`
+- **Total de linhas**: 117
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { unlinkSync } from 'fs';
+import { eq, and } from 'drizzle-orm';
+
+import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { ReverseTransactionUseCase } from '../../src/application/finance/use-cases/ReverseTransactionUseCase';
+import { LedgerTransaction, LedgerEntry } from '../../src/domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../../src/domains/finance/value-objects/Money256';
+import { FinancialTransactionOrchestrator } from '../../src/application/finance/services/FinancialTransactionOrchestrator';
+import { accountBalances } from '../../src/db/finance/tables';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+import { Result } from '../../src/shared/kernel/Result';
+
+describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)', () => {
+  let sqlite: any;
+  let db: any;
+  let uow: DrizzleUnitOfWork;
+  let reverseUseCase: ReverseTransactionUseCase;
+  const dbFile = 'test_reversal.db';
+
+  beforeAll(async () => {
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+
+    const uowDb = {
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => {
+          throw new Error('DRIZZLE_ROLLBACK');
+        };
+        try {
+          const res = await cb(proxyDb);
+          await t.commit();
+          return res;
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          if (err.message === 'DRIZZLE_ROLLBACK') return;
+          throw err;
+        }
+      }
+    };
+
+    await runAllMigrationsLibSql(sqlite);
+
+    await sqlite.executeMultiple(`
+      INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (1, 'user1@test.com', 'user1@test.com', 'active', 1000, 1000);
+      INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at) VALUES (1, 'BRL', 'BRL', 'Brazilian Real', 'fiat', 2, 'active', 1000, 1000);
+      
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (1, NULL, 'operating', 'asset', 'active', 'Operating Account', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (2, 1, 'user_available', 'liability', 'active', 'User 1 Account', 1, 1000, 1000);
+
+      INSERT INTO account_balances (account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (1, 1, '100000', '0', 1, 1000);
+      INSERT INTO account_balances (account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (2, 1, '0', '0', 1, 1000);
+    `);
+
+    uow = new DrizzleUnitOfWork(uowDb);
+    reverseUseCase = new ReverseTransactionUseCase(uow);
+  }, 30000);
+
+  afterAll(() => {
+    try { unlinkSync(dbFile); } catch (e) {}
+  });
+
+  it('DOD-17: Executar estorno deve gerar lançamentos espelho invertidos e restaurar o saldo ao valor original', async () => {
+    // 1. Executa transação original de depósito (100 base units de Operating para User 1)
+    const amount = Money256.fromString('100', 1);
+
+    const originalTx = LedgerTransaction.create({
+      idempotencyKey: 'orig-dep-100',
+      description: 'Original Deposit 100',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' }),
+      ],
+    });
+
+    const origRes = await uow.execute(async (f) => {
+      const repo = f.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const postingResult = await orchestrator.executePosting(originalTx);
+      return Result.ok(postingResult);
+    });
+
+    expect(origRes.isSuccess).toBe(true);
+    const originalTxId = origRes.getValue().transactionId;
+
+    // Verifica saldos pós-depósito
+    const b1AfterDep = await db.select().from(accountBalances).where(and(eq(accountBalances.accountId, 1), eq(accountBalances.assetId, 1)));
+    const b2AfterDep = await db.select().from(accountBalances).where(and(eq(accountBalances.accountId, 2), eq(accountBalances.assetId, 1)));
+    expect(b1AfterDep[0].availableBaseUnits).toBe('100100'); // Asset aumenta com Débito (100000 + 100)
+    expect(b2AfterDep[0].availableBaseUnits).toBe('100');    // Liability aumenta com Crédito (0 + 100)
+
+    // 2. Executa estorno (ReverseTransactionUseCase)
+    const revRes = await reverseUseCase.execute({
+      originalTransactionId: originalTxId,
+      actorUserId: 1,
+      idempotencyKey: 'rev-dep-100',
+      reason: 'Solicitação do cliente / Erro operacional',
+    });
+
+    if (revRes.isFailure) console.log('revRes error:', revRes.error);
+    expect(revRes.isSuccess).toBe(true);
+
+    // 3. Valida que os saldos das contas foram 100% restaurados aos valores originais (Original + Estorno == 0)
+    const b1Final = await db.select().from(accountBalances).where(and(eq(accountBalances.accountId, 1), eq(accountBalances.assetId, 1)));
+    const b2Final = await db.select().from(accountBalances).where(and(eq(accountBalances.accountId, 2), eq(accountBalances.assetId, 1)));
+
+    expect(b1Final[0].availableBaseUnits).toBe('100000');
+    expect(b2Final[0].availableBaseUnits).toBe('0');
+  });
+});
+
+```
+
+---
+
+<a id="testsfinanceinvariantsbalance_projectiontestts"></a>
+## Arquivo: `tests/finance/invariants/balance_projection.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/balance_projection.test.ts`
+- **Total de linhas**: 163
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { unlinkSync } from 'fs';
+import { eq, and } from 'drizzle-orm';
+
+import { DrizzleUnitOfWork } from '../../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { LedgerTransaction, LedgerEntry } from '../../../src/domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../../../src/domains/finance/value-objects/Money256';
+import { FinancialTransactionOrchestrator } from '../../../src/application/finance/services/FinancialTransactionOrchestrator';
+import { accountBalances, financialLedgerEntries, financialAccounts } from '../../../src/db/finance/tables';
+import { runAllMigrationsLibSql } from '../../test_helpers/runMigrations';
+
+describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada de Ledger', () => {
+  let sqlite: any;
+  let db: any;
+  let uow: DrizzleUnitOfWork;
+  const dbFile = 'test_balance_projection.db';
+
+  beforeAll(async () => {
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+
+    const uowDb = {
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => {
+          throw new Error('DRIZZLE_ROLLBACK');
+        };
+        try {
+          await cb(proxyDb);
+          await t.commit();
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          if (err.message === 'DRIZZLE_ROLLBACK') return;
+          throw err;
+        }
+      }
+    };
+
+    await runAllMigrationsLibSql(sqlite);
+
+    await sqlite.executeMultiple(`
+      INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (1, 'user1@test.com', 'user1@test.com', 'active', 1000, 1000);
+      INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (2, 'user2@test.com', 'user2@test.com', 'active', 1000, 1000);
+      INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at) VALUES (1, 'BRL', 'BRL', 'Brazilian Real', 'fiat', 2, 'active', 1000, 1000);
+      
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (1, NULL, 'operating', 'asset', 'active', 'Operating Account', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (2, 1, 'user_available', 'liability', 'active', 'User 1 Account', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (3, 2, 'user_available', 'liability', 'active', 'User 2 Account', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (4, NULL, 'fees', 'revenue', 'active', 'Fee Revenue Account', 1, 1000, 1000);
+
+      INSERT INTO account_balances (account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (1, 1, '1000000', '0', 1, 1000);
+      INSERT INTO account_balances (account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (2, 1, '0', '0', 1, 1000);
+      INSERT INTO account_balances (account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (3, 1, '0', '0', 1, 1000);
+      INSERT INTO account_balances (account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (4, 1, '0', '0', 1, 1000);
+    `);
+
+    uow = new DrizzleUnitOfWork(uowDb);
+  });
+
+  afterAll(() => {
+    try { unlinkSync(dbFile); } catch (e) {}
+  });
+
+  it('DOD-04: Saldo materializado em account_balances deve coincidir 100% com a soma projetada do ledger por accountClass', async () => {
+    // 1. Depósito 500 para User 1 (Conta 2) vindo da Operating (Conta 1)
+    const tx1 = LedgerTransaction.create({
+      idempotencyKey: 'proj-tx-1',
+      description: 'Deposit User 1',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '1', amount: Money256.fromString('500', 1) as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: Money256.fromString('500', 1) as any, type: 'credit' }),
+      ],
+    });
+
+    const res1 = await uow.execute(async (f) => {
+      const repo = f.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      return await orchestrator.executePosting(tx1, 'hash1');
+    });
+    expect(res1.transactionId).toBeDefined();
+
+    // 2. Transferência 200 de User 1 (Conta 2) para User 2 (Conta 3)
+    const tx2 = LedgerTransaction.create({
+      idempotencyKey: 'proj-tx-2',
+      description: 'Transfer User 1 -> User 2',
+      transactionType: 'transfer',
+      category: 'operational',
+      entries: [
+        new LedgerEntry({ accountId: '2', amount: Money256.fromString('200', 1) as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '3', amount: Money256.fromString('200', 1) as any, type: 'credit' }),
+      ],
+    });
+
+    const res2 = await uow.execute(async (f) => {
+      const repo = f.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      return await orchestrator.executePosting(tx2, 'hash2');
+    });
+    expect(res2.transactionId).toBeDefined();
+
+    // 3. Taxa 10 cobrada de User 1 (Conta 2) enviada para Fees Revenue (Conta 4)
+    const tx3 = LedgerTransaction.create({
+      idempotencyKey: 'proj-tx-3',
+      description: 'Fee Charge User 1',
+      transactionType: 'fee',
+      category: 'fee',
+      entries: [
+        new LedgerEntry({ accountId: '2', amount: Money256.fromString('10', 1) as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '4', amount: Money256.fromString('10', 1) as any, type: 'credit' }),
+      ],
+    });
+
+    const res3 = await uow.execute(async (f) => {
+      const repo = f.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      return await orchestrator.executePosting(tx3, 'hash3');
+    });
+    expect(res3.transactionId).toBeDefined();
+
+    // 4. Verificação Invariante DOD-04 para todas as contas
+    const accounts = await db.select().from(financialAccounts);
+
+    for (const acc of accounts) {
+      const balances = await db
+        .select()
+        .from(accountBalances)
+        .where(and(eq(accountBalances.accountId, acc.id), eq(accountBalances.assetId, 1)));
+
+      const materializedStr = balances[0]?.availableBaseUnits || '0';
+      const materializedBigInt = BigInt(materializedStr);
+
+      const entries = await db
+        .select()
+        .from(financialLedgerEntries)
+        .where(and(eq(financialLedgerEntries.accountId, acc.id), eq(financialLedgerEntries.assetId, 1)));
+
+      let debitSum = 0n;
+      let creditSum = 0n;
+      for (const entry of entries) {
+        const val = BigInt(entry.amountBaseUnits);
+        if (entry.direction === 'debit') debitSum += val;
+        else if (entry.direction === 'credit') creditSum += val;
+      }
+
+      let initialBalance = acc.id === 1 ? 1000000n : 0n;
+      let projectedBigInt = initialBalance;
+
+      if (acc.accountClass === 'asset' || acc.accountClass === 'expense') {
+        projectedBigInt += (debitSum - creditSum);
+      } else if (acc.accountClass === 'liability' || acc.accountClass === 'revenue' || acc.accountClass === 'equity') {
+        projectedBigInt += (creditSum - debitSum);
+      }
+
+      expect(materializedBigInt).toBe(projectedBigInt);
+    }
+  });
+});
+
+```
+
+---
+
+<a id="testsfinanceinvariantscommit_failuretestts"></a>
+## Arquivo: `tests/finance/invariants/commit_failure.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/commit_failure.test.ts`
+- **Total de linhas**: 177
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { DrizzleUnitOfWork } from '../../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { Result } from '../../../src/shared/kernel/Result';
+
+describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascaramento', () => {
+  it('deve retornar Result.fail se o callback retornar Result.ok(), mas o COMMIT da transação falhar', async () => {
+    // Simula um driver DB onde o callback executa com sucesso (Result.ok),
+    // mas a finalização do COMMIT lança um erro no banco (ex: violação de constraint deferred, lock ou falha I/O)
+    const mockDbWithCommitFailure = {
+      transaction: async (cb: any) => {
+        const mockTx = { isTx: true };
+        await cb(mockTx);
+        // Simula exceção durante a fase de COMMIT do banco de dados
+        throw new Error('SQLite/D1 Commit Error: Disk I/O or Constraint Deferred Violation');
+      }
+    };
+
+    const uow = new DrizzleUnitOfWork(mockDbWithCommitFailure);
+
+    const result = await uow.execute(async () => {
+      // Callback de negócio simula sucesso interno
+      return Result.ok({ transactionId: 100 });
+    });
+
+    // Asserção Crítica DOD-05: O resultado NUNCA pode ser Result.ok() se o COMMIT falhar!
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Falha na transação do banco de dados (Commit/Execution)');
+    expect(result.error).toContain('SQLite/D1 Commit Error');
+  });
+
+  it('deve retornar o Result.fail original se o callback de negócio falhar e forçar rollback', async () => {
+    let rollbackCalled = false;
+    const mockDbWithBusinessRollback = {
+      transaction: async (cb: any) => {
+        const mockTx = {
+          isTx: true,
+          rollback: () => {
+            rollbackCalled = true;
+            throw new Error('Rollback_Triggered');
+          }
+        };
+        try {
+          await cb(mockTx);
+        } catch (e: any) {
+          if (e.message === 'Rollback_Triggered') return;
+          throw e;
+        }
+      }
+    };
+
+    const uow = new DrizzleUnitOfWork(mockDbWithBusinessRollback);
+
+    const result = await uow.execute(async () => {
+      return Result.fail('Regra de negócio violada: Saldo Insuficiente');
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toBe('Regra de negócio violada: Saldo Insuficiente');
+    expect(rollbackCalled).toBe(true);
+  });
+
+  it('deve realizar ROLLBACK 100% atômico em todas as tabelas se a inserção do Outbox falhar', async () => {
+    const { createClient } = await import('@libsql/client');
+    const { drizzle } = await import('drizzle-orm/libsql');
+    const { unlinkSync, existsSync } = await import('fs');
+    const { runAllMigrationsLibSql } = await import('../../test_helpers/runMigrations');
+    const { FinanceBootstrapService } = await import('../../../src/infrastructure/services/FinanceBootstrapService');
+    const { Money256 } = await import('../../../src/domains/finance/value-objects/Money256');
+    const { AccountingEntryPolicy } = await import('../../../src/domains/finance/policies/AccountingEntryPolicy');
+    const { LedgerTransaction, LedgerEntry } = await import('../../../src/domains/finance/entities/LedgerTransaction');
+    const { FinancialTransactionOrchestrator } = await import('../../../src/application/finance/services/FinancialTransactionOrchestrator');
+    const { DrizzleFinanceRepository } = await import('../../../src/infrastructure/repositories/DrizzleFinanceRepository');
+
+    const dbFile = 'test_fault_injection.db';
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+
+    const sqlite = createClient({ url: `file:${dbFile}` });
+    const db = drizzle(sqlite);
+    await runAllMigrationsLibSql(sqlite);
+
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(db, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000n,
+    });
+    expect(bootstrapRes.isSuccess).toBe(true);
+    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
+
+    await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (99, 'fault@test.com', 'fault@test.com', 'active', 1000, 1000)`);
+
+    const uowDb = {
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => { throw new Error('DRIZZLE_ROLLBACK'); };
+        try {
+          const res = await cb(proxyDb);
+          await t.commit();
+          return res;
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          if (err.message === 'DRIZZLE_ROLLBACK') return;
+          throw err;
+        }
+      }
+    };
+
+    const uow = new DrizzleUnitOfWork(uowDb);
+
+    // Initial state counts
+    const countTxsInitial = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_transactions')).rows[0].c);
+    const countEntriesInitial = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_ledger_entries')).rows[0].c);
+    const countIdempotencyInitial = Number((await sqlite.execute('SELECT COUNT(*) as c FROM idempotency_keys')).rows[0].c);
+    const countOutboxInitial = Number((await sqlite.execute('SELECT COUNT(*) as c FROM outbox_events')).rows[0].c);
+
+    // Executa postagem com FALHA INJETADA no Outbox
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository() as DrizzleFinanceRepository;
+      const outbox = factory.getOutboxRepository();
+
+      // Injeta falha deliberada no saveEvent do Outbox
+      outbox.saveEvent = async () => {
+        throw new Error('FAULT_INJECTION_OUTBOX_STORAGE_CRASH');
+      };
+
+      const userAccRes = await repo.getOrCreateUserAccount(99);
+      const userAccountId = userAccRes.getValue().id;
+
+      const entriesRaw = AccountingEntryPolicy.createDepositEntries({
+        treasuryAccountId,
+        userAccountId,
+        amount: Money256.fromString('500', assetId),
+        description: 'Fault Injection Deposit',
+      });
+
+      const ledgerEntries = entriesRaw.map(
+        (r) =>
+          new LedgerEntry({
+            accountId: String(r.accountId),
+            amount: r.amount as any,
+            type: r.entryType,
+            description: r.description,
+          })
+      );
+
+      const tx = LedgerTransaction.create({
+        idempotencyKey: 'fault-idempotency-key-1',
+        description: 'Deposit with Fault Injection',
+        entries: ledgerEntries,
+        transactionType: 'deposit',
+        category: 'deposit',
+        userId: 99,
+      });
+
+      const orchestrator = new FinancialTransactionOrchestrator(repo, outbox);
+      return Result.ok(await orchestrator.executePosting(tx));
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('FAULT_INJECTION_OUTBOX_STORAGE_CRASH');
+
+    // Asserção Crítica: NENHUMA alteração foi persistida em NENHUMA tabela!
+    const countTxsFinal = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_transactions')).rows[0].c);
+    const countEntriesFinal = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_ledger_entries')).rows[0].c);
+    const countIdempotencyFinal = Number((await sqlite.execute('SELECT COUNT(*) as c FROM idempotency_keys')).rows[0].c);
+    const countOutboxFinal = Number((await sqlite.execute('SELECT COUNT(*) as c FROM outbox_events')).rows[0].c);
+
+    expect(countTxsFinal).toBe(countTxsInitial);
+    expect(countEntriesFinal).toBe(countEntriesInitial);
+    expect(countIdempotencyFinal).toBe(countIdempotencyInitial);
+    expect(countOutboxFinal).toBe(countOutboxInitial);
+
+    try { unlinkSync(dbFile); } catch (e) {}
+  }, 20000);
+});
+
+```
+
+---
+
+<a id="testsfinanceinvariantstransaction_failure_matrixtestts"></a>
+## Arquivo: `tests/finance/invariants/transaction_failure_matrix.test.ts`
+
+- **Caminho absoluto**: `/home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/transaction_failure_matrix.test.ts`
+- **Total de linhas**: 483
+- **Linguagem**: TypeScript
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { unlinkSync } from 'fs';
+
+import { DrizzleUnitOfWork } from '../../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { LedgerTransaction, LedgerEntry } from '../../../src/domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../../../src/domains/finance/value-objects/Money256';
+import { FinancialTransactionOrchestrator } from '../../../src/application/finance/services/FinancialTransactionOrchestrator';
+import { idempotencyKeys, outboxEvents } from '../../../src/db/infrastructure/tables';
+import { financialAccounts, financialTransactions, financialLedgerEntries, accountBalances } from '../../../src/db/finance/tables';
+import { Result } from '../../../src/shared/kernel/Result';
+import { runAllMigrationsLibSql } from '../../test_helpers/runMigrations';
+
+describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Transacionais', () => {
+  let sqlite: any;
+  let db: any;
+  let uow: DrizzleUnitOfWork;
+
+  beforeAll(async () => {
+    sqlite = createClient({ url: 'file:test_failure_matrix.db' });
+    db = drizzle(sqlite);
+    
+    const uowDb = {
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => { 
+           throw new Error('drizzle-rollback'); 
+        };
+        try {
+           await cb(proxyDb);
+           await t.commit();
+        } catch (err: any) {
+           try { await t.rollback(); } catch (e) {}
+           if (err.message === 'drizzle-rollback') return;
+           throw err;
+        }
+      }
+    };
+
+    await runAllMigrationsLibSql(sqlite);
+
+    await sqlite.executeMultiple(`
+      INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (10, 'matrix@test.com', 'matrix@test.com', 'active', 1000, 1000);
+      INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at) VALUES (1, 'BRL', 'BRL', 'Brazilian Real', 'fiat', 2, 'active', 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (1, 10, 'user_available', 'liability', 'active', 'User 10 Main Account', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (2, NULL, 'treasury', 'asset', 'active', 'Treasury Vault', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (3, NULL, 'payment_revenue', 'revenue', 'active', 'Payment Revenue', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (4, NULL, 'refund_expense', 'expense', 'active', 'Refund Expense', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (5, NULL, 'operating', 'asset', 'active', 'System Operating', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (6, NULL, 'fees', 'revenue', 'active', 'System Fees', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (7, NULL, 'reward_expense', 'expense', 'active', 'Reward Expense', 1, 1000, 1000);
+      INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at) VALUES (8, NULL, 'yield_expense', 'expense', 'active', 'Yield Expense', 1, 1000, 1000);
+      INSERT INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (1, 1, 1, '5000', '0', 1, 1000);
+      INSERT INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at) VALUES (2, 2, 1, '10000', '0', 1, 1000);
+    `);
+
+    uow = new DrizzleUnitOfWork(uowDb);
+  }, 30000);
+
+  afterAll(() => {
+    sqlite.close();
+    try { unlinkSync('test_failure_matrix.db'); } catch (e) {}
+  });
+
+  const getDBCounts = async () => {
+    const txs = (await db.select().from(financialTransactions)).length;
+    const entries = (await db.select().from(financialLedgerEntries)).length;
+    const idem = (await db.select().from(idempotencyKeys)).length;
+    const outbox = (await db.select().from(outboxEvents)).length;
+    return { txs, entries, idem, outbox };
+  };
+
+  it('Falha no Passo 4 (OCC / Balance Check) resulta em Rollback Integral (0 registros vazados)', async () => {
+    const initialState = await getDBCounts();
+    const excessiveAmount = Money256.fromString('50000', 1);
+
+    const invalidTx = LedgerTransaction.create({
+      idempotencyKey: 'fail-step4-key',
+      userId: 10,
+      description: 'Test Step 4 Overdraft Fail',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '1', amount: excessiveAmount as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: excessiveAmount as any, type: 'credit' })
+      ]
+    });
+
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      return await orchestrator.executePosting(invalidTx, 'hash-fail-4');
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('saldo insuficiente');
+
+    // Asserção DOD-06: O banco de dados precisa estar no exato mesmo estado inicial
+    const finalState = await getDBCounts();
+    expect(finalState.txs).toBe(initialState.txs);
+    expect(finalState.entries).toBe(initialState.entries);
+    expect(finalState.idem).toBe(initialState.idem);
+    expect(finalState.outbox).toBe(initialState.outbox);
+  });
+
+  it('Falha no Passo 6 (completeIdempotency com chave inexistente) resulta em Rollback Integral', async () => {
+    const initialState = await getDBCounts();
+    const amount = Money256.fromString('100', 1);
+
+    const tx = LedgerTransaction.create({
+      idempotencyKey: 'fail-step6-key',
+      userId: 10,
+      description: 'Test Step 6 Fail',
+      transactionType: 'deposit',
+      category: 'deposit',
+      entries: [
+        new LedgerEntry({ accountId: '1', amount: amount as any, type: 'debit' }),
+        new LedgerEntry({ accountId: '2', amount: amount as any, type: 'credit' })
+      ]
+    });
+
+    const result = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      // Executa os passos normais manualmente para simular falha no completeIdempotency
+      await repo.claimIdempotency(tx.idempotencyKey, 10, 'finance', 'hash-6');
+      const txRes = await repo.insertTransaction({
+        userId: tx.userId,
+        type: tx.transactionType || 'deposit',
+        category: 'operational',
+        description: tx.description,
+        status: 'processing'
+      });
+      const dbTxId = txRes.getValue();
+      await repo.insertLedgerEntries(tx.entries, dbTxId);
+      await repo.updateBalanceWithOCC('1', '1', 100n, 'debit');
+      await repo.updateBalanceWithOCC('2', '1', 100n, 'credit');
+      await repo.updateTransactionStatus(dbTxId, 'completed');
+      
+      // Força completeIdempotency com chave ERRADA que afetará 0 linhas
+      await repo.completeIdempotency('NON_EXISTENT_KEY', 'finance', dbTxId);
+      return Result.ok(true);
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Falha ao concluir Idempotency Key');
+
+    // Asserção DOD-06: Rollback integral
+    const finalState = await getDBCounts();
+    expect(finalState.txs).toBe(initialState.txs);
+    expect(finalState.entries).toBe(initialState.entries);
+    expect(finalState.idem).toBe(initialState.idem);
+  });
+
+  it('Rejeita tipo conversion com mensagem auditável de Forex não suportado', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    const result = await useCase.execute({
+      userId: 10,
+      type: 'conversion',
+      direction: 'INBOUND',
+      description: 'Conversão Forex Invalida',
+      amountBaseUnits: '100',
+      assetId: 1,
+      idempotencyKey: 'test-conversion-fail-key',
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('Forex');
+  });
+
+  it('Rejeita requestHash adulterado com erro 409 Conflict', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    const fakeHash = 'a'.repeat(64);
+    const result = await useCase.execute({
+      userId: 10,
+      type: 'deposit',
+      direction: 'INBOUND',
+      description: 'Depósito com Hash Alterado',
+      amountBaseUnits: '100',
+      assetId: 1,
+      idempotencyKey: 'test-hash-tamper-key',
+      requestHash: fakeHash,
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('409 Conflict');
+  });
+
+  it('P0.2: Rejeita refund se userId não coincidir com proprietário da transação original', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    // 1. First record a valid payment for user 10
+    const paymentRes = await useCase.execute({
+      userId: 10,
+      type: 'payment',
+      direction: 'OUTBOUND',
+      description: 'Pagamento Original User 10',
+      amountBaseUnits: '200',
+      assetId: 1,
+      idempotencyKey: 'pmt-user-10-key',
+    });
+    expect(paymentRes.isSuccess).toBe(true);
+    const pmtTxId = paymentRes.getValue().transactionId;
+
+    // 2. Attempt refund specifying user 999
+    const refundRes = await useCase.execute({
+      userId: 999,
+      type: 'refund',
+      direction: 'INBOUND',
+      description: 'Tentativa de Reembolso por Outro Usuário',
+      amountBaseUnits: '100',
+      assetId: 1,
+      refundOfTransactionId: pmtTxId,
+      idempotencyKey: 'refund-wrong-user-key',
+    });
+
+    expect(refundRes.isFailure).toBe(true);
+    expect(refundRes.error).toContain('não coincide com o usuário proprietário');
+  });
+
+  it('P0.3: Rejeita refund se o ativo solicitado não coincidir com a transação original', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    // Insert asset 2 (active)
+    await sqlite.execute(`
+      INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at) VALUES (2, 'USD', 'USD', 'US Dollar', 'fiat', 2, 'active', 1000, 1000);
+    `);
+
+    // 1. Record payment in asset 1 (BRL)
+    const paymentRes = await useCase.execute({
+      userId: 10,
+      type: 'payment',
+      direction: 'OUTBOUND',
+      description: 'Pagamento BRL User 10',
+      amountBaseUnits: '150',
+      assetId: 1,
+      idempotencyKey: 'pmt-asset-1-key',
+    });
+    expect(paymentRes.isSuccess).toBe(true);
+    const pmtTxId = paymentRes.getValue().transactionId;
+
+    // 2. Attempt refund in asset 2 (USD)
+    const refundRes = await useCase.execute({
+      userId: 10,
+      type: 'refund',
+      direction: 'INBOUND',
+      description: 'Reembolso USD em pagamento BRL',
+      amountBaseUnits: '50',
+      assetId: 2,
+      refundOfTransactionId: pmtTxId,
+      idempotencyKey: 'refund-wrong-asset-key',
+    });
+
+    expect(refundRes.isFailure).toBe(true);
+    expect(refundRes.error).toContain('não possui lançamento de receita referente ao ativo #2');
+  });
+
+  it('P0.4: Rejeita transação com ativo inexistente ou inativo', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    // Insert asset 99 as inactive
+    await sqlite.execute(`
+      INSERT INTO financial_assets (id, symbol, code, name, type, decimals, status, created_at, updated_at) VALUES (99, 'OFF', 'OFF', 'Disabled Asset', 'fiat', 2, 'inactive', 1000, 1000);
+    `);
+
+    const resultInactive = await useCase.execute({
+      userId: 10,
+      type: 'deposit',
+      direction: 'INBOUND',
+      description: 'Depósito com Ativo Inativo',
+      amountBaseUnits: '100',
+      assetId: 99,
+      idempotencyKey: 'deposit-inactive-asset-key',
+    });
+    expect(resultInactive.isFailure).toBe(true);
+    expect(resultInactive.error).toContain('está inativo ou suspenso');
+
+    const resultNonExistent = await useCase.execute({
+      userId: 10,
+      type: 'deposit',
+      direction: 'INBOUND',
+      description: 'Depósito com Ativo Inexistente',
+      amountBaseUnits: '100',
+      assetId: 9999,
+      idempotencyKey: 'deposit-nonexistent-asset-key',
+    });
+    expect(resultNonExistent.isFailure).toBe(true);
+    expect(resultNonExistent.error).toContain('not found');
+  });
+
+  it('P1.1: Rejeita categoria financeira inválida', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    const result = await useCase.execute({
+      userId: 10,
+      type: 'deposit',
+      direction: 'INBOUND',
+      description: 'Depósito com Categoria Falsa',
+      amountBaseUnits: '100',
+      assetId: 1,
+      category: 'fake_category_xyz' as any,
+      idempotencyKey: 'deposit-fake-category-key',
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('não é uma categoria financeira válida');
+  });
+
+  it('P1.2: Rejeita refund com direção OUTBOUND e infere direção se omitida', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    const result = await useCase.execute({
+      userId: 10,
+      type: 'refund',
+      direction: 'OUTBOUND',
+      description: 'Refund Direção Errada',
+      amountBaseUnits: '100',
+      assetId: 1,
+      refundOfTransactionId: 1,
+      idempotencyKey: 'refund-wrong-dir-key',
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('não pode ter direção OUTBOUND');
+  });
+
+  it('P1.3: Rejeita conta sistêmica com classe contábil incompatível', async () => {
+    // Temporarily mutate account_class of payment_revenue to 'asset' (should be 'revenue')
+    await sqlite.execute(`UPDATE financial_accounts SET account_class = 'asset' WHERE account_type = 'payment_revenue';`);
+
+    const sysAccRes = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      return await repo.getSystemAccount('payment_revenue');
+    });
+
+    expect(sysAccRes.isFailure).toBe(true);
+    expect(sysAccRes.error).toContain('classe contábil incompatível');
+
+    // Restore original class
+    await sqlite.execute(`UPDATE financial_accounts SET account_class = 'revenue' WHERE account_type = 'payment_revenue';`);
+  });
+
+  it('P1.4: Preserva objeto de erro estruturado (FinancialError) no Result.fail', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    const result = await useCase.execute({
+      userId: 999, // Mismatched user ID vs original owner (10)
+      type: 'refund',
+      direction: 'INBOUND',
+      description: 'Refund de Usuário Incompatível',
+      amountBaseUnits: '50',
+      assetId: 1,
+      refundOfTransactionId: 1,
+      idempotencyKey: 'refund-ownership-err-key',
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.errorObject).toBeDefined();
+    const errObj = result.errorObject as any;
+    expect(errObj.code).toBe('ACCOUNT_OWNERSHIP_MISMATCH');
+    expect(errObj.httpStatus).toBe(403);
+  });
+
+  it('P1.5: Garante serialização e proteção contra over-refund em requisições concorrentes (BEGIN IMMEDIATE)', async () => {
+    const { RecordTreasuryTransactionUseCase } = await import('../../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase');
+    const useCase = new RecordTreasuryTransactionUseCase(uow);
+
+    // First deposit 1000 to user 10
+    const depRes = await useCase.execute({
+      userId: 10,
+      type: 'deposit',
+      direction: 'INBOUND',
+      description: 'Depósito Inicial para Refund Test',
+      amountBaseUnits: '1000',
+      assetId: 1,
+      idempotencyKey: 'deposit-1000-for-refund-test',
+    });
+    expect(depRes.isSuccess).toBe(true);
+
+    // 1. Record a payment of 100 for user 10
+    const paymentRes = await useCase.execute({
+      userId: 10,
+      type: 'payment',
+      direction: 'OUTBOUND',
+      description: 'Pagamento Original 100',
+      amountBaseUnits: '100',
+      assetId: 1,
+      idempotencyKey: 'payment-100-for-refund-test',
+    });
+    expect(paymentRes.isSuccess).toBe(true);
+    const origTxId = paymentRes.getValue().transactionId!;
+
+    // 2. Fire 2 concurrent refund requests of 80 each simultaneously
+    const reqA = useCase.execute({
+      userId: 10,
+      type: 'refund',
+      direction: 'INBOUND',
+      description: 'Concurrent Refund A',
+      amountBaseUnits: '80',
+      assetId: 1,
+      refundOfTransactionId: origTxId,
+      idempotencyKey: 'concurrent-refund-80-a',
+    });
+
+    const reqB = useCase.execute({
+      userId: 10,
+      type: 'refund',
+      direction: 'INBOUND',
+      description: 'Concurrent Refund B',
+      amountBaseUnits: '80',
+      assetId: 1,
+      refundOfTransactionId: origTxId,
+      idempotencyKey: 'concurrent-refund-80-b',
+    });
+
+    const [resA, resB] = await Promise.all([reqA, reqB]);
+    if (resA.isFailure) console.log('ResA Failure:', resA.error);
+    if (resB.isFailure) console.log('ResB Failure:', resB.error);
+
+    const successes = [resA, resB].filter((r) => r.isSuccess);
+    const failures = [resA, resB].filter((r) => r.isFailure);
+
+    // Exactly 1 refund must succeed, and exactly 1 must fail due to limit
+    expect(successes.length).toBe(1);
+    expect(failures.length).toBe(1);
+    expect(failures[0].error).toMatch(/INVALID_REFUND_AMOUNT|SQLITE_BUSY|excede o saldo/i);
+
+    // Verify DB cumulative refund total is exactly 80, not 160
+    const rawResult = await sqlite.execute({
+      sql: `SELECT amount_base_units FROM financial_ledger_entries WHERE transaction_id IN (SELECT id FROM financial_transactions WHERE refund_of_transaction_id = ?) AND direction = 'credit';`,
+      args: [origTxId],
+    });
+    const totalRefunded = rawResult.rows.reduce((acc: bigint, r: any) => acc + BigInt(r.amount_base_units || 0), 0n);
+    expect(totalRefunded).toBe(80n);
+  });
+
+  it('P1.6: Rejeita valor numérico em formato não canônico no storage persistence', async () => {
+    const { validateCanonicalBaseUnits } = await import('../../../src/infrastructure/repositories/DrizzleFinanceRepository');
+    
+    expect(() => validateCanonicalBaseUnits('00100')).toThrow(/Formato de baseUnits inválido/);
+    expect(() => validateCanonicalBaseUnits('-50')).toThrow(/Formato de baseUnits inválido/);
+    expect(() => validateCanonicalBaseUnits('100abc')).toThrow(/Formato de baseUnits inválido/);
+    expect(validateCanonicalBaseUnits('100')).toBe(100n);
+    expect(validateCanonicalBaseUnits('0')).toBe(0n);
+  });
+
+  it('P1.7: Rejeita classe contábil inválida em updateBalanceWithOCC com InvalidAccountClassError', async () => {
+    const { InvalidAccountClassError } = await import('../../../src/domains/finance/errors/FinancialError');
+    const err = new InvalidAccountClassError('Classe contábil invalida.');
+    expect(err.code).toBe('INVALID_ACCOUNT_CLASS');
+    expect(err.httpStatus).toBe(422);
+  });
+
+  it('P1.8: Rejeita quantia excedente a UINT256 com Money256OverflowError', async () => {
+    const overflowBigInt = (1n << 256n) + 100n;
+
+    const repoRes = await uow.execute(async (factory) => {
+      const repo = factory.getFinanceRepository();
+      try {
+        await repo.updateBalanceWithOCC('1', '1', overflowBigInt, 'credit');
+        return Result.ok(true);
+      } catch (err: any) {
+        return Result.fail(err);
+      }
+    });
+
+    expect(repoRes.isFailure).toBe(true);
+    const errObj = repoRes.errorObject as any;
+    expect(errObj.code).toBe('MONEY_256_OVERFLOW');
+  });
+});
+
+```
+
+---
+

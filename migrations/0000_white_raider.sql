@@ -1138,8 +1138,8 @@ CREATE TABLE `account_balances` (
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`account_id`) REFERENCES `financial_accounts`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_account_balances_available_nonnegative" CHECK("account_balances"."available_base_units" <> '' AND ltrim("account_balances"."available_base_units", '0123456789') = '' AND ("account_balances"."available_base_units" = '0' OR ltrim("account_balances"."available_base_units", '0') = "account_balances"."available_base_units")),
-	CONSTRAINT "ck_account_balances_locked_nonnegative" CHECK("account_balances"."locked_base_units" <> '' AND ltrim("account_balances"."locked_base_units", '0123456789') = '' AND ("account_balances"."locked_base_units" = '0' OR ltrim("account_balances"."locked_base_units", '0') = "account_balances"."locked_base_units")),
+	CONSTRAINT "ck_account_balances_available_canonical" CHECK(("account_balances"."available_base_units" = '0' OR ("account_balances"."available_base_units" GLOB '[1-9]*' AND "account_balances"."available_base_units" NOT GLOB '*[^0-9]*')) AND (length("account_balances"."available_base_units") < 78 OR (length("account_balances"."available_base_units") = 78 AND "account_balances"."available_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))),
+	CONSTRAINT "ck_account_balances_locked_canonical" CHECK(("account_balances"."locked_base_units" = '0' OR ("account_balances"."locked_base_units" GLOB '[1-9]*' AND "account_balances"."locked_base_units" NOT GLOB '*[^0-9]*')) AND (length("account_balances"."locked_base_units") < 78 OR (length("account_balances"."locked_base_units") = 78 AND "account_balances"."locked_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))),
 	CONSTRAINT "ck_account_balances_version" CHECK("account_balances"."version" > 0)
 );
 --> statement-breakpoint
@@ -1487,21 +1487,33 @@ CREATE TABLE `reconciliation_records` (
 	`expected_balance_base_units` text NOT NULL,
 	`actual_balance_base_units` text NOT NULL,
 	`difference_base_units` text NOT NULL,
-	`status` text DEFAULT 'matched' NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
 	`reconciliation_run_id` text NOT NULL,
 	`version` integer DEFAULT 1 NOT NULL,
 	`reconciliation_date` integer NOT NULL,
 	`resolved_at` integer,
+	`resolved_by_user_id` integer,
+	`resolution_reason` text,
+	`resolution_reference` text,
 	FOREIGN KEY (`provider_id`) REFERENCES `fiat_providers`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`account_id`) REFERENCES `financial_accounts`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_reconciliation_status" CHECK("reconciliation_records"."status" IN ('matched', 'mismatch', 'resolved')),
-	CONSTRAINT "ck_reconciliation_resolved_state" CHECK("reconciliation_records"."status" != 'resolved' OR "reconciliation_records"."resolved_at" IS NOT NULL),
-	CONSTRAINT "ck_reconciliation_records_version" CHECK("reconciliation_records"."version" > 0),
-	CONSTRAINT "ck_reconciliation_expected_nonnegative" CHECK("reconciliation_records"."expected_balance_base_units" <> '' AND ltrim("reconciliation_records"."expected_balance_base_units", '0123456789') = '' AND ("reconciliation_records"."expected_balance_base_units" = '0' OR ltrim("reconciliation_records"."expected_balance_base_units", '0') = "reconciliation_records"."expected_balance_base_units")),
-	CONSTRAINT "ck_reconciliation_actual_nonnegative" CHECK("reconciliation_records"."actual_balance_base_units" <> '' AND ltrim("reconciliation_records"."actual_balance_base_units", '0123456789') = '' AND ("reconciliation_records"."actual_balance_base_units" = '0' OR ltrim("reconciliation_records"."actual_balance_base_units", '0') = "reconciliation_records"."actual_balance_base_units"))
+	FOREIGN KEY (`resolved_by_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "ck_reconciliation_run_id_nonempty" CHECK(length(trim("reconciliation_records"."reconciliation_run_id")) > 0),
+	CONSTRAINT "ck_reconciliation_status" CHECK("reconciliation_records"."status" IN ('pending', 'matched', 'mismatch', 'resolved')),
+	CONSTRAINT "ck_reconciliation_expected_canonical" CHECK(("reconciliation_records"."expected_balance_base_units" = '0' OR ("reconciliation_records"."expected_balance_base_units" GLOB '[1-9]*' AND "reconciliation_records"."expected_balance_base_units" NOT GLOB '*[^0-9]*')) AND (length("reconciliation_records"."expected_balance_base_units") < 78 OR (length("reconciliation_records"."expected_balance_base_units") = 78 AND "reconciliation_records"."expected_balance_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))),
+	CONSTRAINT "ck_reconciliation_actual_canonical" CHECK(("reconciliation_records"."actual_balance_base_units" = '0' OR ("reconciliation_records"."actual_balance_base_units" GLOB '[1-9]*' AND "reconciliation_records"."actual_balance_base_units" NOT GLOB '*[^0-9]*')) AND (length("reconciliation_records"."actual_balance_base_units") < 78 OR (length("reconciliation_records"."actual_balance_base_units") = 78 AND "reconciliation_records"."actual_balance_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))),
+	CONSTRAINT "ck_reconciliation_difference_canonical" CHECK(("reconciliation_records"."difference_base_units" = '0' OR ("reconciliation_records"."difference_base_units" GLOB '[1-9]*' AND "reconciliation_records"."difference_base_units" NOT GLOB '*[^0-9]*') OR (substr("reconciliation_records"."difference_base_units", 1, 1) = '-' AND substr("reconciliation_records"."difference_base_units", 2) GLOB '[1-9]*' AND substr("reconciliation_records"."difference_base_units", 2) NOT GLOB '*[^0-9]*')) AND ("reconciliation_records"."difference_base_units" = '0' OR (substr("reconciliation_records"."difference_base_units", 1, 1) != '-' AND (length("reconciliation_records"."difference_base_units") < 78 OR (length("reconciliation_records"."difference_base_units") = 78 AND "reconciliation_records"."difference_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))) OR (substr("reconciliation_records"."difference_base_units", 1, 1) = '-' AND (length("reconciliation_records"."difference_base_units") < 79 OR (length("reconciliation_records"."difference_base_units") = 79 AND substr("reconciliation_records"."difference_base_units", 2) <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))))),
+	CONSTRAINT "ck_reconciliation_status_difference" CHECK("reconciliation_records"."status" = 'pending' OR ("reconciliation_records"."status" = 'matched' AND "reconciliation_records"."expected_balance_base_units" = "reconciliation_records"."actual_balance_base_units" AND "reconciliation_records"."difference_base_units" = '0') OR ("reconciliation_records"."status" = 'mismatch' AND "reconciliation_records"."expected_balance_base_units" != "reconciliation_records"."actual_balance_base_units" AND "reconciliation_records"."difference_base_units" != '0') OR ("reconciliation_records"."status" = 'resolved' AND "reconciliation_records"."expected_balance_base_units" != "reconciliation_records"."actual_balance_base_units" AND "reconciliation_records"."difference_base_units" != '0' AND "reconciliation_records"."resolution_reason" IS NOT NULL AND "reconciliation_records"."resolution_reference" IS NOT NULL)),
+	CONSTRAINT "ck_reconciliation_resolved_state" CHECK(("reconciliation_records"."status" = 'resolved' AND "reconciliation_records"."resolved_at" IS NOT NULL AND "reconciliation_records"."resolved_by_user_id" IS NOT NULL AND "reconciliation_records"."resolution_reason" IS NOT NULL AND "reconciliation_records"."resolution_reference" IS NOT NULL) OR ("reconciliation_records"."status" != 'resolved' AND "reconciliation_records"."resolved_at" IS NULL AND "reconciliation_records"."resolved_by_user_id" IS NULL AND "reconciliation_records"."resolution_reason" IS NULL AND "reconciliation_records"."resolution_reference" IS NULL)),
+	CONSTRAINT "ck_reconciliation_resolution_reason" CHECK("reconciliation_records"."resolution_reason" IS NULL OR length(trim("reconciliation_records"."resolution_reason")) > 0),
+	CONSTRAINT "ck_reconciliation_resolution_reference" CHECK("reconciliation_records"."resolution_reference" IS NULL OR length(trim("reconciliation_records"."resolution_reference")) > 0),
+	CONSTRAINT "ck_reconciliation_resolved_temporal" CHECK("reconciliation_records"."resolved_at" IS NULL OR "reconciliation_records"."resolved_at" >= "reconciliation_records"."reconciliation_date"),
+	CONSTRAINT "ck_reconciliation_records_version" CHECK("reconciliation_records"."version" > 0)
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `uq_reconciliation_run_scope_provider` ON `reconciliation_records` (`reconciliation_run_id`,`provider_id`,`account_id`,`asset_id`) WHERE `provider_id` IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_reconciliation_run_scope_no_provider` ON `reconciliation_records` (`reconciliation_run_id`,`account_id`,`asset_id`) WHERE `provider_id` IS NULL;--> statement-breakpoint
 CREATE INDEX `idx_reconciliation_records_account` ON `reconciliation_records` (`account_id`);--> statement-breakpoint
 CREATE INDEX `idx_reconciliation_records_asset` ON `reconciliation_records` (`asset_id`);--> statement-breakpoint
 CREATE INDEX `idx_reconciliation_records_provider` ON `reconciliation_records` (`provider_id`);--> statement-breakpoint
