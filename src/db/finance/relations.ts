@@ -83,26 +83,35 @@ import { idempotencyKeys } from '../infrastructure/tables';
  *     └── Balance Holds Consumed (by this transaction)
  *
  * ============================================================================
- * AUDIT CHANGELOG
+ * AUDIT STATUS
  * ============================================================================
- * Existing audited corrections intentionally preserved:
  *
- * 1. cryptoTransactions has TWO foreign keys into financialAssets
- *    (assetId and feeAssetId). Both relations remain explicitly
- *    disambiguated.
+ * This file intentionally preserves the previously audited and stabilized
+ * relation model.
  *
- * 2. balanceHolds has TWO foreign keys into financialTransactions
- *    (releasedByTransactionId and consumedByTransactionId). Both remain
- *    explicitly disambiguated.
+ * Preserved:
  *
- * 3. reconciliationRecords.resolvedByUserId remains modeled as
+ * 1. cryptoTransactions -> financialAssets is disambiguated between
+ *    `assetId` and `feeAssetId`.
+ *
+ * 2. balanceHolds -> financialTransactions is disambiguated between
+ *    `releasedByTransactionId` and `consumedByTransactionId`.
+ *
+ * 3. financialTransactions reversal/refund self-relations remain explicitly
+ *    named.
+ *
+ * 4. exchangeRates base/quote relations remain explicitly named.
+ *
+ * 5. assetConversions from/to relations remain explicitly named.
+ *
+ * 6. fiatPaymentMethods -> fiatAccounts retains its ownership-preserving
+ *    composite relation.
+ *
+ * 7. reconciliationRecords.resolvedByUserId remains represented by
  *    `resolvedByUser`.
  *
- * 4. financialTransactionsRelations retains both reverse balance-hold
- *    collections.
- *
- * No functional relation change is introduced here because these areas were
- * already consolidated and correct in the previous audit.
+ * No behavioral relation change is introduced because this layer was already
+ * correct and stable.
  * ============================================================================
  */
 
@@ -145,6 +154,10 @@ export const financialAssetsRelations = relations(
 
     destinationAssetConversions: many(assetConversions, {
       relationName: 'conversionToAsset',
+    }),
+
+    feeAssetConversions: many(assetConversions, {
+      relationName: 'conversionFeeAsset',
     }),
 
     financialFees: many(financialFees),
@@ -193,6 +206,10 @@ export const financialTransactionsRelations = relations(
 
     idempotencyKeys: many(idempotencyKeys),
 
+    /* ------------------------------------------------------------------------
+     * Reversal self-reference
+     * ---------------------------------------------------------------------- */
+
     reversalOfTransaction: one(financialTransactions, {
       fields: [financialTransactions.reversalOfTransactionId],
       references: [financialTransactions.id],
@@ -203,6 +220,10 @@ export const financialTransactionsRelations = relations(
       relationName: 'transactionReversal',
     }),
 
+    /* ------------------------------------------------------------------------
+     * Refund self-reference
+     * ---------------------------------------------------------------------- */
+
     refundOfTransaction: one(financialTransactions, {
       fields: [financialTransactions.refundOfTransactionId],
       references: [financialTransactions.id],
@@ -212,6 +233,10 @@ export const financialTransactionsRelations = relations(
     refunds: many(financialTransactions, {
       relationName: 'transactionRefund',
     }),
+
+    /* ------------------------------------------------------------------------
+     * Specialized operations
+     * ---------------------------------------------------------------------- */
 
     fiatTransaction: one(fiatTransactions, {
       fields: [financialTransactions.id],
@@ -228,9 +253,17 @@ export const financialTransactionsRelations = relations(
       references: [assetConversions.financialTransactionId],
     }),
 
+    /* ------------------------------------------------------------------------
+     * Fees and external tracking
+     * ---------------------------------------------------------------------- */
+
     financialFees: many(financialFees),
 
     fiatExternalTransactions: many(fiatExternalTransactions),
+
+    /* ------------------------------------------------------------------------
+     * Balance-hold lifecycle
+     * ---------------------------------------------------------------------- */
 
     releasedBalanceHolds: many(balanceHolds, {
       relationName: 'balanceHoldRelease',
@@ -371,6 +404,11 @@ export const fiatPaymentMethodsRelations = relations(
       references: [users.id],
     }),
 
+    /**
+     * Ownership-preserving composite relation.
+     *
+     * The physical composite FK is defined in tables.ts.
+     */
     fiatAccount: one(fiatAccounts, {
       fields: [
         fiatPaymentMethods.userId,
@@ -488,6 +526,12 @@ export const assetConversionsRelations = relations(
       relationName: 'conversionToAsset',
     }),
 
+    feeAsset: one(financialAssets, {
+      fields: [assetConversions.feeAssetId],
+      references: [financialAssets.id],
+      relationName: 'conversionFeeAsset',
+    }),
+
     sourceExchangeRate: one(exchangeRates, {
       fields: [assetConversions.sourceExchangeRateId],
       references: [exchangeRates.id],
@@ -585,3 +629,10 @@ export const idempotencyKeysRelations = relations(
     }),
   }),
 );
+
+/**
+ * Relations are navigation metadata only. They do not enforce cross-table
+ * financial invariants; those remain owned by the Finance domain/application
+ * posting authority as documented in tables.ts.
+ */
+export const FINANCE_RELATION_LAYER_IS_NAVIGATION_ONLY = true as const;

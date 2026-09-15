@@ -8,6 +8,7 @@ import {
   foreignKey,
   type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core';
+
 import { sql, type SQL } from 'drizzle-orm';
 
 import { users } from '../user/tables';
@@ -18,8 +19,8 @@ import { users } from '../user/tables';
  * ============================================================================
  *
  * Responsibilities:
- * - Financial assets supported by the platform
- * - Financial accounts with explicit accounting classes
+ * - Financial assets
+ * - Financial accounts
  * - Financial transactions
  * - Double-entry ledger
  * - Per-asset account balances
@@ -40,44 +41,64 @@ import { users } from '../user/tables';
  * MONEY REPRESENTATION:
  * All base-unit monetary values are persisted as canonical decimal strings.
  *
- * UINT256 LIMIT:
- *   Maximum unsigned 256-bit value:
+ * UINT256:
+ *   Monetary values use the complete unsigned uint256 range:
  *
- *   2^256 - 1 =
- *   115792089237316195423570985008687907853269984665640564039457584007913129639935
+ *   0 .. 2^256 - 1
+ *
+ *   The database MUST NOT impose JavaScript's Number.MAX_SAFE_INTEGER limit.
  *
  * IMPORTANT:
- *   Monetary values MUST NOT be constrained to JavaScript's
- *   Number.MAX_SAFE_INTEGER (2^53 - 1).
+ *   No monetary value is converted through:
  *
- *   The database stores canonical decimal strings so that values above 2^53
- *   remain exact across the SQLite/D1 persistence boundary.
+ *     number
+ *     Number(...)
+ *     parseFloat(...)
+ *     REAL
+ *     FLOAT
+ *     DOUBLE
+ *     CAST(... AS INTEGER)
+ *
+ *   SQLite INTEGER is signed 64-bit and is therefore unsuitable for
+ *   uint256 arithmetic.
  *
  * ============================================================================
- * AUDIT CHANGELOG
+ * DOMAIN VS DATABASE INVARIANTS
  * ============================================================================
- * 1. Replaced the previous Number.MAX_SAFE_INTEGER / 2^53-1 monetary cap
- *    with the full unsigned uint256 domain.
- * 2. Canonical monetary CHECK helpers now permit values from 0 through
- *    MAX_UINT256 without converting them to SQLite INTEGER.
- * 3. Self-referencing transaction FKs no longer use `any`; they use
- *    `AnySQLiteColumn`, preserving Drizzle's circular-type workaround while
- *    removing the unsafe top-level type escape.
- * 4. Removed the previous illustrative ledger trigger that used
- *    CAST(amount_base_units AS INTEGER). Such a trigger would be UNSAFE for
- *    uint256 values because SQLite INTEGER is 64-bit signed. Double-entry
- *    balancing therefore remains an application/domain transactional
- *    invariant until a decimal-safe SQL/UDF mechanism is deliberately added.
- * 5. Corrected financial transaction completion-state semantics so that
- *    reversed/refunded historical transactions may retain completedAt.
- * 6. Tightened reconciliation resolved-state semantics:
- *      - resolved requires a non-zero retained difference
- *      - resolved requires resolvedAt
- *      - resolved requires resolvedByUserId
- *      - resolved requires both resolution reason/reference
- * 7. Replaced provider-sensitive single reconciliation uniqueness with two
- *    partial unique indexes so SQLite NULL semantics cannot create duplicate
- *    providerless reconciliation scopes.
+ *
+ * Database-enforceable:
+ *   - canonical representation
+ *   - unsigned/signed range
+ *   - FK existence
+ *   - uniqueness
+ *   - row-local state coherence
+ *   - temporal relationships
+ *
+ * Domain/application-enforced:
+ *   - FIN-001 aggregate double-entry balance
+ *   - exact difference = actual - expected
+ *   - cross-table ownership coherence
+ *   - aggregate lifecycle transitions
+ *   - ledger asset coherence with specialized operation records
+ *
+ * We deliberately do NOT encode these cross-row/cross-table rules using
+ * unsafe SQLite arithmetic.
+ *
+ * HARDENING CONTRACT:
+ *   Cross-row/cross-table invariants remain explicit application/repository
+ *   contracts. The authoritative write path MUST atomically enforce:
+ *   - FIN-001 double-entry balance per (transactionId, assetId)
+ *   - ledger append-only semantics
+ *   - transaction/account/user ownership coherence
+ *   - specialized transaction/type coherence
+ *   - fiat asset/account/provider coherence
+ *   - payment-method/account ownership and type coherence
+ *   - conversion/exchange-rate pair coherence
+ *   - fee/account/asset coherence
+ *   - reconciliation scope coherence
+ *   - optimistic concurrency through version compare-and-swap
+ *
+ * These are intentionally not represented as fake row-local SQLite checks.
  * ============================================================================
  */
 
@@ -92,42 +113,22 @@ export const MAX_UINT256_BASE_UNITS_TEXT =
 
 const MAX_UINT256_DECIMAL_DIGITS = 78;
 
-/* ============================================================================
- * SHARED CANONICAL-AMOUNT SQL HELPERS
+const SIGNED_UINT256_MAX_DECIMAL_DIGITS =
+  MAX_UINT256_DECIMAL_DIGITS + 1;
+
+/**
  * ============================================================================
- *
- * All base-unit monetary columns in this domain are persisted as canonical
- * decimal strings.
- *
- * Canonical unsigned:
- *   0
- *   1
- *   2
- *   ...
- *   MAX_UINT256
- *
- * Canonical signed:
- *   0
- *   positive canonical integer
- *   negative canonical integer whose absolute value <= MAX_UINT256
- *
- * We intentionally do NOT use:
- *
- *   CAST(... AS INTEGER)
- *   Number(...)
- *   REAL
- *   FLOAT
- *   DOUBLE
- *
- * for monetary values.
- *
- * SQLite INTEGER is a signed 64-bit integer and therefore cannot represent
- * uint256 amounts exactly.
+ * SHARED CANONICAL-AMOUNT SQL HELPERS
  * ============================================================================
  */
 
-/** Upper-bound check for uint256 canonical decimal representation. */
-function uint256UpperBoundSql(column: unknown): SQL {
+/**
+ * Applies the uint256 upper-bound rule to a canonical decimal string.
+ *
+ * This helper MUST only be used after the caller has constrained the value
+ * to the relevant sign/digit syntax.
+ */
+function uint256UpperBoundSql(column: AnySQLiteColumn): SQL {
   return sql`
     (
       length(${column}) < ${MAX_UINT256_DECIMAL_DIGITS}
@@ -139,8 +140,23 @@ function uint256UpperBoundSql(column: unknown): SQL {
   `;
 }
 
-/** Strictly positive canonical uint256 decimal string. */
-function canonicalUnsignedAmountSql(column: unknown): SQL {
+/**
+ * Strictly positive canonical unsigned uint256.
+ *
+ * Accepted:
+ *   1
+ *   10
+ *   MAX_UINT256
+ *
+ * Rejected:
+ *   0
+ *   00
+ *   001
+ *   +1
+ *   -1
+ *   1.0
+ */
+function canonicalUnsignedAmountSql(column: AnySQLiteColumn): SQL {
   return sql`
     ${column} GLOB '[1-9]*'
     AND ${column} NOT GLOB '*[^0-9]*'
@@ -148,8 +164,12 @@ function canonicalUnsignedAmountSql(column: unknown): SQL {
   `;
 }
 
-/** Non-negative canonical uint256 decimal string. */
-function canonicalUnsignedOrZeroAmountSql(column: unknown): SQL {
+/**
+ * Canonical unsigned uint256 where zero is also allowed.
+ */
+function canonicalUnsignedOrZeroAmountSql(
+  column: AnySQLiteColumn,
+): SQL {
   return sql`
     (
       ${column} = '0'
@@ -163,45 +183,47 @@ function canonicalUnsignedOrZeroAmountSql(column: unknown): SQL {
 }
 
 /**
- * Signed canonical integer:
+ * Canonical signed delta.
  *
+ * Accepted:
  *   0
- *   +N represented without '+'
- *   -N represented with '-'
+ *   1
+ *   MAX_UINT256
+ *   -1
+ *   -MAX_UINT256
  *
- * Zero must be exactly "0".
+ * Rejected:
+ *   -0
+ *   +1
+ *   leading zeros
+ *   decimal notation
+ *   values whose magnitude > MAX_UINT256
  */
-function canonicalSignedAmountSql(column: unknown): SQL {
+function canonicalSignedAmountSql(
+  column: AnySQLiteColumn,
+): SQL {
   return sql`
     (
       ${column} = '0'
+
       OR
+
       (
         ${column} GLOB '[1-9]*'
         AND ${column} NOT GLOB '*[^0-9]*'
+        AND ${uint256UpperBoundSql(column)}
       )
+
       OR
+
       (
         substr(${column}, 1, 1) = '-'
         AND substr(${column}, 2) GLOB '[1-9]*'
         AND substr(${column}, 2) NOT GLOB '*[^0-9]*'
-      )
-    )
-    AND
-    (
-      ${column} = '0'
-      OR
-      (
-        substr(${column}, 1, 1) != '-'
-        AND ${uint256UpperBoundSql(column)}
-      )
-      OR
-      (
-        substr(${column}, 1, 1) = '-'
         AND (
-          length(${column}) < ${MAX_UINT256_DECIMAL_DIGITS + 1}
+          length(${column}) < ${SIGNED_UINT256_MAX_DECIMAL_DIGITS}
           OR (
-            length(${column}) = ${MAX_UINT256_DECIMAL_DIGITS + 1}
+            length(${column}) = ${SIGNED_UINT256_MAX_DECIMAL_DIGITS}
             AND substr(${column}, 2) <= ${MAX_UINT256_BASE_UNITS_TEXT}
           )
         )
@@ -237,30 +259,41 @@ export const financialAssets = sqliteTable(
       .notNull()
       .default('active'),
 
-    createdAt: integer('created_at', { mode: 'timestamp' })
+    createdAt: integer('created_at', {
+      mode: 'timestamp_ms',
+    })
       .notNull()
       .$defaultFn(() => new Date()),
 
-    updatedAt: integer('updated_at', { mode: 'timestamp' })
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp_ms',
+    })
       .notNull()
       .$defaultFn(() => new Date())
       .$onUpdateFn(() => new Date()),
   },
+
   (table) => ({
-    codeUq: uniqueIndex('uq_financial_assets_code').on(table.code),
+    codeUq: uniqueIndex(
+      'uq_financial_assets_code',
+    ).on(table.code),
 
-    typeIdx: index('idx_financial_assets_type').on(table.type),
+    typeIdx: index(
+      'idx_financial_assets_type',
+    ).on(table.type),
 
-    statusIdx: index('idx_financial_assets_status').on(table.status),
+    statusIdx: index(
+      'idx_financial_assets_status',
+    ).on(table.status),
 
     codeCheck: check(
-      'ck_financial_assets_code_nonempty',
-      sql`length(trim(${table.code})) > 0`,
+      'ck_financial_assets_code_canonical',
+      sql`${table.code} = upper(trim(${table.code})) AND length(${table.code}) > 0`,
     ),
 
     symbolCheck: check(
-      'ck_financial_assets_symbol_nonempty',
-      sql`length(trim(${table.symbol})) > 0`,
+      'ck_financial_assets_symbol_canonical',
+      sql`${table.symbol} = upper(trim(${table.symbol})) AND length(${table.symbol}) > 0`,
     ),
 
     nameCheck: check(
@@ -286,11 +319,13 @@ export const financialAssets = sqliteTable(
     decimalsByTypeCheck: check(
       'ck_financial_assets_decimals_by_type',
       sql`(
-        ${table.type} = 'fiat' AND ${table.decimals} BETWEEN 0 AND 6
+        ${table.type} = 'fiat'
+        AND ${table.decimals} BETWEEN 0 AND 6
       )
       OR
       (
-        ${table.type} = 'crypto' AND ${table.decimals} BETWEEN 0 AND 18
+        ${table.type} = 'crypto'
+        AND ${table.decimals} BETWEEN 0 AND 18
       )`,
     ),
   }),
@@ -305,9 +340,12 @@ export const financialAccounts = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
 
-    userId: integer('user_id').references(() => users.id, {
-      onDelete: 'restrict',
-    }),
+    userId: integer('user_id').references(
+      () => users.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
 
     accountType: text('account_type', {
       enum: [
@@ -339,32 +377,51 @@ export const financialAccounts = sqliteTable(
       .default('liability'),
 
     status: text('status', {
-      enum: ['active', 'inactive', 'suspended'],
+      enum: [
+        'active',
+        'inactive',
+        'suspended',
+      ],
     })
       .notNull()
       .default('active'),
 
     name: text('name').notNull(),
 
-    version: integer('version').notNull().default(1),
+    version: integer('version')
+      .notNull()
+      .default(1),
 
-    createdAt: integer('created_at', { mode: 'timestamp' })
+    createdAt: integer('created_at', {
+      mode: 'timestamp_ms',
+    })
       .notNull()
       .$defaultFn(() => new Date()),
 
-    updatedAt: integer('updated_at', { mode: 'timestamp' })
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp_ms',
+    })
       .notNull()
       .$defaultFn(() => new Date())
       .$onUpdateFn(() => new Date()),
   },
+
   (table) => ({
-    userIdx: index('idx_financial_accounts_user').on(table.userId),
+    userIdx: index(
+      'idx_financial_accounts_user',
+    ).on(table.userId),
 
-    typeIdx: index('idx_financial_accounts_type').on(table.accountType),
+    typeIdx: index(
+      'idx_financial_accounts_type',
+    ).on(table.accountType),
 
-    classIdx: index('idx_financial_accounts_class').on(table.accountClass),
+    classIdx: index(
+      'idx_financial_accounts_class',
+    ).on(table.accountClass),
 
-    statusIdx: index('idx_financial_accounts_status').on(table.status),
+    statusIdx: index(
+      'idx_financial_accounts_status',
+    ).on(table.status),
 
     nameCheck: check(
       'ck_financial_accounts_name_nonempty',
@@ -402,38 +459,84 @@ export const financialAccounts = sqliteTable(
 
     statusCheck: check(
       'ck_financial_accounts_status',
-      sql`${table.status} IN ('active', 'inactive', 'suspended')`,
+      sql`${table.status} IN (
+        'active',
+        'inactive',
+        'suspended'
+      )`,
     ),
 
     accountTypeClassCheck: check(
       'ck_financial_accounts_type_class_matrix',
       sql`(
-        (${table.accountType} = 'user_available' AND ${table.accountClass} = 'liability')
+        (
+          ${table.accountType} = 'user_available'
+          AND ${table.accountClass} = 'liability'
+        )
         OR
-        (${table.accountType} = 'treasury' AND ${table.accountClass} = 'asset')
+        (
+          ${table.accountType} = 'treasury'
+          AND ${table.accountClass} = 'asset'
+        )
         OR
-        (${table.accountType} = 'operating' AND ${table.accountClass} = 'asset')
+        (
+          ${table.accountType} = 'operating'
+          AND ${table.accountClass} = 'asset'
+        )
         OR
-        (${table.accountType} = 'reserve' AND ${table.accountClass} IN ('asset', 'liability'))
+        (
+          ${table.accountType} = 'reserve'
+          AND ${table.accountClass} IN (
+            'asset',
+            'liability'
+          )
+        )
         OR
-        (${table.accountType} = 'fees' AND ${table.accountClass} = 'revenue')
+        (
+          ${table.accountType} = 'fees'
+          AND ${table.accountClass} = 'revenue'
+        )
         OR
-        (${table.accountType} = 'escrow' AND ${table.accountClass} = 'liability')
+        (
+          ${table.accountType} = 'escrow'
+          AND ${table.accountClass} = 'liability'
+        )
         OR
-        (${table.accountType} = 'reward_expense' AND ${table.accountClass} = 'expense')
+        (
+          ${table.accountType} = 'reward_expense'
+          AND ${table.accountClass} = 'expense'
+        )
         OR
-        (${table.accountType} = 'yield_expense' AND ${table.accountClass} = 'expense')
+        (
+          ${table.accountType} = 'yield_expense'
+          AND ${table.accountClass} = 'expense'
+        )
         OR
-        (${table.accountType} = 'clearing' AND ${table.accountClass} IN ('asset', 'liability'))
+        (
+          ${table.accountType} = 'clearing'
+          AND ${table.accountClass} IN (
+            'asset',
+            'liability'
+          )
+        )
         OR
         (
           ${table.accountType} = 'opening_balance_equity'
-          AND ${table.accountClass} IN ('equity', 'liability')
+          AND ${table.accountClass} IN (
+            'equity',
+            'liability'
+          )
         )
         OR
-        (${table.accountType} = 'payment_revenue' AND ${table.accountClass} = 'revenue')
+        (
+          ${table.accountType} = 'payment_revenue'
+          AND ${table.accountClass} = 'revenue'
+        )
         OR
-        (${table.accountType} = 'refund_expense' AND ${table.accountClass} = 'expense')
+        (
+          ${table.accountType} = 'refund_expense'
+          AND ${table.accountClass} = 'expense'
+        )
       )`,
     ),
 
@@ -445,11 +548,22 @@ export const financialAccounts = sqliteTable(
       table.name,
     ),
 
+    /**
+     * SQLite treats NULLs as distinct for uniqueness.
+     *
+     * This partial unique index closes the system-account gap where
+     * userId IS NULL.
+     */
     systemAccountTypeNameUq: uniqueIndex(
       'uq_financial_accounts_system_type_name',
     )
-      .on(table.accountType, table.name)
-      .where(sql`${table.userId} IS NULL`),
+      .on(
+        table.accountType,
+        table.name,
+      )
+      .where(
+        sql`${table.userId} IS NULL`,
+      ),
 
     activeTreasurySingletonUnq: uniqueIndex(
       'uq_treasury_active_singleton',
@@ -503,6 +617,9 @@ export const financialAccounts = sqliteTable(
       'ck_financial_accounts_version',
       sql`${table.version} > 0`,
     ),
+
+    // `version` is a concurrency token. Repository updates MUST use compare-and-swap
+    // (WHERE id = ? AND version = ?) and increment it atomically.
   }),
 );
 
@@ -513,24 +630,29 @@ export const financialAccounts = sqliteTable(
 export const financialTransactions = sqliteTable(
   'financial_transactions',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-
-    userId: integer('user_id').references(() => users.id, {
-      onDelete: 'restrict',
+    id: integer('id').primaryKey({
+      autoIncrement: true,
     }),
 
+    userId: integer('user_id').references(
+      () => users.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
     /**
-     * Self-referencing FK.
+     * Self-referencing foreign keys.
      *
-     * Drizzle requires a lazy reference because the table is self-referential.
-     * `AnySQLiteColumn` is used instead of `any`, preserving the known
-     * circular-inference workaround without introducing an unsafe untyped
-     * escape.
+     * AnySQLiteColumn is used instead of any to preserve type safety while
+     * avoiding the circular type-inference problem of self-referential
+     * Drizzle tables.
      */
     reversalOfTransactionId: integer(
       'reversal_of_transaction_id',
     ).references(
-      (): AnySQLiteColumn => financialTransactions.id,
+      (): AnySQLiteColumn =>
+        financialTransactions.id,
       {
         onDelete: 'restrict',
       },
@@ -539,7 +661,8 @@ export const financialTransactions = sqliteTable(
     refundOfTransactionId: integer(
       'refund_of_transaction_id',
     ).references(
-      (): AnySQLiteColumn => financialTransactions.id,
+      (): AnySQLiteColumn =>
+        financialTransactions.id,
       {
         onDelete: 'restrict',
       },
@@ -612,47 +735,61 @@ export const financialTransactions = sqliteTable(
 
     description: text('description').notNull(),
 
-    version: integer('version').notNull().default(1),
+    version: integer('version')
+      .notNull()
+      .default(1),
 
-    createdAt: integer('created_at', { mode: 'timestamp' })
+    createdAt: integer('created_at', {
+      mode: 'timestamp_ms',
+    })
       .notNull()
       .$defaultFn(() => new Date()),
 
-    updatedAt: integer('updated_at', { mode: 'timestamp' })
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp_ms',
+    })
       .notNull()
       .$defaultFn(() => new Date())
       .$onUpdateFn(() => new Date()),
 
-    completedAt: integer('completed_at', { mode: 'timestamp' }),
+    completedAt: integer('completed_at', {
+      mode: 'timestamp_ms',
+    }),
   },
+
   (table) => ({
-    userIdx: index('idx_financial_transactions_user').on(
-      table.userId,
-    ),
+    userIdx: index(
+      'idx_financial_transactions_user',
+    ).on(table.userId),
 
-    typeIdx: index('idx_financial_transactions_type').on(
-      table.type,
-    ),
+    typeIdx: index(
+      'idx_financial_transactions_type',
+    ).on(table.type),
 
-    statusIdx: index('idx_financial_transactions_status').on(
-      table.status,
-    ),
+    statusIdx: index(
+      'idx_financial_transactions_status',
+    ).on(table.status),
 
-    createdIdx: index('idx_financial_transactions_created').on(
-      table.createdAt,
-    ),
+    createdIdx: index(
+      'idx_financial_transactions_created',
+    ).on(table.createdAt),
 
     correlationIdx: index(
       'idx_financial_transactions_correlation',
     ).on(table.correlationId),
 
-    singleReversalUnq: uniqueIndex(
-      'uq_financial_tx_single_reversal',
+    activeReversalUq: uniqueIndex(
+      'uq_financial_tx_active_reversal',
     )
       .on(table.reversalOfTransactionId)
       .where(
-        sql`${table.reversalOfTransactionId} IS NOT NULL`,
+        sql`${table.reversalOfTransactionId} IS NOT NULL
+          AND ${table.status} NOT IN ('failed', 'cancelled')`,
       ),
+
+    refundIdx: index(
+      'idx_financial_transactions_refund_of',
+    ).on(table.refundOfTransactionId),
 
     typeCheck: check(
       'ck_financial_tx_type',
@@ -774,31 +911,46 @@ export const financialTransactions = sqliteTable(
     typedSourceReferenceCheck: check(
       'ck_financial_tx_typed_reference_required',
       sql`(
-        (${table.type} = 'reversal'
-          AND ${table.reversalOfTransactionId} IS NOT NULL)
+        (
+          ${table.type} = 'reversal'
+          AND ${table.reversalOfTransactionId} IS NOT NULL
+        )
         OR
-        (${table.type} = 'refund'
-          AND ${table.refundOfTransactionId} IS NOT NULL)
+        (
+          ${table.type} = 'refund'
+          AND ${table.refundOfTransactionId} IS NOT NULL
+        )
         OR
-        (${table.type} NOT IN ('reversal', 'refund'))
+        (
+          ${table.type} NOT IN (
+            'reversal',
+            'refund'
+          )
+        )
       )`,
     ),
 
     /**
-     * A completed transaction must have completedAt.
-     *
-     * Historical transactions that later become `reversed` or `refunded`
-     * are allowed to retain the original completion timestamp.
+     * Completed transactions retain their historical completion timestamp
+     * even when later transitioned to reversed/refunded.
      */
     completedStateCheck: check(
       'ck_financial_tx_completed_state',
       sql`(
-        ${table.status} IN ('completed', 'reversed', 'refunded')
+        ${table.status} IN (
+          'completed',
+          'reversed',
+          'refunded'
+        )
         AND ${table.completedAt} IS NOT NULL
       )
       OR
       (
-        ${table.status} NOT IN ('completed', 'reversed', 'refunded')
+        ${table.status} NOT IN (
+          'completed',
+          'reversed',
+          'refunded'
+        )
         AND ${table.completedAt} IS NULL
       )`,
     ),
@@ -813,6 +965,9 @@ export const financialTransactions = sqliteTable(
       'ck_financial_tx_version',
       sql`${table.version} > 0`,
     ),
+
+    // `version` is a concurrency token. Repository updates MUST compare the
+    // expected version and increment it atomically.
   }),
 );
 
@@ -820,65 +975,94 @@ export const financialTransactions = sqliteTable(
  * 4. FINANCIAL LEDGER ENTRIES
  * ============================================================================
  *
- * IMPORTANT:
+ * FIN-001:
  *
- * SQLite CHECK constraints are row-local. They cannot aggregate the complete
- * transaction in order to enforce:
+ *   For every (transactionId, assetId):
  *
- *   SUM(debit) == SUM(credit)
+ *       SUM(debits) == SUM(credits)
  *
- * across multiple rows.
+ * SQLite CHECK constraints are row-local and cannot safely aggregate uint256
+ * decimal strings.
  *
- * Therefore FIN-001 remains a transactional application/domain invariant.
+ * Therefore FIN-001 MUST remain enforced by the domain/application posting
+ * authority and by transactional repository integration tests.
  *
- * DO NOT implement a trigger using:
+ * LEDGER IMMUTABILITY:
+ *   This table is a historical journal. Production code MUST expose it as
+ *   append-only: INSERT is the normal mutation; UPDATE/DELETE of historical
+ *   ledger rows must be rejected by the repository. Corrections are represented
+ *   by new transactions such as reversal/adjustment entries.
+ *
+ * DO NOT use:
  *
  *   CAST(amount_base_units AS INTEGER)
  *
- * because SQLite INTEGER is signed 64-bit and would corrupt/clip uint256
- * values above the SQLite integer range.
+ * for this invariant.
  *
- * A database trigger may only be introduced after a decimal-safe aggregation
- * mechanism is deliberately selected (for example a custom SQL function/UDF
- * or another storage strategy with uint256-safe arithmetic).
+ * SQLite INTEGER is signed 64-bit and cannot represent uint256.
  * ========================================================================== */
 
 export const financialLedgerEntries = sqliteTable(
   'financial_ledger_entries',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
     transactionId: integer('transaction_id')
       .notNull()
-      .references(() => financialTransactions.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialTransactions.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     accountId: integer('account_id')
       .notNull()
-      .references(() => financialAccounts.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAccounts.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     assetId: integer('asset_id')
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     direction: text('direction', {
-      enum: ['debit', 'credit'],
+      enum: [
+        'debit',
+        'credit',
+      ],
     }).notNull(),
 
-    amountBaseUnits: text('amount_base_units').notNull(),
+    amountBaseUnits: text(
+      'amount_base_units',
+    ).notNull(),
 
     createdAt: integer('created_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     })
       .notNull()
       .$defaultFn(() => new Date()),
   },
+
   (table) => ({
+    accountAssetEntryIdx: index(
+      'idx_financial_ledger_entries_account_asset_id',
+    ).on(
+      table.accountId,
+      table.assetId,
+      table.id,
+    ),
+
     transactionIdx: index(
       'idx_financial_ledger_entries_transaction',
     ).on(table.transactionId),
@@ -897,12 +1081,17 @@ export const financialLedgerEntries = sqliteTable(
 
     directionCheck: check(
       'ck_financial_ledger_direction',
-      sql`${table.direction} IN ('debit', 'credit')`,
+      sql`${table.direction} IN (
+        'debit',
+        'credit'
+      )`,
     ),
 
     amountCheck: check(
       'ck_financial_ledger_entries_amount_canonical',
-      canonicalUnsignedAmountSql(table.amountBaseUnits),
+      canonicalUnsignedAmountSql(
+        table.amountBaseUnits,
+      ),
     ),
   }),
 );
@@ -914,37 +1103,58 @@ export const financialLedgerEntries = sqliteTable(
 export const accountBalances = sqliteTable(
   'account_balances',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
     accountId: integer('account_id')
       .notNull()
-      .references(() => financialAccounts.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAccounts.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     assetId: integer('asset_id')
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    availableBaseUnits: text('available_base_units')
+    availableBaseUnits: text(
+      'available_base_units',
+    )
       .notNull()
       .default('0'),
 
-    lockedBaseUnits: text('locked_base_units')
+    lockedBaseUnits: text(
+      'locked_base_units',
+    )
       .notNull()
       .default('0'),
 
-    version: integer('version').notNull().default(1),
+    version: integer('version')
+      .notNull()
+      .default(1),
+
+    createdAt: integer('created_at', {
+      mode: 'timestamp_ms',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
 
     updatedAt: integer('updated_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     })
       .notNull()
       .$defaultFn(() => new Date())
       .$onUpdateFn(() => new Date()),
   },
+
   (table) => ({
     accountAssetUq: uniqueIndex(
       'uq_account_balances_account_asset',
@@ -989,27 +1199,41 @@ export const accountBalances = sqliteTable(
 export const balanceHolds = sqliteTable(
   'balance_holds',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
     accountId: integer('account_id')
       .notNull()
-      .references(() => financialAccounts.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAccounts.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     assetId: integer('asset_id')
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    amountBaseUnits: text('amount_base_units').notNull(),
+    amountBaseUnits: text(
+      'amount_base_units',
+    ).notNull(),
 
     reason: text('reason').notNull(),
 
-    referenceType: text('reference_type'),
+    referenceType: text(
+      'reference_type',
+    ),
 
-    referenceId: text('reference_id'),
+    referenceId: text(
+      'reference_id',
+    ),
 
     status: text('status', {
       enum: [
@@ -1022,27 +1246,29 @@ export const balanceHolds = sqliteTable(
       .notNull()
       .default('active'),
 
-    version: integer('version').notNull().default(1),
+    version: integer('version')
+      .notNull()
+      .default(1),
 
     expiresAt: integer('expires_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     }),
 
     createdAt: integer('created_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     })
       .notNull()
       .$defaultFn(() => new Date()),
 
     updatedAt: integer('updated_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     })
       .notNull()
       .$defaultFn(() => new Date())
       .$onUpdateFn(() => new Date()),
 
     releasedAt: integer('released_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     }),
 
     releasedByTransactionId: integer(
@@ -1055,7 +1281,7 @@ export const balanceHolds = sqliteTable(
     ),
 
     consumedAt: integer('consumed_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     }),
 
     consumedByTransactionId: integer(
@@ -1067,6 +1293,7 @@ export const balanceHolds = sqliteTable(
       },
     ),
   },
+
   (table) => ({
     accountIdx: index(
       'idx_balance_holds_account',
@@ -1086,6 +1313,19 @@ export const balanceHolds = sqliteTable(
       table.referenceType,
       table.referenceId,
     ),
+
+    activeReferenceUq: uniqueIndex(
+      'uq_balance_holds_active_reference',
+    )
+      .on(
+        table.referenceType,
+        table.referenceId,
+      )
+      .where(
+        sql`${table.referenceType} IS NOT NULL
+          AND ${table.referenceId} IS NOT NULL
+          AND ${table.status} = 'active'`,
+      ),
 
     releaseTransactionIdx: index(
       'idx_balance_holds_release_transaction',
@@ -1149,6 +1389,11 @@ export const balanceHolds = sqliteTable(
       )`,
     ),
 
+    /**
+     * `expired` is a persisted state. The transition to expired MUST be
+     * performed by a transactional command that validates expiresAt <= now
+     * and wins the hold's version compare-and-swap.
+     */
     expiredStateCheck: check(
       'ck_balance_holds_expired_state',
       sql`(
@@ -1200,11 +1445,15 @@ export const balanceHolds = sqliteTable(
     lifecycleTemporalCheck: check(
       'ck_balance_holds_lifecycle_temporal',
       sql`(
-        (${table.releasedAt} IS NULL
-          OR ${table.releasedAt} >= ${table.createdAt})
+        (
+          ${table.releasedAt} IS NULL
+          OR ${table.releasedAt} >= ${table.createdAt}
+        )
         AND
-        (${table.consumedAt} IS NULL
-          OR ${table.consumedAt} >= ${table.createdAt})
+        (
+          ${table.consumedAt} IS NULL
+          OR ${table.consumedAt} >= ${table.createdAt}
+        )
       )`,
     ),
 
@@ -1212,6 +1461,9 @@ export const balanceHolds = sqliteTable(
       'ck_balance_holds_version',
       sql`${table.version} > 0`,
     ),
+
+    // Hold lifecycle mutations MUST use status + version compare-and-swap
+    // to prevent concurrent consume/release races.
   }),
 );
 
@@ -1222,7 +1474,9 @@ export const balanceHolds = sqliteTable(
 export const fiatProviders = sqliteTable(
   'fiat_providers',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
     name: text('name').notNull(),
 
@@ -1248,18 +1502,19 @@ export const fiatProviders = sqliteTable(
       .default('active'),
 
     createdAt: integer('created_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     })
       .notNull()
       .$defaultFn(() => new Date()),
 
     updatedAt: integer('updated_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     })
       .notNull()
       .$defaultFn(() => new Date())
       .$onUpdateFn(() => new Date()),
   },
+
   (table) => ({
     codeUq: uniqueIndex(
       'uq_fiat_providers_code',
@@ -1278,9 +1533,9 @@ export const fiatProviders = sqliteTable(
       sql`length(trim(${table.name})) > 0`,
     ),
 
-    codeCheckNonempty: check(
-      'ck_fiat_providers_code_nonempty',
-      sql`length(trim(${table.code})) > 0`,
+    codeCheckCanonical: check(
+      'ck_fiat_providers_code_canonical',
+      sql`${table.code} = upper(trim(${table.code})) AND length(${table.code}) > 0`,
     ),
 
     typeCheck: check(
@@ -1311,21 +1566,31 @@ export const fiatProviders = sqliteTable(
 export const fiatAccounts = sqliteTable(
   'fiat_accounts',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
     userId: integer('user_id')
       .notNull()
-      .references(() => users.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => users.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     assetId: integer('asset_id')
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    providerId: integer('provider_id').references(
+    providerId: integer(
+      'provider_id',
+    ).references(
       () => fiatProviders.id,
       {
         onDelete: 'restrict',
@@ -1340,9 +1605,13 @@ export const fiatAccounts = sqliteTable(
       ],
     }).notNull(),
 
-    externalAccountId: text('external_account_id'),
+    externalAccountId: text(
+      'external_account_id',
+    ),
 
-    displayName: text('display_name'),
+    displayName: text(
+      'display_name',
+    ),
 
     last4: text('last4'),
 
@@ -1357,22 +1626,23 @@ export const fiatAccounts = sqliteTable(
       .default('active'),
 
     createdAt: integer('created_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     })
       .notNull()
       .$defaultFn(() => new Date()),
 
     updatedAt: integer('updated_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     })
       .notNull()
       .$defaultFn(() => new Date())
       .$onUpdateFn(() => new Date()),
 
     blockedAt: integer('blocked_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     }),
   },
+
   (table) => ({
     userAccountCompositeUq: uniqueIndex(
       'uq_fiat_accounts_user_id_id',
@@ -1384,6 +1654,10 @@ export const fiatAccounts = sqliteTable(
     userIdx: index(
       'idx_fiat_accounts_user',
     ).on(table.userId),
+
+    assetIdx: index(
+      'idx_fiat_accounts_asset',
+    ).on(table.assetId),
 
     providerIdx: index(
       'idx_fiat_accounts_provider',
@@ -1479,15 +1753,22 @@ export const fiatAccounts = sqliteTable(
 export const fiatPaymentMethods = sqliteTable(
   'fiat_payment_methods',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
     userId: integer('user_id')
       .notNull()
-      .references(() => users.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => users.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    fiatAccountId: integer('fiat_account_id').notNull(),
+    fiatAccountId: integer(
+      'fiat_account_id',
+    ).notNull(),
 
     type: text('type', {
       enum: [
@@ -1511,23 +1792,35 @@ export const fiatPaymentMethods = sqliteTable(
       .default('active'),
 
     createdAt: integer('created_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     })
       .notNull()
       .$defaultFn(() => new Date()),
 
     updatedAt: integer('updated_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     })
       .notNull()
       .$defaultFn(() => new Date())
       .$onUpdateFn(() => new Date()),
 
     blockedAt: integer('blocked_at', {
-      mode: 'timestamp',
+      mode: 'timestamp_ms',
     }),
   },
+
   (table) => ({
+    /**
+     * Ownership-preserving composite FK.
+     *
+     * This guarantees:
+     *
+     *   fiatPaymentMethods.userId
+     *       +
+     *   fiatPaymentMethods.fiatAccountId
+     *
+     * refers to the same owner/account pair.
+     */
     fiatAccountFk: foreignKey({
       columns: [
         table.userId,
@@ -1539,7 +1832,8 @@ export const fiatPaymentMethods = sqliteTable(
         fiatAccounts.id,
       ],
 
-      name: 'fk_fiat_payment_methods_user_account',
+      name:
+        'fk_fiat_payment_methods_user_account',
     }).onDelete('restrict'),
 
     userIdx: index(
@@ -1605,26 +1899,49 @@ export const fiatPaymentMethods = sqliteTable(
 
 /* ============================================================================
  * 10. FIAT TRANSACTIONS
+ * ============================================================================
+ *
+ * CROSS-TABLE OWNERSHIP INVARIANT:
+ *
+ *   fiatTransactions.paymentMethodId
+ *
+ * must refer to a payment method whose userId equals the userId of the
+ * parent financial transaction.
+ *
+ * SQLite CHECK constraints cannot safely reference another table.
+ *
+ * Therefore this invariant MUST remain enforced by the application/service
+ * layer before persistence.
  * ========================================================================== */
 
 export const fiatTransactions = sqliteTable(
   'fiat_transactions',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
     financialTransactionId: integer(
       'financial_transaction_id',
     )
       .notNull()
-      .references(() => financialTransactions.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialTransactions.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    providerId: integer('provider_id')
+    providerId: integer(
+      'provider_id',
+    )
       .notNull()
-      .references(() => fiatProviders.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => fiatProviders.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     paymentMethodId: integer(
       'payment_method_id',
@@ -1637,9 +1954,12 @@ export const fiatTransactions = sqliteTable(
 
     assetId: integer('asset_id')
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     direction: text('direction', {
       enum: [
@@ -1665,26 +1985,50 @@ export const fiatTransactions = sqliteTable(
       .notNull()
       .default('pending'),
 
-    version: integer('version').notNull().default(1),
+    version: integer('version')
+      .notNull()
+      .default(1),
 
-    requestedAt: integer('requested_at', {
-      mode: 'timestamp',
-    })
+    requestedAt: integer(
+      'requested_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    )
       .notNull()
       .$defaultFn(() => new Date()),
 
-    processedAt: integer('processed_at', {
-      mode: 'timestamp',
-    }),
+    updatedAt: integer(
+      'updated_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    )
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
 
-    settledAt: integer('settled_at', {
-      mode: 'timestamp',
-    }),
+    processedAt: integer(
+      'processed_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    ),
+
+    settledAt: integer(
+      'settled_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    ),
   },
+
   (table) => ({
     transactionUq: uniqueIndex(
       'uq_fiat_transactions_financial_transaction',
-    ).on(table.financialTransactionId),
+    ).on(
+      table.financialTransactionId,
+    ),
 
     providerIdx: index(
       'idx_fiat_transactions_provider',
@@ -1752,14 +2096,17 @@ export const fiatTransactions = sqliteTable(
         OR ${table.settledAt} >= ${table.processedAt}`,
     ),
 
-    completedLifecycleCheck: check(
-      'ck_fiat_tx_completed_lifecycle',
+    settledStateCheck: check(
+      'ck_fiat_tx_settled_state',
       sql`(
-        ${table.status} = 'completed'
+        ${table.status} IN ('completed', 'reversed')
         AND ${table.settledAt} IS NOT NULL
       )
       OR
-      ${table.status} != 'completed'`,
+      (
+        ${table.status} NOT IN ('completed', 'reversed')
+        AND ${table.settledAt} IS NULL
+      )`,
     ),
 
     versionCheck: check(
@@ -1776,21 +2123,29 @@ export const fiatTransactions = sqliteTable(
 export const cryptoTransactions = sqliteTable(
   'crypto_transactions',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
     financialTransactionId: integer(
       'financial_transaction_id',
     )
       .notNull()
-      .references(() => financialTransactions.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialTransactions.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     assetId: integer('asset_id')
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     web3TransactionId: text(
       'web3_transaction_id',
@@ -1798,9 +2153,13 @@ export const cryptoTransactions = sqliteTable(
 
     network: text('network'),
 
-    blockNumber: integer('block_number'),
+    blockNumber: integer(
+      'block_number',
+    ),
 
-    confirmations: integer('confirmations')
+    confirmations: integer(
+      'confirmations',
+    )
       .notNull()
       .default(0),
 
@@ -1815,7 +2174,17 @@ export const cryptoTransactions = sqliteTable(
       'amount_base_units',
     ).notNull(),
 
-    feeAssetId: integer('fee_asset_id').references(
+    fromAddress: text('from_address'),
+
+    toAddress: text('to_address'),
+
+    transactionIndex: integer('transaction_index'),
+
+    nonce: integer('nonce'),
+
+    feeAssetId: integer(
+      'fee_asset_id',
+    ).references(
       () => financialAssets.id,
       {
         onDelete: 'restrict',
@@ -1840,25 +2209,52 @@ export const cryptoTransactions = sqliteTable(
       .notNull()
       .default('pending'),
 
-    version: integer('version')
+    version: integer(
+      'version',
+    )
       .notNull()
       .default(1),
 
-    requestedAt: integer('requested_at', {
-      mode: 'timestamp',
-    })
+    requestedAt: integer(
+      'requested_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    )
       .notNull()
       .$defaultFn(() => new Date()),
 
-    settledAt: integer('settled_at', {
-      mode: 'timestamp',
-    }),
+    updatedAt: integer(
+      'updated_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    )
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+
+    settledAt: integer(
+      'settled_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    ),
   },
+
   (table) => ({
     transactionUq: uniqueIndex(
       'uq_crypto_transactions_financial_transaction',
-    ).on(table.financialTransactionId),
+    ).on(
+      table.financialTransactionId,
+    ),
 
+    /**
+     * Blockchain identifiers are unique within a network.
+     *
+     * SQLite NULL semantics are intentionally retained for not-yet-known
+     * external identifiers.
+     */
     web3TransactionNetworkUq: uniqueIndex(
       'uq_crypto_transactions_network_web3_transaction',
     ).on(
@@ -1932,6 +2328,25 @@ export const cryptoTransactions = sqliteTable(
       )`,
     ),
 
+    /**
+     * A known blockchain transaction id must be tied to a known network.
+     *
+     * This prevents a partially identified external transaction from being
+     * treated as fully traceable.
+     */
+    web3NetworkCoherenceCheck: check(
+      'ck_crypto_tx_web3_network_coherence',
+      sql`(
+        ${table.web3TransactionId} IS NULL
+        AND ${table.network} IS NULL
+      )
+      OR
+      (
+        ${table.web3TransactionId} IS NOT NULL
+        AND ${table.network} IS NOT NULL
+      )`,
+    ),
+
     confirmationsCheck: check(
       'ck_crypto_transactions_confirmations',
       sql`${table.confirmations} >= 0`,
@@ -1955,6 +2370,30 @@ export const cryptoTransactions = sqliteTable(
         OR length(trim(${table.web3TransactionId})) > 0`,
     ),
 
+    fromAddressCheck: check(
+      'ck_crypto_transactions_from_address',
+      sql`${table.fromAddress} IS NULL
+        OR length(trim(${table.fromAddress})) > 0`,
+    ),
+
+    toAddressCheck: check(
+      'ck_crypto_transactions_to_address',
+      sql`${table.toAddress} IS NULL
+        OR length(trim(${table.toAddress})) > 0`,
+    ),
+
+    transactionIndexCheck: check(
+      'ck_crypto_transactions_transaction_index',
+      sql`${table.transactionIndex} IS NULL
+        OR ${table.transactionIndex} >= 0`,
+    ),
+
+    nonceCheck: check(
+      'ck_crypto_transactions_nonce',
+      sql`${table.nonce} IS NULL
+        OR ${table.nonce} >= 0`,
+    ),
+
     confirmedEvidenceCheck: check(
       'ck_crypto_transactions_confirmed_evidence',
       sql`(
@@ -1967,7 +2406,22 @@ export const cryptoTransactions = sqliteTable(
         AND ${table.network} IS NOT NULL
         AND ${table.blockNumber} IS NOT NULL
         AND ${table.confirmations} > 0
+        AND ${table.fromAddress} IS NOT NULL
+        AND ${table.toAddress} IS NOT NULL
         AND ${table.settledAt} IS NOT NULL
+      )`,
+    ),
+
+    settledStateCheck: check(
+      'ck_crypto_tx_settled_state',
+      sql`(
+        ${table.status} IN ('confirmed', 'reversed')
+        AND ${table.settledAt} IS NOT NULL
+      )
+      OR
+      (
+        ${table.status} NOT IN ('confirmed', 'reversed')
+        AND ${table.settledAt} IS NULL
       )`,
     ),
 
@@ -1986,31 +2440,36 @@ export const cryptoTransactions = sqliteTable(
 
 /* ============================================================================
  * 12. EXCHANGE RATES
- * ============================================================================
- *
- * rateNumerator/rateDenominator remain TEXT because exact rational values
- * must survive the database/application boundary without IEEE-754 conversion.
- *
- * Domain arithmetic remains the responsibility of the application/domain
- * layer using BigInt/Money256.
  * ========================================================================== */
 
 export const exchangeRates = sqliteTable(
   'exchange_rates',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
-    baseAssetId: integer('base_asset_id')
+    baseAssetId: integer(
+      'base_asset_id',
+    )
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    quoteAssetId: integer('quote_asset_id')
+    quoteAssetId: integer(
+      'quote_asset_id',
+    )
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     rateNumerator: text(
       'rate_numerator',
@@ -2022,17 +2481,32 @@ export const exchangeRates = sqliteTable(
 
     source: text('source').notNull(),
 
-    quotedAt: integer('quoted_at', {
-      mode: 'timestamp',
-    })
+    quotedAt: integer(
+      'quoted_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    )
       .notNull()
       .$defaultFn(() => new Date()),
 
-    expiresAt: integer('expires_at', {
-      mode: 'timestamp',
-    }),
+    expiresAt: integer(
+      'expires_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    ),
   },
+
   (table) => ({
+    pairQuotedIdx: index(
+      'idx_exchange_rates_pair_quoted',
+    ).on(
+      table.baseAssetId,
+      table.quoteAssetId,
+      table.quotedAt,
+    ),
+
     pairIdx: index(
       'idx_exchange_rates_pair',
     ).on(
@@ -2087,27 +2561,42 @@ export const exchangeRates = sqliteTable(
 export const assetConversions = sqliteTable(
   'asset_conversions',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
     financialTransactionId: integer(
       'financial_transaction_id',
     )
       .notNull()
-      .references(() => financialTransactions.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialTransactions.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    fromAssetId: integer('from_asset_id')
+    fromAssetId: integer(
+      'from_asset_id',
+    )
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    toAssetId: integer('to_asset_id')
+    toAssetId: integer(
+      'to_asset_id',
+    )
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     fromAmountBaseUnits: text(
       'from_amount_base_units',
@@ -2125,7 +2614,9 @@ export const assetConversions = sqliteTable(
       'rate_denominator',
     ).notNull(),
 
-    rateSource: text('rate_source'),
+    rateSource: text(
+      'rate_source',
+    ),
 
     sourceExchangeRateId: integer(
       'source_exchange_rate_id',
@@ -2136,9 +2627,21 @@ export const assetConversions = sqliteTable(
       },
     ),
 
-    quotedAt: integer('quoted_at', {
-      mode: 'timestamp',
-    }),
+    quotedAt: integer(
+      'quoted_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    ),
+
+    feeAssetId: integer(
+      'fee_asset_id',
+    ).references(
+      () => financialAssets.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
 
     feeAmountBaseUnits: text(
       'fee_amount_base_units',
@@ -2158,20 +2661,43 @@ export const assetConversions = sqliteTable(
       .notNull()
       .default('pending'),
 
-    createdAt: integer('created_at', {
-      mode: 'timestamp',
-    })
+    version: integer('version')
+      .notNull()
+      .default(1),
+
+    createdAt: integer(
+      'created_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    )
       .notNull()
       .$defaultFn(() => new Date()),
 
-    completedAt: integer('completed_at', {
-      mode: 'timestamp',
-    }),
+    updatedAt: integer(
+      'updated_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    )
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+
+    completedAt: integer(
+      'completed_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    ),
   },
+
   (table) => ({
     transactionUq: uniqueIndex(
       'uq_asset_conversions_transaction',
-    ).on(table.financialTransactionId),
+    ).on(
+      table.financialTransactionId,
+    ),
 
     fromAssetIdx: index(
       'idx_asset_conversions_from_asset',
@@ -2192,6 +2718,10 @@ export const assetConversions = sqliteTable(
     sourceExchangeRateIdx: index(
       'idx_asset_conversions_source_exchange_rate',
     ).on(table.sourceExchangeRateId),
+
+    feeAssetIdx: index(
+      'idx_asset_conversions_fee_asset',
+    ).on(table.feeAssetId),
 
     statusCheck: check(
       'ck_asset_conversions_status',
@@ -2223,6 +2753,19 @@ export const assetConversions = sqliteTable(
       canonicalUnsignedOrZeroAmountSql(
         table.feeAmountBaseUnits,
       ),
+    ),
+
+    feeAssetCoherenceCheck: check(
+      'ck_asset_conversions_fee_asset_coherence',
+      sql`(
+        ${table.feeAmountBaseUnits} = '0'
+        AND ${table.feeAssetId} IS NULL
+      )
+      OR
+      (
+        ${table.feeAmountBaseUnits} != '0'
+        AND ${table.feeAssetId} IS NOT NULL
+      )`,
     ),
 
     assetsDifferentCheck: check(
@@ -2276,6 +2819,11 @@ export const assetConversions = sqliteTable(
       sql`${table.completedAt} IS NULL
         OR ${table.completedAt} >= ${table.createdAt}`,
     ),
+
+    versionCheck: check(
+      'ck_asset_conversions_version',
+      sql`${table.version} > 0`,
+    ),
   }),
 );
 
@@ -2286,28 +2834,42 @@ export const assetConversions = sqliteTable(
 export const financialFees = sqliteTable(
   'financial_fees',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
-    transactionId: integer('transaction_id')
+    transactionId: integer(
+      'transaction_id',
+    )
       .notNull()
-      .references(() => financialTransactions.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialTransactions.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    assetId: integer('asset_id')
+    assetId: integer(
+      'asset_id',
+    )
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     recipientAccountId: integer(
       'recipient_account_id',
-    ).references(
-      () => financialAccounts.id,
-      {
-        onDelete: 'restrict',
-      },
-    ),
+    )
+      .notNull()
+      .references(
+        () => financialAccounts.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     feeType: text('fee_type', {
       enum: [
@@ -2324,12 +2886,16 @@ export const financialFees = sqliteTable(
       'amount_base_units',
     ).notNull(),
 
-    createdAt: integer('created_at', {
-      mode: 'timestamp',
-    })
+    createdAt: integer(
+      'created_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    )
       .notNull()
       .$defaultFn(() => new Date()),
   },
+
   (table) => ({
     transactionIdx: index(
       'idx_financial_fees_transaction',
@@ -2369,27 +2935,37 @@ export const financialFees = sqliteTable(
 );
 
 /* ============================================================================
- * 15. EXTERNAL FIAT TRANSACTIONS
+ * 15. FIAT EXTERNAL TRANSACTIONS
  * ========================================================================== */
 
 export const fiatExternalTransactions = sqliteTable(
   'fiat_external_transactions',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
     financialTransactionId: integer(
       'financial_transaction_id',
     )
       .notNull()
-      .references(() => financialTransactions.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialTransactions.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    providerId: integer('provider_id')
+    providerId: integer(
+      'provider_id',
+    )
       .notNull()
-      .references(() => fiatProviders.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => fiatProviders.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     externalTransactionId: text(
       'external_transaction_id',
@@ -2419,25 +2995,37 @@ export const fiatExternalTransactions = sqliteTable(
       ],
     }).notNull(),
 
-    providerStatus: text('provider_status'),
+    providerStatus: text(
+      'provider_status',
+    ),
 
-    createdAt: integer('created_at', {
-      mode: 'timestamp',
-    })
+    createdAt: integer(
+      'created_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    )
       .notNull()
       .$defaultFn(() => new Date()),
 
-    updatedAt: integer('updated_at', {
-      mode: 'timestamp',
-    })
+    updatedAt: integer(
+      'updated_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    )
       .notNull()
       .$defaultFn(() => new Date())
       .$onUpdateFn(() => new Date()),
 
-    settledAt: integer('settled_at', {
-      mode: 'timestamp',
-    }),
+    settledAt: integer(
+      'settled_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    ),
   },
+
   (table) => ({
     providerExternalUq: uniqueIndex(
       'uq_fiat_external_transactions_provider_external',
@@ -2523,43 +3111,66 @@ export { idempotencyKeys } from '../infrastructure/tables';
  * 17. RECONCILIATION RECORDS
  * ============================================================================
  *
- * Lifecycle:
+ * Lifecycle authority:
  *
- * pending
- *    |
- *    +---- difference = 0 ----> matched
- *    |
- *    +---- difference != 0 ---> mismatch
- *                                  |
- *                                  v
- *                               resolved
+ *   pending
+ *      |
+ *      +----> matched
+ *      |
+ *      +----> mismatch ----> resolved
  *
- * A resolved record retains the original non-zero difference for auditability.
+ * IMPORTANT:
+ *
+ * The database validates the representational and state-coherence aspects
+ * that can be safely expressed using row-local SQLite checks.
+ *
+ * It intentionally does NOT attempt to calculate:
+ *
+ *   difference = actual - expected
+ *
+ * using SQLite INTEGER/REAL arithmetic.
+ *
+ * The exact calculation MUST happen in the domain/application layer using
+ * BigInt/SignedMoney256 semantics.
  * ========================================================================== */
 
 export const reconciliationRecords = sqliteTable(
   'reconciliation_records',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
+    id: integer('id').primaryKey({
+      autoIncrement: true,
+    }),
 
-    providerId: integer('provider_id').references(
+    providerId: integer(
+      'provider_id',
+    ).references(
       () => fiatProviders.id,
       {
         onDelete: 'restrict',
       },
     ),
 
-    accountId: integer('account_id')
+    accountId: integer(
+      'account_id',
+    )
       .notNull()
-      .references(() => financialAccounts.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAccounts.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
-    assetId: integer('asset_id')
+    assetId: integer(
+      'asset_id',
+    )
       .notNull()
-      .references(() => financialAssets.id, {
-        onDelete: 'restrict',
-      }),
+      .references(
+        () => financialAssets.id,
+        {
+          onDelete: 'restrict',
+        },
+      ),
 
     expectedBalanceBaseUnits: text(
       'expected_balance_base_units',
@@ -2588,20 +3199,40 @@ export const reconciliationRecords = sqliteTable(
       'reconciliation_run_id',
     ).notNull(),
 
-    version: integer('version')
+    version: integer(
+      'version',
+    )
       .notNull()
       .default(1),
 
     reconciliationDate: integer(
       'reconciliation_date',
-      { mode: 'timestamp' },
+      {
+        mode: 'timestamp_ms',
+      },
     )
       .notNull()
       .$defaultFn(() => new Date()),
 
-    resolvedAt: integer('resolved_at', {
-      mode: 'timestamp',
-    }),
+    createdAt: integer('created_at', {
+      mode: 'timestamp_ms',
+    })
+      .notNull()
+      .$defaultFn(() => new Date()),
+
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp_ms',
+    })
+      .notNull()
+      .$defaultFn(() => new Date())
+      .$onUpdateFn(() => new Date()),
+
+    resolvedAt: integer(
+      'resolved_at',
+      {
+        mode: 'timestamp_ms',
+      },
+    ),
 
     resolvedByUserId: integer(
       'resolved_by_user_id',
@@ -2620,17 +3251,13 @@ export const reconciliationRecords = sqliteTable(
       'resolution_reference',
     ),
   },
+
   (table) => ({
     /**
-     * SQLite treats NULLs as distinct in UNIQUE indexes.
+     * SQLite NULL values do not collide in a composite UNIQUE index.
      *
-     * Therefore a single composite unique index containing nullable
-     * providerId would NOT provide true uniqueness for providerless rows.
-     *
-     * We split the invariant into:
-     *
-     *   1. provider IS NOT NULL
-     *   2. provider IS NULL
+     * Therefore provider-scoped and providerless reconciliation scopes are
+     * implemented as separate partial unique indexes.
      */
 
     runScopeWithProviderUq: uniqueIndex(
@@ -2642,7 +3269,9 @@ export const reconciliationRecords = sqliteTable(
         table.accountId,
         table.assetId,
       )
-      .where(sql`${table.providerId} IS NOT NULL`),
+      .where(
+        sql`${table.providerId} IS NOT NULL`,
+      ),
 
     runScopeWithoutProviderUq: uniqueIndex(
       'uq_reconciliation_run_scope_no_provider',
@@ -2652,7 +3281,9 @@ export const reconciliationRecords = sqliteTable(
         table.accountId,
         table.assetId,
       )
-      .where(sql`${table.providerId} IS NULL`),
+      .where(
+        sql`${table.providerId} IS NULL`,
+      ),
 
     accountIdx: index(
       'idx_reconciliation_records_account',
@@ -2677,6 +3308,10 @@ export const reconciliationRecords = sqliteTable(
     reconciliationDateIdx: index(
       'idx_reconciliation_records_date',
     ).on(table.reconciliationDate),
+
+    resolverIdx: index(
+      'idx_reconciliation_records_resolver',
+    ).on(table.resolvedByUserId),
 
     runIdCheck: check(
       'ck_reconciliation_run_id_nonempty',
@@ -2715,48 +3350,65 @@ export const reconciliationRecords = sqliteTable(
     ),
 
     /**
-     * State must agree with the materialized difference.
+     * State/representation coherence.
      *
-     * pending:
-     *   calculation/resolution process is not finalized.
+     * IMPORTANT:
      *
-     * matched:
-     *   actual == expected -> difference == 0.
+     * For MATCHED we can safely enforce:
      *
-     * mismatch:
-     *   actual != expected -> difference != 0.
+     *   expected == actual
+     *   difference == 0
      *
-     * resolved:
-     *   a non-zero mismatch was explicitly resolved. The original
-     *   difference remains preserved.
+     * because both expected and actual are canonical decimal strings.
+     *
+     * For MISMATCH/RESOLVED we deliberately only enforce:
+     *
+     *   expected != actual
+     *   difference != 0
+     *
+     * The exact subtraction:
+     *
+     *   difference = actual - expected
+     *
+     * remains a BigInt/domain responsibility because SQLite INTEGER cannot
+     * safely calculate uint256 differences.
+     *
+     * Exact signed difference is a domain invariant. It MUST be calculated
+     * using BigInt / a Money256 value object before persistence; SQLite
+     * INTEGER/REAL coercion is not a valid implementation for uint256 ranges.
      */
     statusDifferenceCheck: check(
       'ck_reconciliation_status_difference',
       sql`(
-        ${table.status} = 'pending'
-      )
-      OR
-      (
-        ${table.status} = 'matched'
-        AND ${table.expectedBalanceBaseUnits} = ${table.actualBalanceBaseUnits}
-        AND ${table.differenceBaseUnits} = '0'
-      )
-      OR
-      (
-        ${table.status} = 'mismatch'
-        AND ${table.expectedBalanceBaseUnits} != ${table.actualBalanceBaseUnits}
-        AND ${table.differenceBaseUnits} != '0'
-      )
-      OR
-      (
-        ${table.status} = 'resolved'
-        AND ${table.expectedBalanceBaseUnits} != ${table.actualBalanceBaseUnits}
-        AND ${table.differenceBaseUnits} != '0'
-        AND ${table.resolutionReason} IS NOT NULL
-        AND ${table.resolutionReference} IS NOT NULL
+        (
+          ${table.status} IN ('pending', 'matched')
+          AND ${table.expectedBalanceBaseUnits} = ${table.actualBalanceBaseUnits}
+          AND ${table.differenceBaseUnits} = '0'
+        )
+        OR
+        (
+          ${table.status} IN ('pending', 'mismatch')
+          AND ${table.expectedBalanceBaseUnits} != ${table.actualBalanceBaseUnits}
+          AND ${table.differenceBaseUnits} != '0'
+        )
+        OR
+        (
+          ${table.status} = 'resolved'
+          AND ${table.expectedBalanceBaseUnits} != ${table.actualBalanceBaseUnits}
+          AND ${table.differenceBaseUnits} != '0'
+          AND ${table.resolutionReason} IS NOT NULL
+          AND ${table.resolutionReference} IS NOT NULL
+        )
       )`,
     ),
 
+    /**
+     * All non-resolved states must not carry resolution metadata.
+     *
+     * This keeps the current row self-consistent.
+     *
+     * Transition history itself belongs to the domain/application layer.
+     */
     resolvedStateCheck: check(
       'ck_reconciliation_resolved_state',
       sql`(
@@ -2800,3 +3452,94 @@ export const reconciliationRecords = sqliteTable(
     ),
   }),
 );
+
+/**
+ * Canonical hardening contract for the Finance persistence boundary.
+ *
+ * This is metadata only: it does not change the database schema. It exists to
+ * keep the non-SQLite invariants explicit for repository/application authors.
+ */
+export const FINANCE_HARDENING_CONTRACT = {
+  ledger: {
+    appendOnly: true,
+    doubleEntry: true,
+    balanceKey: ['transactionId', 'assetId'],
+  },
+  ownership: {
+    transactionAccountUser: true,
+    paymentMethodFiatAccountUser: true,
+  },
+  semanticCoherence: {
+    transactionSpecialization: true,
+    fiatAsset: true,
+    paymentMethodType: true,
+    conversionRatePair: true,
+    feeAccountAsset: true,
+    reconciliationScope: true,
+  },
+  concurrency: {
+    versionCompareAndSwap: true,
+  },
+  money: {
+    representation: 'canonical-decimal-string',
+    unsignedBits: 256,
+    exactSignedArithmetic: 'BigInt-or-Money256',
+  },
+} as const;
+
+/**
+ * ============================================================================
+ * TYPE EXPORTS & BRANDED TYPES
+ * ============================================================================
+ */
+
+export type CanonicalMoney256 = string & { readonly __brand: 'CanonicalMoney256' };
+
+export type FinancialAsset = typeof financialAssets.$inferSelect;
+export type NewFinancialAsset = typeof financialAssets.$inferInsert;
+
+export type FinancialAccount = typeof financialAccounts.$inferSelect;
+export type NewFinancialAccount = typeof financialAccounts.$inferInsert;
+
+export type FinancialTransaction = typeof financialTransactions.$inferSelect;
+export type NewFinancialTransaction = typeof financialTransactions.$inferInsert;
+
+export type FinancialLedgerEntry = typeof financialLedgerEntries.$inferSelect;
+export type NewFinancialLedgerEntry = typeof financialLedgerEntries.$inferInsert;
+
+export type AccountBalance = typeof accountBalances.$inferSelect;
+export type NewAccountBalance = typeof accountBalances.$inferInsert;
+
+export type BalanceHold = typeof balanceHolds.$inferSelect;
+export type NewBalanceHold = typeof balanceHolds.$inferInsert;
+
+export type FiatProvider = typeof fiatProviders.$inferSelect;
+export type NewFiatProvider = typeof fiatProviders.$inferInsert;
+
+export type FiatAccount = typeof fiatAccounts.$inferSelect;
+export type NewFiatAccount = typeof fiatAccounts.$inferInsert;
+
+export type FiatPaymentMethod = typeof fiatPaymentMethods.$inferSelect;
+export type NewFiatPaymentMethod = typeof fiatPaymentMethods.$inferInsert;
+
+export type FiatTransaction = typeof fiatTransactions.$inferSelect;
+export type NewFiatTransaction = typeof fiatTransactions.$inferInsert;
+
+export type CryptoTransaction = typeof cryptoTransactions.$inferSelect;
+export type NewCryptoTransaction = typeof cryptoTransactions.$inferInsert;
+
+export type ExchangeRate = typeof exchangeRates.$inferSelect;
+export type NewExchangeRate = typeof exchangeRates.$inferInsert;
+
+export type AssetConversion = typeof assetConversions.$inferSelect;
+export type NewAssetConversion = typeof assetConversions.$inferInsert;
+
+export type FinancialFee = typeof financialFees.$inferSelect;
+export type NewFinancialFee = typeof financialFees.$inferInsert;
+
+export type FiatExternalTransaction = typeof fiatExternalTransactions.$inferSelect;
+export type NewFiatExternalTransaction = typeof fiatExternalTransactions.$inferInsert;
+
+export type ReconciliationRecord = typeof reconciliationRecords.$inferSelect;
+export type NewReconciliationRecord = typeof reconciliationRecords.$inferInsert;
+
