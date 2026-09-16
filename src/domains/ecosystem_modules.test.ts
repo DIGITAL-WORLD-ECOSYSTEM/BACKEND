@@ -190,16 +190,22 @@ describe('Ecosystem Modules Suite (Civil Identity, SSI & Treasury)', () => {
 
     it('should record a treasury financial transaction', async () => {
       const mockFinanceRepo = {
-        getAssetById: vi.fn().mockResolvedValue(Result.ok({ id: 1, code: 'BRL', status: 'active' })),
+        getAssetById: vi.fn().mockResolvedValue(Result.ok({ id: 1, code: 'BRL', status: 'active', decimals: 2 })),
+        getAccountById: vi.fn().mockImplementation(async (id) => Result.ok({
+          id,
+          status: 'active',
+          accountType: id === 1 ? 'treasury' : 'operating',
+          accountClass: id === 1 ? 'asset' : 'revenue',
+        })),
         getSystemAccount: vi.fn().mockImplementation(async (type) => Result.ok({
           id: type === 'treasury' ? 1 : 3,
           accountType: type,
           accountClass: type === 'treasury' ? 'asset' : 'revenue',
-          status: 'active'
+          status: 'active',
         })),
-        getTreasuryAccount: vi.fn().mockResolvedValue(Result.ok({ id: 1, status: 'active' })),
-        getOrCreateUserAccount: vi.fn().mockResolvedValue(Result.ok({ id: 2 })),
-        getOrCreateOperatingAccount: vi.fn().mockResolvedValue(Result.ok({ id: 3 })),
+        getTreasuryAccount: vi.fn().mockResolvedValue(Result.ok({ id: 1, status: 'active', accountType: 'treasury', accountClass: 'asset' })),
+        getOrCreateUserAccount: vi.fn().mockResolvedValue(Result.ok({ id: 2, status: 'active', accountType: 'user', accountClass: 'liability' })),
+        getOrCreateOperatingAccount: vi.fn().mockResolvedValue(Result.ok({ id: 3, status: 'active', accountType: 'operating', accountClass: 'revenue' })),
         claimIdempotency: vi.fn().mockResolvedValue(true),
         insertTransaction: vi.fn().mockResolvedValue(Result.ok(10)),
         insertLedgerEntries: vi.fn().mockResolvedValue(Result.ok()),
