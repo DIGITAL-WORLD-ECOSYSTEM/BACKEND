@@ -1,0 +1,41 @@
+name: Backend CI & Governance Pipeline
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  verify:
+    name: Typecheck, Architecture & Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Strict TypeScript Compilation Gate
+        run: pnpm exec tsc --noEmit
+
+      - name: Architecture Boundaries & Clean Architecture Invariants Gate
+        run: pnpm exec vitest run tests/architecture/
+
+      - name: Financial & Domain Invariants Gate
+        run: pnpm exec vitest run tests/finance/invariants/ tests/identity/
+
+      - name: Full Automated Test Suite
+        run: pnpm test
