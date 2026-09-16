@@ -20,11 +20,59 @@
 *.pfx
 *.crt
 *.cer
+id_rsa*
+id_ed25519*
 
 # Arquivos comuns de credenciais
 secrets.json
 credentials.json
 service-account.json
+
+# ------------------------------------------------------
+# 🏦 DOCUMENTOS BANCÁRIOS, EXTRATOS E COMPROVANTES (CRÍTICO)
+# ------------------------------------------------------
+# Extensões de documentos, relatórios e planilhas bancárias
+*.pdf
+*.xlsx
+*.xls
+*.csv
+*.ofx
+*.qif
+*.odt
+*.ods
+*.doc
+*.docx
+
+# Pastas de dados, extratos, comprovantes e bancos
+scripts/data/
+**/financeiro/
+**/extratos/
+**/comprovantes/
+**/bancos/
+**/BRADESCO/
+**/CORA/
+**/INTER/
+
+# ------------------------------------------------------
+# 🪙 CARTEIRAS, WALLETS, CHAVES CRIPTO & SEEDS (CRÍTICO)
+# ------------------------------------------------------
+# Chaves cripto, mnemonics, keystores e arquivos de carteira
+*.wallet
+*.keystore
+*.seed
+*.mnemonic
+*.template
+**/Carteira/
+**/carteiras/
+**/wallets/
+**/keystore/
+**/keystores/
+*wallet*.odt
+*wallet*.pdf
+*wallet*.xlsx
+*wallet*.txt
+*wallet*.doc*
+wallet-*.json
 
 # ------------------------------------------------------
 # ⚡ Cloudflare Workers, Wrangler & Miniflare
@@ -69,7 +117,6 @@ temp/
 *.dump
 *.patch
 scratch/
-scripts/data/
 
 # ------------------------------------------------------
 # 🏗️ Build & Output
