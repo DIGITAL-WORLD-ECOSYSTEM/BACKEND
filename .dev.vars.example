@@ -1,0 +1,47 @@
+# ==============================================================================
+# .dev.vars.example
+# Modelo de variáveis de ambiente para desenvolvimento local (Cloudflare Workers)
+# Copie este arquivo para .dev.vars e substitua pelos seus valores de teste/desenvolvimento.
+# NUNCA comite o arquivo .dev.vars real no controle de versão.
+# ==============================================================================
+
+# Banco de Dados D1 (Local ou Binding ID)
+DB="d1-local-binding"
+
+# Segurança e Criptografia
+JWT_SECRET="replace-with-a-secure-random-64-character-jwt-secret"
+SVIX_SECRET="replace-with-svix-webhook-secret"
+
+# Cloudflare Credentials & IDs
+CLOUDFLARE_ACCOUNT_ID="replace-with-cloudflare-account-id"
+CLOUDFLARE_DATABASE_ID="replace-with-d1-database-uuid"
+CLOUDFLARE_ZONE_ID="replace-with-zone-id"
+CLOUDFLARE_API_TOKEN="replace-with-cloudflare-api-token"
+CLOUDFLARE_AI_TOKEN="replace-with-cloudflare-ai-token"
+
+# Provedores Web3 e Agregadores
+ZERO_EX_API_KEY="replace-with-0x-api-key"
+MORALIS_API_KEY="replace-with-moralis-api-key"
+BINANCE_API_KEY="replace-with-binance-read-only-test-key"
+BINANCE_API_SECRET="replace-with-binance-api-secret"
+
+# Conta Administrativa Inicial (Seed/Bootstrap)
+ADMIN_ID="1"
+ADMIN_ROLE="SUPER_ADMIN"
+ADMIN_EMAIL="admin@asppibra.com.br"
+ADMIN_PASSWORD="replace-with-strong-dev-password"
+ADMIN_PASSWORD_HASH="replace-with-pbkdf2-hash-of-dev-password"
+
+# Autenticação OAuth (Google & GitHub)
+GOOGLE_CLIENT_ID="replace-with-google-client-id.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="replace-with-google-client-secret"
+GITHUB_CLIENT_ID="replace-with-github-client-id"
+GITHUB_CLIENT_SECRET="replace-with-github-client-secret"
+
+# Comunicação e Notificações (E-mail / Webhooks)
+FRONTEND_URL="http://localhost:5173"
+SENDER_EMAIL="noreply@asppibra.com.br"
+RESEND_API_KEY="re_test_replace_with_resend_key"
+SENDPULSE_ID="replace-with-sendpulse-id"
+SENDPULSE_SECRET="replace-with-sendpulse-secret"
+SENDPULSE_API_KEY="replace-with-sendpulse-api-key"
