@@ -70,8 +70,8 @@ export class AuthenticateAccountUseCase {
         return Result.fail<AuthenticateAccountResult>(GENERIC_AUTH_FAILURE_MESSAGE);
       }
 
-      const { User } = await import('../../../domains/identity/entities/User');
-      const user = new User(userRecord as any);
+      const { UserAccount } = await import('../../../domains/identity/entities/UserAccount');
+      const user = new UserAccount(userRecord as any);
 
       // 1. Conta bloqueada ou suspensa — mesma mensagem genérica (item 3.1).
       if (!user.canAuthenticate()) {
@@ -106,7 +106,7 @@ export class AuthenticateAccountUseCase {
       if (!isPasswordValid) {
         // Rate-Limit Persistente no D1
         user.registerFailedLogin();
-        await userRepo.incrementFailedLoginAttempts(user.id, User.MAX_FAILED_ATTEMPTS);
+        await userRepo.incrementFailedLoginAttempts(user.id, UserAccount.MAX_FAILED_ATTEMPTS);
 
         if (this.auditPort) {
           await this.auditPort.logEvent({

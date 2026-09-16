@@ -58,8 +58,8 @@ export class SessionValidationService {
       throw new Error('User account not found.');
     }
 
-    const { User } = await import('../../domains/identity/entities/User');
-    const user = new User(userRecord as any);
+    const { UserAccount } = await import('../../domains/identity/entities/UserAccount');
+    const user = new UserAccount(userRecord as any);
 
     if (!user.canAuthenticate()) {
       throw new Error(`User account is not eligible for authentication.`);

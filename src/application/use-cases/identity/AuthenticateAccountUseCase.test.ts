@@ -3,7 +3,7 @@ import { AuthenticateAccountUseCase } from './AuthenticateAccountUseCase';
 import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
 import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
 import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
-import { User, UserProps } from '../../../domains/identity/entities/User';
+import { UserAccount, UserAccountProps } from '../../../domains/identity/entities/UserAccount';
 
 describe('AuthenticateAccountUseCase', () => {
   let uow: any;
@@ -14,7 +14,7 @@ describe('AuthenticateAccountUseCase', () => {
   let auditPort: any;
   let useCase: AuthenticateAccountUseCase;
 
-  const validUserProps: UserProps = {
+  const validUserProps: UserAccountProps = {
     id: 1,
     email: 'user@example.com',
     emailNormalized: 'user@example.com',
@@ -108,7 +108,7 @@ describe('AuthenticateAccountUseCase', () => {
     expect(result.error).toBe(GENERIC_MESSAGE);
     
     // Verifica D1 update
-    expect(userRepo.incrementFailedLoginAttempts).toHaveBeenCalledWith(1, User.MAX_FAILED_ATTEMPTS);
+    expect(userRepo.incrementFailedLoginAttempts).toHaveBeenCalledWith(1, UserAccount.MAX_FAILED_ATTEMPTS);
     
     // Verifica log de auditoria
     expect(auditPort.logEvent).toHaveBeenCalledWith(expect.objectContaining({ 
@@ -128,7 +128,7 @@ describe('AuthenticateAccountUseCase', () => {
     expect(result.isFailure).toBe(true);
     
     // O incremento foi chamado?
-    expect(userRepo.incrementFailedLoginAttempts).toHaveBeenCalledWith(1, User.MAX_FAILED_ATTEMPTS);
+    expect(userRepo.incrementFailedLoginAttempts).toHaveBeenCalledWith(1, UserAccount.MAX_FAILED_ATTEMPTS);
     
     // A conta foi bloqueada na entidade em memória, gerando evento de lockout?
     expect(auditPort.logEvent).toHaveBeenCalledWith(expect.objectContaining({ 
