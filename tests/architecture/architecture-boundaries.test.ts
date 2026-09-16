@@ -124,12 +124,26 @@ describe('Executable Architectural Boundaries & Governance Suite — Padrão Our
 
   describe('1. Domain Purity Invariants (src/domains/)', () => {
     const domainFiles = allSrcFiles.filter((f) => f.includes(path.join('src', 'domains')));
+    const PROJECT_ROOT = path.resolve(SRC_DIR, '..');
+
+    // Allowlist explícita e temporária de shims transitórios e serviços legados
+    // Deve ser desativada na Etapa C de limpeza pós-release
+    const TRANSITIONAL_SHIM_ALLOWLIST = new Set([
+      path.normalize('src/domains/civil-identity/use-cases/RegisterCitizenUseCase.ts'),
+      path.normalize('src/domains/civil-identity/use-cases/SubmitKycVerificationUseCase.ts'),
+      path.normalize('src/domains/ssi/use-cases/CreateDidUseCase.ts'),
+      path.normalize('src/domains/ssi/use-cases/IssueVerifiableCredentialUseCase.ts'),
+      path.normalize('src/domains/ssi/use-cases/RevokeCredentialUseCase.ts'),
+      path.normalize('src/domains/ssi/use-cases/VerifyVerifiableCredentialUseCase.ts'),
+      path.normalize('src/domains/identity/services/CanonicalIdentityResolver.ts'),
+    ]);
 
     it('should enforce domain purity across all domain files', () => {
       if (domainFiles.length > 0) {
         domainFiles.forEach((filePath) => {
           const content = fs.readFileSync(filePath, 'utf-8');
           const imports = parseImports(content);
+          const relPath = path.relative(PROJECT_ROOT, filePath);
 
           imports.forEach((imp) => {
             expect(imp, `Forbidden Hono import in domain file ${filePath}`).not.toMatch(/^hono(\/.*)?$/);
@@ -137,6 +151,12 @@ describe('Executable Architectural Boundaries & Governance Suite — Padrão Our
             expect(imp, `Forbidden Workers types in domain file ${filePath}`).not.toMatch(/^@cloudflare\/workers-types$/);
             expect(imp, `Forbidden Infrastructure import in domain file ${filePath}`).not.toMatch(/infrastructure/);
             expect(imp, `Forbidden Interfaces import in domain file ${filePath}`).not.toMatch(/interfaces/);
+
+            // Regra Canônica Clean Architecture: Domínio jamais importa de Aplicação
+            // (Permitido estritamente para shims da allowlist)
+            if (!TRANSITIONAL_SHIM_ALLOWLIST.has(relPath)) {
+              expect(imp, `Forbidden Application import in domain file ${filePath}`).not.toMatch(/application/);
+            }
           });
         });
       }

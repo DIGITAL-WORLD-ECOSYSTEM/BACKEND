@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { Bindings, Variables } from '../../../../types/bindings';
 import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
 import { DrizzleCivilIdentityRepositoryAdapter } from '../../../../infrastructure/repositories/DrizzleCivilIdentityRepositoryAdapter';
-import { RegisterCitizenUseCase } from '../../../../domains/civil-identity/use-cases/RegisterCitizenUseCase';
-import { SubmitKycVerificationUseCase } from '../../../../domains/civil-identity/use-cases/SubmitKycVerificationUseCase';
+import { RegisterCitizenUseCase } from '../../../../application/use-cases/civil-identity/RegisterCitizenUseCase';
+import { SubmitKycVerificationUseCase } from '../../../../application/use-cases/civil-identity/SubmitKycVerificationUseCase';
 import { CivilIdentityController } from '../../controllers/civil-identity/CivilIdentityController';
 import { sessionGuard } from '../../middlewares/session_guard';
 

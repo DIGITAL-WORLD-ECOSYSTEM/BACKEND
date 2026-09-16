@@ -1,14 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Result } from '../shared/kernel/Result';
-import { RegisterCitizenUseCase } from './civil-identity/use-cases/RegisterCitizenUseCase';
-import { SubmitKycVerificationUseCase } from './civil-identity/use-cases/SubmitKycVerificationUseCase';
-import { CreateDidUseCase } from './ssi/use-cases/CreateDidUseCase';
-import { IssueVerifiableCredentialUseCase } from './ssi/use-cases/IssueVerifiableCredentialUseCase';
-import { RevokeCredentialUseCase } from './ssi/use-cases/RevokeCredentialUseCase';
+import { RegisterCitizenUseCase } from '../application/use-cases/civil-identity/RegisterCitizenUseCase';
+import { SubmitKycVerificationUseCase } from '../application/use-cases/civil-identity/SubmitKycVerificationUseCase';
+import { CreateDidUseCase } from '../application/use-cases/ssi/CreateDidUseCase';
+import { IssueVerifiableCredentialUseCase } from '../application/use-cases/ssi/IssueVerifiableCredentialUseCase';
+import { RevokeCredentialUseCase } from '../application/use-cases/ssi/RevokeCredentialUseCase';
 import { GetTreasuryBalanceUseCase } from '../application/finance/use-cases/GetTreasuryBalanceUseCase';
 import { RecordTreasuryTransactionUseCase } from '../application/finance/use-cases/RecordTreasuryTransactionUseCase';
 
-describe('Phase 3 Ecosystem Modules Suite', () => {
+describe('Ecosystem Modules Suite (Civil Identity, SSI & Treasury)', () => {
   describe('Civil Identity Use Cases', () => {
     it('should register a new citizen civil identity', async () => {
       const mockCivilRepo = {

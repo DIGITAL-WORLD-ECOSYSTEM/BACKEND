@@ -1,7 +1,7 @@
 import { Context } from 'hono';
-import { CreateDidUseCase } from '../../../../domains/ssi/use-cases/CreateDidUseCase';
-import { IssueVerifiableCredentialUseCase } from '../../../../domains/ssi/use-cases/IssueVerifiableCredentialUseCase';
-import { RevokeCredentialUseCase } from '../../../../domains/ssi/use-cases/RevokeCredentialUseCase';
+import { CreateDidUseCase } from '../../../../application/use-cases/ssi/CreateDidUseCase';
+import { IssueVerifiableCredentialUseCase } from '../../../../application/use-cases/ssi/IssueVerifiableCredentialUseCase';
+import { RevokeCredentialUseCase } from '../../../../application/use-cases/ssi/RevokeCredentialUseCase';
 import { ISsiRepository } from '../../../../application/ports/output/ISsiRepository';
 
 export class SsiController {

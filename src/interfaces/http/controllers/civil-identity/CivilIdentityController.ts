@@ -1,6 +1,6 @@
 import { Context } from 'hono';
-import { RegisterCitizenUseCase } from '../../../../domains/civil-identity/use-cases/RegisterCitizenUseCase';
-import { SubmitKycVerificationUseCase } from '../../../../domains/civil-identity/use-cases/SubmitKycVerificationUseCase';
+import { RegisterCitizenUseCase } from '../../../../application/use-cases/civil-identity/RegisterCitizenUseCase';
+import { SubmitKycVerificationUseCase } from '../../../../application/use-cases/civil-identity/SubmitKycVerificationUseCase';
 import { ICivilIdentityRepository } from '../../../../application/ports/output/ICivilIdentityRepository';
 
 export class CivilIdentityController {
