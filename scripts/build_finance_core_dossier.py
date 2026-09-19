@@ -76,6 +76,7 @@ migration_files = [
 
 # G. TESTS
 test_files = [
+    "tests/finance/bootstrap_atomicity.test.ts",
     "tests/finance/bootstrap_service.test.ts",
     "tests/finance/concurrency_idempotency_same_key.test.ts",
     "tests/finance/concurrency_stress.test.ts",

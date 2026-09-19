@@ -3,7 +3,7 @@ FINANCE CORE — CÓDIGO-FONTE COMPLETO
 ================================================================================
 
 PROJETO: /home/sandro/Área de trabalho/BackEnd
-DATA DA EXTRAÇÃO: 2026-09-18 23:45:35 -0300
+DATA DA EXTRAÇÃO: 2026-09-19 07:50:45 -0300
 
 ================================================================================
 ÁRVORE REAL DO FINANCE
@@ -115,7 +115,7 @@ CÓDIGO-FONTE INTEGRAL — SUBSISTEMA FINANCE
 ================================================================================
 
 ================================================================================
-ARQUIVO [1/67]: src/domains/finance/contracts/FinancialLedgerEntryRecord.ts
+ARQUIVO [1/68]: src/domains/finance/contracts/FinancialLedgerEntryRecord.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/FinancialLedgerEntryRecord.ts
 ================================================================================
 import type { LedgerEntryDirection } from '../value-objects/BaseUnits';
@@ -139,7 +139,7 @@ export interface FinancialLedgerEntryRecord {
 
 
 ================================================================================
-ARQUIVO [2/67]: src/domains/finance/entities/FinancialTransaction.test.ts
+ARQUIVO [2/68]: src/domains/finance/entities/FinancialTransaction.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/FinancialTransaction.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -1041,7 +1041,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
 
 
 ================================================================================
-ARQUIVO [3/67]: src/domains/finance/entities/LedgerTransaction.ts
+ARQUIVO [3/68]: src/domains/finance/entities/LedgerTransaction.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/LedgerTransaction.ts
 ================================================================================
 import {
@@ -2245,7 +2245,7 @@ export class LedgerTransaction {
 
 
 ================================================================================
-ARQUIVO [4/67]: src/domains/finance/errors/FinancialError.ts
+ARQUIVO [4/68]: src/domains/finance/errors/FinancialError.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/FinancialError.ts
 ================================================================================
 export abstract class FinancialError extends Error {
@@ -2389,7 +2389,7 @@ export class InvalidLedgerTransactionError extends FinancialError {
 
 
 ================================================================================
-ARQUIVO [5/67]: src/domains/finance/errors/LedgerImbalanceError.ts
+ARQUIVO [5/68]: src/domains/finance/errors/LedgerImbalanceError.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/LedgerImbalanceError.ts
 ================================================================================
 import { FinancialError } from './FinancialError';
@@ -2405,7 +2405,7 @@ export class LedgerImbalanceError extends FinancialError {
 
 
 ================================================================================
-ARQUIVO [6/67]: src/domains/finance/policies/AccountClassPolicy.ts
+ARQUIVO [6/68]: src/domains/finance/policies/AccountClassPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountClassPolicy.ts
 ================================================================================
 import { InvalidAccountClassError } from '../errors/FinancialError';
@@ -2628,7 +2628,7 @@ export class AccountClassPolicy {
 
 
 ================================================================================
-ARQUIVO [7/67]: src/domains/finance/policies/AccountingEntryPolicy.ts
+ARQUIVO [7/68]: src/domains/finance/policies/AccountingEntryPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountingEntryPolicy.ts
 ================================================================================
 import {
@@ -4071,7 +4071,7 @@ export class AccountingEntryPolicy {
 
 
 ================================================================================
-ARQUIVO [8/67]: src/domains/finance/policies/AccountStatusPolicy.ts
+ARQUIVO [8/68]: src/domains/finance/policies/AccountStatusPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountStatusPolicy.ts
 ================================================================================
 import { AccountInactiveError } from '../errors/FinancialError';
@@ -4190,7 +4190,7 @@ export class AccountStatusPolicy {
 
 
 ================================================================================
-ARQUIVO [9/67]: src/domains/finance/policies/AssetStatusPolicy.ts
+ARQUIVO [9/68]: src/domains/finance/policies/AssetStatusPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AssetStatusPolicy.ts
 ================================================================================
 import { AssetInactiveError } from '../errors/FinancialError';
@@ -4401,7 +4401,7 @@ export class AssetStatusPolicy {
 
 
 ================================================================================
-ARQUIVO [10/67]: src/domains/finance/services/FinancialTransactionStateMachine.ts
+ARQUIVO [10/68]: src/domains/finance/services/FinancialTransactionStateMachine.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/FinancialTransactionStateMachine.ts
 ================================================================================
 import { Result } from '../../../shared/kernel/Result';
@@ -4563,7 +4563,7 @@ export class FinancialTransactionStateMachine {
 
 
 ================================================================================
-ARQUIVO [11/67]: src/domains/finance/value-objects/BaseUnits.ts
+ARQUIVO [11/68]: src/domains/finance/value-objects/BaseUnits.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/BaseUnits.ts
 ================================================================================
 import {
@@ -4617,7 +4617,7 @@ export function parsePositiveCanonicalBaseUnits(value: unknown): string {
 
 
 ================================================================================
-ARQUIVO [12/67]: src/domains/finance/value-objects/Money256.ts
+ARQUIVO [12/68]: src/domains/finance/value-objects/Money256.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/Money256.ts
 ================================================================================
 import {
@@ -4753,7 +4753,7 @@ export class Money256 {
 
 
 ================================================================================
-ARQUIVO [13/67]: src/application/finance/services/CanonicalRequestHashService.ts
+ARQUIVO [13/68]: src/application/finance/services/CanonicalRequestHashService.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/services/CanonicalRequestHashService.ts
 ================================================================================
 import { createHash } from 'crypto';
@@ -4963,7 +4963,7 @@ export class CanonicalRequestHashService {
 
 
 ================================================================================
-ARQUIVO [14/67]: src/application/finance/services/FinancialTransactionOrchestrator.ts
+ARQUIVO [14/68]: src/application/finance/services/FinancialTransactionOrchestrator.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/services/FinancialTransactionOrchestrator.ts
 ================================================================================
 import { IFinanceRepository } from '../../ports/output/IFinanceRepository';
@@ -5289,8 +5289,8 @@ export class FinancialTransactionOrchestrator {
     // 10. Atualização do status da transação para 'completed'
     await this.financeRepo.updateTransactionStatus(transactionId, completedStatus);
 
-    // 11. Persistência de Evento no Outbox
-    await this.outboxRepo.saveEvent(
+    // 11. Persistência de Evento no Outbox (atomicidade estrita: falha no outbox aborta e faz rollback)
+    const outboxResult = await this.outboxRepo.saveEvent(
       {
         dateTimeOccurred: new Date(),
         getAggregateId: () => String(transactionId),
@@ -5302,6 +5302,9 @@ export class FinancialTransactionOrchestrator {
       'LedgerTransaction',
       1
     );
+    if (outboxResult.isFailure) {
+      throw new Error(`Falha ao persistir evento no outbox: ${String(outboxResult.error)}`);
+    }
 
     // 12. Conclusão do registro de Idempotência
     await this.financeRepo.completeIdempotency(transaction.idempotencyKey, 'finance', transactionId);
@@ -5312,7 +5315,7 @@ export class FinancialTransactionOrchestrator {
 
 
 ================================================================================
-ARQUIVO [15/67]: src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts
+ARQUIVO [15/68]: src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5332,7 +5335,7 @@ export class GetTreasuryBalanceUseCase {
 
 
 ================================================================================
-ARQUIVO [16/67]: src/application/finance/use-cases/RecordDepositUseCase.ts
+ARQUIVO [16/68]: src/application/finance/use-cases/RecordDepositUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordDepositUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5421,7 +5424,7 @@ export class RecordDepositUseCase {
 
 
 ================================================================================
-ARQUIVO [17/67]: src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts
+ARQUIVO [17/68]: src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5464,7 +5467,7 @@ export class RecordLedgerTransactionUseCase {
 
 
 ================================================================================
-ARQUIVO [18/67]: src/application/finance/use-cases/RecordTransferUseCase.ts
+ARQUIVO [18/68]: src/application/finance/use-cases/RecordTransferUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTransferUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5568,7 +5571,7 @@ export class RecordTransferUseCase {
 
 
 ================================================================================
-ARQUIVO [19/67]: src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts
+ARQUIVO [19/68]: src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -6033,7 +6036,7 @@ export class RecordTreasuryTransactionUseCase {
 
 
 ================================================================================
-ARQUIVO [20/67]: src/application/finance/use-cases/RepairFinanceUseCase.ts
+ARQUIVO [20/68]: src/application/finance/use-cases/RepairFinanceUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RepairFinanceUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -6082,7 +6085,7 @@ export class RepairFinanceUseCase {
 
 
 ================================================================================
-ARQUIVO [21/67]: src/application/finance/use-cases/ReverseTransactionUseCase.ts
+ARQUIVO [21/68]: src/application/finance/use-cases/ReverseTransactionUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/ReverseTransactionUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -6198,7 +6201,7 @@ export class ReverseTransactionUseCase {
 
 
 ================================================================================
-ARQUIVO [22/67]: src/application/ports/output/IFinanceRepository.ts
+ARQUIVO [22/68]: src/application/ports/output/IFinanceRepository.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IFinanceRepository.ts
 ================================================================================
 import { Result } from '../../../shared/kernel/Result';
@@ -6258,6 +6261,24 @@ export type FinancialAccountStatus = 'active' | 'inactive' | 'suspended';
 export type FinancialAssetStatus = 'active' | 'inactive' | 'suspended';
 
 export type BalanceUpdateResult = 'UPDATED' | 'INSUFFICIENT_BALANCE' | 'OCC_CONFLICT';
+
+export interface TreasuryBootstrapOptions {
+  currencyCode?: string;
+  initialBalanceBaseUnits?: bigint;
+}
+
+export interface TreasuryBootstrapResult {
+  assetId: number;
+  treasuryAccountId: number;
+  operatingAccountId: number;
+  feeAccountId: number;
+  rewardExpenseAccountId: number;
+  yieldExpenseAccountId: number;
+  clearingAccountId: number;
+  openingEquityAccountId: number;
+  paymentRevenueAccountId: number;
+  refundExpenseAccountId: number;
+}
 
 export type IdempotencyRecord =
   | { status: 'processing'; transactionId: null; requestHash: string }
@@ -6345,6 +6366,14 @@ export interface IFinanceRepository {
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
   // NOTE: persistOutboxEvent removed — use IOutboxRepository.saveEvent() within the same UoW transaction.
 
+  /**
+   * Provisiona a infraestrutura básica do Finance Core (Ativo padrão, contas sistêmicas e saldos zerados)
+   * dentro do contexto transacional do repositório.
+   */
+  provisionTreasuryInfrastructure(
+    options?: TreasuryBootstrapOptions
+  ): Promise<Result<TreasuryBootstrapResult, RepositoryError>>;
+
   // Ingestion-first External Bank Transactions
   insertFiatExternalTransaction(data: {
     providerId: number;
@@ -6382,7 +6411,7 @@ export interface IFinanceRepository {
 
 
 ================================================================================
-ARQUIVO [23/67]: src/application/ports/output/IUnitOfWork.ts
+ARQUIVO [23/68]: src/application/ports/output/IUnitOfWork.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IUnitOfWork.ts
 ================================================================================
 import { Result } from '../../../shared/kernel/Result';
@@ -6417,7 +6446,7 @@ export interface IUnitOfWork {
 
 
 ================================================================================
-ARQUIVO [24/67]: src/infrastructure/repositories/DrizzleFinanceRepository.ts
+ARQUIVO [24/68]: src/infrastructure/repositories/DrizzleFinanceRepository.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.ts
 ================================================================================
 import { eq, and, or, lt, inArray, sql } from 'drizzle-orm';
@@ -6445,6 +6474,8 @@ import {
   FinancialAssetStatus,
   BalanceUpdateResult,
   IdempotencyRecord,
+  TreasuryBootstrapOptions,
+  TreasuryBootstrapResult,
 } from '../../application/ports/output/IFinanceRepository';
 import { FinancialLedgerEntryRecord } from '../../domains/finance/contracts/FinancialLedgerEntryRecord';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
@@ -6456,6 +6487,7 @@ import {
   AssetInactiveError,
 } from '../../domains/finance/errors/FinancialError';
 import { AccountClassPolicy } from '../../domains/finance/policies/AccountClassPolicy';
+import { BaseSQLiteDatabase, SQLiteTransaction } from 'drizzle-orm/sqlite-core';
 
 /**
  * ============================================================================
@@ -6531,14 +6563,9 @@ export class IdempotencyKeyReusedWithDifferentRequestError extends Error {
   }
 }
 
-/**
- * [AUDIT FIX #10 - ROUND 1, unchanged]
- * Placeholder alias for the Drizzle db/transaction executor type. Swap this
- * for the project's real type (e.g. `BatchItem<'sqlite'>` /
- * `SQLiteTransaction<...>` re-exported from the db client module) as soon
- * as it's available here, to recover compile-time column/type checking.
- */
-type FinanceDbExecutor = any;
+export type FinanceDatabase = BaseSQLiteDatabase<'async', any, any>;
+export type FinanceTransaction = SQLiteTransaction<'async', any, any, any>;
+export type FinanceDbExecutor = FinanceDatabase | FinanceTransaction;
 
 const MAX_UINT256_BASE_UNITS_BIGINT = BigInt(MAX_UINT256_BASE_UNITS_TEXT);
 
@@ -6750,8 +6777,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           .insert(financialAccounts)
           .values({
             userId: insertValues.userId,
-            accountType: insertValues.accountType,
-            accountClass: insertValues.accountClass,
+            accountType: insertValues.accountType as any,
+            accountClass: insertValues.accountClass as any,
             name: insertValues.name,
             status: 'active',
             createdAt: new Date(),
@@ -6930,11 +6957,9 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
    */
   private async ensureAccountBalance(
     accountId: number,
-    assetId: number,
-    executorOverride?: FinanceDbExecutor
+    assetId: number
   ): Promise<void> {
-    const exec = executorOverride || this.executor;
-    const [existing] = await exec
+    const [existing] = await this.executor
       .select({ id: accountBalances.id })
       .from(accountBalances)
       .where(
@@ -6947,7 +6972,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
     if (!existing) {
       try {
-        await exec.insert(accountBalances).values({
+        await this.executor.insert(accountBalances).values({
           accountId,
           assetId,
           availableBaseUnits: '0',
@@ -7403,11 +7428,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     accountId: number | string,
     assetId: number | string,
     amount: bigint,
-    type: 'debit' | 'credit',
-    executorOverride?: FinanceDbExecutor
+    type: 'debit' | 'credit'
   ): Promise<BalanceUpdateResult> {
-    const exec = executorOverride || this.executor;
-
     if (typeof amount !== 'bigint' || amount <= 0n) {
       throw new Error(`Invalid base units amount for OCC update: ${amount}`);
     }
@@ -7429,7 +7451,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
 
     // 1. Validar status ativo do ativo financeiro (antes de qualquer escrita)
-    const [assetRow] = await exec
+    const [assetRow] = await this.executor
       .select({ status: financialAssets.status })
       .from(financialAssets)
       .where(eq(financialAssets.id, assetIdNum))
@@ -7444,7 +7466,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
     // 2. Determinar a classe e status da conta com switch exaustivo
     //    (também antes de qualquer escrita)
-    const [accRow] = await exec
+    const [accRow] = await this.executor
       .select({
         accountClass: financialAccounts.accountClass,
         status: financialAccounts.status,
@@ -7478,10 +7500,10 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
 
     // 3. Só agora garantir que a linha de saldo exista (auto-provisionamento)
-    await this.ensureAccountBalance(accIdNum, assetIdNum, exec);
+    await this.ensureAccountBalance(accIdNum, assetIdNum);
 
     // 4. Selecionar o saldo com OCC version
-    const [balance] = await exec
+    const [balance] = await this.executor
       .select({
         id: accountBalances.id,
         availableBaseUnits: accountBalances.availableBaseUnits,
@@ -7519,7 +7541,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
     const newAvailableStr = newAvailable.toString();
 
-    const res = await exec
+    const res = await this.executor
       .update(accountBalances)
       .set({
         availableBaseUnits: newAvailableStr,
@@ -7655,11 +7677,189 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       return Result.err(RepositoryError.transient(e.message, e));
     }
   }
+
+  /**
+   * Provisiona a infraestrutura básica do Finance Core (Ativo padrão, contas sistêmicas e saldos zerados)
+   * dentro do contexto transacional do repositório (this.executor).
+   */
+  async provisionTreasuryInfrastructure(
+    options: TreasuryBootstrapOptions = {}
+  ): Promise<Result<TreasuryBootstrapResult, RepositoryError>> {
+    const currency = options.currencyCode || 'BRL';
+
+    try {
+      // 1. Assegurar Ativo Financeiro
+      let [asset] = await this.executor
+        .select()
+        .from(financialAssets)
+        .where(eq(financialAssets.code, currency))
+        .limit(1);
+
+      if (!asset) {
+        try {
+          await this.executor.insert(financialAssets).values({
+            code: currency,
+            symbol: currency === 'BRL' ? 'R$' : '$',
+            name: `${currency} Base Currency`,
+            decimals: 2,
+            type: 'fiat',
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        } catch (insertErr: any) {
+          if (!isUniqueConstraintViolation(insertErr)) {
+            return Result.err(RepositoryError.transient(`Falha ao inserir ativo ${currency}: ${insertErr.message}`, insertErr));
+          }
+        }
+        [asset] = await this.executor
+          .select()
+          .from(financialAssets)
+          .where(eq(financialAssets.code, currency))
+          .limit(1);
+      }
+
+      if (!asset) {
+        return Result.err(RepositoryError.notFound(`Ativo ${currency} não pôde ser criado ou recuperado.`));
+      }
+
+      const assetId = asset.id;
+
+      // Helper para buscar ou criar conta sistêmica com userId = null
+      const ensureSystemAccount = async (
+        accountType:
+          | 'treasury'
+          | 'operating'
+          | 'fees'
+          | 'reward_expense'
+          | 'yield_expense'
+          | 'clearing'
+          | 'opening_balance_equity'
+          | 'payment_revenue'
+          | 'refund_expense',
+        accountClass: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
+        name: string
+      ) => {
+        let [acc] = await this.executor
+          .select()
+          .from(financialAccounts)
+          .where(
+            and(
+              eq(financialAccounts.accountType, accountType),
+              eq(financialAccounts.status, 'active')
+            )
+          )
+          .limit(1);
+
+        if (!acc) {
+          try {
+            await this.executor.insert(financialAccounts).values({
+              userId: null,
+              accountType,
+              accountClass,
+              status: 'active',
+              name,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          } catch (insertErr: any) {
+            if (!isUniqueConstraintViolation(insertErr)) {
+              throw insertErr;
+            }
+          }
+          [acc] = await this.executor
+            .select()
+            .from(financialAccounts)
+            .where(
+              and(
+                eq(financialAccounts.accountType, accountType),
+                eq(financialAccounts.status, 'active')
+              )
+            )
+            .limit(1);
+        }
+
+        if (!acc) {
+          throw new Error(`Conta sistêmica '${accountType}' não pôde ser criada ou recuperada.`);
+        }
+        return acc;
+      };
+
+      // Provisionar todas as contas sistêmicas necessárias
+      const treasuryAcc = await ensureSystemAccount('treasury', 'asset', 'Treasury Primary Vault');
+      const operatingAcc = await ensureSystemAccount('operating', 'asset', 'System Operating Vault');
+      const feeAcc = await ensureSystemAccount('fees', 'revenue', 'System Fee Collector');
+      const rewardExpenseAcc = await ensureSystemAccount('reward_expense', 'expense', 'System Reward Expense');
+      const yieldExpenseAcc = await ensureSystemAccount('yield_expense', 'expense', 'System Yield Expense');
+      const clearingAcc = await ensureSystemAccount('clearing', 'asset', 'System FX Clearing Account');
+      const openingEquityAcc = await ensureSystemAccount('opening_balance_equity', 'equity', 'System Opening Balance Equity');
+      const paymentRevenueAcc = await ensureSystemAccount('payment_revenue', 'revenue', 'System Payment Revenue Account');
+      const refundExpenseAcc = await ensureSystemAccount('refund_expense', 'expense', 'System Refund Expense Account');
+
+      const systemAccounts = [
+        treasuryAcc.id,
+        operatingAcc.id,
+        feeAcc.id,
+        rewardExpenseAcc.id,
+        yieldExpenseAcc.id,
+        clearingAcc.id,
+        openingEquityAcc.id,
+        paymentRevenueAcc.id,
+        refundExpenseAcc.id,
+      ];
+
+      // Assegurar saldo zerado inicial para cada conta sistêmica
+      for (const accId of systemAccounts) {
+        const [existingBal] = await this.executor
+          .select({ id: accountBalances.id })
+          .from(accountBalances)
+          .where(
+            and(
+              eq(accountBalances.accountId, accId),
+              eq(accountBalances.assetId, assetId)
+            )
+          )
+          .limit(1);
+
+        if (!existingBal) {
+          try {
+            await this.executor.insert(accountBalances).values({
+              accountId: accId,
+              assetId,
+              availableBaseUnits: '0',
+              lockedBaseUnits: '0',
+              version: 1,
+              updatedAt: new Date(),
+            });
+          } catch (balErr: any) {
+            if (!isUniqueConstraintViolation(balErr)) {
+              throw balErr;
+            }
+          }
+        }
+      }
+
+      return Result.ok({
+        assetId,
+        treasuryAccountId: treasuryAcc.id,
+        operatingAccountId: operatingAcc.id,
+        feeAccountId: feeAcc.id,
+        rewardExpenseAccountId: rewardExpenseAcc.id,
+        yieldExpenseAccountId: yieldExpenseAcc.id,
+        clearingAccountId: clearingAcc.id,
+        openingEquityAccountId: openingEquityAcc.id,
+        paymentRevenueAccountId: paymentRevenueAcc.id,
+        refundExpenseAccountId: refundExpenseAcc.id,
+      });
+    } catch (err: any) {
+      return Result.err(RepositoryError.transient(err?.message || 'Falha ao provisionar infraestrutura contábil', err));
+    }
+  }
 }
 
 
 ================================================================================
-ARQUIVO [25/67]: src/infrastructure/repositories/DrizzleFinanceRepository.test.ts
+ARQUIVO [25/68]: src/infrastructure/repositories/DrizzleFinanceRepository.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.test.ts
 ================================================================================
 import { describe, it, expect, vi } from 'vitest';
@@ -7730,7 +7930,7 @@ describe('DrizzleFinanceRepository', () => {
 
 
 ================================================================================
-ARQUIVO [26/67]: src/infrastructure/repositories/DrizzleUnitOfWork.ts
+ARQUIVO [26/68]: src/infrastructure/repositories/DrizzleUnitOfWork.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleUnitOfWork.ts
 ================================================================================
 import { IUnitOfWork, IRepositoryFactory } from '../../application/ports/output/IUnitOfWork';
@@ -7752,48 +7952,48 @@ import { DrizzleSsiRepository } from './DrizzleSsiRepository';
 import { DrizzleOutboxRepository } from './DrizzleOutboxRepository';
 import { DrizzlePasswordResetRepository } from './DrizzlePasswordResetRepository';
 import { IFinanceRepository } from '../../application/ports/output/IFinanceRepository';
-import { DrizzleFinanceRepository } from './DrizzleFinanceRepository';
+import { DrizzleFinanceRepository, FinanceDatabase, FinanceTransaction } from './DrizzleFinanceRepository';
 import { Result } from '../../shared/kernel/Result';
 import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
 import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
 
 class DrizzleRepositoryFactory implements IRepositoryFactory {
-  constructor(private tx: any, private db?: any) {}
+  constructor(private readonly tx: FinanceTransaction, private readonly db?: FinanceDatabase) {}
 
   getUserRepository(): IUserRepository {
-    return new DrizzleUserRepositoryAdapter(this.tx || this.db);
+    return new DrizzleUserRepositoryAdapter((this.tx || this.db) as any);
   }
 
   getAuthTransactionRepository(): IAuthTransactionRepository {
-    return new DrizzleAuthTransactionRepository(this.tx || this.db);
+    return new DrizzleAuthTransactionRepository((this.tx || this.db) as any);
   }
 
   getAuthenticationRepository(): IAuthenticationRepository {
-    return new DrizzleAuthenticationRepositoryAdapter(this.tx);
+    return new DrizzleAuthenticationRepositoryAdapter(this.tx as any);
   }
 
   getWeb3Repository(): IWeb3Repository {
-    return new DrizzleWeb3RepositoryAdapter(this.tx);
+    return new DrizzleWeb3RepositoryAdapter(this.tx as any);
   }
 
   getSessionRepository(): ISessionRepository {
-    return new DrizzleSessionRepository(this.tx);
+    return new DrizzleSessionRepository(this.tx as any);
   }
 
   getCivilIdentityRepository(): ICivilIdentityRepository {
-    return new DrizzleCivilIdentityRepositoryAdapter(this.tx);
+    return new DrizzleCivilIdentityRepositoryAdapter(this.tx as any);
   }
 
   getSsiRepository(): ISsiRepository {
-    return new DrizzleSsiRepository(this.tx);
+    return new DrizzleSsiRepository(this.tx as any);
   }
 
   getOutboxRepository(): IOutboxRepository {
-    return new DrizzleOutboxRepository(this.tx);
+    return new DrizzleOutboxRepository(this.tx as any);
   }
 
   getPasswordResetRepository(): IPasswordResetRepository {
-    return new DrizzlePasswordResetRepository(this.tx);
+    return new DrizzlePasswordResetRepository(this.tx as any);
   }
 
   getFinanceRepository(): IFinanceRepository {
@@ -7803,20 +8003,20 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
 
 
 export class DrizzleUnitOfWork implements IUnitOfWork {
-  constructor(private db: any) {}
+  constructor(private readonly db: FinanceDatabase) {}
 
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
     if (typeof this.db?.transaction === 'function') {
       let result: Result<T> | null = null;
       try {
-        await this.db.transaction(
-          async (tx: any) => {
+        await (this.db as any).transaction(
+          async (tx: FinanceTransaction) => {
             const factory = new DrizzleRepositoryFactory(tx);
             result = await work(factory);
 
             if (result && result.isFailure) {
-              if (typeof tx.rollback === 'function') {
-                tx.rollback();
+              if (typeof (tx as any).rollback === 'function') {
+                (tx as any).rollback();
               } else {
                 throw new Error('ROLLBACK_TRIGGERED_BY_RESULT_FAIL');
               }
@@ -7850,7 +8050,7 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
 
 
 ================================================================================
-ARQUIVO [27/67]: src/infrastructure/repositories/DrizzleUnitOfWork.test.ts
+ARQUIVO [27/68]: src/infrastructure/repositories/DrizzleUnitOfWork.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleUnitOfWork.test.ts
 ================================================================================
 import { describe, it, expect, vi } from 'vitest';
@@ -7872,7 +8072,7 @@ describe('DrizzleUnitOfWork', () => {
       }
     };
 
-    const uow = new DrizzleUnitOfWork(mockDb);
+    const uow = new DrizzleUnitOfWork(mockDb as any);
 
     const result = await uow.execute(async (factory) => {
       return Result.ok();
@@ -7903,7 +8103,7 @@ describe('DrizzleUnitOfWork', () => {
       }
     };
 
-    const uow = new DrizzleUnitOfWork(mockDb);
+    const uow = new DrizzleUnitOfWork(mockDb as any);
 
     const result = await uow.execute(async (factory) => {
       return Result.fail('Regra de negocio falhou');
@@ -7926,7 +8126,7 @@ describe('DrizzleUnitOfWork', () => {
       }
     };
 
-    const uow = new DrizzleUnitOfWork(mockDb);
+    const uow = new DrizzleUnitOfWork(mockDb as any);
 
     await uow.execute(async (factory) => {
       const userRepo = factory.getUserRepository() as any;
@@ -7945,7 +8145,7 @@ describe('DrizzleUnitOfWork', () => {
       transaction: async (cb: any) => await cb({ isTx: true })
     };
 
-    const uow = new DrizzleUnitOfWork(mockDb);
+    const uow = new DrizzleUnitOfWork(mockDb as any);
 
     await uow.execute(async (factory) => {
       const repo = factory.getUserRepository();
@@ -7966,8 +8166,8 @@ describe('DrizzleUnitOfWork', () => {
       }
     };
 
-    const uow1 = new DrizzleUnitOfWork(mockDb);
-    const uow2 = new DrizzleUnitOfWork(mockDb);
+    const uow1 = new DrizzleUnitOfWork(mockDb as any);
+    const uow2 = new DrizzleUnitOfWork(mockDb as any);
 
     await Promise.all([
       uow1.execute(async () => Result.ok()),
@@ -7980,7 +8180,7 @@ describe('DrizzleUnitOfWork', () => {
 
 
 ================================================================================
-ARQUIVO [28/67]: src/infrastructure/repositories/DrizzleOutboxRepository.ts
+ARQUIVO [28/68]: src/infrastructure/repositories/DrizzleOutboxRepository.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleOutboxRepository.ts
 ================================================================================
 import { IDomainEvent } from '../../shared/kernel/DomainEvent';
@@ -8132,292 +8332,81 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
 
 
 ================================================================================
-ARQUIVO [29/67]: src/infrastructure/services/FinanceBootstrapService.ts
+ARQUIVO [29/68]: src/infrastructure/services/FinanceBootstrapService.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinanceBootstrapService.ts
 ================================================================================
-import { financialAccounts, financialAssets, accountBalances, financialTransactions } from '../../db/finance/tables';
-import { idempotencyKeys } from '../../db/infrastructure/tables';
-import { eq, and, sql } from 'drizzle-orm';
+import { IUnitOfWork } from '../../application/ports/output/IUnitOfWork';
 import { Result } from '../../shared/kernel/Result';
-import { DrizzleFinanceRepository } from '../repositories/DrizzleFinanceRepository';
-import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
+import { LedgerTransaction, LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
 import { Money256 } from '../../domains/finance/value-objects/Money256';
+import { FinancialTransactionOrchestrator } from '../../application/finance/services/FinancialTransactionOrchestrator';
+import {
+  TreasuryBootstrapOptions,
+  TreasuryBootstrapResult,
+} from '../../application/ports/output/IFinanceRepository';
 
-export interface TreasuryBootstrapOptions {
-  currencyCode?: string;
-  initialBalanceBaseUnits?: bigint;
-}
-
-export interface TreasuryBootstrapResult {
-  assetId: number;
-  treasuryAccountId: number;
-  operatingAccountId: number;
-  feeAccountId: number;
-  rewardExpenseAccountId: number;
-  yieldExpenseAccountId: number;
-  clearingAccountId: number;
-  openingEquityAccountId: number;
-  paymentRevenueAccountId: number;
-  refundExpenseAccountId: number;
-}
+export type { TreasuryBootstrapOptions, TreasuryBootstrapResult };
 
 export class FinanceBootstrapService {
   /**
    * Provisiona a infraestrutura básica de contas sistêmicas do Finance Core:
    * 1. Ativo Padrão (ex: BRL, USD, USDT)
    * 2. Contas Sistêmicas com userId = NULL (cumprindo ownerRuleCheck e FIN-019).
+   * 3. Lançamento contábil de abertura atômico via FinancialTransactionOrchestrator.
+   *
+   * Todo o processo executa sob um único Unit of Work (uma única transação de escrita).
    */
   static async seedSystemAccounts(
-    db: any,
+    uow: IUnitOfWork,
     options: TreasuryBootstrapOptions = {}
   ): Promise<Result<TreasuryBootstrapResult>> {
-    const runSeeding = async (tx: any): Promise<TreasuryBootstrapResult> => {
-      const currency = options.currencyCode || 'BRL';
+    return uow.execute(async (factory) => {
+      const financeRepo = factory.getFinanceRepository();
+      const outboxRepo = factory.getOutboxRepository();
 
-      // 1. Assegurar Ativo Financeiro
-      let [asset] = await tx
-        .select()
-        .from(financialAssets)
-        .where(eq(financialAssets.code, currency))
-        .limit(1);
+      // 1. Provisiona infraestrutura (ativo, contas sistêmicas e saldos zerados)
+      const infraRes = await financeRepo.provisionTreasuryInfrastructure(options);
+      if (infraRes.isFailure) {
+        return Result.fail<TreasuryBootstrapResult>(
+          infraRes.errorObject || infraRes.error || 'Falha ao provisionar infraestrutura contábil sistêmica.'
+        );
+      }
+      const infra = infraRes.getValue();
 
-      if (!asset) {
-        try {
-          await tx.insert(financialAssets).values({
-            code: currency,
-            symbol: currency === 'BRL' ? 'R$' : '$',
-            name: `${currency} Base Currency`,
-            decimals: 2,
-            type: 'fiat',
-            status: 'active',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        } catch (insertErr: any) {
-          // Ignora conflito de UNIQUE se já inserido concorrentemente
-        }
-        [asset] = await tx
-          .select()
-          .from(financialAssets)
-          .where(eq(financialAssets.code, currency))
-          .limit(1);
+      // 2. Se houver saldo inicial especificado (> 0n), executa lançamento contábil via Orchestrator
+      const initialBalance = options.initialBalanceBaseUnits ?? 0n;
+      if (initialBalance > 0n) {
+        const openingTransaction = LedgerTransaction.create({
+          idempotencyKey: `finance:bootstrap:opening-balance:${infra.treasuryAccountId}:${infra.assetId}`,
+          description: 'Genesis Opening Balance Equity Allocation',
+          transactionType: 'adjustment',
+          category: 'operational',
+          entries: [
+            new LedgerEntry({
+              accountId: String(infra.treasuryAccountId),
+              amount: Money256.fromBigInt(initialBalance, infra.assetId),
+              type: 'debit',
+            }),
+            new LedgerEntry({
+              accountId: String(infra.openingEquityAccountId),
+              amount: Money256.fromBigInt(initialBalance, infra.assetId),
+              type: 'credit',
+            }),
+          ],
+        });
+
+        const orchestrator = new FinancialTransactionOrchestrator(financeRepo, outboxRepo);
+        await orchestrator.executePosting(openingTransaction);
       }
 
-      const assetId = asset.id;
-
-      // Helper para buscar ou criar conta sistêmica com userId = null
-      const ensureSystemAccount = async (
-        accountType:
-          | 'treasury'
-          | 'operating'
-          | 'fees'
-          | 'reward_expense'
-          | 'yield_expense'
-          | 'clearing'
-          | 'opening_balance_equity'
-          | 'payment_revenue'
-          | 'refund_expense',
-        accountClass: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
-        name: string
-      ) => {
-        let [acc] = await tx
-          .select()
-          .from(financialAccounts)
-          .where(
-            and(
-              eq(financialAccounts.accountType, accountType),
-              eq(financialAccounts.status, 'active')
-            )
-          )
-          .limit(1);
-
-        if (!acc) {
-          try {
-            await tx.insert(financialAccounts).values({
-              userId: null, // P0 FIX: Deve ser estritamente null para não-user_available
-              accountType,
-              accountClass,
-              status: 'active',
-              name,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            });
-          } catch (insertErr: any) {
-            // Re-read em caso de violação do índice UNIQUE singleton
-          }
-          [acc] = await tx
-            .select()
-            .from(financialAccounts)
-            .where(
-              and(
-                eq(financialAccounts.accountType, accountType),
-                eq(financialAccounts.status, 'active')
-              )
-            )
-            .limit(1);
-        }
-        return acc;
-      };
-
-      // Provisionar todas as contas sistêmicas necessárias
-      const treasuryAcc = await ensureSystemAccount('treasury', 'asset', 'Treasury Primary Vault');
-      const operatingAcc = await ensureSystemAccount('operating', 'asset', 'System Operating Vault');
-      const feeAcc = await ensureSystemAccount('fees', 'revenue', 'System Fee Collector');
-      const rewardExpenseAcc = await ensureSystemAccount('reward_expense', 'expense', 'System Reward Expense');
-      const yieldExpenseAcc = await ensureSystemAccount('yield_expense', 'expense', 'System Yield Expense');
-      const clearingAcc = await ensureSystemAccount('clearing', 'asset', 'System FX Clearing Account');
-      const openingEquityAcc = await ensureSystemAccount('opening_balance_equity', 'equity', 'System Opening Balance Equity');
-      const paymentRevenueAcc = await ensureSystemAccount('payment_revenue', 'revenue', 'System Payment Revenue Account');
-      const refundExpenseAcc = await ensureSystemAccount('refund_expense', 'expense', 'System Refund Expense Account');
-
-      // Assegurar saldo zerado ou inicial
-      const initialBal = (options.initialBalanceBaseUnits ?? 0n).toString();
-      const systemAccounts = [
-        treasuryAcc.id,
-        operatingAcc.id,
-        feeAcc.id,
-        rewardExpenseAcc.id,
-        yieldExpenseAcc.id,
-        clearingAcc.id,
-        openingEquityAcc.id,
-        paymentRevenueAcc.id,
-        refundExpenseAcc.id,
-      ];
-
-      for (const accId of systemAccounts) {
-        const [existingBal] = await tx
-          .select()
-          .from(accountBalances)
-          .where(
-            and(
-              eq(accountBalances.accountId, accId),
-              eq(accountBalances.assetId, assetId)
-            )
-          )
-          .limit(1);
-
-        if (!existingBal) {
-          try {
-            await tx.insert(accountBalances).values({
-              accountId: accId,
-              assetId,
-              availableBaseUnits: '0',
-              lockedBaseUnits: '0',
-              version: 1,
-              updatedAt: new Date(),
-            });
-          } catch (balErr: any) {
-            // Ignora conflito
-          }
-        }
-      }
-
-      // Se houver saldo inicial especificado (> 0), registra lançamento contábil de abertura de forma estritamente idempotente
-      const initialBalanceBigInt = options.initialBalanceBaseUnits ?? 0n;
-      if (initialBalanceBigInt > 0n) {
-        const idempotencyKey = `finance:bootstrap:opening-balance:${treasuryAcc.id}:${assetId}`;
-        const [existingIdem] = await tx
-          .select()
-          .from(idempotencyKeys)
-          .where(and(eq(idempotencyKeys.key, idempotencyKey), eq(idempotencyKeys.scope, 'finance')))
-          .limit(1);
-
-        if (!existingIdem || existingIdem.status !== 'completed') {
-          // 1. Cria transação contábil de ajuste/abertura
-          const [openingTx] = await tx
-            .insert(financialTransactions)
-            .values({
-              type: 'adjustment',
-              category: 'operational',
-              status: 'completed',
-              description: 'Genesis Opening Balance Equity Allocation',
-              version: 1,
-              completedAt: new Date(),
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .returning({ id: financialTransactions.id });
-
-          // 2. Partidas Dobradas via repositório canônico (Single Posting Authority)
-          const repo = new DrizzleFinanceRepository(tx);
-          const moneyAmount = Money256.fromString(initialBal, assetId);
-          const ledgerEntries = [
-            new LedgerEntry({ accountId: String(treasuryAcc.id), amount: moneyAmount, type: 'debit' }),
-            new LedgerEntry({ accountId: String(openingEquityAcc.id), amount: moneyAmount, type: 'credit' }),
-          ];
-          const insertLedgerRes = await repo.insertLedgerEntries(ledgerEntries, openingTx.id);
-          if (insertLedgerRes.isFailure) {
-            throw new Error(`Falha ao registrar partidas dobradas de abertura: ${String(insertLedgerRes.error)}`);
-          }
-
-          // 3. Atualiza saldos das duas contas no account_balances com rastreabilidade de version
-          await tx
-            .update(accountBalances)
-            .set({
-              availableBaseUnits: initialBal,
-              version: sql`${accountBalances.version} + 1`,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(accountBalances.accountId, treasuryAcc.id),
-                eq(accountBalances.assetId, assetId)
-              )
-            );
-
-          await tx
-            .update(accountBalances)
-            .set({
-              availableBaseUnits: initialBal,
-              version: sql`${accountBalances.version} + 1`,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(accountBalances.accountId, openingEquityAcc.id),
-                eq(accountBalances.assetId, assetId)
-              )
-            );
-
-          // 4. Registra idempotência como completed para impedir duplicações futuras
-          await tx.insert(idempotencyKeys).values({
-            scope: 'finance',
-            key: idempotencyKey,
-            requestHash: initialBal,
-            financialTransactionId: openingTx.id,
-            status: 'completed',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        }
-      }
-
-      return {
-        assetId,
-        treasuryAccountId: treasuryAcc.id,
-        operatingAccountId: operatingAcc.id,
-        feeAccountId: feeAcc.id,
-        rewardExpenseAccountId: rewardExpenseAcc.id,
-        yieldExpenseAccountId: yieldExpenseAcc.id,
-        clearingAccountId: clearingAcc.id,
-        openingEquityAccountId: openingEquityAcc.id,
-        paymentRevenueAccountId: paymentRevenueAcc.id,
-        refundExpenseAccountId: refundExpenseAcc.id,
-      };
-    };
-
-    try {
-      const res = await runSeeding(db);
-      return Result.ok(res);
-    } catch (err: any) {
-      return Result.fail(`Bootstrap failed: ${err.message}`);
-    }
+      return Result.ok<TreasuryBootstrapResult>(infra);
+    });
   }
 }
 
 
 ================================================================================
-ARQUIVO [30/67]: src/infrastructure/services/EventInboxService.ts
+ARQUIVO [30/68]: src/infrastructure/services/EventInboxService.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/EventInboxService.ts
 ================================================================================
 import { Result } from '../../shared/kernel/Result';
@@ -8604,7 +8593,7 @@ export class EventInboxService {
 
 
 ================================================================================
-ARQUIVO [31/67]: src/interfaces/http/controllers/finance/FinanceController.ts
+ARQUIVO [31/68]: src/interfaces/http/controllers/finance/FinanceController.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts
 ================================================================================
 import { Context } from 'hono';
@@ -8820,7 +8809,7 @@ export class FinanceController {
 
 
 ================================================================================
-ARQUIVO [32/67]: src/interfaces/http/routes/finance/finance.routes.ts
+ARQUIVO [32/68]: src/interfaces/http/routes/finance/finance.routes.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/interfaces/http/routes/finance/finance.routes.ts
 ================================================================================
 import { Hono } from 'hono';
@@ -8833,6 +8822,8 @@ import { FinanceController } from '../../controllers/finance/FinanceController';
 import { sessionGuard, requireAal } from '../../middlewares/session_guard';
 import { verifyPermission } from '../../middlewares/rbac';
 
+import { Database } from '../../../../db';
+
 type AppType = {
   Bindings: Bindings;
   Variables: Variables;
@@ -8842,7 +8833,7 @@ export const financeRouter = new Hono<AppType>();
 
 financeRouter.use('*', sessionGuard);
 
-function buildFinanceDeps(db: any) {
+function buildFinanceDeps(db: Database) {
   const uow = new DrizzleUnitOfWork(db);
   const financeRepo = new DrizzleFinanceRepository(db);
   const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
@@ -8962,7 +8953,7 @@ financeRouter.get(
 
 
 ================================================================================
-ARQUIVO [33/67]: src/db/finance/tables.ts
+ARQUIVO [33/68]: src/db/finance/tables.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/finance/tables.ts
 ================================================================================
 import {
@@ -12485,7 +12476,7 @@ export type NewReconciliationRecord = typeof reconciliationRecords.$inferInsert;
 
 
 ================================================================================
-ARQUIVO [34/67]: src/db/finance/relations.ts
+ARQUIVO [34/68]: src/db/finance/relations.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/finance/relations.ts
 ================================================================================
 import { relations } from 'drizzle-orm';
@@ -13139,7 +13130,7 @@ export const FINANCE_RELATION_LAYER_IS_NAVIGATION_ONLY = true as const;
 
 
 ================================================================================
-ARQUIVO [35/67]: src/db/seed.sql
+ARQUIVO [35/68]: src/db/seed.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/seed.sql
 ================================================================================
 -- ============================================================================
@@ -13235,7 +13226,7 @@ VALUES
 
 
 ================================================================================
-ARQUIVO [36/67]: src/db/seed_treasury_report.sql
+ARQUIVO [36/68]: src/db/seed_treasury_report.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/seed_treasury_report.sql
 ================================================================================
 -- ============================================================================
@@ -13441,7 +13432,7 @@ VALUES
 
 
 ================================================================================
-ARQUIVO [37/67]: migrations/0000_white_raider.sql
+ARQUIVO [37/68]: migrations/0000_white_raider.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0000_white_raider.sql
 ================================================================================
 CREATE TABLE `membership_cards` (
@@ -15102,7 +15093,7 @@ CREATE TABLE `outbox_events` (
 
 
 ================================================================================
-ARQUIVO [38/67]: migrations/0005_data_remediation.sql
+ARQUIVO [38/68]: migrations/0005_data_remediation.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0005_data_remediation.sql
 ================================================================================
 -- 0005_data_remediation.sql
@@ -15136,7 +15127,7 @@ UPDATE financial_accounts SET version = 1 WHERE version IS NULL OR version < 1;
 
 
 ================================================================================
-ARQUIVO [39/67]: migrations/0006_constraints.sql
+ARQUIVO [39/68]: migrations/0006_constraints.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0006_constraints.sql
 ================================================================================
 -- 0006_constraints.sql
@@ -15175,7 +15166,7 @@ CREATE INDEX IF NOT EXISTS idx_outbox_events_published ON outbox_events (publish
 
 
 ================================================================================
-ARQUIVO [40/67]: migrations/0007_event_inbox.sql
+ARQUIVO [40/68]: migrations/0007_event_inbox.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0007_event_inbox.sql
 ================================================================================
 CREATE TABLE IF NOT EXISTS `event_inbox` (
@@ -15189,7 +15180,7 @@ CREATE TABLE IF NOT EXISTS `event_inbox` (
 
 
 ================================================================================
-ARQUIVO [41/67]: migrations/0008_remediation_schema.sql
+ARQUIVO [41/68]: migrations/0008_remediation_schema.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0008_remediation_schema.sql
 ================================================================================
 -- 0008_remediation_schema.sql
@@ -15234,7 +15225,7 @@ CREATE INDEX IF NOT EXISTS `idx_outbox_events_lease` ON `outbox_events` (`lease_
 
 
 ================================================================================
-ARQUIVO [42/67]: migrations/0009_finance_schema_alignment.sql
+ARQUIVO [42/68]: migrations/0009_finance_schema_alignment.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0009_finance_schema_alignment.sql
 ================================================================================
 -- 0009_finance_schema_alignment.sql
@@ -15383,7 +15374,7 @@ CREATE UNIQUE INDEX `uq_fiat_external_transactions_fingerprint` ON `fiat_externa
 
 
 ================================================================================
-ARQUIVO [43/67]: migrations/0010_finance_fixes_and_rates_alignment.sql
+ARQUIVO [43/68]: migrations/0010_finance_fixes_and_rates_alignment.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0010_finance_fixes_and_rates_alignment.sql
 ================================================================================
 -- MIGRATION 0010: CANONICAL SCHEMA ALIGNMENT & FX DEFINITIVE CLOSING
@@ -15509,7 +15500,283 @@ CREATE INDEX `idx_asset_conversions_fee_asset` ON `asset_conversions` (`fee_asse
 
 
 ================================================================================
-ARQUIVO [44/67]: tests/finance/bootstrap_service.test.ts
+ARQUIVO [44/68]: tests/finance/bootstrap_atomicity.test.ts
+CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/bootstrap_atomicity.test.ts
+================================================================================
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
+import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
+import { unlinkSync, existsSync } from 'fs';
+
+describe('GATE 1 & 2: FinanceBootstrapService — Atomicidade e Executor Typing', () => {
+  const dbFile = 'test_bootstrap_atomicity.db';
+  let sqlite: any;
+  let db: any;
+
+  beforeEach(async () => {
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+
+    await runAllMigrationsLibSql(sqlite);
+  }, 30000);
+
+  afterEach(() => {
+    try {
+      if (existsSync(dbFile)) unlinkSync(dbFile);
+    } catch (e) {}
+  });
+
+  it('Teste A — bootstrap normal: provisiona infraestrutura completa e abertura via Orchestrator', async () => {
+    const uow = new DrizzleUnitOfWork(db);
+    const repo = new DrizzleFinanceRepository(db);
+
+    const initialAmount = 1000000n; // R$ 10.000,00
+    const res = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: initialAmount,
+    });
+
+    expect(res.isSuccess).toBe(true);
+    const data = res.getValue();
+
+    // 1. Asset criado
+    const assetRow = await sqlite.execute({
+      sql: 'SELECT id, code, status FROM financial_assets WHERE id = ?',
+      args: [data.assetId],
+    });
+    expect(assetRow.rows.length).toBe(1);
+    expect(assetRow.rows[0].code).toBe('BRL');
+    expect(assetRow.rows[0].status).toBe('active');
+
+    // 2. 9 system accounts criadas com userId NULL
+    const accRows = await sqlite.execute({
+      sql: "SELECT COUNT(*) as cnt FROM financial_accounts WHERE user_id IS NULL AND status = 'active'",
+      args: [],
+    });
+    expect(Number(accRows.rows[0].cnt)).toBe(9);
+
+    // 3. Opening transaction criada via Orchestrator
+    const txRows = await sqlite.execute({
+      sql: 'SELECT id, type, status, description FROM financial_transactions',
+      args: [],
+    });
+    expect(txRows.rows.length).toBe(1);
+    expect(txRows.rows[0].type).toBe('adjustment');
+    expect(txRows.rows[0].status).toBe('completed');
+    expect(txRows.rows[0].description).toBe('Genesis Opening Balance Equity Allocation');
+    const txId = Number(txRows.rows[0].id);
+
+    // 4. Ledger entries = 2 (débito e crédito) com partidas dobradas
+    const ledgerRows = await sqlite.execute({
+      sql: 'SELECT account_id, direction, amount_base_units FROM financial_ledger_entries WHERE transaction_id = ?',
+      args: [txId],
+    });
+    expect(ledgerRows.rows.length).toBe(2);
+
+    const debitEntry = ledgerRows.rows.find((r: any) => r.direction === 'debit');
+    const creditEntry = ledgerRows.rows.find((r: any) => r.direction === 'credit');
+    expect(Number(debitEntry.account_id)).toBe(data.treasuryAccountId);
+    expect(debitEntry.amount_base_units).toBe('1000000');
+    expect(Number(creditEntry.account_id)).toBe(data.openingEquityAccountId);
+    expect(creditEntry.amount_base_units).toBe('1000000');
+
+    // 5. Idempotency = 1 registro completed
+    const idemRows = await sqlite.execute({
+      sql: "SELECT key, status, financial_transaction_id FROM idempotency_keys WHERE scope = 'finance'",
+      args: [],
+    });
+    expect(idemRows.rows.length).toBe(1);
+    expect(idemRows.rows[0].status).toBe('completed');
+    expect(Number(idemRows.rows[0].financial_transaction_id)).toBe(txId);
+
+    // 6. Saldos conferidos via repo
+    const treasuryBal = await repo.getTreasuryBalance();
+    expect(treasuryBal.isSuccess).toBe(true);
+    const brlTreasury = treasuryBal.getValue().find((b) => b.assetId === data.assetId);
+    expect(brlTreasury?.availableBaseUnits).toBe('1000000');
+
+    const equityBalRow = await sqlite.execute({
+      sql: 'SELECT available_base_units FROM account_balances WHERE account_id = ? AND asset_id = ?',
+      args: [data.openingEquityAccountId, data.assetId],
+    });
+    expect(equityBalRow.rows[0].available_base_units).toBe('1000000');
+  });
+
+  it('Teste B — bootstrap repetido: não duplica transação contábil nem saldo', async () => {
+    const uow = new DrizzleUnitOfWork(db);
+    const repo = new DrizzleFinanceRepository(db);
+
+    // Primeira execução
+    const res1 = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 500000n,
+    });
+    expect(res1.isSuccess).toBe(true);
+
+    // Segunda execução com os mesmos parâmetros
+    const res2 = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 500000n,
+    });
+    expect(res2.isSuccess).toBe(true);
+
+    // Contagem física de registros no banco de dados
+    const assetCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_assets');
+    expect(Number(assetCount.rows[0].cnt)).toBe(1);
+
+    const accCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_accounts');
+    expect(Number(accCount.rows[0].cnt)).toBe(9);
+
+    const txCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_transactions');
+    expect(Number(txCount.rows[0].cnt)).toBe(1);
+
+    const ledgerCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_ledger_entries');
+    expect(Number(ledgerCount.rows[0].cnt)).toBe(2);
+
+    const idemCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM idempotency_keys');
+    expect(Number(idemCount.rows[0].cnt)).toBe(1);
+
+    // Saldo da tesouraria permanece rigorosamente 500000n
+    const treasuryBal = await repo.getTreasuryBalance();
+    const brl = treasuryBal.getValue().find((b) => b.assetId === res1.getValue().assetId);
+    expect(brl?.availableBaseUnits).toBe('500000');
+  });
+
+  it('Teste C — mesmo bootstrap com mesmo conteúdo: preserva o transaction_id da abertura e não cria nova transação', async () => {
+    const uow = new DrizzleUnitOfWork(db);
+
+    const res1 = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 750000n,
+    });
+    expect(res1.isSuccess).toBe(true);
+
+    const txRow1 = await sqlite.execute('SELECT id, created_at FROM financial_transactions LIMIT 1');
+    const firstTxId = Number(txRow1.rows[0].id);
+
+    const res2 = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 750000n,
+    });
+    expect(res2.isSuccess).toBe(true);
+
+    // Verifica que o transactionId associado à chave de idempotência é o mesmo
+    const idemRow = await sqlite.execute('SELECT financial_transaction_id FROM idempotency_keys LIMIT 1');
+    expect(Number(idemRow.rows[0].financial_transaction_id)).toBe(firstTxId);
+
+    // Verifica que nenhuma segunda transação foi criada
+    const txTotal = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_transactions');
+    expect(Number(txTotal.rows[0].cnt)).toBe(1);
+  });
+
+  it('Teste D — mesmo idempotency key com conteúdo diferente: acusa conflito e não altera saldos', async () => {
+    const uow = new DrizzleUnitOfWork(db);
+    const repo = new DrizzleFinanceRepository(db);
+
+    // 1. Executa primeiro bootstrap com 100000n
+    const res1 = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 100000n,
+    });
+    expect(res1.isSuccess).toBe(true);
+
+    // 2. Tenta executar segundo bootstrap com valor DIFERENTE (200000n) para o mesmo ativo e contas
+    // A chave de idempotência é idêntica: finance:bootstrap:opening-balance:${treasuryAccountId}:${assetId}
+    const res2 = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 200000n,
+    });
+
+    // Deve falhar com conflito de idempotência
+    expect(res2.isFailure).toBe(true);
+    expect(String(res2.error)).toMatch(/conflict|idempotênc|idempotenc/i);
+
+    // Saldo original deve ser mantido inalterado (100000n)
+    const treasuryBal = await repo.getTreasuryBalance();
+    const brl = treasuryBal.getValue().find((b) => b.assetId === res1.getValue().assetId);
+    expect(brl?.availableBaseUnits).toBe('100000');
+
+    // Nenhuma transação ou lançamento adicional
+    const txCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_transactions');
+    expect(Number(txCount.rows[0].cnt)).toBe(1);
+    const ledgerCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_ledger_entries');
+    expect(Number(ledgerCount.rows[0].cnt)).toBe(2);
+  });
+
+  it('Teste E — falha no final do fluxo: provoca rollback integral e não deixa resíduos no banco', async () => {
+    // Cria um UoW que injeta uma falha intencional imediatamente antes do commit
+    const failingUow = {
+      async execute<T>(work: any): Promise<any> {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => { throw new Error('DRIZZLE_ROLLBACK'); };
+        try {
+          // Cria factory transacional
+          const { DrizzleFinanceRepository } = await import('../../src/infrastructure/repositories/DrizzleFinanceRepository');
+          const factory = {
+            getFinanceRepository: () => new DrizzleFinanceRepository(proxyDb),
+            getOutboxRepository: () => ({
+              // Simula falha catastrófica no Outbox
+              saveEvent: async () => {
+                const { Result } = await import('../../src/shared/kernel/Result');
+                return Result.fail('Injected Outbox Failure during Genesis');
+              },
+            }),
+          };
+
+          const res = await work(factory);
+          if (res && res.isFailure) {
+            await t.rollback();
+            return res;
+          }
+          await t.commit();
+          return res;
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          const { Result } = await import('../../src/shared/kernel/Result');
+          return Result.fail(`Transação abortada: ${err.message}`);
+        }
+      }
+    };
+
+    const res = await FinanceBootstrapService.seedSystemAccounts(failingUow as any, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000000n,
+    });
+
+    expect(res.isFailure).toBe(true);
+
+    // Prova de atomicidade total: TUDO no banco deve estar completamente limpo (revertido pelo rollback)
+    const txCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_transactions');
+    expect(Number(txCount.rows[0].cnt)).toBe(0);
+
+    const ledgerCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_ledger_entries');
+    expect(Number(ledgerCount.rows[0].cnt)).toBe(0);
+
+    const idemCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM idempotency_keys');
+    expect(Number(idemCount.rows[0].cnt)).toBe(0);
+
+    const accCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_accounts');
+    expect(Number(accCount.rows[0].cnt)).toBe(0);
+
+    const balCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM account_balances');
+    expect(Number(balCount.rows[0].cnt)).toBe(0);
+
+    const assetCount = await sqlite.execute('SELECT COUNT(*) as cnt FROM financial_assets');
+    expect(Number(assetCount.rows[0].cnt)).toBe(0);
+  });
+});
+
+
+================================================================================
+ARQUIVO [45/68]: tests/finance/bootstrap_service.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/bootstrap_service.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -15517,6 +15784,7 @@ import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
 import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
+import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
 import { unlinkSync, existsSync } from 'fs';
 
 import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
@@ -15542,6 +15810,7 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
 
   it('deve inicializar com sucesso o banco e provisionar contas de Tesouraria, Operacional e Fee', async () => {
     const repo = new DrizzleFinanceRepository(db);
+    const uow = new DrizzleUnitOfWork(db);
 
     // 1. Antes do bootstrap, getTreasuryAccount deve falhar
     const initialGet = await repo.getTreasuryAccount();
@@ -15549,7 +15818,7 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
     expect(initialGet.error).toContain('Treasury account not found');
 
     // 2. Executar bootstrap
-    const seedRes = await FinanceBootstrapService.seedSystemAccounts(db, {
+    const seedRes = await FinanceBootstrapService.seedSystemAccounts(uow, {
       currencyCode: 'BRL',
       initialBalanceBaseUnits: 1000000n,
     });
@@ -15565,7 +15834,7 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
     expect(treasuryGet.getValue().accountType).toBe('treasury');
 
     // 4. Executar bootstrap uma segunda vez com os mesmos parâmetros (idempotência)
-    const seedRes2 = await FinanceBootstrapService.seedSystemAccounts(db, {
+    const seedRes2 = await FinanceBootstrapService.seedSystemAccounts(uow, {
       currencyCode: 'BRL',
       initialBalanceBaseUnits: 1000000n,
     });
@@ -15581,7 +15850,7 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
 
 
 ================================================================================
-ARQUIVO [45/67]: tests/finance/concurrency_idempotency_same_key.test.ts
+ARQUIVO [46/68]: tests/finance/concurrency_idempotency_same_key.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/concurrency_idempotency_same_key.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -15651,7 +15920,7 @@ describe('Hardening de Concorrência & Idempotência Forte (50 Conexões Simult�
     `);
 
     // Provisionar tesouraria
-    const bootRes = await FinanceBootstrapService.seedSystemAccounts(db, {
+    const bootRes = await FinanceBootstrapService.seedSystemAccounts(createUow(), {
       currencyCode: 'BRL',
       initialBalanceBaseUnits: 5000000n, // R$ 50.000,00
     });
@@ -15827,7 +16096,7 @@ describe('Hardening de Concorrência & Idempotência Forte (50 Conexões Simult�
 
 
 ================================================================================
-ARQUIVO [46/67]: tests/finance/concurrency_stress.test.ts
+ARQUIVO [47/68]: tests/finance/concurrency_stress.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/concurrency_stress.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -15863,14 +16132,6 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
   });
 
   it('proves zero double-spend under 10 concurrent debit requests', async () => {
-    // 1. Bootstrap system accounts and asset BRL (assetId = 1)
-    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(db, {
-      currencyCode: 'BRL',
-      initialBalanceBaseUnits: 1000n, // Treasury initial balance
-    });
-    expect(bootstrapRes.isSuccess).toBe(true);
-    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
-
     const uowDb = {
       ...db,
       transaction: async (cb: any) => {
@@ -15892,6 +16153,14 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
     };
 
     const uow = new DrizzleUnitOfWork(uowDb);
+
+    // 1. Bootstrap system accounts and asset BRL (assetId = 1)
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000n, // Treasury initial balance
+    });
+    expect(bootstrapRes.isSuccess).toBe(true);
+    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
 
     // Ensure user 42 exists for FK constraint
     await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (42, 'user42@test.com', 'user42@test.com', 'active', 1000, 1000)`);
@@ -16009,16 +16278,6 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
     const dbB = drizzle(sqliteB);
     await runAllMigrationsLibSql(sqliteB);
 
-    // 1. Setup initial balance with primary DB connection
-    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(dbB, {
-      currencyCode: 'BRL',
-      initialBalanceBaseUnits: 1000n,
-    });
-    expect(bootstrapRes.isSuccess).toBe(true);
-    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
-
-    await sqliteB.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (55, 'user55@test.com', 'user55@test.com', 'active', 1000, 1000)`);
-
     // Initial deposit of 200 units to user 55
     const primaryUow = new DrizzleUnitOfWork({
       ...dbB,
@@ -16037,6 +16296,16 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
         }
       }
     });
+
+    // 1. Setup initial balance with primary DB connection
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(primaryUow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000n,
+    });
+    expect(bootstrapRes.isSuccess).toBe(true);
+    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
+
+    await sqliteB.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (55, 'user55@test.com', 'user55@test.com', 'active', 1000, 1000)`);
 
     const initDepRes = await primaryUow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
@@ -16155,7 +16424,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
 
 
 ================================================================================
-ARQUIVO [47/67]: tests/finance/domain_policies.test.ts
+ARQUIVO [48/68]: tests/finance/domain_policies.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/domain_policies.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -16590,7 +16859,7 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
 
 
 ================================================================================
-ARQUIVO [48/67]: tests/finance/event_inbox.test.ts
+ARQUIVO [49/68]: tests/finance/event_inbox.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/event_inbox.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -16652,7 +16921,7 @@ describe('Invariante DOD-14: Event Inbox Idempotency para Webhooks Externos', ()
 
 
 ================================================================================
-ARQUIVO [49/67]: tests/finance/evm_precision.test.ts
+ARQUIVO [50/68]: tests/finance/evm_precision.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/evm_precision.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -16741,7 +17010,7 @@ describe('Precisão Monetária EVM 256-bit - Transações com > 53-bits', () => 
 
 
 ================================================================================
-ARQUIVO [50/67]: tests/finance/failure_injection.test.ts
+ARQUIVO [51/68]: tests/finance/failure_injection.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/failure_injection.test.ts
 ================================================================================
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -16794,8 +17063,8 @@ describe('Gate 4: Failure Injection Matrix & Atomic Rollback Certification (FIN-
       }
     };
 
-    await FinanceBootstrapService.seedSystemAccounts(uowDb, { currencyCode: 'BRL' });
     const uow = new DrizzleUnitOfWork(uowDb);
+    await FinanceBootstrapService.seedSystemAccounts(uow, { currencyCode: 'BRL' });
 
     const countBeforeTx = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_transactions')).rows[0].c);
     const countBeforeLedger = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_ledger_entries')).rows[0].c);
@@ -16834,7 +17103,7 @@ describe('Gate 4: Failure Injection Matrix & Atomic Rollback Certification (FIN-
 
 
 ================================================================================
-ARQUIVO [51/67]: tests/finance/finance_controller_e2e.test.ts
+ARQUIVO [52/68]: tests/finance/finance_controller_e2e.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/finance_controller_e2e.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -16875,15 +17144,7 @@ describe('FinanceController E2E — Contratos HTTP, Idempotência (201/200/409),
         (2, 'human', 'user2@example.com', 'user2@example.com', 'active', 1, unixepoch(), unixepoch());
     `);
 
-    // 3. Inicializar contas sistêmicas da tesouraria
-    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(db, {
-      currencyCode: 'BRL',
-      initialBalanceBaseUnits: 10000000n, // R$ 100.000,00
-    });
-    assetId = bootstrapRes.getValue().assetId;
-
-    // 4. Montar aplicação Hono de teste integrando controller real
-    const uow = new DrizzleUnitOfWork({
+    const testUow = new DrizzleUnitOfWork({
       ...db,
       transaction: async (cb: any) => {
         const t = await sqlite.transaction('write');
@@ -16900,6 +17161,16 @@ describe('FinanceController E2E — Contratos HTTP, Idempotência (201/200/409),
         }
       }
     });
+
+    // 3. Inicializar contas sistêmicas da tesouraria
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(testUow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 10000000n, // R$ 100.000,00
+    });
+    assetId = bootstrapRes.getValue().assetId;
+
+    // 4. Montar aplicação Hono de teste integrando controller real
+    const uow = testUow;
     const financeRepo = new DrizzleFinanceRepository(db);
     const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
     const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
@@ -17123,7 +17394,7 @@ describe('FinanceController E2E — Contratos HTTP, Idempotência (201/200/409),
 
 
 ================================================================================
-ARQUIVO [52/67]: tests/finance/invariants/balance_projection.test.ts
+ARQUIVO [53/68]: tests/finance/invariants/balance_projection.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/balance_projection.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -17292,7 +17563,7 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
 
 
 ================================================================================
-ARQUIVO [53/67]: tests/finance/invariants/commit_failure.test.ts
+ARQUIVO [54/68]: tests/finance/invariants/commit_failure.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/commit_failure.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -17377,15 +17648,6 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
     const db = drizzle(sqlite);
     await runAllMigrationsLibSql(sqlite);
 
-    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(db, {
-      currencyCode: 'BRL',
-      initialBalanceBaseUnits: 1000n,
-    });
-    expect(bootstrapRes.isSuccess).toBe(true);
-    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
-
-    await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (99, 'fault@test.com', 'fault@test.com', 'active', 1000, 1000)`);
-
     const uowDb = {
       ...db,
       transaction: async (cb: any) => {
@@ -17405,6 +17667,15 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
     };
 
     const uow = new DrizzleUnitOfWork(uowDb);
+
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000n,
+    });
+    expect(bootstrapRes.isSuccess).toBe(true);
+    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
+
+    await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (99, 'fault@test.com', 'fault@test.com', 'active', 1000, 1000)`);
 
     // Initial state counts
     const countTxsInitial = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_transactions')).rows[0].c);
@@ -17475,7 +17746,7 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
 
 
 ================================================================================
-ARQUIVO [54/67]: tests/finance/invariants/seeds_normal_balance.test.ts
+ARQUIVO [55/68]: tests/finance/invariants/seeds_normal_balance.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/seeds_normal_balance.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -17711,7 +17982,7 @@ describe('Gate Contábil: Invariantes de Partidas Dobradas e Normal Balance nos 
 
 
 ================================================================================
-ARQUIVO [55/67]: tests/finance/invariants/transaction_failure_matrix.test.ts
+ARQUIVO [56/68]: tests/finance/invariants/transaction_failure_matrix.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/transaction_failure_matrix.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18204,7 +18475,7 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
 
 
 ================================================================================
-ARQUIVO [56/67]: tests/finance/money256.test.ts
+ARQUIVO [57/68]: tests/finance/money256.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/money256.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -18293,7 +18564,7 @@ describe('Money256 Value Object (EVM 256-bit Precision)', () => {
 
 
 ================================================================================
-ARQUIVO [57/67]: tests/finance/posting_authority_hardening.test.ts
+ARQUIVO [58/68]: tests/finance/posting_authority_hardening.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/posting_authority_hardening.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18617,7 +18888,7 @@ describe('Gate 3/4 Hardening: Autoridade Física de Posting e Fechamento de Bypa
 
 
 ================================================================================
-ARQUIVO [58/67]: tests/finance/reconciliation_3way.test.ts
+ARQUIVO [59/68]: tests/finance/reconciliation_3way.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/reconciliation_3way.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18668,7 +18939,7 @@ describe('3-Way Reconciliation Suite (External Provider <-> Ledger Projection <-
 
     await runAllMigrationsLibSql(sqlite);
     uow = new DrizzleUnitOfWork(uowDb);
-    await FinanceBootstrapService.seedSystemAccounts(db, { currencyCode: 'BRL' });
+    await FinanceBootstrapService.seedSystemAccounts(uow, { currencyCode: 'BRL' });
   }, 30000);
 
   afterAll(() => {
@@ -18833,7 +19104,7 @@ describe('3-Way Reconciliation Suite (External Provider <-> Ledger Projection <-
 
 
 ================================================================================
-ARQUIVO [59/67]: tests/finance/reverse_transaction.test.ts
+ARQUIVO [60/68]: tests/finance/reverse_transaction.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/reverse_transaction.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18956,7 +19227,7 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
 
 
 ================================================================================
-ARQUIVO [60/67]: tests/finance/schema_drift.test.ts
+ARQUIVO [61/68]: tests/finance/schema_drift.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/schema_drift.test.ts
 ================================================================================
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -19097,7 +19368,7 @@ describe('Gate 0 / Schema Drift Certification: SQLite Físico vs Drizzle tables.
 
 
 ================================================================================
-ARQUIVO [61/67]: tests/finance/schema_invariants_audit.test.ts
+ARQUIVO [62/68]: tests/finance/schema_invariants_audit.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/schema_invariants_audit.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -19322,7 +19593,7 @@ describe('Schema Invariants & Security Audit Verification (FIN-DB-001, 004, 008,
 
 
 ================================================================================
-ARQUIVO [62/67]: tests/finance_real_db_e2e.test.ts
+ARQUIVO [63/68]: tests/finance_real_db_e2e.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance_real_db_e2e.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -19560,7 +19831,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
 
 
 ================================================================================
-ARQUIVO [63/67]: tests/architecture/finance_posting_authority.test.ts
+ARQUIVO [64/68]: tests/architecture/finance_posting_authority.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/architecture/finance_posting_authority.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -19661,7 +19932,7 @@ describe('Static Architecture Gate: Single Financial Posting Authority & Dead Co
 
 
 ================================================================================
-ARQUIVO [64/67]: tests/architecture/architecture-boundaries.test.ts
+ARQUIVO [65/68]: tests/architecture/architecture-boundaries.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/architecture/architecture-boundaries.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -19932,7 +20203,7 @@ describe('Executable Architectural Boundaries & Governance Suite — Padrão Our
 
 
 ================================================================================
-ARQUIVO [65/67]: tests/architecture/dependency_rules.test.ts
+ARQUIVO [66/68]: tests/architecture/dependency_rules.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/architecture/dependency_rules.test.ts
 ================================================================================
 import * as fs from 'fs';
@@ -20003,7 +20274,7 @@ describe('Architecture Dependency Rules', () => {
 
 
 ================================================================================
-ARQUIVO [66/67]: tests/migrations/migration_integrity.test.ts
+ARQUIVO [67/68]: tests/migrations/migration_integrity.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/migrations/migration_integrity.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -20133,7 +20404,7 @@ describe('Gate 3: Migration Governance & Data Integrity Suite', () => {
 
 
 ================================================================================
-ARQUIVO [67/67]: tests/test_helpers/runMigrations.ts
+ARQUIVO [68/68]: tests/test_helpers/runMigrations.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/test_helpers/runMigrations.ts
 ================================================================================
 import * as fs from 'fs';
@@ -21515,16 +21786,16 @@ Dependências diretas incluídas:
 10
 
 Testes Finance:
-24
+25
 
 Migrations relacionadas:
 7
 
 Total de arquivos extraídos:
-77
+78
 
 Total de linhas extraídas:
-20904
+21169
 
 ================================================================================
 MAPA DE POSSÍVEIS INCONSISTÊNCIAS DETECTADAS DURANTE A EXTRAÇÃO
