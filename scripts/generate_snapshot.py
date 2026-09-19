@@ -20,10 +20,13 @@ IGNORE_DIRS = {
     "build",
     ".turbo",
     ".cache",
+    "__pycache__",
+    "scratch",
 }
 
 IGNORE_FILE_PATTERNS = {
     "projeto-123-snapshot.txt",
+    "projeto-123-snapshot.txt.bak",
     ".dev.vars",
     ".gitignore",
 }
@@ -45,6 +48,7 @@ IGNORE_EXTENSIONS = {
     ".tar",
     ".gz",
     ".pyc",
+    ".bak",
 }
 
 def is_binary(file_path: Path) -> bool:
@@ -152,13 +156,13 @@ def main():
             out.write(f"ARQUIVO: ./{rel_path}\n")
             out.write("============================================================\n")
             try:
-                with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                with open(abs_path, "r", encoding="utf-8") as f:
                     content = f.read()
                     out.write(content)
                     if not content.endswith("\n"):
                         out.write("\n")
             except Exception as e:
-                out.write(f"// Erro ao ler arquivo: {e}\n")
+                raise RuntimeError(f"FALHA CRÍTICA: Erro ao ler o arquivo {abs_path}: {e}")
             out.write("\n")
 
     size_mb = os.path.getsize(OUTPUT_FILE) / (1024 * 1024)
