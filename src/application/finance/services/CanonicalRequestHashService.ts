@@ -126,12 +126,20 @@ export class CanonicalRequestHashService {
   }
 
   /**
-   * Gera o hash SHA-256 hexadecimal a partir do payload canônico do negócio.
-   * Se receber um aggregate LedgerTransaction ou DTO com entries, filtra exclusivamente
-   * os atributos financeiros determinísticos (removendo IDs aleatórios, UUIDs e timestamps)
-   * e ordena os lançamentos por ordenação estrutural por tupla (accountId, assetId, type, amount).
+   * Hashes an incoming command / request DTO representing the caller's financial intent.
+   * Strips undefined and computes deterministic SHA-256 without relying on internal server resolution.
    */
-  public static calculateHash(payload: unknown): string {
+  public static hashCommand(command: unknown): string {
+    const canonicalString = CanonicalRequestHashService.canonicalize(command);
+    return createHash('sha256').update(canonicalString, 'utf8').digest('hex');
+  }
+
+  /**
+   * Gera o hash SHA-256 hexadecimal a partir de um aggregate LedgerTransaction ou DTO com entries,
+   * filtrando exclusivamente os atributos financeiros determinísticos
+   * e ordenando os lançamentos por ordenação estrutural por tupla (accountId, assetId, type, amount).
+   */
+  public static hashAggregate(payload: unknown): string {
     let targetPayload = payload;
 
     if (CanonicalRequestHashService.isCanonicalTransactionInput(payload)) {
@@ -182,6 +190,13 @@ export class CanonicalRequestHashService {
 
     const canonicalString = CanonicalRequestHashService.canonicalize(targetPayload);
     return createHash('sha256').update(canonicalString, 'utf8').digest('hex');
+  }
+
+  /**
+   * Alias de compatibilidade retroativa para invocadores existentes.
+   */
+  public static calculateHash(payload: unknown): string {
+    return CanonicalRequestHashService.hashAggregate(payload);
   }
 }
 

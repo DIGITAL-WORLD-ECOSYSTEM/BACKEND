@@ -37,8 +37,12 @@ export class FinancialTransactionOrchestrator {
    */
   constructor(
     private readonly financeRepo: IFinanceRepository,
-    private readonly outboxRepo?: IOutboxRepository
-  ) { }
+    private readonly outboxRepo: IOutboxRepository
+  ) {
+    if (!outboxRepo) {
+      throw new Error('IOutboxRepository é obrigatório para execução atômica no FinancialTransactionOrchestrator.');
+    }
+  }
 
   /**
    * Valida rigorosamente o invariante FIN-001 de partidas dobradas antes da persistência:
@@ -318,20 +322,18 @@ export class FinancialTransactionOrchestrator {
     await this.financeRepo.updateTransactionStatus(transactionId, completedStatus);
 
     // 11. Persistência de Evento no Outbox
-    if (this.outboxRepo) {
-      await this.outboxRepo.saveEvent(
-        {
-          dateTimeOccurred: new Date(),
-          getAggregateId: () => String(transactionId),
-          transactionId,
-          idempotencyKey: transaction.idempotencyKey,
-          requestHash: computedHash,
-        } as IDomainEvent,
+    await this.outboxRepo.saveEvent(
+      {
+        dateTimeOccurred: new Date(),
+        getAggregateId: () => String(transactionId),
         transactionId,
-        'LedgerTransaction',
-        1
-      );
-    }
+        idempotencyKey: transaction.idempotencyKey,
+        requestHash: computedHash,
+      } as IDomainEvent,
+      transactionId,
+      'LedgerTransaction',
+      1
+    );
 
     // 12. Conclusão do registro de Idempotência
     await this.financeRepo.completeIdempotency(transaction.idempotencyKey, 'finance', transactionId);

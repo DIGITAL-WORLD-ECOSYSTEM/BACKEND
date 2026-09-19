@@ -28,9 +28,7 @@ export type FinancialTransactionType =
   | 'yield'
   | 'conversion'
   | 'adjustment'
-  | 'reversal'
-  | 'inbound'
-  | 'outbound';
+  | 'reversal';
 
 export type FinancialTransactionStatus =
   | 'pending'
@@ -143,4 +141,38 @@ export interface IFinanceRepository {
   ): Promise<BalanceUpdateResult>;
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
   // NOTE: persistOutboxEvent removed — use IOutboxRepository.saveEvent() within the same UoW transaction.
+
+  // Ingestion-first External Bank Transactions
+  insertFiatExternalTransaction(data: {
+    providerId: number;
+    fiatAccountId?: number | null;
+    externalTransactionId: string;
+    rawAmount: string;
+    amountBaseUnits?: string | null;
+    direction: 'credit' | 'debit';
+    assetId?: number | null;
+    rawDescription?: string | null;
+    bankTimestamp?: Date | number | null;
+    documentNumber?: string | null;
+    runningBalanceBaseUnits?: string | null;
+    sourceFile?: string | null;
+    sourceFileHash?: string | null;
+    rowFingerprint?: string | null;
+    rawPayload?: string | null;
+    status?: string;
+    reconciliationStatus?: 'unmatched' | 'matched' | 'ignored' | 'discrepancy';
+    financialTransactionId?: number | null;
+  }): Promise<Result<number, RepositoryError>>;
+
+  getFiatExternalTransactionByFingerprint(rowFingerprint: string): Promise<Result<any | null, RepositoryError>>;
+  updateFiatExternalTransactionReconciliation(
+    id: number,
+    update: {
+      status?: string;
+      reconciliationStatus: 'unmatched' | 'matched' | 'ignored' | 'discrepancy';
+      financialTransactionId?: number | null;
+      amountBaseUnits?: string | null;
+      assetId?: number | null;
+    }
+  ): Promise<Result<void, RepositoryError>>;
 }

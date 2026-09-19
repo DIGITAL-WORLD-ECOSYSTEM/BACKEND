@@ -72,6 +72,27 @@ export class RecordTreasuryTransactionUseCase {
           new InvalidFinancialOperationError('Formato de requestHash inválido. Deve ser uma string SHA-256 hexadecimal de 64 caracteres.')
         );
       }
+      const commandPayload = {
+        userId: dto.userId ?? null,
+        actorUserId: dto.actorUserId ?? null,
+        authorizedByUserId: dto.authorizedByUserId ?? null,
+        type: dto.type,
+        direction: dto.direction ?? null,
+        category: dto.category ?? null,
+        description: dto.description.trim(),
+        amountBaseUnits: dto.amountBaseUnits,
+        assetId: dto.assetId,
+        idempotencyKey: dto.idempotencyKey.trim(),
+        refundOfTransactionId: dto.refundOfTransactionId ?? null,
+      };
+      const expectedCommandHash = CanonicalRequestHashService.hashCommand(commandPayload);
+      if (dto.requestHash.toLowerCase() !== expectedCommandHash.toLowerCase()) {
+        return Result.fail<RecordTreasuryTransactionResult>(
+          new IdempotencyConflictError(
+            `409 Conflict: Divergência de requestHash: o hash fornecido (${dto.requestHash}) difere do hash canônico calculado para a intenção (${expectedCommandHash}).`
+          )
+        );
+      }
     }
 
     try {
@@ -199,6 +220,8 @@ export class RecordTreasuryTransactionUseCase {
         }
 
         let rawEntries: RawLedgerEntrySpec[];
+        let isFullRefund = false;
+        let origTxIdToUpdate: number | null = null;
 
         // 8. Exhaustive Switch Dispatch per Operation Type
         switch (dto.type) {
@@ -303,6 +326,9 @@ export class RecordTreasuryTransactionUseCase {
                 )
               );
             }
+
+            isFullRefund = (prevRefundsTotal + requestedRefundAmount) === originalPaymentAmount;
+            origTxIdToUpdate = origTxId;
 
             const sysRefundExpRes = await financeRepo.getSystemAccount('refund_expense');
             if (sysRefundExpRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(sysRefundExpRes.errorObject || sysRefundExpRes.error || 'Erro ao resolver conta de reembolso');
@@ -432,6 +458,12 @@ export class RecordTreasuryTransactionUseCase {
         // 10. Execute Posting via Orchestrator
         const orchestrator = new FinancialTransactionOrchestrator(financeRepo, factory.getOutboxRepository());
         const orchestratorResult = await orchestrator.executePosting(transaction);
+
+        // Se o reembolso for integral, atualiza a transação original para 'refunded' NO MESMO UoW antes do commit
+        if (isFullRefund && origTxIdToUpdate !== null && !orchestratorResult.isReplayed) {
+          await financeRepo.updateTransactionStatus(origTxIdToUpdate, 'refunded');
+        }
+
         return Result.ok<RecordTreasuryTransactionResult>(orchestratorResult);
       });
     } catch (err: unknown) {
