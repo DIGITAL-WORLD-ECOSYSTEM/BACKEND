@@ -66,30 +66,31 @@ export class RecordTreasuryTransactionUseCase {
       );
     }
 
+    const commandPayload = {
+      userId: dto.userId ?? null,
+      actorUserId: dto.actorUserId ?? null,
+      authorizedByUserId: dto.authorizedByUserId ?? null,
+      type: dto.type,
+      direction: dto.direction ?? null,
+      category: dto.category ?? null,
+      description: dto.description.trim(),
+      amountBaseUnits: dto.amountBaseUnits,
+      assetId: dto.assetId,
+      idempotencyKey: dto.idempotencyKey.trim(),
+      refundOfTransactionId: dto.refundOfTransactionId ?? null,
+    };
+    const canonicalIntentHash = CanonicalRequestHashService.hashCommand(commandPayload);
+
     if (dto.requestHash !== undefined) {
       if (!/^[a-f0-9]{64}$/i.test(dto.requestHash)) {
         return Result.fail<RecordTreasuryTransactionResult>(
           new InvalidFinancialOperationError('Formato de requestHash inválido. Deve ser uma string SHA-256 hexadecimal de 64 caracteres.')
         );
       }
-      const commandPayload = {
-        userId: dto.userId ?? null,
-        actorUserId: dto.actorUserId ?? null,
-        authorizedByUserId: dto.authorizedByUserId ?? null,
-        type: dto.type,
-        direction: dto.direction ?? null,
-        category: dto.category ?? null,
-        description: dto.description.trim(),
-        amountBaseUnits: dto.amountBaseUnits,
-        assetId: dto.assetId,
-        idempotencyKey: dto.idempotencyKey.trim(),
-        refundOfTransactionId: dto.refundOfTransactionId ?? null,
-      };
-      const expectedCommandHash = CanonicalRequestHashService.hashCommand(commandPayload);
-      if (dto.requestHash.toLowerCase() !== expectedCommandHash.toLowerCase()) {
+      if (dto.requestHash.toLowerCase() !== canonicalIntentHash.toLowerCase()) {
         return Result.fail<RecordTreasuryTransactionResult>(
           new IdempotencyConflictError(
-            `409 Conflict: Divergência de requestHash: o hash fornecido (${dto.requestHash}) difere do hash canônico calculado para a intenção (${expectedCommandHash}).`
+            `409 Conflict: Divergência de requestHash: o hash fornecido (${dto.requestHash}) difere do hash canônico calculado para a intenção (${canonicalIntentHash}).`
           )
         );
       }
@@ -155,26 +156,7 @@ export class RecordTreasuryTransactionUseCase {
         category = trimmed;
       }
 
-      // 6. Compute Canonical Request Hash over Request DTO payload
-      const canonicalPayload = {
-        amountBaseUnits: dto.amountBaseUnits,
-        assetId: parsedAssetId,
-        category,
-        description,
-        direction: resolvedDirection,
-        refundOfTransactionId: dto.refundOfTransactionId ?? null,
-        type: dto.type,
-        userId: parsedUserId,
-      };
-      const canonicalHash = CanonicalRequestHashService.calculateHash(canonicalPayload);
-
-      if (dto.requestHash !== undefined && dto.requestHash !== canonicalHash) {
-        return Result.fail<RecordTreasuryTransactionResult>(
-          new IdempotencyConflictError('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload.')
-        );
-      }
-
-      // 7. Atomic Unit of Work Execution
+      // 6. Atomic Unit of Work Execution
       return await this.uow.execute(async (factory) => {
         const financeRepo = factory.getFinanceRepository();
 
@@ -455,9 +437,9 @@ export class RecordTreasuryTransactionUseCase {
           refundOfTransactionId: dto.refundOfTransactionId ? Number(dto.refundOfTransactionId) : undefined,
         });
 
-        // 10. Execute Posting via Orchestrator
+        // 10. Execute Posting via Orchestrator com o Hash Canônico de Intenção
         const orchestrator = new FinancialTransactionOrchestrator(financeRepo, factory.getOutboxRepository());
-        const orchestratorResult = await orchestrator.executePosting(transaction);
+        const orchestratorResult = await orchestrator.executePosting(transaction, canonicalIntentHash);
 
         // Se o reembolso for integral, atualiza a transação original para 'refunded' NO MESMO UoW antes do commit
         if (isFullRefund && origTxIdToUpdate !== null && !orchestratorResult.isReplayed) {
