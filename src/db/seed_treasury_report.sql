@@ -1,16 +1,18 @@
 -- ============================================================================
 -- ASPPIBRA DAO - REPORT AUDIT SEED SCRIPT (Andressa de Lima Ferreira)
 -- Total Pago Real Comprovado: R$ 36.623,00 | Saldo Devedor: R$ 29.177,00 | Total: R$ 65.800,00
--- Fonte: Auditoria_ASPPIBRA_Andressa.xlsx (45 Transações Auditadas - Datas Estabilizadas 12:00 UTC)
+-- Fonte: Auditoria_ASPPIBRA_Andressa.xlsx (45 Transações Auditadas: 40 Comprovadas + 5 Falhas)
 -- ============================================================================
 
 -- 0. Garantir Ativo BRL (id=1)
 INSERT OR IGNORE INTO financial_assets (id, code, symbol, name, type, decimals, status, created_at, updated_at)
 VALUES (1, 'BRL', 'R$', 'Real Brasileiro', 'fiat', 2, 'active', unixepoch(), unixepoch());
 
--- 1. Inserção do Usuário Principal (Andressa de Lima Ferreira)
+-- 1. Inserção do Usuário Principal (Andressa de Lima Ferreira) e Administrador do Sistema (Validador)
 INSERT OR IGNORE INTO users (id, subject_type, email, email_normalized, status, auth_epoch, created_at, updated_at)
-VALUES (10, 'human', 'andressa.ferreira@email.com', 'andressa.ferreira@email.com', 'active', 1, 1691452800, 1691452800);
+VALUES
+  (1, 'system', 'admin@asppibra.com', 'admin@asppibra.com', 'active', 1, 1691452800, 1691452800),
+  (10, 'human', 'andressa.ferreira@email.com', 'andressa.ferreira@email.com', 'active', 1, 1691452800, 1691452800);
 
 INSERT OR IGNORE INTO user_profiles (user_id, username, username_normalized, display_name, profile_visibility, is_discoverable, created_at, updated_at)
 VALUES (10, 'andressa2024001', 'andressa2024001', 'Andressa de Lima Ferreira', 'public', 1, 1691452800, 1691452800);
@@ -38,23 +40,31 @@ VALUES
   (6, 'Santander', 'SANTANDER', 'bank', 'active', unixepoch(), unixepoch()),
   (7, 'Cora SCFI', 'CORA', 'bank', 'active', unixepoch(), unixepoch());
 
--- 3. Contas Financeiras da Andressa e da Tesouraria
-INSERT OR IGNORE INTO financial_accounts (id, user_id, account_type, status, name, created_at, updated_at)
+-- 3. Contas Financeiras com Classificação Canônica (account_class)
+INSERT OR IGNORE INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at)
 VALUES
-  (10, 10, 'user_available', 'active', 'Conta Andressa de Lima Ferreira (#2024001)', unixepoch(), unixepoch()),
-  (11, NULL, 'treasury', 'active', 'Tesouraria Consolidada ASPPIBRA (Ref: 2026-07-PM4)', unixepoch(), unixepoch());
+  (10, 10, 'user_available', 'liability', 'active', 'Conta Andressa de Lima Ferreira (#2024001)', 1, unixepoch(), unixepoch()),
+  (11, NULL, 'treasury', 'asset', 'active', 'Tesouraria Consolidada ASPPIBRA (Ref: 2026-07-PM4)', 1, unixepoch(), unixepoch()),
+  (12, NULL, 'payment_revenue', 'revenue', 'active', 'Receita de Mensalidades ASPPIBRA', 1, unixepoch(), unixepoch()),
+  (13, NULL, 'clearing', 'liability', 'active', 'Conta Transitória de Liquidação / Pagamentos Operacionais', 1, unixepoch(), unixepoch());
 
--- 4. Saldo Consolidado da Conta (Total Pago Comprovado: R$ 36.623,00 | Saldo Devedor: R$ 29.177,00)
+-- 4. Saldos Consolidados das Contas (Totalmente Alinhados aos Lançamentos Contábeis)
+-- Conta 10 (Andressa): Saldo disponível R$ 0,00 | Saldo devedor R$ 29.177,00 (locked)
+-- Conta 11 (Tesouraria): Saldo disponível R$ 36.623,00 (Dr Ativo)
+-- Conta 12 (Receita Mensalidade): Saldo R$ 27.389,00 (Cr Receita)
+-- Conta 13 (Liquidação Operacional): Saldo R$ 9.234,00 (Cr Passivo/Clearing)
 INSERT OR REPLACE INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at)
 VALUES
-  (10, 10, 1, '3662300', '2917700', 1, unixepoch()),
-  (11, 11, 1, '3662300', '0', 1, unixepoch());
+  (10, 10, 1, '0', '2917700', 1, unixepoch()),
+  (11, 11, 1, '3662300', '0', 1, unixepoch()),
+  (12, 12, 1, '2738900', '0', 1, unixepoch()),
+  (13, 13, 1, '923400', '0', 1, unixepoch());
 
 -- 5. Limpeza de registros anteriores
 DELETE FROM financial_ledger_entries WHERE id >= 100 OR transaction_id >= 101;
 DELETE FROM financial_transactions WHERE id >= 101;
 
--- 6. Inserção das 45 Transações Auditadas da Planilha (Datas Estabilizadas em UTC)
+-- 6. Inserção das 45 Transações Auditadas da Planilha (40 Comprovadas + 5 Linhas Falhas)
 INSERT INTO financial_transactions (id, user_id, type, category, status, description, completed_at, version, created_at, updated_at)
 VALUES
   (101, 10, 'payment', 'membership', 'completed', 'Pagamento Paulo Roberto Batista Ferreira via Itaú Unibanco -> Nu Pagamentos', 1691496000, 1, 1691496000, 1691496000),
@@ -103,46 +113,88 @@ VALUES
   (144, 10, 'payment', 'other', 'failed', 'Linha Falha - Sem transação real', NULL, 1, 1768478400, 1768478400),
   (145, 10, 'payment', 'other', 'failed', 'Linha Falha - Sem transação real', NULL, 1, 1776254400, 1776254400);
 
--- 7. Lançamentos de Partidas Dobradas (40 Transações Comprovadas)
+-- 7. Lançamentos de Partidas Dobradas Estritas (40 Transações Comprovadas = 80 Lançamentos)
+-- Débito: Tesouraria (Conta 11, Ativo) (+Entrada de Recursos)
+-- Crédito: Receita Mensalidade (Conta 12, Receita) para 'membership' OU Clearing (Conta 13, Passivo) para 'operational'
 INSERT INTO financial_ledger_entries (id, transaction_id, account_id, asset_id, direction, amount_base_units, created_at)
 VALUES
-  (101, 101, 11, 1, 'credit', '500000', 1691496000),
-  (102, 102, 11, 1, 'credit', '500000', 1691582400),
-  (103, 103, 11, 1, 'credit', '80000', 1695297600),
-  (104, 104, 11, 1, 'credit', '80000', 1697803200),
-  (105, 105, 11, 1, 'credit', '80000', 1700568000),
-  (106, 106, 11, 1, 'credit', '70000', 1703160000),
-  (107, 107, 11, 1, 'credit', '80000', 1703246400),
-  (108, 108, 11, 1, 'credit', '80000', 1708084800),
-  (109, 109, 11, 1, 'credit', '80000', 1710158400),
-  (110, 110, 11, 1, 'credit', '70000', 1714478400),
-  (111, 111, 11, 1, 'credit', '80000', 1714478400),
-  (112, 112, 11, 1, 'credit', '80000', 1716984000),
-  (113, 113, 11, 1, 'credit', '80000', 1719230400),
-  (114, 114, 11, 1, 'credit', '80000', 1722168000),
-  (115, 115, 11, 1, 'credit', '80000', 1725624000),
-  (116, 116, 11, 1, 'credit', '70000', 1725624000),
-  (117, 117, 11, 1, 'credit', '80000', 1728475200),
-  (118, 118, 11, 1, 'credit', '80000', 1731153600),
-  (119, 119, 11, 1, 'credit', '80000', 1734523200),
-  (120, 120, 11, 1, 'credit', '80000', 1737460800),
-  (121, 121, 11, 1, 'credit', '70000', 1737460800),
-  (122, 122, 11, 1, 'credit', '80000', 1739188800),
-  (123, 123, 11, 1, 'credit', '80000', 1742385600),
-  (124, 124, 11, 1, 'credit', '40000', 1745323200),
-  (125, 125, 11, 1, 'credit', '40000', 1746014400),
-  (126, 126, 11, 1, 'credit', '75000', 1747483200),
-  (127, 127, 11, 1, 'credit', '35000', 1750161600),
-  (128, 128, 11, 1, 'credit', '80000', 1750161600),
-  (129, 129, 11, 1, 'credit', '66700', 1753531200),
-  (130, 130, 11, 1, 'credit', '66700', 1753531200),
-  (131, 131, 11, 1, 'credit', '66700', 1755259200),
-  (132, 132, 11, 1, 'credit', '100000', 1760356800),
-  (133, 133, 11, 1, 'credit', '105000', 1763380800),
-  (134, 134, 11, 1, 'credit', '55000', 1764936000),
-  (135, 135, 11, 1, 'credit', '80000', 1770638400),
-  (136, 136, 11, 1, 'credit', '70000', 1770638400),
-  (137, 137, 11, 1, 'credit', '25000', 1772971200),
-  (138, 138, 11, 1, 'credit', '25000', 1773144000),
-  (139, 139, 11, 1, 'credit', '25000', 1773576000),
-  (140, 140, 11, 1, 'credit', '67200', 1774612800);
+  (101, 101, 11, 1, 'debit', '500000', 1691496000),
+  (102, 101, 12, 1, 'credit', '500000', 1691496000),
+  (103, 102, 11, 1, 'debit', '500000', 1691582400),
+  (104, 102, 12, 1, 'credit', '500000', 1691582400),
+  (105, 103, 11, 1, 'debit', '80000', 1695297600),
+  (106, 103, 12, 1, 'credit', '80000', 1695297600),
+  (107, 104, 11, 1, 'debit', '80000', 1697803200),
+  (108, 104, 12, 1, 'credit', '80000', 1697803200),
+  (109, 105, 11, 1, 'debit', '80000', 1700568000),
+  (110, 105, 12, 1, 'credit', '80000', 1700568000),
+  (111, 106, 11, 1, 'debit', '70000', 1703160000),
+  (112, 106, 13, 1, 'credit', '70000', 1703160000),
+  (113, 107, 11, 1, 'debit', '80000', 1703246400),
+  (114, 107, 12, 1, 'credit', '80000', 1703246400),
+  (115, 108, 11, 1, 'debit', '80000', 1708084800),
+  (116, 108, 12, 1, 'credit', '80000', 1708084800),
+  (117, 109, 11, 1, 'debit', '80000', 1710158400),
+  (118, 109, 12, 1, 'credit', '80000', 1710158400),
+  (119, 110, 11, 1, 'debit', '70000', 1714478400),
+  (120, 110, 13, 1, 'credit', '70000', 1714478400),
+  (121, 111, 11, 1, 'debit', '80000', 1714478400),
+  (122, 111, 12, 1, 'credit', '80000', 1714478400),
+  (123, 112, 11, 1, 'debit', '80000', 1716984000),
+  (124, 112, 12, 1, 'credit', '80000', 1716984000),
+  (125, 113, 11, 1, 'debit', '80000', 1719230400),
+  (126, 113, 12, 1, 'credit', '80000', 1719230400),
+  (127, 114, 11, 1, 'debit', '80000', 1722168000),
+  (128, 114, 12, 1, 'credit', '80000', 1722168000),
+  (129, 115, 11, 1, 'debit', '80000', 1725624000),
+  (130, 115, 12, 1, 'credit', '80000', 1725624000),
+  (131, 116, 11, 1, 'debit', '70000', 1725624000),
+  (132, 116, 13, 1, 'credit', '70000', 1725624000),
+  (133, 117, 11, 1, 'debit', '80000', 1728475200),
+  (134, 117, 13, 1, 'credit', '80000', 1728475200),
+  (135, 118, 11, 1, 'debit', '80000', 1731153600),
+  (136, 118, 12, 1, 'credit', '80000', 1731153600),
+  (137, 119, 11, 1, 'debit', '80000', 1734523200),
+  (138, 119, 12, 1, 'credit', '80000', 1734523200),
+  (139, 120, 11, 1, 'debit', '80000', 1737460800),
+  (140, 120, 12, 1, 'credit', '80000', 1737460800),
+  (141, 121, 11, 1, 'debit', '70000', 1737460800),
+  (142, 121, 13, 1, 'credit', '70000', 1737460800),
+  (143, 122, 11, 1, 'debit', '80000', 1739188800),
+  (144, 122, 12, 1, 'credit', '80000', 1739188800),
+  (145, 123, 11, 1, 'debit', '80000', 1742385600),
+  (146, 123, 12, 1, 'credit', '80000', 1742385600),
+  (147, 124, 11, 1, 'debit', '40000', 1745323200),
+  (148, 124, 13, 1, 'credit', '40000', 1745323200),
+  (149, 125, 11, 1, 'debit', '40000', 1746014400),
+  (150, 125, 13, 1, 'credit', '40000', 1746014400),
+  (151, 126, 11, 1, 'debit', '75000', 1747483200),
+  (152, 126, 12, 1, 'credit', '75000', 1747483200),
+  (153, 127, 11, 1, 'debit', '35000', 1750161600),
+  (154, 127, 13, 1, 'credit', '35000', 1750161600),
+  (155, 128, 11, 1, 'debit', '80000', 1750161600),
+  (156, 128, 12, 1, 'credit', '80000', 1750161600),
+  (157, 129, 11, 1, 'debit', '66700', 1753531200),
+  (158, 129, 12, 1, 'credit', '66700', 1753531200),
+  (159, 130, 11, 1, 'debit', '66700', 1753531200),
+  (160, 130, 13, 1, 'credit', '66700', 1753531200),
+  (161, 131, 11, 1, 'debit', '66700', 1755259200),
+  (162, 131, 13, 1, 'credit', '66700', 1755259200),
+  (163, 132, 11, 1, 'debit', '100000', 1760356800),
+  (164, 132, 12, 1, 'credit', '100000', 1760356800),
+  (165, 133, 11, 1, 'debit', '105000', 1763380800),
+  (166, 133, 13, 1, 'credit', '105000', 1763380800),
+  (167, 134, 11, 1, 'debit', '55000', 1764936000),
+  (168, 134, 13, 1, 'credit', '55000', 1764936000),
+  (169, 135, 11, 1, 'debit', '80000', 1770638400),
+  (170, 135, 13, 1, 'credit', '80000', 1770638400),
+  (171, 136, 11, 1, 'debit', '70000', 1770638400),
+  (172, 136, 12, 1, 'credit', '70000', 1770638400),
+  (173, 137, 11, 1, 'debit', '25000', 1772971200),
+  (174, 137, 13, 1, 'credit', '25000', 1772971200),
+  (175, 138, 11, 1, 'debit', '25000', 1773144000),
+  (176, 138, 13, 1, 'credit', '25000', 1773144000),
+  (177, 139, 11, 1, 'debit', '25000', 1773576000),
+  (178, 139, 13, 1, 'credit', '25000', 1773576000),
+  (179, 140, 11, 1, 'debit', '67200', 1774612800),
+  (180, 140, 12, 1, 'credit', '67200', 1774612800);

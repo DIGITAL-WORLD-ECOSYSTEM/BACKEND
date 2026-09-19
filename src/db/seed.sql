@@ -58,25 +58,33 @@ VALUES
   (4, 'ETH', 'Ξ', 'Ethereum', 'crypto', 18, 'active', unixepoch(), unixepoch());
 
 -- 7. FINANCIAL ACCOUNTS
-INSERT INTO financial_accounts (id, user_id, account_type, status, name, created_at, updated_at)
+INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at)
 VALUES 
-  (1, NULL, 'treasury', 'active', 'DAO Treasury Account', unixepoch(), unixepoch()),
-  (2, NULL, 'operating', 'active', 'DAO Operating Account', unixepoch(), unixepoch()),
-  (3, NULL, 'fees', 'active', 'DAO Platform Fees Account', unixepoch(), unixepoch()),
-  (4, 2, 'user_available', 'active', 'Felipe Dev Primary Account', unixepoch(), unixepoch());
+  (1, NULL, 'treasury', 'asset', 'active', 'DAO Treasury Account', 1, unixepoch(), unixepoch()),
+  (2, NULL, 'operating', 'asset', 'active', 'DAO Operating Account', 1, unixepoch(), unixepoch()),
+  (3, NULL, 'fees', 'revenue', 'active', 'DAO Platform Fees Account', 1, unixepoch(), unixepoch()),
+  (4, 2, 'user_available', 'liability', 'active', 'Felipe Dev Primary Account', 1, unixepoch(), unixepoch()),
+  (5, NULL, 'opening_balance_equity', 'equity', 'active', 'DAO Genesis Opening Balance Equity Account', 1, unixepoch(), unixepoch());
 
 -- 8. ACCOUNT BALANCES (Unidades Base em String/BigInt Text)
 INSERT INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at)
 VALUES 
-  (1, 1, 1, '100000000', '0', 1, unixepoch()), -- R$ 1.000.000,00 na Tesouraria
-  (2, 4, 1, '100000', '0', 1, unixepoch());    -- R$ 1.000,00 na Conta do Felipe
+  (1, 1, 1, '100100000', '0', 1, unixepoch()), -- R$ 1.001.000,00 na Tesouraria (R$ 1M abertura + R$ 1k aporte)
+  (2, 4, 1, '100000', '0', 1, unixepoch()),    -- R$ 1.000,00 na Conta do Felipe
+  (3, 5, 1, '100000000', '0', 1, unixepoch()); -- R$ 1.000.000,00 em Patrimônio de Abertura (Equity)
 
 -- 9. FINANCIAL TRANSACTIONS
 INSERT INTO financial_transactions (id, user_id, type, category, status, description, completed_at, version, created_at, updated_at)
 VALUES 
-  (1, 2, 'deposit', 'other', 'completed', 'Aporte Inicial Genesis (R$ 1.000,00)', unixepoch(), 1, unixepoch(), unixepoch());
+  (1, NULL, 'adjustment', 'operational', 'completed', 'Alocação de Saldo Inicial Genesis de Tesouraria (R$ 1.000.000,00)', unixepoch(), 1, unixepoch(), unixepoch()),
+  (2, 2, 'deposit', 'deposit', 'completed', 'Aporte Inicial Genesis Felipe Dev (R$ 1.000,00)', unixepoch(), 1, unixepoch(), unixepoch());
 
--- 10. DOUBLE-ENTRY LEDGER ENTRIES
+-- 10. DOUBLE-ENTRY LEDGER ENTRIES (Partidas Dobradas Estritas: Σ(Débitos) === Σ(Créditos))
 INSERT INTO financial_ledger_entries (id, transaction_id, account_id, asset_id, direction, amount_base_units, created_at)
 VALUES 
-  (1, 1, 4, 1, 'credit', '100000', unixepoch());
+  -- Transação 1: Abertura de Tesouraria contra Capital Inicial
+  (1, 1, 1, 1, 'debit', '100000000', unixepoch()),  -- Dr Tesouraria (+R$ 1.000.000,00 no Ativo)
+  (2, 1, 5, 1, 'credit', '100000000', unixepoch()), -- Cr Opening Balance Equity (+R$ 1.000.000,00 no Patrimônio)
+  -- Transação 2: Depósito do Felipe
+  (3, 2, 1, 1, 'debit', '100000', unixepoch()),     -- Dr Tesouraria (+R$ 1.000,00 no Ativo)
+  (4, 2, 4, 1, 'credit', '100000', unixepoch());    -- Cr Felipe user_available (+R$ 1.000,00 no Passivo)
