@@ -3,7 +3,7 @@ FINANCE CORE — CÓDIGO-FONTE COMPLETO
 ================================================================================
 
 PROJETO: /home/sandro/Área de trabalho/BackEnd
-DATA DA EXTRAÇÃO: 2026-09-19 07:50:45 -0300
+DATA DA EXTRAÇÃO: 2026-09-19 07:54:56 -0300
 
 ================================================================================
 ÁRVORE REAL DO FINANCE
@@ -85,6 +85,7 @@ tests/
 │   ├── dependency_rules.test.ts
 │   └── finance_posting_authority.test.ts
 ├── finance/
+│   ├── bootstrap_atomicity.test.ts
 │   ├── bootstrap_service.test.ts
 │   ├── concurrency_idempotency_same_key.test.ts
 │   ├── concurrency_stress.test.ts

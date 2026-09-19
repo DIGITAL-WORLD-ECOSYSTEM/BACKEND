@@ -281,6 +281,7 @@ tests/
 │   ├── dependency_rules.test.ts
 │   └── finance_posting_authority.test.ts
 ├── finance/
+│   ├── bootstrap_atomicity.test.ts
 │   ├── bootstrap_service.test.ts
 │   ├── concurrency_idempotency_same_key.test.ts
 │   ├── concurrency_stress.test.ts
