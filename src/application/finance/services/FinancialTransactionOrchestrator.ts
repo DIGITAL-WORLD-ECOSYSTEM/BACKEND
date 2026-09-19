@@ -1,6 +1,6 @@
 import { IFinanceRepository } from '../../ports/output/IFinanceRepository';
 import { IOutboxRepository } from '../../ports/output/IOutboxRepository';
-import { IDomainEvent } from '../../../shared/kernel/DomainEvent';
+import { IDomainEvent, LedgerTransactionPostedEvent } from '../../../shared/kernel/DomainEvent';
 import { LedgerTransaction } from '../../../domains/finance/entities/LedgerTransaction';
 import {
   IdempotencyConflictError,
@@ -173,25 +173,10 @@ export class FinancialTransactionOrchestrator {
 
     this.validateDoubleEntry(transaction);
 
-    // 1. PRE-POSTING GATE: Pré-validação obrigatória de entidades (elimina brecha do delta zero)
-    await this.preValidateEntities(transaction);
-
-    // 2. State Machine: validação da transição inicial para 'processing'
-    const processingTransition = FinancialTransactionStateMachine.transition(
-      transaction.status,
-      'processing'
-    );
-    if (processingTransition.isFailure) {
-      throw new InvalidStateTransitionError(
-        processingTransition.error || 'Transição de estado para processing inválida.'
-      );
-    }
-    const processingStatus = processingTransition.getValue();
-
-    // 3. Hash canônico calculado pelo servidor (ou override fornecido para testes)
+    // 1. Hash canônico calculado pelo servidor (ou override fornecido para testes)
     const computedHash = requestHashOverride || CanonicalRequestHashService.calculateHash(transaction);
 
-    // 4. Claim Idempotency Key
+    // 2. Reivindicação atômica de idempotência antes de qualquer I/O de validação mutável
     const claimed = await this.financeRepo.claimIdempotency(
       transaction.idempotencyKey,
       transaction.userId,
@@ -207,6 +192,7 @@ export class FinancialTransactionOrchestrator {
 
       if (existing.requestHash === computedHash) {
         if (existing.status === 'completed' && existing.transactionId) {
+          // Replay determinístico imediato: zero chamadas a entidades mutáveis ou checagens de saldo
           return { transactionId: existing.transactionId, isReplayed: true };
         }
         throw new IdempotencyInProgressError();
@@ -214,6 +200,21 @@ export class FinancialTransactionOrchestrator {
         throw new IdempotencyConflictError();
       }
     }
+
+    // 3. PRE-POSTING GATE: Pré-validação obrigatória de entidades (executa apenas para transações novas)
+    await this.preValidateEntities(transaction);
+
+    // 4. State Machine: validação da transição inicial para 'processing'
+    const processingTransition = FinancialTransactionStateMachine.transition(
+      transaction.status,
+      'processing'
+    );
+    if (processingTransition.isFailure) {
+      throw new InvalidStateTransitionError(
+        processingTransition.error || 'Transição de estado para processing inválida.'
+      );
+    }
+    const processingStatus = processingTransition.getValue();
 
     // 5. Inserção do registro pai da transação com o status derivado da State Machine
     const txResult = await this.financeRepo.insertTransaction({
@@ -322,14 +323,14 @@ export class FinancialTransactionOrchestrator {
     await this.financeRepo.updateTransactionStatus(transactionId, completedStatus);
 
     // 11. Persistência de Evento no Outbox (atomicidade estrita: falha no outbox aborta e faz rollback)
+    const event = new LedgerTransactionPostedEvent(
+      transactionId,
+      transaction.idempotencyKey,
+      computedHash,
+      new Date()
+    );
     const outboxResult = await this.outboxRepo.saveEvent(
-      {
-        dateTimeOccurred: new Date(),
-        getAggregateId: () => String(transactionId),
-        transactionId,
-        idempotencyKey: transaction.idempotencyKey,
-        requestHash: computedHash,
-      } as IDomainEvent,
+      event,
       transactionId,
       'LedgerTransaction',
       1

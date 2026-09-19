@@ -21,6 +21,8 @@ import { DrizzleFinanceRepository, FinanceDatabase, FinanceTransaction } from '.
 import { Result } from '../../shared/kernel/Result';
 import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
 import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
+import { isD1Database } from './db_helper';
+import { FinancialError } from '../../domains/finance/errors/FinancialError';
 
 class DrizzleRepositoryFactory implements IRepositoryFactory {
   constructor(private readonly tx: FinanceTransaction, private readonly db?: FinanceDatabase) {}
@@ -71,6 +73,13 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
   constructor(private readonly db: FinanceDatabase) {}
 
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
+    if (isD1Database(this.db) && typeof (this.db as any).transaction !== 'function') {
+      throw new Error(
+        'DrizzleUnitOfWork exige driver com transações interativas (libSQL/better-sqlite3/Durable Object SQLite com transactionSync). ' +
+        'O driver Cloudflare D1 direto não suporta transações interativas no worker context; utilize um Durable Object para o ledger ou adaptador transacional compatível.'
+      );
+    }
+
     if (typeof this.db?.transaction === 'function') {
       let result: Result<T> | null = null;
       try {
@@ -96,10 +105,13 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
         if (resVal && resVal.isFailure) {
           return resVal;
         }
-        const errorMessage = err?.message || String(err);
-        if (errorMessage === 'ROLLBACK_TRIGGERED_BY_RESULT_FAIL' && resVal && resVal.isFailure) {
+        if (err?.message === 'ROLLBACK_TRIGGERED_BY_RESULT_FAIL' && resVal && resVal.isFailure) {
           return resVal;
         }
+        if (err instanceof FinancialError) {
+          return Result.fail(err);
+        }
+        const errorMessage = err?.message || String(err);
         // Se a callback retornou Result.ok(), mas o COMMIT/banco falhou, DEVE RETORNAR FALHA! (DOD-05)
         return Result.fail(`Falha na transação do banco de dados (Commit/Execution): ${errorMessage}`);
       }

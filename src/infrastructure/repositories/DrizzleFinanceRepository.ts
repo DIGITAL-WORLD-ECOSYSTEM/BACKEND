@@ -1,4 +1,4 @@
-import { eq, and, or, lt, inArray, sql } from 'drizzle-orm';
+import { eq, and, or, lt, inArray, sql, asc, desc } from 'drizzle-orm';
 import {
   financialAccounts,
   accountBalances,
@@ -200,6 +200,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
             eq(financialAccounts.status, 'active')
           )
         )
+        .orderBy(asc(financialAccounts.id))
         .limit(1);
 
       if (!row) {
@@ -414,6 +415,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
             eq(financialAccounts.status, 'active')
           )
         )
+        .orderBy(asc(financialAccounts.id))
         .limit(1);
 
       if (!row) {
@@ -543,21 +545,31 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
   async insertTransaction(data: {
     userId?: number | null;
+    actorUserId?: number | null;
+    authorizedByUserId?: number | null;
     type: FinancialTransactionType;
     category: FinancialTransactionCategory;
     description: string;
     status: FinancialTransactionStatus;
     reversalOfTransactionId?: number;
     refundOfTransactionId?: number;
+    sourceType?: string | null;
+    sourceId?: string | null;
+    correlationId?: string | null;
   }): Promise<Result<number, RepositoryError>> {
     try {
       const [tx] = await this.executor
         .insert(financialTransactions)
         .values({
           userId: data.userId || null,
+          actorUserId: data.actorUserId || null,
+          authorizedByUserId: data.authorizedByUserId || null,
           type: data.type,
           category: data.category,
           status: data.status,
+          sourceType: data.sourceType || null,
+          sourceId: data.sourceId || null,
+          correlationId: data.correlationId || null,
           description: data.description,
           reversalOfTransactionId: data.reversalOfTransactionId || null,
           refundOfTransactionId: data.refundOfTransactionId || null,
@@ -672,11 +684,20 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
-  async listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>> {
+  async listTransactions(userId?: number, options?: { cursor?: number; limit?: number }): Promise<Result<FinancialTransactionRecord[]>> {
     try {
-      const query = userId
-        ? this.executor.select().from(financialTransactions).where(eq(financialTransactions.userId, userId))
-        : this.executor.select().from(financialTransactions);
+      const limit = options?.limit ? Math.min(Math.max(options.limit, 1), 100) : 100;
+      const conditions = [];
+      if (userId) {
+        conditions.push(eq(financialTransactions.userId, userId));
+      }
+      if (options?.cursor) {
+        conditions.push(lt(financialTransactions.id, options.cursor));
+      }
+
+      const query = conditions.length > 0
+        ? this.executor.select().from(financialTransactions).where(and(...conditions)).orderBy(desc(financialTransactions.id)).limit(limit)
+        : this.executor.select().from(financialTransactions).orderBy(desc(financialTransactions.id)).limit(limit);
 
       const rows = await query;
       const txs: FinancialTransactionRecord[] = rows.map((r: any) => ({

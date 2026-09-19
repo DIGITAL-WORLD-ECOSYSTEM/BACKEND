@@ -162,6 +162,18 @@ export class RecordTreasuryTransactionUseCase {
       return await this.uow.execute(async (factory) => {
         const financeRepo = factory.getFinanceRepository();
 
+        // P1-B: Early idempotency replay check before any mutable entity resolution or refund limit checks
+        const prior = await financeRepo.getIdempotencyRecord(idempotencyKey, 'finance');
+        if (prior?.status === 'completed' && prior.requestHash === canonicalIntentHash && prior.transactionId) {
+          return Result.ok<RecordTreasuryTransactionResult>({
+            transactionId: prior.transactionId,
+            isReplayed: true,
+          });
+        }
+        if (prior && prior.requestHash !== canonicalIntentHash) {
+          return Result.fail<RecordTreasuryTransactionResult>(new IdempotencyConflictError());
+        }
+
         // 7a. Validate Asset Existence & Active Status
         const assetRes = await financeRepo.getAssetById(parsedAssetId);
         if (assetRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(assetRes.errorObject || assetRes.error || `Ativo financeiro #${parsedAssetId} não encontrado.`);

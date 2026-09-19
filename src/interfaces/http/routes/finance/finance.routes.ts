@@ -4,6 +4,7 @@ import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/Drizz
 import { DrizzleFinanceRepository } from '../../../../infrastructure/repositories/DrizzleFinanceRepository';
 import { GetTreasuryBalanceUseCase } from '../../../../application/finance/use-cases/GetTreasuryBalanceUseCase';
 import { RecordTreasuryTransactionUseCase } from '../../../../application/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { RecordTransferUseCase } from '../../../../application/finance/use-cases/RecordTransferUseCase';
 import { FinanceController } from '../../controllers/finance/FinanceController';
 import { sessionGuard, requireAal } from '../../middlewares/session_guard';
 import { verifyPermission } from '../../middlewares/rbac';
@@ -24,7 +25,8 @@ function buildFinanceDeps(db: Database) {
   const financeRepo = new DrizzleFinanceRepository(db);
   const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
   const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
-  return { uow, financeRepo, getBalanceUseCase, recordTxUseCase };
+  const recordTransferUseCase = new RecordTransferUseCase(uow);
+  return { uow, financeRepo, getBalanceUseCase, recordTxUseCase, recordTransferUseCase };
 }
 
 financeRouter.get(
@@ -33,8 +35,8 @@ financeRouter.get(
   verifyPermission('finance.treasury.read'),
   async (c) => {
     const db = c.get('db');
-    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
-    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    const { getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase);
     return controller.getBalance(c);
   }
 );
@@ -46,8 +48,8 @@ financeRouter.post(
   verifyPermission('finance.deposit.create'),
   async (c) => {
     const db = c.get('db');
-    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
-    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    const { getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase);
     return controller.recordDeposit(c);
   }
 );
@@ -58,8 +60,8 @@ financeRouter.post(
   verifyPermission('finance.withdrawal.create'),
   async (c) => {
     const db = c.get('db');
-    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
-    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    const { getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase);
     return controller.recordWithdrawal(c);
   }
 );
@@ -70,8 +72,8 @@ financeRouter.post(
   verifyPermission('finance.payment.create'),
   async (c) => {
     const db = c.get('db');
-    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
-    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    const { getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase);
     return controller.recordPayment(c);
   }
 );
@@ -82,8 +84,8 @@ financeRouter.post(
   verifyPermission('finance.refund.create'),
   async (c) => {
     const db = c.get('db');
-    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
-    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    const { getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase);
     return controller.recordRefund(c);
   }
 );
@@ -94,8 +96,8 @@ financeRouter.post(
   verifyPermission('finance.transfer.create'),
   async (c) => {
     const db = c.get('db');
-    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
-    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    const { getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase);
     return controller.recordTransfer(c);
   }
 );
@@ -106,8 +108,8 @@ financeRouter.post(
   verifyPermission('finance.adjustment.create'),
   async (c) => {
     const db = c.get('db');
-    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
-    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    const { getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase);
     return controller.recordAdjustment(c);
   }
 );
@@ -119,8 +121,8 @@ financeRouter.post(
   verifyPermission('finance.transaction.create'),
   async (c) => {
     const db = c.get('db');
-    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
-    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    const { getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase);
     return controller.recordTransaction(c);
   }
 );
@@ -131,8 +133,8 @@ financeRouter.get(
   verifyPermission('finance.treasury.read'),
   async (c) => {
     const db = c.get('db');
-    const { getBalanceUseCase, recordTxUseCase, financeRepo } = buildFinanceDeps(db);
-    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+    const { getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase } = buildFinanceDeps(db);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo, recordTransferUseCase);
     return controller.listTransactions(c);
   }
 );

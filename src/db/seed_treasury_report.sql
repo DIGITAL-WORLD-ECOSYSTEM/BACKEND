@@ -27,7 +27,7 @@ INSERT OR IGNORE INTO citizens (user_id, legal_first_name, legal_last_name, nati
 VALUES (10, 'Andressa', 'de Lima Ferreira', 'BR', 'verified', 1691452800, 1, 1691452800, 1691452800);
 
 INSERT OR IGNORE INTO identity_documents (id, user_id, document_type, country_code, number_lookup_hash, encrypted_number, last4, source, verification_status, verified_at, verified_by, created_at, updated_at)
-VALUES (10, 10, 'cpf', 'BR', 'hash_cpf_17379356780', 'enc_cpf_17379356780', '780', 'government', 'verified', 1691452800, 1, 1691452800, 1691452800);
+VALUES (10, 10, 'cpf', 'BR', 'hash_cpf_00000000001', 'enc_cpf_00000000001', '001', 'government', 'verified', 1691452800, 1, 1691452800, 1691452800);
 
 -- 2. Inserção dos Provedores Fiat / Bancos Participantes
 INSERT OR IGNORE INTO fiat_providers (id, name, code, type, status, created_at, updated_at)

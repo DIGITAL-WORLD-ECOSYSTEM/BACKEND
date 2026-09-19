@@ -3,6 +3,7 @@ import { eventInbox } from '../../db/infrastructure/tables';
 import { eq, and, sql, lt } from 'drizzle-orm';
 import { CanonicalRequestHashService } from '../../application/finance/services/CanonicalRequestHashService';
 import { ExternalEventPayloadConflictError } from '../../domains/finance/errors/FinancialError';
+import { isUniqueConstraintViolation } from '../repositories/DrizzleFinanceRepository';
 
 export interface RecordWebhookEventInput {
   eventId: string;
@@ -23,9 +24,14 @@ export class EventInboxService {
     input: RecordWebhookEventInput,
     handler: () => Promise<Result<T>>
   ): Promise<Result<{ isDuplicate: boolean; result?: T }>> {
-    const workerId = input.workerId || 'default-worker';
+    const workerId = input.workerId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `worker-${Math.random().toString(36).substring(2)}`);
     const leaseDurationMs = input.leaseDurationMs || 30000; // 30s
-    const computedPayloadHash = CanonicalRequestHashService.calculateHash(input.payload);
+    let computedPayloadHash: string;
+    try {
+      computedPayloadHash = CanonicalRequestHashService.calculateHash(input.payload);
+    } catch (e: any) {
+      return Result.fail(`Payload inválido para canonicalização: ${e.message}`);
+    }
     const serializedPayload = JSON.stringify(input.payload);
     const now = new Date();
     const leaseExpiresAt = new Date(now.getTime() + leaseDurationMs);
@@ -70,6 +76,7 @@ export class EventInboxService {
         // Claim atômico condicional de lease
         activeLeaseGeneration = (existing.leaseGeneration || 0) + 1;
 
+        const nowSec = Math.floor(now.getTime() / 1000);
         const updateRes = await db
           .update(eventInbox)
           .set({
@@ -83,7 +90,7 @@ export class EventInboxService {
           .where(
             and(
               eq(eventInbox.id, existing.id),
-              sql`(${eventInbox.status} = 'pending' OR ${eventInbox.status} = 'failed' OR ${eventInbox.leaseExpiresAt} < ${now.getTime()} OR ${eventInbox.leaseOwner} = ${workerId})`
+              sql`(${eventInbox.status} = 'pending' OR ${eventInbox.status} = 'failed' OR ${eventInbox.leaseExpiresAt} < ${nowSec} OR ${eventInbox.leaseOwner} = ${workerId})`
             )
           );
 
@@ -115,8 +122,7 @@ export class EventInboxService {
       if (err instanceof ExternalEventPayloadConflictError) {
         return Result.fail(err.message);
       }
-      const errStr = String(err.message || '').toLowerCase();
-      if (errStr.includes('unique') || errStr.includes('constraint')) {
+      if (isUniqueConstraintViolation(err)) {
         return Result.ok({ isDuplicate: true });
       }
       return Result.fail(`Erro ao gerenciar inbox de eventos: ${err.message}`);

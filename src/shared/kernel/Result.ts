@@ -52,10 +52,10 @@ export class Result<T, E = string> {
   }
 
   public getValue(): T {
-    if (!this.isSuccess || this._value === null) {
+    if (!this.isSuccess) {
       throw new Error("Can't get the value of an error result. Use 'error' or 'typedError' instead.");
     }
-    return this._value;
+    return this._value as T;
   }
 
   /** Creates a successful result. */

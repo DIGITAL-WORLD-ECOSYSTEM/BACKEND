@@ -9,13 +9,13 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
 
   async saveEvent(event: IDomainEvent, aggregateId: number, aggregateType: string, aggregateVersion: number): Promise<Result<void>> {
     try {
-      const eventId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+      const eventId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (await import('crypto')).randomUUID();
       await this.db.insert(outboxEvents).values({
         id: eventId,
         aggregateId: String(aggregateId),
         aggregateType,
         aggregateVersion,
-        eventName: event.constructor.name,
+        eventName: event.eventName || (event.constructor.name !== 'Object' ? event.constructor.name : 'LedgerTransactionPosted.v1'),
         payload: JSON.stringify(event),
         metadata: JSON.stringify({ occurredOn: event.dateTimeOccurred }),
         attempts: 0,

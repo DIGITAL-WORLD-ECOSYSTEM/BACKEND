@@ -1,6 +1,7 @@
 import { Context } from 'hono';
 import { GetTreasuryBalanceUseCase } from '../../../../application/finance/use-cases/GetTreasuryBalanceUseCase';
 import { RecordTreasuryTransactionUseCase } from '../../../../application/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { RecordTransferUseCase } from '../../../../application/finance/use-cases/RecordTransferUseCase';
 import { IFinanceRepository } from '../../../../application/ports/output/IFinanceRepository';
 import { FinancialError } from '../../../../domains/finance/errors/FinancialError';
 
@@ -8,7 +9,8 @@ export class FinanceController {
   constructor(
     private readonly getTreasuryBalanceUseCase: GetTreasuryBalanceUseCase,
     private readonly recordTxUseCase: RecordTreasuryTransactionUseCase,
-    private readonly financeRepo: IFinanceRepository
+    private readonly financeRepo: IFinanceRepository,
+    private readonly recordTransferUseCase?: RecordTransferUseCase
   ) {}
 
   async getBalance(c: Context): Promise<Response> {
@@ -33,7 +35,11 @@ export class FinanceController {
   async recordTransactionWithType(c: Context, forcedType?: string): Promise<Response> {
     try {
       const actorUserId = c.get('userId') || c.get('user')?.userId;
-      const body = await c.req.json();
+      const body = await c.req.json().catch(() => null);
+
+      if (!body || typeof body !== 'object') {
+        return c.json({ success: false, message: 'Payload JSON inválido' }, 400);
+      }
 
       const type = forcedType || body.type;
 
@@ -45,7 +51,7 @@ export class FinanceController {
 
       // 2. Validate Direction
       const allowedDirections = ['INBOUND', 'OUTBOUND'];
-      if (!body.direction || !allowedDirections.includes(body.direction.toUpperCase())) {
+      if (!body.direction || typeof body.direction !== 'string' || !allowedDirections.includes(body.direction.toUpperCase())) {
         return c.json({ success: false, message: `Direction inválida. Permitidas: INBOUND, OUTBOUND` }, 400);
       }
       const direction = body.direction.toUpperCase() as 'INBOUND' | 'OUTBOUND';
@@ -59,7 +65,7 @@ export class FinanceController {
       }
 
       // 4. Extract Idempotency Key
-      const idempotencyKey = c.req.header('idempotency-key') || body.idempotencyKey;
+      const idempotencyKey = c.req.header('idempotency-key') || (typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : undefined);
       if (!idempotencyKey) {
         return c.json({ success: false, message: 'Idempotency-Key header ou no body é obrigatório' }, 400);
       }
@@ -74,24 +80,6 @@ export class FinanceController {
         targetUserId = Number(actorUserId);
       }
 
-      // Authorization check: Non-admin users cannot operate on third-party target accounts
-      if (
-        actorUserId &&
-        targetUserId !== undefined &&
-        targetUserId !== Number(actorUserId) &&
-        type !== 'adjustment' &&
-        type !== 'deposit'
-      ) {
-        const permissions: string[] = c.get('permissions') || c.get('user')?.permissions || [];
-        const isAdmin = permissions.includes('finance.treasury.admin') || permissions.includes('admin');
-        if (!isAdmin) {
-          return c.json({
-            success: false,
-            message: 'Acesso negado: Você não tem autorização para movimentar contas de terceiros.'
-          }, 403);
-        }
-      }
-
       // For adjustments, authorizedByUserId is strictly derived from the authenticated actor (never accepted from body)
       let authorizedByUserId: number | undefined = undefined;
       if (type === 'adjustment') {
@@ -102,6 +90,32 @@ export class FinanceController {
           }, 401);
         }
         authorizedByUserId = Number(actorUserId);
+      }
+
+      const permissions: string[] = c.get('permissions') || c.get('user')?.permissions || [];
+      const isAdmin = permissions.includes('finance.treasury.admin') || permissions.includes('admin');
+
+      // Operation Capability Check: Privileged / System operations require admin rights
+      const privilegedTypes = new Set(['reward', 'yield', 'fee', 'adjustment']);
+      if (privilegedTypes.has(type) && !isAdmin) {
+        return c.json({
+          success: false,
+          message: `Acesso negado: A operação '${type}' é restrita a administradores e processos sistêmicos.`
+        }, 403);
+      }
+
+      // Authorization check: Non-admin users cannot operate on third-party target accounts (including deposits!)
+      if (
+        actorUserId &&
+        targetUserId !== undefined &&
+        targetUserId !== Number(actorUserId)
+      ) {
+        if (!isAdmin) {
+          return c.json({
+            success: false,
+            message: 'Acesso negado: Você não tem autorização para movimentar contas de terceiros.'
+          }, 403);
+        }
       }
 
       // 6. Request Hash: Forward client provided requestHash if present, otherwise let the use case calculate the canonical hash
@@ -115,7 +129,7 @@ export class FinanceController {
         type: type as any,
         direction,
         category: body.category,
-        description: body.description,
+        description: typeof body.description === 'string' ? body.description.trim() : body.description,
         amountBaseUnits: String(body.amountBaseUnits),
         assetId: Number(body.assetId),
         idempotencyKey,
@@ -186,7 +200,86 @@ export class FinanceController {
   }
 
   async recordTransfer(c: Context): Promise<Response> {
+    if (this.recordTransferUseCase) {
+      return this.recordPeerTransfer(c);
+    }
     return this.recordTransactionWithType(c, 'transfer');
+  }
+
+  private async recordPeerTransfer(c: Context): Promise<Response> {
+    try {
+      const actorUserId = c.get('userId') || c.get('user')?.userId;
+      const body = await c.req.json().catch(() => null);
+      if (!body || typeof body !== 'object') {
+        return c.json({ success: false, message: 'Payload JSON inválido' }, 400);
+      }
+
+      const destinationUserId = body.destinationUserId || body.targetUserId;
+      if (!destinationUserId || !/^[1-9]\d*$/.test(String(destinationUserId))) {
+        return c.json({
+          success: false,
+          message: 'destinationUserId válido (inteiro positivo) é obrigatório para transferências entre usuários'
+        }, 400);
+      }
+
+      const sourceUserId = actorUserId ? Number(actorUserId) : (body.sourceUserId ? Number(body.sourceUserId) : undefined);
+      if (!sourceUserId) {
+        return c.json({
+          success: false,
+          message: 'Transferência exige identificação do usuário de origem autenticado'
+        }, 401);
+      }
+
+      if (!body.amountBaseUnits || !/^[1-9]\d*$/.test(String(body.amountBaseUnits))) {
+        return c.json({ success: false, message: 'amountBaseUnits válido (inteiro positivo) é obrigatório' }, 400);
+      }
+
+      if (!body.assetId || !/^[1-9]\d*$/.test(String(body.assetId))) {
+        return c.json({ success: false, message: 'assetId válido (inteiro positivo) é obrigatório' }, 400);
+      }
+
+      const idempotencyKey = c.req.header('idempotency-key') || (typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : undefined);
+      if (!idempotencyKey) {
+        return c.json({ success: false, message: 'Idempotency-Key header ou no body é obrigatório' }, 400);
+      }
+
+      const description = typeof body.description === 'string' ? body.description.trim() : 'Transferência entre usuários';
+      const requestHash = c.req.header('x-request-hash') || body.requestHash || undefined;
+
+      const result = await this.recordTransferUseCase!.execute({
+        sourceUserId,
+        destinationUserId: Number(destinationUserId),
+        amountBaseUnits: String(body.amountBaseUnits),
+        assetId: Number(body.assetId),
+        description,
+        idempotencyKey,
+        requestHash,
+      });
+
+      if (result.isFailure) {
+        const errorMsg = typeof result.error === 'string' ? result.error : (result.error as any)?.message || String(result.error);
+        if (errorMsg.includes('409 Conflict') || errorMsg.includes('Idempotency') || errorMsg.includes('idempotência')) {
+          return c.json({ success: false, message: errorMsg }, 409);
+        }
+        return c.json({ success: false, message: errorMsg }, 400);
+      }
+
+      const data = result.getValue();
+      c.header('Idempotency-Replayed', data.isReplayed ? 'true' : 'false');
+      return c.json({
+        success: true,
+        message: 'Transferência realizada com sucesso',
+        data,
+      }, data.isReplayed ? 200 : 201);
+    } catch (err: unknown) {
+      const requestId = c.req.header('x-request-id') || crypto.randomUUID();
+      console.error(`[FinanceController] recordTransfer Internal Error (requestId: ${requestId}):`, err);
+      return c.json({
+        success: false,
+        message: 'Erro interno ao processar a transferência',
+        requestId,
+      }, 500);
+    }
   }
 
   async recordAdjustment(c: Context): Promise<Response> {
@@ -196,7 +289,21 @@ export class FinanceController {
   async listTransactions(c: Context): Promise<Response> {
     try {
       const userId = c.get('userId') || c.get('user')?.userId;
-      const result = await this.financeRepo.listTransactions(userId);
+      const permissions: string[] = c.get('permissions') || c.get('user')?.permissions || [];
+      const isAdmin = permissions.includes('finance.treasury.read') || permissions.includes('admin');
+
+      // Fail-closed against global ledger leakage: if no userId and not admin, reject with 401
+      if (!userId && !isAdmin) {
+        return c.json({ success: false, message: 'Usuário não autenticado para listagem de transações' }, 401);
+      }
+
+      const cursorParam = c.req.query('cursor');
+      const limitParam = c.req.query('limit');
+      const cursor = cursorParam && /^[1-9]\d*$/.test(cursorParam) ? Number(cursorParam) : undefined;
+      const limit = limitParam && /^[1-9]\d*$/.test(limitParam) ? Math.min(Math.max(Number(limitParam), 1), 100) : 20;
+
+      const targetUserId = userId ? Number(userId) : undefined;
+      const result = await this.financeRepo.listTransactions(targetUserId, { cursor, limit });
 
       if (result.isFailure) {
         return c.json({ success: false, message: result.error }, 400);

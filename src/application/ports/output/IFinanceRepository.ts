@@ -135,7 +135,7 @@ export interface IFinanceRepository {
   getTransactionById(transactionId: number): Promise<Result<FinancialTransactionRecord>>;
   getRefundsTotalForTransaction(originalTransactionId: number, assetId: number): Promise<bigint>;
 
-  listTransactions(userId?: number): Promise<Result<FinancialTransactionRecord[]>>;
+  listTransactions(userId?: number, options?: { cursor?: number; limit?: number }): Promise<Result<FinancialTransactionRecord[]>>;
   getTransactionEntries(transactionId: number): Promise<Result<FinancialLedgerEntryRecord[]>>;
 
   getIdempotencyRecord(key: string, scope: string): Promise<IdempotencyRecord | null>;
@@ -143,12 +143,17 @@ export interface IFinanceRepository {
   completeIdempotency(key: string, scope: string, transactionId: number): Promise<void>;
   insertTransaction(data: {
     userId?: number | null;
+    actorUserId?: number | null;
+    authorizedByUserId?: number | null;
     type: FinancialTransactionType;
     category: FinancialTransactionCategory;
     description: string;
     status: FinancialTransactionStatus;
     reversalOfTransactionId?: number;
     refundOfTransactionId?: number;
+    sourceType?: string | null;
+    sourceId?: string | null;
+    correlationId?: string | null;
   }): Promise<Result<number, RepositoryError>>;
   insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<Result<void, RepositoryError>>;
   updateBalanceWithOCC(

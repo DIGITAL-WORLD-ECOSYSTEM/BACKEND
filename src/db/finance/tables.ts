@@ -641,6 +641,20 @@ export const financialTransactions = sqliteTable(
       },
     ),
 
+    actorUserId: integer('actor_user_id').references(
+      () => users.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    authorizedByUserId: integer('authorized_by_user_id').references(
+      () => users.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
     /**
      * Self-referencing foreign keys.
      *

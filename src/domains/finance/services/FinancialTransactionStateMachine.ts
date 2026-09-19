@@ -132,7 +132,7 @@ export class FinancialTransactionStateMachine {
     if (!isFinancialTransactionStatus(status)) {
       return false;
     }
-    return status === 'failed' || status === 'cancelled' || status === 'reversed';
+    return ALLOWED_TRANSITIONS[status].length === 0;
   }
 
   /**
