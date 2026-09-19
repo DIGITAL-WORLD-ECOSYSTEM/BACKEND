@@ -48,6 +48,14 @@ export class AccountClassPolicy {
     return [];
   }
   /**
+   * Sanitiza strings contra log injection removendo caracteres de controle.
+   */
+  private static sanitizeForError(value: unknown): string {
+    const str = String(value ?? '').normalize('NFC').trim();
+    return str.replace(/[\u0000-\u001F\u007F]/u, '');
+  }
+
+  /**
    * Valida se o tipo de conta pode utilizar a classe contábil informada.
    *
    * A assinatura continua aceitando string para preservar compatibilidade
@@ -57,34 +65,28 @@ export class AccountClassPolicy {
     accountType: string,
     accountClass: string
   ): void {
+    const safeType = AccountClassPolicy.sanitizeForError(accountType);
+    const safeClass = AccountClassPolicy.sanitizeForError(accountClass);
+
     if (
       typeof accountType !== 'string' ||
       accountType.trim().length === 0
     ) {
-      throw new InvalidAccountClassError(
-        String(accountType),
-        String(accountClass)
-      );
+      throw new InvalidAccountClassError(safeType, safeClass);
     }
 
     if (
       typeof accountClass !== 'string' ||
       accountClass.trim().length === 0
     ) {
-      throw new InvalidAccountClassError(
-        accountType,
-        String(accountClass)
-      );
+      throw new InvalidAccountClassError(safeType, safeClass);
     }
 
     const normalizedAccountType = accountType.trim();
     const normalizedAccountClass = accountClass.trim();
 
     if (!AccountClassPolicy.isFinancialAccountType(normalizedAccountType)) {
-      throw new InvalidAccountClassError(
-        normalizedAccountType,
-        normalizedAccountClass
-      );
+      throw new InvalidAccountClassError(safeType, safeClass);
     }
 
     if (
@@ -92,10 +94,7 @@ export class AccountClassPolicy {
         normalizedAccountClass
       )
     ) {
-      throw new InvalidAccountClassError(
-        normalizedAccountType,
-        normalizedAccountClass
-      );
+      throw new InvalidAccountClassError(safeType, safeClass);
     }
 
     const allowed = PERMITTED_CLASSES[normalizedAccountType];
@@ -105,10 +104,7 @@ export class AccountClassPolicy {
         normalizedAccountClass
       )
     ) {
-      throw new InvalidAccountClassError(
-        normalizedAccountType,
-        normalizedAccountClass
-      );
+      throw new InvalidAccountClassError(safeType, safeClass);
     }
   }
 
@@ -122,12 +118,14 @@ export class AccountClassPolicy {
   public static getDefaultClass(
     accountType: string
   ): FinancialAccountClass {
+    const safeType = AccountClassPolicy.sanitizeForError(accountType);
+
     if (
       typeof accountType !== 'string' ||
       accountType.trim().length === 0
     ) {
       throw new InvalidAccountClassError(
-        String(accountType),
+        safeType,
         'default_not_deterministic'
       );
     }
@@ -140,7 +138,7 @@ export class AccountClassPolicy {
       )
     ) {
       throw new InvalidAccountClassError(
-        normalizedAccountType,
+        safeType,
         'unknown'
       );
     }
@@ -149,7 +147,7 @@ export class AccountClassPolicy {
 
     if (allowed.length !== 1) {
       throw new InvalidAccountClassError(
-        normalizedAccountType,
+        safeType,
         'default_not_deterministic'
       );
     }
