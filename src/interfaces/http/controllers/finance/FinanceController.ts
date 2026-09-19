@@ -92,10 +92,16 @@ export class FinanceController {
         }
       }
 
-      // For adjustments, authorizedByUserId is derived from the authenticated actor (or validated admin)
+      // For adjustments, authorizedByUserId is strictly derived from the authenticated actor (never accepted from body)
       let authorizedByUserId: number | undefined = undefined;
       if (type === 'adjustment') {
-        authorizedByUserId = actorUserId ? Number(actorUserId) : (body.authorizedByUserId ? Number(body.authorizedByUserId) : undefined);
+        if (!actorUserId) {
+          return c.json({
+            success: false,
+            message: 'Operações de ajuste exigem sessão autenticada com identificação do autorizador.'
+          }, 401);
+        }
+        authorizedByUserId = Number(actorUserId);
       }
 
       // 6. Request Hash: Forward client provided requestHash if present, otherwise let the use case calculate the canonical hash
