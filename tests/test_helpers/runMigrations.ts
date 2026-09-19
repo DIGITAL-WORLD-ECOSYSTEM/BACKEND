@@ -23,7 +23,7 @@ export function runAllMigrations(sqlite: any) {
           sqlite.execute(statement);
         }
       } catch (err: any) {
-        // Ignore duplicate column or table errors when migrations overlap
+        throw new Error(`[Migration Failure] File ${file} failed on statement:\n${statement}\nError: ${err?.message || err}`);
       }
     }
   }
@@ -46,7 +46,7 @@ export async function runAllMigrationsLibSql(client: any) {
       try {
         await client.execute(statement);
       } catch (err: any) {
-        // Ignore duplicate DDL errors
+        throw new Error(`[Migration Failure LibSQL] File ${file} failed on statement:\n${statement}\nError: ${err?.message || err}`);
       }
     }
   }
