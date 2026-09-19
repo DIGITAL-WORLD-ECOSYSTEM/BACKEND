@@ -70,6 +70,7 @@ migration_files = [
     "migrations/0006_constraints.sql",
     "migrations/0007_event_inbox.sql",
     "migrations/0008_remediation_schema.sql",
+    "migrations/0009_finance_schema_alignment.sql",
 ]
 
 # G. TESTS
@@ -82,6 +83,7 @@ test_files = [
     "tests/finance/failure_injection.test.ts",
     "tests/finance/invariants/balance_projection.test.ts",
     "tests/finance/invariants/commit_failure.test.ts",
+    "tests/finance/invariants/seeds_normal_balance.test.ts",
     "tests/finance/invariants/transaction_failure_matrix.test.ts",
     "tests/finance/money256.test.ts",
     "tests/finance/posting_authority_hardening.test.ts",
@@ -265,7 +267,8 @@ migrations/
 ├── 0005_data_remediation.sql
 ├── 0006_constraints.sql
 ├── 0007_event_inbox.sql
-└── 0008_remediation_schema.sql
+├── 0008_remediation_schema.sql
+└── 0009_finance_schema_alignment.sql
 tests/
 ├── finance/
 │   ├── bootstrap_service.test.ts
@@ -277,6 +280,7 @@ tests/
 │   ├── invariants/
 │   │   ├── balance_projection.test.ts
 │   │   ├── commit_failure.test.ts
+│   │   ├── seeds_normal_balance.test.ts
 │   │   └── transaction_failure_matrix.test.ts
 │   ├── money256.test.ts
 │   ├── posting_authority_hardening.test.ts
@@ -372,9 +376,8 @@ inconsistencies = [
     "- Caso de Uso de Reparo Desconectado: O arquivo src/application/finance/use-cases/RepairFinanceUseCase.ts implementa a governança e execução de reparos de dados financeiros (conforme ADR 0001), porém não está exposto em nenhuma rota HTTP em src/interfaces/http/routes/finance/finance.routes.ts nem injetado em FinanceController.ts, sendo acionado apenas por suítes de teste de integração.",
     "- Arquivos de Teste no Diretório de Código-Fonte: Três arquivos de teste automatizado (src/domains/finance/entities/FinancialTransaction.test.ts, src/infrastructure/repositories/DrizzleFinanceRepository.test.ts e src/infrastructure/repositories/DrizzleUnitOfWork.test.ts) residem fisicamente dentro da árvore de produção src/ em vez de estarem localizados sob a árvore canônica tests/.",
     "- Resolução de Import sem Extensão em Arquivo de Rotas: O arquivo src/interfaces/http/routes/finance/finance.routes.ts importa '../.../../types/bindings' sem extensão explícita, resolvendo fisicamente para a declaração de tipos src/types/bindings.d.ts.",
-    "- Ausência de Pipeline de Ingestão de Extratos Bancários Reais: O módulo possui a tabela fiat_external_transactions e o serviço de reconciliação, mas não possui parsers de extrato bancário (OFX, CNAB 240/400 ou APIs bancárias de Bradesco, Cora ou Inter) implementados no código atual.",
-    "- Constraint Estrutural de Ingestão Externa: A tabela fiat_external_transactions possui a coluna financial_transaction_id com constraint NOT NULL referenciando financial_transactions.id, o que obriga que uma transação interna já exista previamente antes de persistir a transação bancária externa.",
-    "- Defasagem Documental de Contagem de Arquivos: A documentação estática docs/FINANCE_CORE_COMPLETE_TREE.md registra um escopo de 44 arquivos, enquanto a árvore física real do subsistema compreende 71 arquivos (incluindo testes de arquitetura, integridade de migrations, scripts de seed e governança)."
+    "- Ausência de Pipeline de Ingestão de Extratos Bancários Reais: O módulo possui a tabela fiat_external_transactions com suporte a row_fingerprint e métodos no repositório, mas ainda não possui parsers de extrato bancário (OFX, CNAB 240/400 ou APIs bancárias de Bradesco, Cora ou Inter) implementados.",
+    "- Defasagem Documental de Contagem de Arquivos: A documentação estática legada docs/FINANCE_CORE_COMPLETE_TREE.md registrava um escopo de 44 arquivos, enquanto a árvore física real e canônica do subsistema compreende 73 arquivos (63 principais + 10 dependências diretas, incluindo testes de arquitetura, integridade de migrations, scripts de seed e governança)."
 ]
 
 for inc in inconsistencies:

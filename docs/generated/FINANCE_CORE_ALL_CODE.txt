@@ -3,7 +3,7 @@ FINANCE CORE — CÓDIGO-FONTE COMPLETO
 ================================================================================
 
 PROJETO: /home/sandro/Área de trabalho/BackEnd
-DATA DA EXTRAÇÃO: 2026-09-18 21:00:26 -0300
+DATA DA EXTRAÇÃO: 2026-09-18 21:18:25 -0300
 
 ================================================================================
 ÁRVORE REAL DO FINANCE
@@ -76,7 +76,8 @@ migrations/
 ├── 0005_data_remediation.sql
 ├── 0006_constraints.sql
 ├── 0007_event_inbox.sql
-└── 0008_remediation_schema.sql
+├── 0008_remediation_schema.sql
+└── 0009_finance_schema_alignment.sql
 tests/
 ├── finance/
 │   ├── bootstrap_service.test.ts
@@ -88,6 +89,7 @@ tests/
 │   ├── invariants/
 │   │   ├── balance_projection.test.ts
 │   │   ├── commit_failure.test.ts
+│   │   ├── seeds_normal_balance.test.ts
 │   │   └── transaction_failure_matrix.test.ts
 │   ├── money256.test.ts
 │   ├── posting_authority_hardening.test.ts
@@ -109,7 +111,7 @@ CÓDIGO-FONTE INTEGRAL — SUBSISTEMA FINANCE
 ================================================================================
 
 ================================================================================
-ARQUIVO [1/61]: src/domains/finance/contracts/FinancialLedgerEntryRecord.ts
+ARQUIVO [1/63]: src/domains/finance/contracts/FinancialLedgerEntryRecord.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/FinancialLedgerEntryRecord.ts
 ================================================================================
 import type { LedgerEntryDirection } from '../value-objects/BaseUnits';
@@ -133,7 +135,7 @@ export interface FinancialLedgerEntryRecord {
 
 
 ================================================================================
-ARQUIVO [2/61]: src/domains/finance/entities/FinancialTransaction.test.ts
+ARQUIVO [2/63]: src/domains/finance/entities/FinancialTransaction.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/FinancialTransaction.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -1035,7 +1037,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
 
 
 ================================================================================
-ARQUIVO [3/61]: src/domains/finance/entities/LedgerTransaction.ts
+ARQUIVO [3/63]: src/domains/finance/entities/LedgerTransaction.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/LedgerTransaction.ts
 ================================================================================
 import {
@@ -2239,7 +2241,7 @@ export class LedgerTransaction {
 
 
 ================================================================================
-ARQUIVO [4/61]: src/domains/finance/errors/FinancialError.ts
+ARQUIVO [4/63]: src/domains/finance/errors/FinancialError.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/FinancialError.ts
 ================================================================================
 export abstract class FinancialError extends Error {
@@ -2383,7 +2385,7 @@ export class InvalidLedgerTransactionError extends FinancialError {
 
 
 ================================================================================
-ARQUIVO [5/61]: src/domains/finance/errors/LedgerImbalanceError.ts
+ARQUIVO [5/63]: src/domains/finance/errors/LedgerImbalanceError.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/LedgerImbalanceError.ts
 ================================================================================
 import { FinancialError } from './FinancialError';
@@ -2399,7 +2401,7 @@ export class LedgerImbalanceError extends FinancialError {
 
 
 ================================================================================
-ARQUIVO [6/61]: src/domains/finance/policies/AccountClassPolicy.ts
+ARQUIVO [6/63]: src/domains/finance/policies/AccountClassPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountClassPolicy.ts
 ================================================================================
 import { InvalidAccountClassError } from '../errors/FinancialError';
@@ -2622,7 +2624,7 @@ export class AccountClassPolicy {
 
 
 ================================================================================
-ARQUIVO [7/61]: src/domains/finance/policies/AccountingEntryPolicy.ts
+ARQUIVO [7/63]: src/domains/finance/policies/AccountingEntryPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountingEntryPolicy.ts
 ================================================================================
 import {
@@ -4082,7 +4084,7 @@ export class AccountingEntryPolicy {
 
 
 ================================================================================
-ARQUIVO [8/61]: src/domains/finance/policies/AccountStatusPolicy.ts
+ARQUIVO [8/63]: src/domains/finance/policies/AccountStatusPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountStatusPolicy.ts
 ================================================================================
 import { AccountInactiveError } from '../errors/FinancialError';
@@ -4210,7 +4212,7 @@ export class AccountStatusPolicy {
 
 
 ================================================================================
-ARQUIVO [9/61]: src/domains/finance/policies/AssetStatusPolicy.ts
+ARQUIVO [9/63]: src/domains/finance/policies/AssetStatusPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AssetStatusPolicy.ts
 ================================================================================
 import { AssetInactiveError } from '../errors/FinancialError';
@@ -4430,7 +4432,7 @@ export class AssetStatusPolicy {
 
 
 ================================================================================
-ARQUIVO [10/61]: src/domains/finance/services/FinancialTransactionStateMachine.ts
+ARQUIVO [10/63]: src/domains/finance/services/FinancialTransactionStateMachine.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/FinancialTransactionStateMachine.ts
 ================================================================================
 import { Result } from '../../../shared/kernel/Result';
@@ -4592,7 +4594,7 @@ export class FinancialTransactionStateMachine {
 
 
 ================================================================================
-ARQUIVO [11/61]: src/domains/finance/value-objects/BaseUnits.ts
+ARQUIVO [11/63]: src/domains/finance/value-objects/BaseUnits.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/BaseUnits.ts
 ================================================================================
 import {
@@ -4646,7 +4648,7 @@ export function parsePositiveCanonicalBaseUnits(value: unknown): string {
 
 
 ================================================================================
-ARQUIVO [12/61]: src/domains/finance/value-objects/Money256.ts
+ARQUIVO [12/63]: src/domains/finance/value-objects/Money256.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/Money256.ts
 ================================================================================
 import {
@@ -4782,7 +4784,7 @@ export class Money256 {
 
 
 ================================================================================
-ARQUIVO [13/61]: src/application/finance/services/CanonicalRequestHashService.ts
+ARQUIVO [13/63]: src/application/finance/services/CanonicalRequestHashService.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/services/CanonicalRequestHashService.ts
 ================================================================================
 import { createHash } from 'crypto';
@@ -4992,7 +4994,7 @@ export class CanonicalRequestHashService {
 
 
 ================================================================================
-ARQUIVO [14/61]: src/application/finance/services/FinancialTransactionOrchestrator.ts
+ARQUIVO [14/63]: src/application/finance/services/FinancialTransactionOrchestrator.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/services/FinancialTransactionOrchestrator.ts
 ================================================================================
 import { IFinanceRepository } from '../../ports/output/IFinanceRepository';
@@ -5341,7 +5343,7 @@ export class FinancialTransactionOrchestrator {
 
 
 ================================================================================
-ARQUIVO [15/61]: src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts
+ARQUIVO [15/63]: src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5361,7 +5363,7 @@ export class GetTreasuryBalanceUseCase {
 
 
 ================================================================================
-ARQUIVO [16/61]: src/application/finance/use-cases/RecordDepositUseCase.ts
+ARQUIVO [16/63]: src/application/finance/use-cases/RecordDepositUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordDepositUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5450,7 +5452,7 @@ export class RecordDepositUseCase {
 
 
 ================================================================================
-ARQUIVO [17/61]: src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts
+ARQUIVO [17/63]: src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5493,7 +5495,7 @@ export class RecordLedgerTransactionUseCase {
 
 
 ================================================================================
-ARQUIVO [18/61]: src/application/finance/use-cases/RecordTransferUseCase.ts
+ARQUIVO [18/63]: src/application/finance/use-cases/RecordTransferUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTransferUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5597,7 +5599,7 @@ export class RecordTransferUseCase {
 
 
 ================================================================================
-ARQUIVO [19/61]: src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts
+ARQUIVO [19/63]: src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -6080,7 +6082,7 @@ export class RecordTreasuryTransactionUseCase {
 
 
 ================================================================================
-ARQUIVO [20/61]: src/application/finance/use-cases/RepairFinanceUseCase.ts
+ARQUIVO [20/63]: src/application/finance/use-cases/RepairFinanceUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RepairFinanceUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -6129,7 +6131,7 @@ export class RepairFinanceUseCase {
 
 
 ================================================================================
-ARQUIVO [21/61]: src/application/finance/use-cases/ReverseTransactionUseCase.ts
+ARQUIVO [21/63]: src/application/finance/use-cases/ReverseTransactionUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/ReverseTransactionUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -6245,7 +6247,7 @@ export class ReverseTransactionUseCase {
 
 
 ================================================================================
-ARQUIVO [22/61]: src/application/ports/output/IFinanceRepository.ts
+ARQUIVO [22/63]: src/application/ports/output/IFinanceRepository.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IFinanceRepository.ts
 ================================================================================
 import { Result } from '../../../shared/kernel/Result';
@@ -6429,7 +6431,7 @@ export interface IFinanceRepository {
 
 
 ================================================================================
-ARQUIVO [23/61]: src/application/ports/output/IUnitOfWork.ts
+ARQUIVO [23/63]: src/application/ports/output/IUnitOfWork.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IUnitOfWork.ts
 ================================================================================
 import { Result } from '../../../shared/kernel/Result';
@@ -6464,7 +6466,7 @@ export interface IUnitOfWork {
 
 
 ================================================================================
-ARQUIVO [24/61]: src/infrastructure/repositories/DrizzleFinanceRepository.ts
+ARQUIVO [24/63]: src/infrastructure/repositories/DrizzleFinanceRepository.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.ts
 ================================================================================
 import { eq, and, or, lt, inArray, sql } from 'drizzle-orm';
@@ -7679,7 +7681,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
 
 ================================================================================
-ARQUIVO [25/61]: src/infrastructure/repositories/DrizzleFinanceRepository.test.ts
+ARQUIVO [25/63]: src/infrastructure/repositories/DrizzleFinanceRepository.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.test.ts
 ================================================================================
 import { describe, it, expect, vi } from 'vitest';
@@ -7750,7 +7752,7 @@ describe('DrizzleFinanceRepository', () => {
 
 
 ================================================================================
-ARQUIVO [26/61]: src/infrastructure/repositories/DrizzleUnitOfWork.ts
+ARQUIVO [26/63]: src/infrastructure/repositories/DrizzleUnitOfWork.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleUnitOfWork.ts
 ================================================================================
 import { IUnitOfWork, IRepositoryFactory } from '../../application/ports/output/IUnitOfWork';
@@ -7870,7 +7872,7 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
 
 
 ================================================================================
-ARQUIVO [27/61]: src/infrastructure/repositories/DrizzleUnitOfWork.test.ts
+ARQUIVO [27/63]: src/infrastructure/repositories/DrizzleUnitOfWork.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleUnitOfWork.test.ts
 ================================================================================
 import { describe, it, expect, vi } from 'vitest';
@@ -8000,7 +8002,7 @@ describe('DrizzleUnitOfWork', () => {
 
 
 ================================================================================
-ARQUIVO [28/61]: src/infrastructure/repositories/DrizzleOutboxRepository.ts
+ARQUIVO [28/63]: src/infrastructure/repositories/DrizzleOutboxRepository.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleOutboxRepository.ts
 ================================================================================
 import { IDomainEvent } from '../../shared/kernel/DomainEvent';
@@ -8152,7 +8154,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
 
 
 ================================================================================
-ARQUIVO [29/61]: src/infrastructure/services/FinanceBootstrapService.ts
+ARQUIVO [29/63]: src/infrastructure/services/FinanceBootstrapService.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinanceBootstrapService.ts
 ================================================================================
 import { financialAccounts, financialAssets, accountBalances, financialTransactions } from '../../db/finance/tables';
@@ -8435,7 +8437,7 @@ export class FinanceBootstrapService {
 
 
 ================================================================================
-ARQUIVO [30/61]: src/infrastructure/services/EventInboxService.ts
+ARQUIVO [30/63]: src/infrastructure/services/EventInboxService.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/EventInboxService.ts
 ================================================================================
 import { Result } from '../../shared/kernel/Result';
@@ -8622,7 +8624,7 @@ export class EventInboxService {
 
 
 ================================================================================
-ARQUIVO [31/61]: src/interfaces/http/controllers/finance/FinanceController.ts
+ARQUIVO [31/63]: src/interfaces/http/controllers/finance/FinanceController.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts
 ================================================================================
 import { Context } from 'hono';
@@ -8791,7 +8793,7 @@ export class FinanceController {
 
 
 ================================================================================
-ARQUIVO [32/61]: src/interfaces/http/routes/finance/finance.routes.ts
+ARQUIVO [32/63]: src/interfaces/http/routes/finance/finance.routes.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/interfaces/http/routes/finance/finance.routes.ts
 ================================================================================
 import { Hono } from 'hono';
@@ -8933,7 +8935,7 @@ financeRouter.get(
 
 
 ================================================================================
-ARQUIVO [33/61]: src/db/finance/tables.ts
+ARQUIVO [33/63]: src/db/finance/tables.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/finance/tables.ts
 ================================================================================
 import {
@@ -12456,7 +12458,7 @@ export type NewReconciliationRecord = typeof reconciliationRecords.$inferInsert;
 
 
 ================================================================================
-ARQUIVO [34/61]: src/db/finance/relations.ts
+ARQUIVO [34/63]: src/db/finance/relations.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/finance/relations.ts
 ================================================================================
 import { relations } from 'drizzle-orm';
@@ -13110,7 +13112,7 @@ export const FINANCE_RELATION_LAYER_IS_NAVIGATION_ONLY = true as const;
 
 
 ================================================================================
-ARQUIVO [35/61]: src/db/seed.sql
+ARQUIVO [35/63]: src/db/seed.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/seed.sql
 ================================================================================
 -- ============================================================================
@@ -13206,7 +13208,7 @@ VALUES
 
 
 ================================================================================
-ARQUIVO [36/61]: src/db/seed_treasury_report.sql
+ARQUIVO [36/63]: src/db/seed_treasury_report.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/seed_treasury_report.sql
 ================================================================================
 -- ============================================================================
@@ -13412,7 +13414,7 @@ VALUES
 
 
 ================================================================================
-ARQUIVO [37/61]: migrations/0000_white_raider.sql
+ARQUIVO [37/63]: migrations/0000_white_raider.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0000_white_raider.sql
 ================================================================================
 CREATE TABLE `membership_cards` (
@@ -15073,7 +15075,7 @@ CREATE TABLE `outbox_events` (
 
 
 ================================================================================
-ARQUIVO [38/61]: migrations/0005_data_remediation.sql
+ARQUIVO [38/63]: migrations/0005_data_remediation.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0005_data_remediation.sql
 ================================================================================
 -- 0005_data_remediation.sql
@@ -15107,7 +15109,7 @@ UPDATE financial_accounts SET version = 1 WHERE version IS NULL OR version < 1;
 
 
 ================================================================================
-ARQUIVO [39/61]: migrations/0006_constraints.sql
+ARQUIVO [39/63]: migrations/0006_constraints.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0006_constraints.sql
 ================================================================================
 -- 0006_constraints.sql
@@ -15146,7 +15148,7 @@ CREATE INDEX IF NOT EXISTS idx_outbox_events_published ON outbox_events (publish
 
 
 ================================================================================
-ARQUIVO [40/61]: migrations/0007_event_inbox.sql
+ARQUIVO [40/63]: migrations/0007_event_inbox.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0007_event_inbox.sql
 ================================================================================
 CREATE TABLE IF NOT EXISTS `event_inbox` (
@@ -15160,7 +15162,7 @@ CREATE TABLE IF NOT EXISTS `event_inbox` (
 
 
 ================================================================================
-ARQUIVO [41/61]: migrations/0008_remediation_schema.sql
+ARQUIVO [41/63]: migrations/0008_remediation_schema.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0008_remediation_schema.sql
 ================================================================================
 -- 0008_remediation_schema.sql
@@ -15205,7 +15207,156 @@ CREATE INDEX IF NOT EXISTS `idx_outbox_events_lease` ON `outbox_events` (`lease_
 
 
 ================================================================================
-ARQUIVO [42/61]: tests/finance/bootstrap_service.test.ts
+ARQUIVO [42/63]: migrations/0009_finance_schema_alignment.sql
+CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0009_finance_schema_alignment.sql
+================================================================================
+-- 0009_finance_schema_alignment.sql
+-- Canonical Hardening: Physical SQLite Constraints, Reversal Partial Index, and Ingestion-First Model
+
+-- 1. RECREATE financial_accounts WITH ALL PHYSICAL CONSTRAINTS & INDEXES
+CREATE TABLE `__new_financial_accounts` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`user_id` integer,
+	`account_type` text NOT NULL,
+	`account_class` text DEFAULT 'liability' NOT NULL,
+	`status` text DEFAULT 'active' NOT NULL,
+	`name` text NOT NULL,
+	`version` integer DEFAULT 1 NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "ck_financial_accounts_name_nonempty" CHECK(length(trim("name")) > 0),
+	CONSTRAINT "ck_financial_accounts_type" CHECK("account_type" IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow', 'reward_expense', 'yield_expense', 'clearing', 'opening_balance_equity', 'payment_revenue', 'refund_expense')),
+	CONSTRAINT "ck_financial_accounts_class" CHECK("account_class" IN ('asset', 'liability', 'equity', 'revenue', 'expense')),
+	CONSTRAINT "ck_financial_accounts_status" CHECK("status" IN ('active', 'inactive', 'suspended')),
+	CONSTRAINT "ck_financial_accounts_type_class_matrix" CHECK(
+		("account_type" = 'user_available' AND "account_class" = 'liability') OR
+		("account_type" = 'treasury' AND "account_class" = 'asset') OR
+		("account_type" = 'operating' AND "account_class" = 'asset') OR
+		("account_type" = 'reserve' AND "account_class" IN ('asset', 'liability')) OR
+		("account_type" = 'fees' AND "account_class" = 'revenue') OR
+		("account_type" = 'escrow' AND "account_class" = 'liability') OR
+		("account_type" = 'reward_expense' AND "account_class" = 'expense') OR
+		("account_type" = 'yield_expense' AND "account_class" = 'expense') OR
+		("account_type" = 'clearing' AND "account_class" IN ('asset', 'liability')) OR
+		("account_type" = 'opening_balance_equity' AND "account_class" IN ('equity', 'liability')) OR
+		("account_type" = 'payment_revenue' AND "account_class" = 'revenue') OR
+		("account_type" = 'refund_expense' AND "account_class" = 'expense')
+	),
+	CONSTRAINT "ck_financial_accounts_owner_rule" CHECK(("account_type" = 'user_available' AND "user_id" IS NOT NULL) OR ("account_type" != 'user_available' AND "user_id" IS NULL)),
+	CONSTRAINT "ck_financial_accounts_version" CHECK("version" > 0)
+);--> statement-breakpoint
+
+INSERT INTO `__new_financial_accounts`("id", "user_id", "account_type", "account_class", "status", "name", "version", "created_at", "updated_at")
+SELECT "id", "user_id", "account_type", COALESCE("account_class", 'liability'), "status", "name", "version", "created_at", "updated_at" FROM `financial_accounts`;--> statement-breakpoint
+
+DROP TABLE `financial_accounts`;--> statement-breakpoint
+ALTER TABLE `__new_financial_accounts` RENAME TO `financial_accounts`;--> statement-breakpoint
+
+CREATE INDEX `idx_financial_accounts_user` ON `financial_accounts` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_financial_accounts_type` ON `financial_accounts` (`account_type`);--> statement-breakpoint
+CREATE INDEX `idx_financial_accounts_class` ON `financial_accounts` (`account_class`);--> statement-breakpoint
+CREATE INDEX `idx_financial_accounts_status` ON `financial_accounts` (`status`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_financial_accounts_user_type_name` ON `financial_accounts` (`user_id`,`account_type`,`name`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_operating_active_singleton` ON `financial_accounts` (`account_type`) WHERE `account_type` = 'operating' AND `status` = 'active';--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_fees_active_singleton` ON `financial_accounts` (`account_type`) WHERE `account_type` = 'fees' AND `status` = 'active';--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_user_available_singleton` ON `financial_accounts` (`user_id`) WHERE `account_type` = 'user_available';--> statement-breakpoint
+
+-- 2. RECREATE financial_transactions WITH STRICT DOMAIN TYPES & PARTIAL REVERSAL INDEX
+CREATE TABLE `__new_financial_transactions` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`user_id` integer,
+	`reversal_of_transaction_id` integer,
+	`refund_of_transaction_id` integer,
+	`type` text NOT NULL,
+	`category` text DEFAULT 'other' NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`source_type` text,
+	`source_id` text,
+	`correlation_id` text,
+	`description` text NOT NULL,
+	`version` integer DEFAULT 1 NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	`completed_at` integer,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`reversal_of_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`refund_of_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "ck_financial_tx_type" CHECK("type" IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment', 'reversal')),
+	CONSTRAINT "ck_financial_tx_category" CHECK("category" IN ('membership', 'rwa_yield', 'grant', 'operational', 'payment', 'trading', 'withdrawal', 'deposit', 'fee', 'other')),
+	CONSTRAINT "ck_financial_tx_status" CHECK("status" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'refunded')),
+	CONSTRAINT "ck_financial_tx_source_type" CHECK("source_type" IS NULL OR "source_type" IN ('contribution', 'grant', 'membership', 'payroll', 'withdrawal', 'payment', 'conversion', 'system', 'other')),
+	CONSTRAINT "ck_financial_tx_completed_state" CHECK("status" != 'completed' OR "completed_at" IS NOT NULL),
+	CONSTRAINT "ck_financial_tx_dates" CHECK("completed_at" IS NULL OR "completed_at" >= "created_at"),
+	CONSTRAINT "ck_financial_tx_version" CHECK("version" > 0)
+);--> statement-breakpoint
+
+INSERT INTO `__new_financial_transactions`("id", "user_id", "reversal_of_transaction_id", "refund_of_transaction_id", "type", "category", "status", "source_type", "source_id", "correlation_id", "description", "version", "created_at", "updated_at", "completed_at")
+SELECT "id", "user_id", "reversal_of_transaction_id", "refund_of_transaction_id", "type", "category", "status", "source_type", "source_id", "correlation_id", "description", "version", "created_at", "updated_at", "completed_at" FROM `financial_transactions`;--> statement-breakpoint
+
+DROP TABLE `financial_transactions`;--> statement-breakpoint
+ALTER TABLE `__new_financial_transactions` RENAME TO `financial_transactions`;--> statement-breakpoint
+
+CREATE INDEX `idx_financial_transactions_user` ON `financial_transactions` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_type` ON `financial_transactions` (`type`);--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_status` ON `financial_transactions` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_created` ON `financial_transactions` (`created_at`);--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_correlation` ON `financial_transactions` (`correlation_id`);--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_refund_of` ON `financial_transactions` (`refund_of_transaction_id`);--> statement-breakpoint
+DROP INDEX IF EXISTS `uq_financial_tx_single_reversal`;--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_financial_tx_active_reversal` ON `financial_transactions` (`reversal_of_transaction_id`) WHERE `reversal_of_transaction_id` IS NOT NULL AND `status` NOT IN ('failed', 'cancelled');--> statement-breakpoint
+
+-- 3. RECREATE fiat_external_transactions FOR INGESTION-FIRST
+CREATE TABLE `__new_fiat_external_transactions` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`provider_id` integer NOT NULL,
+	`fiat_account_id` integer,
+	`external_transaction_id` text NOT NULL,
+	`raw_amount` text NOT NULL,
+	`amount_base_units` text,
+	`direction` text NOT NULL,
+	`asset_id` integer,
+	`raw_description` text,
+	`bank_timestamp` integer,
+	`document_number` text,
+	`running_balance_base_units` text,
+	`source_file` text,
+	`source_file_hash` text,
+	`row_fingerprint` text,
+	`raw_payload` text,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`reconciliation_status` text DEFAULT 'unmatched' NOT NULL,
+	`financial_transaction_id` integer,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	`settled_at` integer,
+	FOREIGN KEY (`provider_id`) REFERENCES `fiat_providers`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`fiat_account_id`) REFERENCES `fiat_accounts`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`financial_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "ck_fiat_external_transaction_id_nonempty" CHECK(length(trim("external_transaction_id")) > 0),
+	CONSTRAINT "ck_fiat_external_tx_direction" CHECK("direction" IN ('credit', 'debit')),
+	CONSTRAINT "ck_fiat_external_tx_reconciliation_status" CHECK("reconciliation_status" IN ('unmatched', 'matched', 'ignored', 'discrepancy')),
+	CONSTRAINT "ck_fiat_external_tx_status" CHECK("status" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'unknown'))
+);--> statement-breakpoint
+
+INSERT INTO `__new_fiat_external_transactions`("id", "provider_id", "external_transaction_id", "raw_amount", "amount_base_units", "direction", "asset_id", "raw_description", "bank_timestamp", "document_number", "running_balance_base_units", "source_file", "source_file_hash", "row_fingerprint", "raw_payload", "status", "reconciliation_status", "financial_transaction_id", "created_at", "updated_at", "settled_at")
+SELECT "id", "provider_id", "external_transaction_id", '0', NULL, 'credit', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "status", 'unmatched', "financial_transaction_id", "created_at", "updated_at", NULL FROM `fiat_external_transactions`;--> statement-breakpoint
+
+DROP TABLE `fiat_external_transactions`;--> statement-breakpoint
+ALTER TABLE `__new_fiat_external_transactions` RENAME TO `fiat_external_transactions`;--> statement-breakpoint
+
+CREATE UNIQUE INDEX `uq_fiat_external_transactions_provider_external` ON `fiat_external_transactions` (`provider_id`, `external_transaction_id`);--> statement-breakpoint
+CREATE INDEX `idx_fiat_external_transactions_transaction` ON `fiat_external_transactions` (`financial_transaction_id`);--> statement-breakpoint
+CREATE INDEX `idx_fiat_external_transactions_provider` ON `fiat_external_transactions` (`provider_id`);--> statement-breakpoint
+CREATE INDEX `idx_fiat_external_transactions_fiat_account` ON `fiat_external_transactions` (`fiat_account_id`);--> statement-breakpoint
+CREATE INDEX `idx_fiat_external_transactions_status` ON `fiat_external_transactions` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_fiat_external_transactions_recon_status` ON `fiat_external_transactions` (`reconciliation_status`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_fiat_external_transactions_fingerprint` ON `fiat_external_transactions` (`row_fingerprint`) WHERE `row_fingerprint` IS NOT NULL;
+
+
+================================================================================
+ARQUIVO [43/63]: tests/finance/bootstrap_service.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/bootstrap_service.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -15277,7 +15428,7 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
 
 
 ================================================================================
-ARQUIVO [43/61]: tests/finance/concurrency_stress.test.ts
+ARQUIVO [44/63]: tests/finance/concurrency_stress.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/concurrency_stress.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -15605,7 +15756,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
 
 
 ================================================================================
-ARQUIVO [44/61]: tests/finance/domain_policies.test.ts
+ARQUIVO [45/63]: tests/finance/domain_policies.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/domain_policies.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -16040,7 +16191,7 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
 
 
 ================================================================================
-ARQUIVO [45/61]: tests/finance/event_inbox.test.ts
+ARQUIVO [46/63]: tests/finance/event_inbox.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/event_inbox.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -16102,7 +16253,7 @@ describe('Invariante DOD-14: Event Inbox Idempotency para Webhooks Externos', ()
 
 
 ================================================================================
-ARQUIVO [46/61]: tests/finance/evm_precision.test.ts
+ARQUIVO [47/63]: tests/finance/evm_precision.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/evm_precision.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -16191,7 +16342,7 @@ describe('Precisão Monetária EVM 256-bit - Transações com > 53-bits', () => 
 
 
 ================================================================================
-ARQUIVO [47/61]: tests/finance/failure_injection.test.ts
+ARQUIVO [48/63]: tests/finance/failure_injection.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/failure_injection.test.ts
 ================================================================================
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -16284,7 +16435,7 @@ describe('Gate 4: Failure Injection Matrix & Atomic Rollback Certification (FIN-
 
 
 ================================================================================
-ARQUIVO [48/61]: tests/finance/invariants/balance_projection.test.ts
+ARQUIVO [49/63]: tests/finance/invariants/balance_projection.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/balance_projection.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -16453,7 +16604,7 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
 
 
 ================================================================================
-ARQUIVO [49/61]: tests/finance/invariants/commit_failure.test.ts
+ARQUIVO [50/63]: tests/finance/invariants/commit_failure.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/commit_failure.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -16636,7 +16787,243 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
 
 
 ================================================================================
-ARQUIVO [50/61]: tests/finance/invariants/transaction_failure_matrix.test.ts
+ARQUIVO [51/63]: tests/finance/invariants/seeds_normal_balance.test.ts
+CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/seeds_normal_balance.test.ts
+================================================================================
+import { describe, it, expect } from 'vitest';
+import { createClient } from '@libsql/client';
+import { readFileSync, unlinkSync, existsSync } from 'fs';
+import { join } from 'path';
+import { runAllMigrationsLibSql } from '../../test_helpers/runMigrations';
+
+describe('Gate Contábil: Invariantes de Partidas Dobradas e Normal Balance nos Seeds', () => {
+  const rootDir = process.cwd();
+
+  const isDebitNormal = (accountClass: string): boolean => {
+    switch (accountClass) {
+      case 'asset':
+      case 'expense':
+        return true;
+      case 'liability':
+      case 'equity':
+      case 'revenue':
+        return false;
+      default:
+        throw new Error(`Classe contábil desconhecida: ${accountClass}`);
+    }
+  };
+
+  it('valida estritamente seed.sql: partidas dobradas por transação e normal balance por conta', async () => {
+    const dbFile = 'test_seed_invariants.db';
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+
+    const sqlite = createClient({ url: `file:${dbFile}` });
+
+    try {
+      // 1. Executa todas as migrations (0000 até 0009)
+      await runAllMigrationsLibSql(sqlite);
+
+      // 2. Executa o seed.sql
+      const seedSql = readFileSync(join(rootDir, 'src/db/seed.sql'), 'utf-8');
+      await sqlite.executeMultiple(seedSql);
+
+      // 3. Valida partidas dobradas para todas as transações
+      const txRows = (await sqlite.execute('SELECT id, type, status FROM financial_transactions')).rows;
+      expect(txRows.length).toBeGreaterThan(0);
+
+      for (const tx of txRows) {
+        const txId = tx.id as number;
+        const entries = (await sqlite.execute({
+          sql: 'SELECT direction, amount_base_units FROM financial_ledger_entries WHERE transaction_id = ?',
+          args: [txId],
+        })).rows;
+
+        let debits = 0n;
+        let credits = 0n;
+        for (const entry of entries) {
+          const amt = BigInt(entry.amount_base_units as string);
+          if (entry.direction === 'debit') {
+            debits += amt;
+          } else if (entry.direction === 'credit') {
+            credits += amt;
+          }
+        }
+
+        expect(debits).toBe(credits);
+        expect(debits).toBeGreaterThan(0n);
+      }
+
+      // 4. Valida Normal Balance para todas as contas financeiras
+      const accountRows = (await sqlite.execute('SELECT id, account_type, account_class FROM financial_accounts')).rows;
+      expect(accountRows.length).toBeGreaterThan(0);
+
+      for (const acc of accountRows) {
+        const accId = acc.id as number;
+        const accClass = acc.account_class as string;
+        const debitNormal = isDebitNormal(accClass);
+
+        const balanceRows = (await sqlite.execute({
+          sql: 'SELECT available_base_units, locked_base_units FROM account_balances WHERE account_id = ?',
+          args: [accId],
+        })).rows;
+
+        // Se a conta possui saldo materializado, deve bater 100% com a projeção contábil
+        if (balanceRows.length > 0) {
+          const balanceRow = balanceRows[0];
+          const availableBaseUnits = BigInt(balanceRow.available_base_units as string);
+
+          const entries = (await sqlite.execute({
+            sql: 'SELECT direction, amount_base_units FROM financial_ledger_entries WHERE account_id = ?',
+            args: [accId],
+          })).rows;
+
+          let projected = 0n;
+          for (const entry of entries) {
+            const amt = BigInt(entry.amount_base_units as string);
+            if (debitNormal) {
+              projected += (entry.direction === 'debit' ? amt : -amt);
+            } else {
+              projected += (entry.direction === 'credit' ? amt : -amt);
+            }
+          }
+
+          expect(availableBaseUnits).toBe(projected);
+          expect(availableBaseUnits).toBeGreaterThanOrEqual(0n);
+        }
+      }
+    } finally {
+      try { sqlite.close(); } catch (e) {}
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+  }, 30000);
+
+  it('valida estritamente seed_treasury_report.sql: 40 transações comprovadas, 5 falhas, sem desequilíbrio e normal balance', async () => {
+    const dbFile = 'test_treasury_report_invariants.db';
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+
+    const sqlite = createClient({ url: `file:${dbFile}` });
+
+    try {
+      // 1. Executa todas as migrations (0000 até 0009)
+      await runAllMigrationsLibSql(sqlite);
+
+      // 2. Executa o seed_treasury_report.sql
+      const treasurySql = readFileSync(join(rootDir, 'src/db/seed_treasury_report.sql'), 'utf-8');
+      await sqlite.executeMultiple(treasurySql);
+
+      // 3. Valida exatamente 45 transações auditadas
+      const txRows = (await sqlite.execute('SELECT id, status, category FROM financial_transactions WHERE id >= 101')).rows;
+      expect(txRows.length).toBe(45);
+
+      const completedTxs = txRows.filter(t => t.status === 'completed');
+      const failedTxs = txRows.filter(t => t.status === 'failed');
+
+      expect(completedTxs.length).toBe(40);
+      expect(failedTxs.length).toBe(5);
+
+      // As 5 transações com falha não podem conter lançamentos contábeis
+      for (const failedTx of failedTxs) {
+        const entries = (await sqlite.execute({
+          sql: 'SELECT count(*) as count FROM financial_ledger_entries WHERE transaction_id = ?',
+          args: [failedTx.id],
+        })).rows;
+        expect(Number(entries[0].count)).toBe(0);
+      }
+
+      // As 40 transações comprovadas devem satisfazer double-entry estrito
+      let totalProvenDebits = 0n;
+      let totalProvenCredits = 0n;
+
+      for (const compTx of completedTxs) {
+        const entries = (await sqlite.execute({
+          sql: 'SELECT direction, amount_base_units FROM financial_ledger_entries WHERE transaction_id = ?',
+          args: [compTx.id],
+        })).rows;
+
+        expect(entries.length).toBe(2); // Exatamente 1 débito e 1 crédito
+
+        let debits = 0n;
+        let credits = 0n;
+        for (const entry of entries) {
+          const amt = BigInt(entry.amount_base_units as string);
+          if (entry.direction === 'debit') debits += amt;
+          if (entry.direction === 'credit') credits += amt;
+        }
+
+        expect(debits).toBe(credits);
+        totalProvenDebits += debits;
+        totalProvenCredits += credits;
+      }
+
+      // Total comprovado deve ser exatamente R$ 36.623,00 (3.662.300 centavos)
+      expect(totalProvenDebits).toBe(3662300n);
+      expect(totalProvenCredits).toBe(3662300n);
+
+      // 4. Validação Contábil por Conta e Normal Balance
+      // Conta 10 (Andressa: user_available, liability):
+      // Saldo disponível = 0, Saldo devedor = 29.177,00 (locked)
+      const acc10 = (await sqlite.execute('SELECT * FROM account_balances WHERE account_id = 10')).rows[0];
+      expect(acc10.available_base_units).toBe('0');
+      expect(acc10.locked_base_units).toBe('2917700');
+
+      // Conta 11 (Tesouraria: treasury, asset):
+      // Saldo disponível = 36.623,00 (3.662.300)
+      const acc11 = (await sqlite.execute('SELECT * FROM account_balances WHERE account_id = 11')).rows[0];
+      expect(acc11.available_base_units).toBe('3662300');
+
+      // Conta 12 (Receita Mensalidade: payment_revenue, revenue):
+      // Saldo disponível = 27.389,00 (2.738.900)
+      const acc12 = (await sqlite.execute('SELECT * FROM account_balances WHERE account_id = 12')).rows[0];
+      expect(acc12.available_base_units).toBe('2738900');
+
+      // Conta 13 (Clearing Operacional: clearing, liability):
+      // Saldo disponível = 9.234,00 (923.400)
+      const acc13 = (await sqlite.execute('SELECT * FROM account_balances WHERE account_id = 13')).rows[0];
+      expect(acc13.available_base_units).toBe('923400');
+
+      // 5. Normal Balance Invariance Verification para todas as 4 contas do report
+      const reportAccounts = (await sqlite.execute('SELECT id, account_class FROM financial_accounts WHERE id IN (10, 11, 12, 13)')).rows;
+      for (const acc of reportAccounts) {
+        const accId = acc.id as number;
+        const accClass = acc.account_class as string;
+        const debitNormal = isDebitNormal(accClass);
+
+        const balRow = (await sqlite.execute({
+          sql: 'SELECT available_base_units FROM account_balances WHERE account_id = ?',
+          args: [accId],
+        })).rows[0];
+
+        const entries = (await sqlite.execute({
+          sql: 'SELECT direction, amount_base_units FROM financial_ledger_entries WHERE account_id = ?',
+          args: [accId],
+        })).rows;
+
+        let projected = 0n;
+        for (const entry of entries) {
+          const amt = BigInt(entry.amount_base_units as string);
+          if (debitNormal) {
+            projected += (entry.direction === 'debit' ? amt : -amt);
+          } else {
+            projected += (entry.direction === 'credit' ? amt : -amt);
+          }
+        }
+
+        expect(BigInt(balRow.available_base_units as string)).toBe(projected);
+      }
+    } finally {
+      try { sqlite.close(); } catch (e) {}
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+  }, 30000);
+});
+
+
+================================================================================
+ARQUIVO [52/63]: tests/finance/invariants/transaction_failure_matrix.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/transaction_failure_matrix.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -17129,7 +17516,7 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
 
 
 ================================================================================
-ARQUIVO [51/61]: tests/finance/money256.test.ts
+ARQUIVO [53/63]: tests/finance/money256.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/money256.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -17218,7 +17605,7 @@ describe('Money256 Value Object (EVM 256-bit Precision)', () => {
 
 
 ================================================================================
-ARQUIVO [52/61]: tests/finance/posting_authority_hardening.test.ts
+ARQUIVO [54/63]: tests/finance/posting_authority_hardening.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/posting_authority_hardening.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -17542,7 +17929,7 @@ describe('Gate 3/4 Hardening: Autoridade Física de Posting e Fechamento de Bypa
 
 
 ================================================================================
-ARQUIVO [53/61]: tests/finance/reconciliation_3way.test.ts
+ARQUIVO [55/63]: tests/finance/reconciliation_3way.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/reconciliation_3way.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -17758,7 +18145,7 @@ describe('3-Way Reconciliation Suite (External Provider <-> Ledger Projection <-
 
 
 ================================================================================
-ARQUIVO [54/61]: tests/finance/reverse_transaction.test.ts
+ARQUIVO [56/63]: tests/finance/reverse_transaction.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/reverse_transaction.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -17881,7 +18268,7 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
 
 
 ================================================================================
-ARQUIVO [55/61]: tests/finance/schema_invariants_audit.test.ts
+ARQUIVO [57/63]: tests/finance/schema_invariants_audit.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/schema_invariants_audit.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18106,7 +18493,7 @@ describe('Schema Invariants & Security Audit Verification (FIN-DB-001, 004, 008,
 
 
 ================================================================================
-ARQUIVO [56/61]: tests/finance_real_db_e2e.test.ts
+ARQUIVO [58/63]: tests/finance_real_db_e2e.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance_real_db_e2e.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18344,7 +18731,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
 
 
 ================================================================================
-ARQUIVO [57/61]: tests/architecture/finance_posting_authority.test.ts
+ARQUIVO [59/63]: tests/architecture/finance_posting_authority.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/architecture/finance_posting_authority.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -18445,7 +18832,7 @@ describe('Static Architecture Gate: Single Financial Posting Authority & Dead Co
 
 
 ================================================================================
-ARQUIVO [58/61]: tests/architecture/architecture-boundaries.test.ts
+ARQUIVO [60/63]: tests/architecture/architecture-boundaries.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/architecture/architecture-boundaries.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -18716,7 +19103,7 @@ describe('Executable Architectural Boundaries & Governance Suite — Padrão Our
 
 
 ================================================================================
-ARQUIVO [59/61]: tests/architecture/dependency_rules.test.ts
+ARQUIVO [61/63]: tests/architecture/dependency_rules.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/architecture/dependency_rules.test.ts
 ================================================================================
 import * as fs from 'fs';
@@ -18787,7 +19174,7 @@ describe('Architecture Dependency Rules', () => {
 
 
 ================================================================================
-ARQUIVO [60/61]: tests/migrations/migration_integrity.test.ts
+ARQUIVO [62/63]: tests/migrations/migration_integrity.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/migrations/migration_integrity.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -18917,7 +19304,7 @@ describe('Gate 3: Migration Governance & Data Integrity Suite', () => {
 
 
 ================================================================================
-ARQUIVO [61/61]: tests/test_helpers/runMigrations.ts
+ARQUIVO [63/63]: tests/test_helpers/runMigrations.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/test_helpers/runMigrations.ts
 ================================================================================
 import * as fs from 'fs';
@@ -20299,16 +20686,16 @@ Dependências diretas incluídas:
 10
 
 Testes Finance:
-20
+21
 
 Migrations relacionadas:
-5
+6
 
 Total de arquivos extraídos:
-71
+73
 
 Total de linhas extraídas:
-19730
+20103
 
 ================================================================================
 MAPA DE POSSÍVEIS INCONSISTÊNCIAS DETECTADAS DURANTE A EXTRAÇÃO
@@ -20317,9 +20704,8 @@ MAPA DE POSSÍVEIS INCONSISTÊNCIAS DETECTADAS DURANTE A EXTRAÇÃO
 - Caso de Uso de Reparo Desconectado: O arquivo src/application/finance/use-cases/RepairFinanceUseCase.ts implementa a governança e execução de reparos de dados financeiros (conforme ADR 0001), porém não está exposto em nenhuma rota HTTP em src/interfaces/http/routes/finance/finance.routes.ts nem injetado em FinanceController.ts, sendo acionado apenas por suítes de teste de integração.
 - Arquivos de Teste no Diretório de Código-Fonte: Três arquivos de teste automatizado (src/domains/finance/entities/FinancialTransaction.test.ts, src/infrastructure/repositories/DrizzleFinanceRepository.test.ts e src/infrastructure/repositories/DrizzleUnitOfWork.test.ts) residem fisicamente dentro da árvore de produção src/ em vez de estarem localizados sob a árvore canônica tests/.
 - Resolução de Import sem Extensão em Arquivo de Rotas: O arquivo src/interfaces/http/routes/finance/finance.routes.ts importa '../.../../types/bindings' sem extensão explícita, resolvendo fisicamente para a declaração de tipos src/types/bindings.d.ts.
-- Ausência de Pipeline de Ingestão de Extratos Bancários Reais: O módulo possui a tabela fiat_external_transactions e o serviço de reconciliação, mas não possui parsers de extrato bancário (OFX, CNAB 240/400 ou APIs bancárias de Bradesco, Cora ou Inter) implementados no código atual.
-- Constraint Estrutural de Ingestão Externa: A tabela fiat_external_transactions possui a coluna financial_transaction_id com constraint NOT NULL referenciando financial_transactions.id, o que obriga que uma transação interna já exista previamente antes de persistir a transação bancária externa.
-- Defasagem Documental de Contagem de Arquivos: A documentação estática docs/FINANCE_CORE_COMPLETE_TREE.md registra um escopo de 44 arquivos, enquanto a árvore física real do subsistema compreende 71 arquivos (incluindo testes de arquitetura, integridade de migrations, scripts de seed e governança).
+- Ausência de Pipeline de Ingestão de Extratos Bancários Reais: O módulo possui a tabela fiat_external_transactions com suporte a row_fingerprint e métodos no repositório, mas ainda não possui parsers de extrato bancário (OFX, CNAB 240/400 ou APIs bancárias de Bradesco, Cora ou Inter) implementados.
+- Defasagem Documental de Contagem de Arquivos: A documentação estática legada docs/FINANCE_CORE_COMPLETE_TREE.md registrava um escopo de 44 arquivos, enquanto a árvore física real e canônica do subsistema compreende 73 arquivos (63 principais + 10 dependências diretas, incluindo testes de arquitetura, integridade de migrations, scripts de seed e governança).
 
 ================================================================================
 FIM DO DOSSIÊ DO FINANCE CORE
