@@ -572,6 +572,15 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       }
       return Result.ok(tx.id);
     } catch (e: any) {
+      const msg = e?.message || String(e);
+      if (
+        msg.includes('UNIQUE constraint failed') ||
+        msg.includes('PRIMARY KEY must be unique') ||
+        msg.includes('SQLITE_CONSTRAINT_UNIQUE') ||
+        msg.includes('uq_financial_tx_active_reversal')
+      ) {
+        return Result.err(RepositoryError.conflict(`Conflito de integridade/unicidade na transação financeira: ${msg}`, e));
+      }
       return Result.err(RepositoryError.transient(e.message, e));
     }
   }
@@ -586,14 +595,22 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       conditions.push(eq(financialTransactions.version, expectedVersion));
     }
 
+    const updates: Record<string, unknown> = {
+      status,
+      version: sql`${financialTransactions.version} + 1`,
+      updatedAt: new Date(),
+    };
+
+    if (status === 'completed') {
+      updates.completedAt = new Date();
+    } else if (status === 'failed' || status === 'cancelled') {
+      updates.completedAt = null;
+    }
+    // Para 'reversed' e 'refunded': o completedAt histórico original é rigorosamente preservado!
+
     const res = await this.executor
       .update(financialTransactions)
-      .set({
-        status,
-        version: sql`${financialTransactions.version} + 1`,
-        completedAt: status === 'completed' ? new Date() : null,
-        updatedAt: new Date(),
-      })
+      .set(updates)
       .where(and(...conditions));
 
     const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
@@ -631,9 +648,19 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           );
         }
 
+        const accountIdNum = Number(r.accountId);
+        const assetIdNum = Number(r.assetId);
+
+        if (!Number.isSafeInteger(accountIdNum) || accountIdNum <= 0) {
+          throw new Error(`Invalid accountId from database for transaction ${transactionId}: ${r.accountId}`);
+        }
+        if (!Number.isSafeInteger(assetIdNum) || assetIdNum <= 0) {
+          throw new Error(`Invalid assetId from database for transaction ${transactionId}: ${r.assetId}`);
+        }
+
         return {
-          accountId: Number(r.accountId),
-          assetId: Number(r.assetId),
+          accountId: accountIdNum,
+          assetId: assetIdNum,
           direction: r.direction as 'debit' | 'credit',
           amountBaseUnits: String(r.amountBaseUnits),
         };
@@ -910,10 +937,10 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         const accountIdNum = Number(entry.accountId);
         const assetIdNum = Number(entry.amount.assetId);
 
-        if (!Number.isInteger(accountIdNum) || accountIdNum <= 0) {
+        if (!Number.isSafeInteger(accountIdNum) || accountIdNum <= 0) {
           throw new Error(`Invalid physical accountId: ${entry.accountId}`);
         }
-        if (!Number.isInteger(assetIdNum) || assetIdNum <= 0) {
+        if (!Number.isSafeInteger(assetIdNum) || assetIdNum <= 0) {
           throw new Error(`Invalid physical assetId: ${entry.amount.assetId}`);
         }
 
@@ -972,10 +999,10 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     const accIdNum = Number(accountId);
     const assetIdNum = Number(assetId);
 
-    if (!Number.isInteger(accIdNum) || accIdNum <= 0) {
+    if (!Number.isSafeInteger(accIdNum) || accIdNum <= 0) {
       throw new Error(`Invalid physical accountId: ${accountId}`);
     }
-    if (!Number.isInteger(assetIdNum) || assetIdNum <= 0) {
+    if (!Number.isSafeInteger(assetIdNum) || assetIdNum <= 0) {
       throw new Error(`Invalid physical assetId: ${assetId}`);
     }
 

@@ -1,6 +1,6 @@
 import { financialAccounts, financialAssets, accountBalances, financialTransactions } from '../../db/finance/tables';
 import { idempotencyKeys } from '../../db/infrastructure/tables';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { Result } from '../../shared/kernel/Result';
 import { DrizzleFinanceRepository } from '../repositories/DrizzleFinanceRepository';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
@@ -213,11 +213,12 @@ export class FinanceBootstrapService {
             throw new Error(`Falha ao registrar partidas dobradas de abertura: ${String(insertLedgerRes.error)}`);
           }
 
-          // 3. Atualiza saldos das duas contas no account_balances
+          // 3. Atualiza saldos das duas contas no account_balances com rastreabilidade de version
           await tx
             .update(accountBalances)
             .set({
               availableBaseUnits: initialBal,
+              version: sql`${accountBalances.version} + 1`,
               updatedAt: new Date(),
             })
             .where(
@@ -231,6 +232,7 @@ export class FinanceBootstrapService {
             .update(accountBalances)
             .set({
               availableBaseUnits: initialBal,
+              version: sql`${accountBalances.version} + 1`,
               updatedAt: new Date(),
             })
             .where(
