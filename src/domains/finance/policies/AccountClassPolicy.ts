@@ -52,7 +52,7 @@ export class AccountClassPolicy {
    */
   private static sanitizeForError(value: unknown): string {
     const str = String(value ?? '').normalize('NFC').trim();
-    return str.replace(/[\u0000-\u001F\u007F]/u, '');
+    return str.replace(/[\u0000-\u001F\u007F]/gu, '');
   }
 
   /**
