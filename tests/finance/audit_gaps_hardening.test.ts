@@ -158,31 +158,60 @@ describe('Fase 3B: Certificação de Hardening dos Gaps de Auditoria (F1, F2/F3,
     expect(revUsdRes.isSuccess).toBe(true);
   });
 
-  it('F4 — Rollback deve garantir zero escrita física quando o callback retornar Result.fail', async () => {
+  it('F4 — Rollback deve garantir zero escrita física quando o callback retornar Result.fail (variantes de driver)', async () => {
     // Captura estado antes da execução
     const initialKeysCount = Number((await sqlite.execute('SELECT COUNT(*) as c FROM idempotency_keys')).rows[0].c);
     const initialTxsCount = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_transactions')).rows[0].c);
     const initialEntriesCount = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_ledger_entries')).rows[0].c);
-    const initialAccountsCount = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_accounts WHERE user_id = 99')).rows[0].c);
+    const initialAccountsCount = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_accounts WHERE user_id IN (98, 99)')).rows[0].c);
     expect(initialAccountsCount).toBe(0);
 
-    // Executa UoW inserindo registros no banco via repo transacional mas retornando Result.fail no final
-    const failResult = await uow.execute(async (factory) => {
+    // Variante 1: driver com rollback() que lança exceção (ex: DRIZZLE_ROLLBACK)
+    const failResult1 = await uow.execute(async (factory) => {
       const txRepo = factory.getFinanceRepository();
-      // Criar conta para o usuário 99 dentro da transação
       await txRepo.getOrCreateUserAccount(99);
-
-      return Result.fail('BUSINESS_LOGIC_VALIDATION_FAILED');
+      return Result.fail('BUSINESS_LOGIC_VALIDATION_FAILED_1');
     });
 
-    expect(failResult.isFailure).toBe(true);
-    expect(failResult.error).toBe('BUSINESS_LOGIC_VALIDATION_FAILED');
+    expect(failResult1.isFailure).toBe(true);
+    expect(failResult1.error).toBe('BUSINESS_LOGIC_VALIDATION_FAILED_1');
 
-    // Asserção Crítica F4: Verifica fisicamente no SQLite que ZERO linhas foram persistidas
+    // Variante 2: UoW com driver onde rollback() não lança, mas DrizzleUnitOfWork força aborto incondicional
+    const nonThrowingUowDb = {
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => {
+          // driver retorna sem lançar erro
+        };
+        try {
+          const res = await cb(proxyDb);
+          await t.commit();
+          return res;
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          if (err.message === 'ROLLBACK_TRIGGERED_BY_RESULT_FAIL') return;
+          throw err;
+        }
+      }
+    };
+    const nonThrowingUow = new DrizzleUnitOfWork(nonThrowingUowDb);
+
+    const failResult2 = await nonThrowingUow.execute(async (factory) => {
+      const txRepo = factory.getFinanceRepository();
+      await txRepo.getOrCreateUserAccount(98);
+      return Result.fail('BUSINESS_LOGIC_VALIDATION_FAILED_2');
+    });
+
+    expect(failResult2.isFailure).toBe(true);
+    expect(failResult2.error).toBe('BUSINESS_LOGIC_VALIDATION_FAILED_2');
+
+    // Asserção Crítica F4: Verifica fisicamente no SQLite que ZERO linhas foram persistidas em ambas as variantes
     const finalKeysCount = Number((await sqlite.execute('SELECT COUNT(*) as c FROM idempotency_keys')).rows[0].c);
     const finalTxsCount = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_transactions')).rows[0].c);
     const finalEntriesCount = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_ledger_entries')).rows[0].c);
-    const finalAccountsCount = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_accounts WHERE user_id = 99')).rows[0].c);
+    const finalAccountsCount = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_accounts WHERE user_id IN (98, 99)')).rows[0].c);
 
     expect(finalKeysCount).toBe(initialKeysCount);
     expect(finalTxsCount).toBe(initialTxsCount);
@@ -191,7 +220,7 @@ describe('Fase 3B: Certificação de Hardening dos Gaps de Auditoria (F1, F2/F3,
   });
 
   it('F8 — Transição de estado inválida deve ser rejeitada pela State Machine e abortar sem mutar o banco', async () => {
-    // 1. Cria uma transação diretamente e seta seu status como 'cancelled'
+    // Cenário A: Transição de 'cancelled' para 'reversed'
     const [txRow] = await db.insert(financialTransactions).values({
       type: 'deposit',
       status: 'cancelled',
@@ -200,7 +229,6 @@ describe('Fase 3B: Certificação de Hardening dos Gaps de Auditoria (F1, F2/F3,
       updatedAt: new Date(),
     }).returning();
 
-    // 2. Tenta estornar uma transação 'cancelled': a State Machine deve proibir (cancelled -> reversed é inválido)
     const revRes = await reverseUseCase.execute({
       originalTransactionId: txRow.id,
       actorUserId: 20,
@@ -211,15 +239,83 @@ describe('Fase 3B: Certificação de Hardening dos Gaps de Auditoria (F1, F2/F3,
     expect(revRes.isFailure).toBe(true);
     expect(revRes.error).toContain('Transição de estado inválida para estorno');
 
-    // 3. Prova que o status no banco permaneceu 'cancelled' (zero mutação)
     const [afterTx] = await db.select().from(financialTransactions).where(eq(financialTransactions.id, txRow.id));
     expect(afterTx.status).toBe('cancelled');
+
+    // Cenário B: Ciclo completo: completed -> full refund -> refunded, seguido de refunded -> reversed
+    const payFullRes = await treasuryUseCase.execute({
+      type: 'payment',
+      userId: 10,
+      actorUserId: 10,
+      assetId: 1,
+      amountBaseUnits: '800',
+      description: 'Payment 800 BRL for full refund cycle',
+      idempotencyKey: 'pay-full-refund-cycle',
+    });
+    expect(payFullRes.isSuccess).toBe(true);
+    const payFullTxId = payFullRes.getValue().transactionId!;
+
+    const fullRefundRes = await treasuryUseCase.execute({
+      type: 'refund',
+      userId: 10,
+      actorUserId: 20,
+      assetId: 1,
+      amountBaseUnits: '800',
+      description: 'Full Refund 800 BRL',
+      idempotencyKey: 'ref-full-800',
+      refundOfTransactionId: payFullTxId,
+    });
+    expect(fullRefundRes.isSuccess).toBe(true);
+
+    const [refundedTx] = await db.select().from(financialTransactions).where(eq(financialTransactions.id, payFullTxId));
+    expect(refundedTx.status).toBe('refunded');
+
+    const revRefundedRes = await reverseUseCase.execute({
+      originalTransactionId: payFullTxId,
+      actorUserId: 20,
+      idempotencyKey: 'rev-attempt-on-refunded',
+      reason: 'Tentativa de estorno de transação já totalmente reembolsada',
+    });
+    expect(revRefundedRes.isFailure).toBe(true);
+    expect(revRefundedRes.error).toContain('Transição de estado inválida para estorno');
+
+    const [afterRefundedTx] = await db.select().from(financialTransactions).where(eq(financialTransactions.id, payFullTxId));
+    expect(afterRefundedTx.status).toBe('refunded');
   });
 
-  it('F2 & F3 — Ajuste administrativo exige sessão autenticada e proíbe fallback de autorizador vindo do body', async () => {
+  it('F2 & F3 — Ajuste administrativo exige sessão autenticada, validação no Use Case e proíbe fallback de autorizador do body', async () => {
+    // 1. Defesa em Profundidade no Use Case: Invocação direta sem actorUserId -> DEVE FALHAR
+    const resNoActor = await treasuryUseCase.execute({
+      type: 'adjustment',
+      userId: 10,
+      authorizedByUserId: 20,
+      assetId: 1,
+      amountBaseUnits: '100',
+      direction: 'INBOUND',
+      description: 'Direct adjustment without actor',
+      idempotencyKey: 'adj-direct-no-actor',
+    });
+    expect(resNoActor.isFailure).toBe(true);
+    expect(resNoActor.error).toContain('Operação de ajuste exige sessão autenticada com identificação do ator');
+
+    // 2. Defesa em Profundidade no Use Case: Invocação direta com actorUserId !== authorizedByUserId -> DEVE FALHAR
+    const resMismatched = await treasuryUseCase.execute({
+      type: 'adjustment',
+      userId: 10,
+      actorUserId: 20,
+      authorizedByUserId: 99,
+      assetId: 1,
+      amountBaseUnits: '100',
+      direction: 'INBOUND',
+      description: 'Direct adjustment with mismatched authorizer',
+      idempotencyKey: 'adj-direct-mismatched',
+    });
+    expect(resMismatched.isFailure).toBe(true);
+    expect(resMismatched.error).toContain('O autorizador do ajuste deve corresponder ao ator autenticado');
+
+    // 3. Controller HTTP: Requisição de ajuste SEM sessão autenticada (actorUserId ausente) -> DEVE RETORNAR 401
     const controller = new FinanceController({} as any, treasuryUseCase, repo);
 
-    // 1. Requisição de ajuste SEM sessão autenticada (actorUserId ausente) -> DEVE RETORNAR 401
     const unauthContext: any = {
       req: {
         param: () => 'adjustment',
@@ -243,8 +339,8 @@ describe('Fase 3B: Certificação de Hardening dos Gaps de Auditoria (F1, F2/F3,
     expect(unauthResponse.status).toBe(401);
     expect(unauthResponse.data.message).toContain('Operações de ajuste exigem sessão autenticada');
 
-    // 2. Tentativa de auto-ajuste: actorUserId 20 tenta ajustar própria conta (targetUserId: 20) enviando authorizedByUserId: 99 no body
-    // Como o controller deriva authorizedByUserId estritamente da sessão (20), o use case detecta FIN-007 (targetUserId === authorizedByUserId) e REJEITA.
+    // 4. Controller HTTP: Tentativa de auto-ajuste (targetUserId: 20, actorUserId: 20, authorizedByUserId: 99 no body)
+    // O controller ignora o body (99) e deriva authorizedByUserId = 20, fazendo o Use Case disparar FIN-007
     const selfAdjContext: any = {
       req: {
         param: () => 'adjustment',
@@ -274,7 +370,7 @@ describe('Fase 3B: Certificação de Hardening dos Gaps de Auditoria (F1, F2/F3,
     expect(selfAdjResponse.status).toBe(400);
     expect(selfAdjResponse.data.message).toContain('Invariante FIN-007 violado');
 
-    // 3. Requisição de ajuste legítimo COM sessão autenticada (actorUserId: 20, targetUserId: 10) e body tentando forjar autorizador 99
+    // 5. Controller HTTP: Requisição de ajuste legítimo COM sessão autenticada (actorUserId: 20, targetUserId: 10)
     const authContext: any = {
       req: {
         param: () => 'adjustment',
@@ -287,7 +383,7 @@ describe('Fase 3B: Certificação de Hardening dos Gaps de Auditoria (F1, F2/F3,
           direction: 'INBOUND',
           description: 'Adjustment with actor',
           idempotencyKey: 'adj-with-actor',
-          authorizedByUserId: '99', // Deve ser IGNORADO
+          authorizedByUserId: '99', // Deve ser IGNORADO pelo controller
         }),
       },
       header: () => {},
@@ -317,30 +413,32 @@ describe('Fase 3B: Certificação de Hardening dos Gaps de Auditoria (F1, F2/F3,
     expect(res.error).toContain('fail-closed');
   });
 
-  it('F6 — AccountClassPolicy deve sanitizar caracteres de controle contra log injection', () => {
-    // 1. Tenta passar \n e \r no accountType
+  it('F6 — AccountClassPolicy deve sanitizar caracteres de controle contra log injection globalmente', () => {
+    // 1. Tenta passar múltiplos caracteres de controle (\n, \r, \t) no accountType
     expect(() => {
-      AccountClassPolicy.validate('treasury\nINJECTION\r', 'asset');
+      AccountClassPolicy.validate('treasury\nINJECTION\rFOO\t', 'asset');
     }).toThrowError();
 
     try {
-      AccountClassPolicy.validate('treasury\nINJECTION\r', 'asset');
+      AccountClassPolicy.validate('treasury\nINJECTION\rFOO\t', 'asset');
     } catch (err: any) {
       expect(err.message).not.toContain('\n');
       expect(err.message).not.toContain('\r');
-      expect(err.message).toContain('treasuryINJECTION');
+      expect(err.message).not.toContain('\t');
+      expect(err.message).toContain('treasuryINJECTIONFOO');
     }
 
-    // 2. Tenta passar \u0000 no accountClass
+    // 2. Tenta passar múltiplos caracteres nulos e de controle (\u0000, \u0001) no accountClass
     expect(() => {
-      AccountClassPolicy.validate('treasury', 'asset\u0000INJECTION');
+      AccountClassPolicy.validate('treasury', 'asset\u0000INJECTION\u0001BAR');
     }).toThrowError();
 
     try {
-      AccountClassPolicy.validate('treasury', 'asset\u0000INJECTION');
+      AccountClassPolicy.validate('treasury', 'asset\u0000INJECTION\u0001BAR');
     } catch (err: any) {
       expect(err.message).not.toContain('\u0000');
-      expect(err.message).toContain('assetINJECTION');
+      expect(err.message).not.toContain('\u0001');
+      expect(err.message).toContain('assetINJECTIONBAR');
     }
   });
 });
