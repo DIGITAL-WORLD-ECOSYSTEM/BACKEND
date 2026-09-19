@@ -76,6 +76,7 @@ migration_files = [
 
 # G. TESTS
 test_files = [
+    "tests/finance/audit_gaps_hardening.test.ts",
     "tests/finance/bootstrap_atomicity.test.ts",
     "tests/finance/bootstrap_service.test.ts",
     "tests/finance/concurrency_idempotency_same_key.test.ts",
@@ -281,6 +282,7 @@ tests/
 │   ├── dependency_rules.test.ts
 │   └── finance_posting_authority.test.ts
 ├── finance/
+│   ├── audit_gaps_hardening.test.ts
 │   ├── bootstrap_atomicity.test.ts
 │   ├── bootstrap_service.test.ts
 │   ├── concurrency_idempotency_same_key.test.ts
