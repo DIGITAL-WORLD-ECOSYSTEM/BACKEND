@@ -3,7 +3,7 @@ FINANCE CORE — CÓDIGO-FONTE COMPLETO
 ================================================================================
 
 PROJETO: /home/sandro/Área de trabalho/BackEnd
-DATA DA EXTRAÇÃO: 2026-09-18 22:20:23 -0300
+DATA DA EXTRAÇÃO: 2026-09-18 23:45:35 -0300
 
 ================================================================================
 ÁRVORE REAL DO FINANCE
@@ -51,12 +51,12 @@ src/
 │   ├── repositories/
 │   │   ├── DrizzleFinanceRepository.ts
 │   │   ├── DrizzleFinanceRepository.test.ts
+│   │   ├── DrizzleOutboxRepository.ts
 │   │   ├── DrizzleUnitOfWork.ts
-│   │   ├── DrizzleUnitOfWork.test.ts
-│   │   └── DrizzleOutboxRepository.ts
+│   │   └── DrizzleUnitOfWork.test.ts
 │   └── services/
-│       ├── FinanceBootstrapService.ts
-│       └── EventInboxService.ts
+│       ├── EventInboxService.ts
+│       └── FinanceBootstrapService.ts
 ├── interfaces/
 │   └── http/
 │       ├── controllers/
@@ -67,8 +67,8 @@ src/
 │               └── finance.routes.ts
 ├── db/
 │   ├── finance/
-│   │   ├── tables.ts
-│   │   └── relations.ts
+│   │   ├── relations.ts
+│   │   └── tables.ts
 │   ├── seed.sql
 │   └── seed_treasury_report.sql
 migrations/
@@ -77,15 +77,22 @@ migrations/
 ├── 0006_constraints.sql
 ├── 0007_event_inbox.sql
 ├── 0008_remediation_schema.sql
-└── 0009_finance_schema_alignment.sql
+├── 0009_finance_schema_alignment.sql
+└── 0010_finance_fixes_and_rates_alignment.sql
 tests/
+├── architecture/
+│   ├── architecture-boundaries.test.ts
+│   ├── dependency_rules.test.ts
+│   └── finance_posting_authority.test.ts
 ├── finance/
 │   ├── bootstrap_service.test.ts
+│   ├── concurrency_idempotency_same_key.test.ts
 │   ├── concurrency_stress.test.ts
 │   ├── domain_policies.test.ts
 │   ├── event_inbox.test.ts
 │   ├── evm_precision.test.ts
 │   ├── failure_injection.test.ts
+│   ├── finance_controller_e2e.test.ts
 │   ├── invariants/
 │   │   ├── balance_projection.test.ts
 │   │   ├── commit_failure.test.ts
@@ -95,11 +102,8 @@ tests/
 │   ├── posting_authority_hardening.test.ts
 │   ├── reconciliation_3way.test.ts
 │   ├── reverse_transaction.test.ts
+│   ├── schema_drift.test.ts
 │   └── schema_invariants_audit.test.ts
-├── architecture/
-│   ├── finance_posting_authority.test.ts
-│   ├── architecture-boundaries.test.ts
-│   └── dependency_rules.test.ts
 ├── migrations/
 │   └── migration_integrity.test.ts
 ├── test_helpers/
@@ -20191,11 +20195,12 @@ export async function runAllMigrationsLibSql(client: any) {
 DEPENDÊNCIAS DIRETAS DO FINANCE
 ================================================================================
 
+================================================================================
 DEPENDÊNCIA [1/10]: src/db/schema.ts
 CAMINHO: /home/sandro/Área de trabalho/BackEnd/src/db/schema.ts
 MOTIVO DA INCLUSÃO: Ponto central de exportação de todo o schema do Drizzle ORM do backend; consolida e reexporta as tabelas do Finance (src/db/finance/tables.ts), relações (relations.ts) e infraestrutura (src/db/infrastructure/tables.ts) para a conexão do banco de dados D1/SQLite.
 ARQUIVO:
---------------------------------------------------------------------------------
+================================================================================
 /**
  * DATABASE SCHEMA AGGREGATOR
  *
@@ -20963,13 +20968,13 @@ export * from './security/relations';
 
 export * from './infrastructure/tables';
 
---------------------------------------------------------------------------------
 
+================================================================================
 DEPENDÊNCIA [2/10]: src/db/index.ts
 CAMINHO: /home/sandro/Área de trabalho/BackEnd/src/db/index.ts
 MOTIVO DA INCLUSÃO: Instanciação e injeção do cliente Drizzle D1 (DrizzleD1Database), tipos de conexão e binding de contexto utilizado pelo DrizzleFinanceRepository, DrizzleUnitOfWork e FinanceBootstrapService.
 ARQUIVO:
---------------------------------------------------------------------------------
+================================================================================
 /**
  * Project: Governance System (ASPPIBRA DAO)
  * Role: Database Connection Factory (Drizzle ORM + D1)
@@ -20992,13 +20997,13 @@ export const createDb = (d1: D1Database) => {
  */
 export type Database = DrizzleD1Database<typeof schema>;
 
---------------------------------------------------------------------------------
 
+================================================================================
 DEPENDÊNCIA [3/10]: src/db/infrastructure/tables.ts
 CAMINHO: /home/sandro/Área de trabalho/BackEnd/src/db/infrastructure/tables.ts
 MOTIVO DA INCLUSÃO: Define a tabela de banco de dados física event_inbox e a tabela outbox, manipuladas diretamente pelo EventInboxService e DrizzleOutboxRepository para garantia de idempotência e processamento transactional outbox do Finance.
 ARQUIVO:
---------------------------------------------------------------------------------
+================================================================================
 import { sqliteTable, text, integer, index, uniqueIndex, check } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import { users } from '../user/tables';
@@ -21141,13 +21146,13 @@ export const eventInbox = sqliteTable(
   })
 );
 
---------------------------------------------------------------------------------
 
+================================================================================
 DEPENDÊNCIA [4/10]: src/application/ports/output/IOutboxRepository.ts
 CAMINHO: /home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IOutboxRepository.ts
 MOTIVO DA INCLUSÃO: Contrato da porta de saída de persistência transacional de eventos de domínio no outbox, acoplado ao ciclo de vida de commit atômico do IUnitOfWork durante o registro de transações financeiras.
 ARQUIVO:
---------------------------------------------------------------------------------
+================================================================================
 import { IDomainEvent } from '../../../shared/kernel/DomainEvent';
 import { Result } from '../../../shared/kernel/Result';
 
@@ -21205,13 +21210,13 @@ export interface IOutboxRepository {
   recordConsumerReceipt(consumerId: string, eventId: string): Promise<Result<boolean>>;
 }
 
---------------------------------------------------------------------------------
 
+================================================================================
 DEPENDÊNCIA [5/10]: src/shared/kernel/Result.ts
 CAMINHO: /home/sandro/Área de trabalho/BackEnd/src/shared/kernel/Result.ts
 MOTIVO DA INCLUSÃO: Padrão canônico de retorno funcional monádico (Result<T, E>, ok(), err()) empregado universalmente em toda a camada de domínio, casos de uso e repositórios do Finance para tratamento robusto de erros sem lançamento de exceções descontroladas.
 ARQUIVO:
---------------------------------------------------------------------------------
+================================================================================
 /**
  * Result<T, E> — Generic discriminated result type.
  *
@@ -21292,13 +21297,13 @@ export class Result<T, E = string> {
 }
 
 
---------------------------------------------------------------------------------
 
+================================================================================
 DEPENDÊNCIA [6/10]: src/shared/kernel/DomainEvent.ts
 CAMINHO: /home/sandro/Área de trabalho/BackEnd/src/shared/kernel/DomainEvent.ts
 MOTIVO DA INCLUSÃO: Estrutura base e interface tipada para todos os eventos de domínio emitidos pelo subsistema contábil (como LedgerEntryPostedEvent), consumidos por orquestradores e mensageria.
 ARQUIVO:
---------------------------------------------------------------------------------
+================================================================================
 export interface IDomainEvent {
   dateTimeOccurred: Date;
   getAggregateId(): string;
@@ -21309,13 +21314,13 @@ export interface IDomainEventPublisher {
   publishAll(events: IDomainEvent[]): Promise<void>;
 }
 
---------------------------------------------------------------------------------
 
+================================================================================
 DEPENDÊNCIA [7/10]: src/shared/kernel/RepositoryError.ts
 CAMINHO: /home/sandro/Área de trabalho/BackEnd/src/shared/kernel/RepositoryError.ts
 MOTIVO DA INCLUSÃO: Hierarquia canônica de erros de persistência (erros de concorrência otimista, constraints de chave única, falhas de conexão de infraestrutura) mapeados e tratados pelo DrizzleFinanceRepository e DrizzleUnitOfWork.
 ARQUIVO:
---------------------------------------------------------------------------------
+================================================================================
 /**
  * Canonical error contract for all Output Port (Repository/Gateway) operations.
  *
@@ -21382,13 +21387,13 @@ export const RepositoryError = {
   },
 } as const;
 
---------------------------------------------------------------------------------
 
+================================================================================
 DEPENDÊNCIA [8/10]: src/shared/kernel/ids/UserId.ts
 CAMINHO: /home/sandro/Área de trabalho/BackEnd/src/shared/kernel/ids/UserId.ts
 MOTIVO DA INCLUSÃO: Value Object de tipagem nominal forte de identificador de usuário (UserId), utilizado nas contas de custódia e titularidade de saldos do Finance (accountId, ownerId).
 ARQUIVO:
---------------------------------------------------------------------------------
+================================================================================
 import { Result } from '../Result';
 
 export class InvalidUserIdError extends Error {
@@ -21416,13 +21421,13 @@ export function fromTrustedUserId(id: number): UserId {
   return id as UserId;
 }
 
---------------------------------------------------------------------------------
 
+================================================================================
 DEPENDÊNCIA [9/10]: src/infrastructure/repositories/db_helper.ts
 CAMINHO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/db_helper.ts
 MOTIVO DA INCLUSÃO: Utilitário de conexão e resolução de driver de banco de dados compartilhado pela infraestrutura de persistência do Drizzle no ambiente Cloudflare Workers/D1 e SQLite local.
 ARQUIVO:
---------------------------------------------------------------------------------
+================================================================================
 export function isD1Database(db: any): boolean {
   return Boolean(
     db?.session?.client?.batch ||
@@ -21432,13 +21437,13 @@ export function isD1Database(db: any): boolean {
   );
 }
 
---------------------------------------------------------------------------------
 
+================================================================================
 DEPENDÊNCIA [10/10]: docs/adr/0001-posting-authority-and-repair-governance.md
 CAMINHO: /home/sandro/Área de trabalho/BackEnd/docs/adr/0001-posting-authority-and-repair-governance.md
 MOTIVO DA INCLUSÃO: Registro Arquitetural Decisório (ADR 0001) normativo que estipula formalmente o isolamento contábil, autoridade única de postagem (FinancialTransactionOrchestrator), proibição de mutação direta de saldos e governança da ferramenta de reparo (RepairFinanceUseCase).
 ARQUIVO:
---------------------------------------------------------------------------------
+================================================================================
 # ADR 0001: Alçada Contábil, Autoridade Física de Postagem e Governança de Reparo Financeiro
 
 - **Status:** Proposto / Em Avaliação
@@ -21498,7 +21503,6 @@ Criar em `src/application/finance/services/LedgerReconciliationService.ts`:
 - [ ] Aprovado pelo Tech Lead / Arquiteto do Domínio Financeiro para implementação de código
 - [ ] Rejeitado / Necessita Revisão
 
---------------------------------------------------------------------------------
 
 ================================================================================
 INVENTÁRIO FINAL

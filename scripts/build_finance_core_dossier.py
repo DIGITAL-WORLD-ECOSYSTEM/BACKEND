@@ -187,7 +187,7 @@ for f in main_files:
 for d in dependencies_info:
     total_lines += count_lines(os.path.join(WORKSPACE_DIR, d["path"]))
 
-print(f"Total lines across all 71 files: {total_lines}")
+print(f"Total lines across all {total_all_files} files: {total_lines}")
 
 out_lines = []
 
@@ -246,12 +246,12 @@ real_tree_str = """src/
 │   ├── repositories/
 │   │   ├── DrizzleFinanceRepository.ts
 │   │   ├── DrizzleFinanceRepository.test.ts
+│   │   ├── DrizzleOutboxRepository.ts
 │   │   ├── DrizzleUnitOfWork.ts
-│   │   ├── DrizzleUnitOfWork.test.ts
-│   │   └── DrizzleOutboxRepository.ts
+│   │   └── DrizzleUnitOfWork.test.ts
 │   └── services/
-│       ├── FinanceBootstrapService.ts
-│       └── EventInboxService.ts
+│       ├── EventInboxService.ts
+│       └── FinanceBootstrapService.ts
 ├── interfaces/
 │   └── http/
 │       ├── controllers/
@@ -262,8 +262,8 @@ real_tree_str = """src/
 │               └── finance.routes.ts
 ├── db/
 │   ├── finance/
-│   │   ├── tables.ts
-│   │   └── relations.ts
+│   │   ├── relations.ts
+│   │   └── tables.ts
 │   ├── seed.sql
 │   └── seed_treasury_report.sql
 migrations/
@@ -272,15 +272,22 @@ migrations/
 ├── 0006_constraints.sql
 ├── 0007_event_inbox.sql
 ├── 0008_remediation_schema.sql
-└── 0009_finance_schema_alignment.sql
+├── 0009_finance_schema_alignment.sql
+└── 0010_finance_fixes_and_rates_alignment.sql
 tests/
+├── architecture/
+│   ├── architecture-boundaries.test.ts
+│   ├── dependency_rules.test.ts
+│   └── finance_posting_authority.test.ts
 ├── finance/
 │   ├── bootstrap_service.test.ts
+│   ├── concurrency_idempotency_same_key.test.ts
 │   ├── concurrency_stress.test.ts
 │   ├── domain_policies.test.ts
 │   ├── event_inbox.test.ts
 │   ├── evm_precision.test.ts
 │   ├── failure_injection.test.ts
+│   ├── finance_controller_e2e.test.ts
 │   ├── invariants/
 │   │   ├── balance_projection.test.ts
 │   │   ├── commit_failure.test.ts
@@ -290,11 +297,8 @@ tests/
 │   ├── posting_authority_hardening.test.ts
 │   ├── reconciliation_3way.test.ts
 │   ├── reverse_transaction.test.ts
+│   ├── schema_drift.test.ts
 │   └── schema_invariants_audit.test.ts
-├── architecture/
-│   ├── finance_posting_authority.test.ts
-│   ├── architecture-boundaries.test.ts
-│   └── dependency_rules.test.ts
 ├── migrations/
 │   └── migration_integrity.test.ts
 ├── test_helpers/
@@ -334,17 +338,17 @@ out_lines.append("")
 for idx, dep in enumerate(dependencies_info, 1):
     rel_path = dep["path"]
     full_path = os.path.join(WORKSPACE_DIR, rel_path)
+    out_lines.append("================================================================================")
     out_lines.append(f"DEPENDÊNCIA [{idx}/{total_dep_files}]: {rel_path}")
     out_lines.append(f"CAMINHO: {full_path}")
     out_lines.append(f"MOTIVO DA INCLUSÃO: {dep['reason']}")
-    out_lines.append(f"ARQUIVO:")
-    out_lines.append("--------------------------------------------------------------------------------")
+    out_lines.append("ARQUIVO:")
+    out_lines.append("================================================================================")
     with open(full_path, "r", encoding="utf-8") as fp:
         content = fp.read()
     out_lines.append(content)
     if not content.endswith("\n"):
         out_lines.append("")
-    out_lines.append("--------------------------------------------------------------------------------")
     out_lines.append("")
 
 # INVENTÁRIO FINAL
@@ -352,22 +356,22 @@ out_lines.append("==============================================================
 out_lines.append("INVENTÁRIO FINAL")
 out_lines.append("================================================================================")
 out_lines.append("")
-out_lines.append(f"Arquivos Finance principais:")
+out_lines.append("Arquivos Finance principais:")
 out_lines.append(f"{len(domain_files) + len(application_files) + len(infrastructure_files) + len(http_files) + len(db_files)}")
 out_lines.append("")
-out_lines.append(f"Dependências diretas incluídas:")
+out_lines.append("Dependências diretas incluídas:")
 out_lines.append(f"{len(dependencies_info)}")
 out_lines.append("")
-out_lines.append(f"Testes Finance:")
+out_lines.append("Testes Finance:")
 out_lines.append(f"{len(test_files)}")
 out_lines.append("")
-out_lines.append(f"Migrations relacionadas:")
+out_lines.append("Migrations relacionadas:")
 out_lines.append(f"{len(migration_files)}")
 out_lines.append("")
-out_lines.append(f"Total de arquivos extraídos:")
+out_lines.append("Total de arquivos extraídos:")
 out_lines.append(f"{total_all_files}")
 out_lines.append("")
-out_lines.append(f"Total de linhas extraídas:")
+out_lines.append("Total de linhas extraídas:")
 out_lines.append(f"{total_lines}")
 out_lines.append("")
 
