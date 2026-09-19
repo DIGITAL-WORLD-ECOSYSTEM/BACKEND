@@ -321,8 +321,8 @@ export class FinancialTransactionOrchestrator {
     // 10. Atualização do status da transação para 'completed'
     await this.financeRepo.updateTransactionStatus(transactionId, completedStatus);
 
-    // 11. Persistência de Evento no Outbox
-    await this.outboxRepo.saveEvent(
+    // 11. Persistência de Evento no Outbox (atomicidade estrita: falha no outbox aborta e faz rollback)
+    const outboxResult = await this.outboxRepo.saveEvent(
       {
         dateTimeOccurred: new Date(),
         getAggregateId: () => String(transactionId),
@@ -334,6 +334,9 @@ export class FinancialTransactionOrchestrator {
       'LedgerTransaction',
       1
     );
+    if (outboxResult.isFailure) {
+      throw new Error(`Falha ao persistir evento no outbox: ${String(outboxResult.error)}`);
+    }
 
     // 12. Conclusão do registro de Idempotência
     await this.financeRepo.completeIdempotency(transaction.idempotencyKey, 'finance', transactionId);
