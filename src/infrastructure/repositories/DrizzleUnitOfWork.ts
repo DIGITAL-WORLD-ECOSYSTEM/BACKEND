@@ -17,48 +17,48 @@ import { DrizzleSsiRepository } from './DrizzleSsiRepository';
 import { DrizzleOutboxRepository } from './DrizzleOutboxRepository';
 import { DrizzlePasswordResetRepository } from './DrizzlePasswordResetRepository';
 import { IFinanceRepository } from '../../application/ports/output/IFinanceRepository';
-import { DrizzleFinanceRepository } from './DrizzleFinanceRepository';
+import { DrizzleFinanceRepository, FinanceDatabase, FinanceTransaction } from './DrizzleFinanceRepository';
 import { Result } from '../../shared/kernel/Result';
 import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
 import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
 
 class DrizzleRepositoryFactory implements IRepositoryFactory {
-  constructor(private tx: any, private db?: any) {}
+  constructor(private readonly tx: FinanceTransaction, private readonly db?: FinanceDatabase) {}
 
   getUserRepository(): IUserRepository {
-    return new DrizzleUserRepositoryAdapter(this.tx || this.db);
+    return new DrizzleUserRepositoryAdapter((this.tx || this.db) as any);
   }
 
   getAuthTransactionRepository(): IAuthTransactionRepository {
-    return new DrizzleAuthTransactionRepository(this.tx || this.db);
+    return new DrizzleAuthTransactionRepository((this.tx || this.db) as any);
   }
 
   getAuthenticationRepository(): IAuthenticationRepository {
-    return new DrizzleAuthenticationRepositoryAdapter(this.tx);
+    return new DrizzleAuthenticationRepositoryAdapter(this.tx as any);
   }
 
   getWeb3Repository(): IWeb3Repository {
-    return new DrizzleWeb3RepositoryAdapter(this.tx);
+    return new DrizzleWeb3RepositoryAdapter(this.tx as any);
   }
 
   getSessionRepository(): ISessionRepository {
-    return new DrizzleSessionRepository(this.tx);
+    return new DrizzleSessionRepository(this.tx as any);
   }
 
   getCivilIdentityRepository(): ICivilIdentityRepository {
-    return new DrizzleCivilIdentityRepositoryAdapter(this.tx);
+    return new DrizzleCivilIdentityRepositoryAdapter(this.tx as any);
   }
 
   getSsiRepository(): ISsiRepository {
-    return new DrizzleSsiRepository(this.tx);
+    return new DrizzleSsiRepository(this.tx as any);
   }
 
   getOutboxRepository(): IOutboxRepository {
-    return new DrizzleOutboxRepository(this.tx);
+    return new DrizzleOutboxRepository(this.tx as any);
   }
 
   getPasswordResetRepository(): IPasswordResetRepository {
-    return new DrizzlePasswordResetRepository(this.tx);
+    return new DrizzlePasswordResetRepository(this.tx as any);
   }
 
   getFinanceRepository(): IFinanceRepository {
@@ -68,20 +68,20 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
 
 
 export class DrizzleUnitOfWork implements IUnitOfWork {
-  constructor(private db: any) {}
+  constructor(private readonly db: FinanceDatabase) {}
 
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
     if (typeof this.db?.transaction === 'function') {
       let result: Result<T> | null = null;
       try {
-        await this.db.transaction(
-          async (tx: any) => {
+        await (this.db as any).transaction(
+          async (tx: FinanceTransaction) => {
             const factory = new DrizzleRepositoryFactory(tx);
             result = await work(factory);
 
             if (result && result.isFailure) {
-              if (typeof tx.rollback === 'function') {
-                tx.rollback();
+              if (typeof (tx as any).rollback === 'function') {
+                (tx as any).rollback();
               } else {
                 throw new Error('ROLLBACK_TRIGGERED_BY_RESULT_FAIL');
               }
