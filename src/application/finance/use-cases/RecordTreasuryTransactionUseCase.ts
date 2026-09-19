@@ -14,8 +14,10 @@ import {
   AssetInactiveError,
   AccountInactiveError,
   IdempotencyConflictError,
+  InvalidStateTransitionError,
 } from '../../../domains/finance/errors/FinancialError';
 import { FinancialTransactionCategory } from '../../ports/output/IFinanceRepository';
+import { FinancialTransactionStateMachine } from '../../../domains/finance/services/FinancialTransactionStateMachine';
 
 export interface RecordTreasuryTransactionDTO {
   userId?: number | null; // targetUserId
@@ -252,9 +254,10 @@ export class RecordTreasuryTransactionUseCase {
             if (origTxRes.isFailure) return Result.fail<RecordTreasuryTransactionResult>(origTxRes.errorObject || origTxRes.error || 'Erro ao buscar transação original');
             const origTx = origTxRes.getValue();
 
-            if (origTx.status !== 'completed') {
+            const transitionRes = FinancialTransactionStateMachine.transition(origTx.status, 'refunded');
+            if (transitionRes.isFailure) {
               return Result.fail<RecordTreasuryTransactionResult>(
-                new InvalidFinancialOperationError(`Reembolso rejeitado: Transação original #${origTxId} não está em estado 'completed' (status atual: '${origTx.status}').`)
+                new InvalidStateTransitionError(`Reembolso rejeitado: Transação original #${origTxId} não pode ser reembolsada (${transitionRes.error}). Status atual: '${origTx.status}'.`)
               );
             }
             if (origTx.type !== 'payment') {

@@ -6,6 +6,7 @@ import { AccountingEntryPolicy } from '../../../domains/finance/policies/Account
 import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
 import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
 import { InvalidStateTransitionError } from '../../../domains/finance/errors/FinancialError';
+import { FinancialTransactionStateMachine } from '../../../domains/finance/services/FinancialTransactionStateMachine';
 
 export interface ReverseTransactionInput {
   originalTransactionId: number;
@@ -27,7 +28,27 @@ export class ReverseTransactionUseCase {
       return await this.uow.execute(async (factory) => {
         const repo = factory.getFinanceRepository();
 
-        // 1. Obter lançamentos da transação original
+        // 1. Obter registro original por ID direto O(1) para validar estado e tipo
+        const txRes = await repo.getTransactionById(input.originalTransactionId);
+        if (txRes.isFailure) {
+          throw new Error(`Registro de transação #${input.originalTransactionId} não encontrado: ${txRes.error}`);
+        }
+        const originalTx = txRes.getValue();
+
+        // F8: Validação formal da transição de estado via FinancialTransactionStateMachine
+        const transitionRes = FinancialTransactionStateMachine.transition(originalTx.status, 'reversed');
+        if (transitionRes.isFailure) {
+          throw new InvalidStateTransitionError(
+            `Transição de estado inválida para estorno: ${transitionRes.error}`
+          );
+        }
+
+        // FIN-017: Proibir estorno de estorno (reversal of reversal)
+        if (originalTx.type === 'reversal') {
+          throw new InvalidStateTransitionError('Estorno de transação do tipo "reversal" é estritamente proibido (FIN-017).');
+        }
+
+        // 2. Obter lançamentos da transação original
         const originalEntriesRes = await repo.getTransactionEntries(input.originalTransactionId);
         if (originalEntriesRes.isFailure) {
           throw new Error(`Transação original #${input.originalTransactionId} não encontrada: ${originalEntriesRes.error}`);
@@ -38,22 +59,17 @@ export class ReverseTransactionUseCase {
           throw new Error(`Transação original #${input.originalTransactionId} não possui lançamentos contábeis.`);
         }
 
-        // 2. Obter registro original por ID direto O(1) para validar estado e tipo
-        const txRes = await repo.getTransactionById(input.originalTransactionId);
-        if (txRes.isFailure) {
-          throw new Error(`Registro de transação #${input.originalTransactionId} não encontrado: ${txRes.error}`);
-        }
-        const originalTx = txRes.getValue();
-
-        if (originalTx.status !== 'completed') {
-          throw new InvalidStateTransitionError(
-            `Apenas transações no status "completed" podem ser estornadas. Status atual: "${originalTx.status}".`
-          );
-        }
-
-        // FIN-017: Proibir estorno de estorno (reversal of reversal)
-        if (originalTx.type === 'reversal') {
-          throw new InvalidStateTransitionError('Estorno de transação do tipo "reversal" é estritamente proibido (FIN-017).');
+        // F1: Bloquear estorno se a transação original já sofreu reembolso parcial ou total (por ativo)
+        if (originalTx.type === 'payment') {
+          const distinctAssetIds = Array.from(new Set(rawEntries.map((e) => e.assetId)));
+          for (const assetId of distinctAssetIds) {
+            const refundedTotal = await repo.getRefundsTotalForTransaction(input.originalTransactionId, assetId);
+            if (refundedTotal > 0n) {
+              throw new InvalidStateTransitionError(
+                `Estorno rejeitado: a transação #${input.originalTransactionId} já possui reembolso(s) associado(s) para o ativo #${assetId} (total reembolsado: ${refundedTotal.toString()}). Estornar a transação duplicaria o crédito ao usuário.`
+              );
+            }
+          }
         }
 
         // 3. Gerar lançamentos inversos via AccountingEntryPolicy
