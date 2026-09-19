@@ -2,6 +2,7 @@ import { Context } from 'hono';
 import { GetTreasuryBalanceUseCase } from '../../../../application/finance/use-cases/GetTreasuryBalanceUseCase';
 import { RecordTreasuryTransactionUseCase } from '../../../../application/finance/use-cases/RecordTreasuryTransactionUseCase';
 import { IFinanceRepository } from '../../../../application/ports/output/IFinanceRepository';
+import { FinancialError } from '../../../../domains/finance/errors/FinancialError';
 
 export class FinanceController {
   constructor(
@@ -19,8 +20,13 @@ export class FinanceController {
 
       return c.json({ success: true, data: result.getValue() });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Erro interno';
-      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+      const requestId = c.req.header('x-request-id') || crypto.randomUUID();
+      console.error(`[FinanceController] getBalance Internal Error (requestId: ${requestId}):`, err);
+      return c.json({
+        success: false,
+        message: 'Erro interno ao consultar saldo da tesouraria',
+        requestId,
+      }, 500);
     }
   }
 
@@ -58,32 +64,48 @@ export class FinanceController {
         return c.json({ success: false, message: 'Idempotency-Key header ou no body é obrigatório' }, 400);
       }
 
-      // 5. Target / Authorized / Actor User ID Resolution
-      const targetUserId = body.targetUserId ?? body.userId ?? actorUserId;
-      const authorizedByUserId = body.authorizedByUserId;
+      // 5. Target / Authorized / Actor User ID Resolution & Real Authorization
+      let targetUserId: number | undefined = undefined;
+      if (body.targetUserId !== undefined && body.targetUserId !== null) {
+        targetUserId = Number(body.targetUserId);
+      } else if (body.userId !== undefined && body.userId !== null) {
+        targetUserId = Number(body.userId);
+      } else if (actorUserId) {
+        targetUserId = Number(actorUserId);
+      }
 
-      // 6. Generate Canonical Request Hash
-      const canonicalPayload = JSON.stringify({
-        amountBaseUnits: String(body.amountBaseUnits),
-        assetId: String(body.assetId),
-        category: String(body.category || ''),
-        description: String(body.description || ''),
-        direction,
-        type: String(type),
-        userId: targetUserId ? String(targetUserId) : ''
-      });
-      
-      const encoder = new TextEncoder();
-      const data = encoder.encode(canonicalPayload);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const requestHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      // Authorization check: Non-admin users cannot operate on third-party target accounts
+      if (
+        actorUserId &&
+        targetUserId !== undefined &&
+        targetUserId !== Number(actorUserId) &&
+        type !== 'adjustment' &&
+        type !== 'deposit'
+      ) {
+        const permissions: string[] = c.get('permissions') || c.get('user')?.permissions || [];
+        const isAdmin = permissions.includes('finance.treasury.admin') || permissions.includes('admin');
+        if (!isAdmin) {
+          return c.json({
+            success: false,
+            message: 'Acesso negado: Você não tem autorização para movimentar contas de terceiros.'
+          }, 403);
+        }
+      }
+
+      // For adjustments, authorizedByUserId is derived from the authenticated actor (or validated admin)
+      let authorizedByUserId: number | undefined = undefined;
+      if (type === 'adjustment') {
+        authorizedByUserId = actorUserId ? Number(actorUserId) : (body.authorizedByUserId ? Number(body.authorizedByUserId) : undefined);
+      }
+
+      // 6. Request Hash: Forward client provided requestHash if present, otherwise let the use case calculate the canonical hash
+      const requestHash = c.req.header('x-request-hash') || body.requestHash || undefined;
 
       // 7. Execute Use Case
       const result = await this.recordTxUseCase.execute({
         userId: targetUserId,
         actorUserId: actorUserId ? Number(actorUserId) : undefined,
-        authorizedByUserId: authorizedByUserId ? Number(authorizedByUserId) : undefined,
+        authorizedByUserId,
         type: type as any,
         direction,
         category: body.category,
@@ -91,12 +113,27 @@ export class FinanceController {
         amountBaseUnits: String(body.amountBaseUnits),
         assetId: Number(body.assetId),
         idempotencyKey,
-        requestHash
+        requestHash,
+        refundOfTransactionId: body.refundOfTransactionId ? Number(body.refundOfTransactionId) : undefined,
       });
 
       if (result.isFailure) {
+        const errObj = result.errorObject;
+        if (errObj instanceof FinancialError) {
+          return c.json({
+            success: false,
+            message: errObj.message,
+            code: errObj.code,
+          }, errObj.httpStatus as any);
+        }
+
         const errorMsg = typeof result.error === 'string' ? result.error : (result.error as any)?.message || String(result.error);
-        if (errorMsg.includes('409 Conflict') || errorMsg.includes('Idempotency Key Processing')) {
+        if (
+          errorMsg.includes('409 Conflict') ||
+          errorMsg.includes('Idempotency') ||
+          errorMsg.includes('idempotência') ||
+          errorMsg.includes('Divergência de requestHash')
+        ) {
           return c.json({ success: false, message: errorMsg }, 409);
         }
         return c.json({ success: false, message: errorMsg }, 400);
@@ -112,8 +149,13 @@ export class FinanceController {
         data: { transactionId, isReplayed } 
       }, isReplayed ? 200 : 201);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Erro interno';
-      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+      const requestId = c.req.header('x-request-id') || crypto.randomUUID();
+      console.error(`[FinanceController] Internal Error (requestId: ${requestId}):`, err);
+      return c.json({
+        success: false,
+        message: 'Erro interno ao processar a operação financeira',
+        requestId,
+      }, 500);
     }
   }
 
@@ -156,8 +198,13 @@ export class FinanceController {
 
       return c.json({ success: true, data: result.getValue() });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Erro interno';
-      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+      const requestId = c.req.header('x-request-id') || crypto.randomUUID();
+      console.error(`[FinanceController] listTransactions Internal Error (requestId: ${requestId}):`, err);
+      return c.json({
+        success: false,
+        message: 'Erro interno ao listar transações financeiras',
+        requestId,
+      }, 500);
     }
   }
 }
