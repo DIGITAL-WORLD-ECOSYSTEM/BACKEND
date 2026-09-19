@@ -65,7 +65,7 @@ describe('Hardening de Concorrência & Idempotência Forte (50 Conexões Simult�
     `);
 
     // Provisionar tesouraria
-    const bootRes = await FinanceBootstrapService.seedSystemAccounts(db, {
+    const bootRes = await FinanceBootstrapService.seedSystemAccounts(createUow(), {
       currencyCode: 'BRL',
       initialBalanceBaseUnits: 5000000n, // R$ 50.000,00
     });

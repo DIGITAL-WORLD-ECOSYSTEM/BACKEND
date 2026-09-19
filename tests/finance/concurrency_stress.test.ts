@@ -31,14 +31,6 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
   });
 
   it('proves zero double-spend under 10 concurrent debit requests', async () => {
-    // 1. Bootstrap system accounts and asset BRL (assetId = 1)
-    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(db, {
-      currencyCode: 'BRL',
-      initialBalanceBaseUnits: 1000n, // Treasury initial balance
-    });
-    expect(bootstrapRes.isSuccess).toBe(true);
-    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
-
     const uowDb = {
       ...db,
       transaction: async (cb: any) => {
@@ -60,6 +52,14 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
     };
 
     const uow = new DrizzleUnitOfWork(uowDb);
+
+    // 1. Bootstrap system accounts and asset BRL (assetId = 1)
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000n, // Treasury initial balance
+    });
+    expect(bootstrapRes.isSuccess).toBe(true);
+    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
 
     // Ensure user 42 exists for FK constraint
     await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (42, 'user42@test.com', 'user42@test.com', 'active', 1000, 1000)`);
@@ -177,16 +177,6 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
     const dbB = drizzle(sqliteB);
     await runAllMigrationsLibSql(sqliteB);
 
-    // 1. Setup initial balance with primary DB connection
-    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(dbB, {
-      currencyCode: 'BRL',
-      initialBalanceBaseUnits: 1000n,
-    });
-    expect(bootstrapRes.isSuccess).toBe(true);
-    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
-
-    await sqliteB.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (55, 'user55@test.com', 'user55@test.com', 'active', 1000, 1000)`);
-
     // Initial deposit of 200 units to user 55
     const primaryUow = new DrizzleUnitOfWork({
       ...dbB,
@@ -205,6 +195,16 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
         }
       }
     });
+
+    // 1. Setup initial balance with primary DB connection
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(primaryUow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000n,
+    });
+    expect(bootstrapRes.isSuccess).toBe(true);
+    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
+
+    await sqliteB.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (55, 'user55@test.com', 'user55@test.com', 'active', 1000, 1000)`);
 
     const initDepRes = await primaryUow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();

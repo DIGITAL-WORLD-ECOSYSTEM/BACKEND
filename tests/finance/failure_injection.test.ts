@@ -48,8 +48,8 @@ describe('Gate 4: Failure Injection Matrix & Atomic Rollback Certification (FIN-
       }
     };
 
-    await FinanceBootstrapService.seedSystemAccounts(uowDb, { currencyCode: 'BRL' });
     const uow = new DrizzleUnitOfWork(uowDb);
+    await FinanceBootstrapService.seedSystemAccounts(uow, { currencyCode: 'BRL' });
 
     const countBeforeTx = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_transactions')).rows[0].c);
     const countBeforeLedger = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_ledger_entries')).rows[0].c);

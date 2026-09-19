@@ -36,15 +36,7 @@ describe('FinanceController E2E — Contratos HTTP, Idempotência (201/200/409),
         (2, 'human', 'user2@example.com', 'user2@example.com', 'active', 1, unixepoch(), unixepoch());
     `);
 
-    // 3. Inicializar contas sistêmicas da tesouraria
-    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(db, {
-      currencyCode: 'BRL',
-      initialBalanceBaseUnits: 10000000n, // R$ 100.000,00
-    });
-    assetId = bootstrapRes.getValue().assetId;
-
-    // 4. Montar aplicação Hono de teste integrando controller real
-    const uow = new DrizzleUnitOfWork({
+    const testUow = new DrizzleUnitOfWork({
       ...db,
       transaction: async (cb: any) => {
         const t = await sqlite.transaction('write');
@@ -61,6 +53,16 @@ describe('FinanceController E2E — Contratos HTTP, Idempotência (201/200/409),
         }
       }
     });
+
+    // 3. Inicializar contas sistêmicas da tesouraria
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(testUow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 10000000n, // R$ 100.000,00
+    });
+    assetId = bootstrapRes.getValue().assetId;
+
+    // 4. Montar aplicação Hono de teste integrando controller real
+    const uow = testUow;
     const financeRepo = new DrizzleFinanceRepository(db);
     const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
     const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);

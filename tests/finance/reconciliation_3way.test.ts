@@ -46,7 +46,7 @@ describe('3-Way Reconciliation Suite (External Provider <-> Ledger Projection <-
 
     await runAllMigrationsLibSql(sqlite);
     uow = new DrizzleUnitOfWork(uowDb);
-    await FinanceBootstrapService.seedSystemAccounts(db, { currencyCode: 'BRL' });
+    await FinanceBootstrapService.seedSystemAccounts(uow, { currencyCode: 'BRL' });
   }, 30000);
 
   afterAll(() => {

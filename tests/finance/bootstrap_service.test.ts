@@ -3,6 +3,7 @@ import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
 import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
+import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
 import { unlinkSync, existsSync } from 'fs';
 
 import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
@@ -28,6 +29,7 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
 
   it('deve inicializar com sucesso o banco e provisionar contas de Tesouraria, Operacional e Fee', async () => {
     const repo = new DrizzleFinanceRepository(db);
+    const uow = new DrizzleUnitOfWork(db);
 
     // 1. Antes do bootstrap, getTreasuryAccount deve falhar
     const initialGet = await repo.getTreasuryAccount();
@@ -35,7 +37,7 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
     expect(initialGet.error).toContain('Treasury account not found');
 
     // 2. Executar bootstrap
-    const seedRes = await FinanceBootstrapService.seedSystemAccounts(db, {
+    const seedRes = await FinanceBootstrapService.seedSystemAccounts(uow, {
       currencyCode: 'BRL',
       initialBalanceBaseUnits: 1000000n,
     });
@@ -51,7 +53,7 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
     expect(treasuryGet.getValue().accountType).toBe('treasury');
 
     // 4. Executar bootstrap uma segunda vez com os mesmos parâmetros (idempotência)
-    const seedRes2 = await FinanceBootstrapService.seedSystemAccounts(db, {
+    const seedRes2 = await FinanceBootstrapService.seedSystemAccounts(uow, {
       currencyCode: 'BRL',
       initialBalanceBaseUnits: 1000000n,
     });

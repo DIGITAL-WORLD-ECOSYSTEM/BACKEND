@@ -17,7 +17,7 @@ describe('DrizzleUnitOfWork', () => {
       }
     };
 
-    const uow = new DrizzleUnitOfWork(mockDb);
+    const uow = new DrizzleUnitOfWork(mockDb as any);
 
     const result = await uow.execute(async (factory) => {
       return Result.ok();
@@ -48,7 +48,7 @@ describe('DrizzleUnitOfWork', () => {
       }
     };
 
-    const uow = new DrizzleUnitOfWork(mockDb);
+    const uow = new DrizzleUnitOfWork(mockDb as any);
 
     const result = await uow.execute(async (factory) => {
       return Result.fail('Regra de negocio falhou');
@@ -71,7 +71,7 @@ describe('DrizzleUnitOfWork', () => {
       }
     };
 
-    const uow = new DrizzleUnitOfWork(mockDb);
+    const uow = new DrizzleUnitOfWork(mockDb as any);
 
     await uow.execute(async (factory) => {
       const userRepo = factory.getUserRepository() as any;
@@ -90,7 +90,7 @@ describe('DrizzleUnitOfWork', () => {
       transaction: async (cb: any) => await cb({ isTx: true })
     };
 
-    const uow = new DrizzleUnitOfWork(mockDb);
+    const uow = new DrizzleUnitOfWork(mockDb as any);
 
     await uow.execute(async (factory) => {
       const repo = factory.getUserRepository();
@@ -111,8 +111,8 @@ describe('DrizzleUnitOfWork', () => {
       }
     };
 
-    const uow1 = new DrizzleUnitOfWork(mockDb);
-    const uow2 = new DrizzleUnitOfWork(mockDb);
+    const uow1 = new DrizzleUnitOfWork(mockDb as any);
+    const uow2 = new DrizzleUnitOfWork(mockDb as any);
 
     await Promise.all([
       uow1.execute(async () => Result.ok()),

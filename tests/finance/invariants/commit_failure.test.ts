@@ -80,15 +80,6 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
     const db = drizzle(sqlite);
     await runAllMigrationsLibSql(sqlite);
 
-    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(db, {
-      currencyCode: 'BRL',
-      initialBalanceBaseUnits: 1000n,
-    });
-    expect(bootstrapRes.isSuccess).toBe(true);
-    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
-
-    await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (99, 'fault@test.com', 'fault@test.com', 'active', 1000, 1000)`);
-
     const uowDb = {
       ...db,
       transaction: async (cb: any) => {
@@ -108,6 +99,15 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
     };
 
     const uow = new DrizzleUnitOfWork(uowDb);
+
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(uow, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000n,
+    });
+    expect(bootstrapRes.isSuccess).toBe(true);
+    const { assetId, treasuryAccountId } = bootstrapRes.getValue();
+
+    await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (99, 'fault@test.com', 'fault@test.com', 'active', 1000, 1000)`);
 
     // Initial state counts
     const countTxsInitial = Number((await sqlite.execute('SELECT COUNT(*) as c FROM financial_transactions')).rows[0].c);
