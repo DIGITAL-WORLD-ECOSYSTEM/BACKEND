@@ -1141,12 +1141,6 @@ export const accountBalances = sqliteTable(
       .notNull()
       .default(1),
 
-    createdAt: integer('created_at', {
-      mode: 'timestamp_ms',
-    })
-      .notNull()
-      .$defaultFn(() => new Date()),
-
     updatedAt: integer('updated_at', {
       mode: 'timestamp_ms',
     })
@@ -2945,43 +2939,53 @@ export const fiatExternalTransactions = sqliteTable(
       autoIncrement: true,
     }),
 
-    financialTransactionId: integer(
-      'financial_transaction_id',
-    )
+    providerId: integer('provider_id')
       .notNull()
-      .references(
-        () => financialTransactions.id,
-        {
-          onDelete: 'restrict',
-        },
-      ),
+      .references(() => fiatProviders.id, {
+        onDelete: 'restrict',
+      }),
 
-    providerId: integer(
-      'provider_id',
-    )
-      .notNull()
-      .references(
-        () => fiatProviders.id,
-        {
-          onDelete: 'restrict',
-        },
-      ),
+    fiatAccountId: integer('fiat_account_id').references(
+      () => fiatAccounts.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
 
-    externalTransactionId: text(
-      'external_transaction_id',
-    ).notNull(),
+    externalTransactionId: text('external_transaction_id').notNull(),
 
-    type: text('type', {
-      enum: [
-        'deposit',
-        'withdrawal',
-        'transfer',
-        'payment',
-        'refund',
-        'fee',
-        'other',
-      ],
+    rawAmount: text('raw_amount').notNull(),
+
+    amountBaseUnits: text('amount_base_units'),
+
+    direction: text('direction', {
+      enum: ['credit', 'debit'],
     }).notNull(),
+
+    assetId: integer('asset_id').references(
+      () => financialAssets.id,
+      {
+        onDelete: 'restrict',
+      },
+    ),
+
+    rawDescription: text('raw_description'),
+
+    bankTimestamp: integer('bank_timestamp', {
+      mode: 'timestamp_ms',
+    }),
+
+    documentNumber: text('document_number'),
+
+    runningBalanceBaseUnits: text('running_balance_base_units'),
+
+    sourceFile: text('source_file'),
+
+    sourceFileHash: text('source_file_hash'),
+
+    rowFingerprint: text('row_fingerprint'),
+
+    rawPayload: text('raw_payload'),
 
     status: text('status', {
       enum: [
@@ -2993,37 +2997,39 @@ export const fiatExternalTransactions = sqliteTable(
         'reversed',
         'unknown',
       ],
-    }).notNull(),
+    })
+      .notNull()
+      .default('pending'),
 
-    providerStatus: text(
-      'provider_status',
+    reconciliationStatus: text('reconciliation_status', {
+      enum: ['unmatched', 'matched', 'ignored', 'discrepancy'],
+    })
+      .notNull()
+      .default('unmatched'),
+
+    financialTransactionId: integer('financial_transaction_id').references(
+      () => financialTransactions.id,
+      {
+        onDelete: 'restrict',
+      },
     ),
 
-    createdAt: integer(
-      'created_at',
-      {
-        mode: 'timestamp_ms',
-      },
-    )
+    createdAt: integer('created_at', {
+      mode: 'timestamp_ms',
+    })
       .notNull()
       .$defaultFn(() => new Date()),
 
-    updatedAt: integer(
-      'updated_at',
-      {
-        mode: 'timestamp_ms',
-      },
-    )
+    updatedAt: integer('updated_at', {
+      mode: 'timestamp_ms',
+    })
       .notNull()
       .$defaultFn(() => new Date())
       .$onUpdateFn(() => new Date()),
 
-    settledAt: integer(
-      'settled_at',
-      {
-        mode: 'timestamp_ms',
-      },
-    ),
+    settledAt: integer('settled_at', {
+      mode: 'timestamp_ms',
+    }),
   },
 
   (table) => ({
@@ -3042,61 +3048,40 @@ export const fiatExternalTransactions = sqliteTable(
       'idx_fiat_external_transactions_provider',
     ).on(table.providerId),
 
+    fiatAccountIdx: index(
+      'idx_fiat_external_transactions_fiat_account',
+    ).on(table.fiatAccountId),
+
     statusIdx: index(
       'idx_fiat_external_transactions_status',
     ).on(table.status),
+
+    reconStatusIdx: index(
+      'idx_fiat_external_transactions_recon_status',
+    ).on(table.reconciliationStatus),
+
+    fingerprintUq: uniqueIndex(
+      'uq_fiat_external_transactions_fingerprint',
+    ).on(table.rowFingerprint),
 
     externalIdCheck: check(
       'ck_fiat_external_transaction_id_nonempty',
       sql`length(trim(${table.externalTransactionId})) > 0`,
     ),
 
-    typeCheck: check(
-      'ck_fiat_external_transaction_type',
-      sql`${table.type} IN (
-        'deposit',
-        'withdrawal',
-        'transfer',
-        'payment',
-        'refund',
-        'fee',
-        'other'
-      )`,
+    directionCheck: check(
+      'ck_fiat_external_tx_direction',
+      sql`${table.direction} IN ('credit', 'debit')`,
+    ),
+
+    reconciliationStatusCheck: check(
+      'ck_fiat_external_tx_reconciliation_status',
+      sql`${table.reconciliationStatus} IN ('unmatched', 'matched', 'ignored', 'discrepancy')`,
     ),
 
     statusCheck: check(
-      'ck_fiat_external_transaction_status',
-      sql`${table.status} IN (
-        'pending',
-        'processing',
-        'completed',
-        'failed',
-        'cancelled',
-        'reversed',
-        'unknown'
-      )`,
-    ),
-
-    providerStatusCheck: check(
-      'ck_fiat_external_provider_status',
-      sql`${table.providerStatus} IS NULL
-        OR length(trim(${table.providerStatus})) > 0`,
-    ),
-
-    settledTemporalCheck: check(
-      'ck_fiat_external_transaction_settled_at',
-      sql`${table.settledAt} IS NULL
-        OR ${table.settledAt} >= ${table.createdAt}`,
-    ),
-
-    completedSettlementCheck: check(
-      'ck_fiat_external_completed_settlement',
-      sql`(
-        ${table.status} = 'completed'
-        AND ${table.settledAt} IS NOT NULL
-      )
-      OR
-      ${table.status} != 'completed'`,
+      'ck_fiat_external_tx_status',
+      sql`${table.status} IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'unknown')`,
     ),
   }),
 );
@@ -3213,19 +3198,6 @@ export const reconciliationRecords = sqliteTable(
     )
       .notNull()
       .$defaultFn(() => new Date()),
-
-    createdAt: integer('created_at', {
-      mode: 'timestamp_ms',
-    })
-      .notNull()
-      .$defaultFn(() => new Date()),
-
-    updatedAt: integer('updated_at', {
-      mode: 'timestamp_ms',
-    })
-      .notNull()
-      .$defaultFn(() => new Date())
-      .$onUpdateFn(() => new Date()),
 
     resolvedAt: integer(
       'resolved_at',

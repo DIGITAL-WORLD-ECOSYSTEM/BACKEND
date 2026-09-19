@@ -5,6 +5,7 @@ import {
   financialTransactions,
   financialLedgerEntries,
   financialAssets,
+  fiatExternalTransactions,
   MAX_UINT256_BASE_UNITS_TEXT,
 } from '../../db/finance/tables';
 import { idempotencyKeys } from '../../db/infrastructure/tables';
@@ -32,6 +33,7 @@ import {
   AccountInactiveError,
   AssetInactiveError,
 } from '../../domains/finance/errors/FinancialError';
+import { AccountClassPolicy } from '../../domains/finance/policies/AccountClassPolicy';
 
 /**
  * ============================================================================
@@ -87,28 +89,6 @@ import {
  * ============================================================================
  */
 
-/**
- * TODO(shared-policy): extract this to a single AccountClassPolicy module
- * consumed by BOTH tables.ts (to generate ck_financial_accounts_type_class_matrix)
- * and this repository, so the two can never diverge again the way
- * EXPECTED_CLASSES previously did. Until that module exists, this map is
- * hand-kept in sync with tables.ts's matrix — verify both together whenever
- * either changes.
- */
-const VALID_ACCOUNT_CLASSES_BY_TYPE: Record<string, readonly string[]> = {
-  user_available: ['liability'],
-  treasury: ['asset'],
-  operating: ['asset'],
-  reserve: ['asset', 'liability'],
-  fees: ['revenue'],
-  escrow: ['liability'],
-  reward_expense: ['expense'],
-  yield_expense: ['expense'],
-  clearing: ['asset', 'liability'],
-  opening_balance_equity: ['equity', 'liability'],
-  payment_revenue: ['revenue'],
-  refund_expense: ['expense'],
-};
 
 /**
  * [AUDIT FIX P0-02]
@@ -437,8 +417,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         return Result.fail(`System account of type "${accountType}" not found. Must be provisioned via bootstrap seed.`);
       }
 
-      const validClasses = VALID_ACCOUNT_CLASSES_BY_TYPE[accountType];
-      if (validClasses && !validClasses.includes(row.accountClass)) {
+      const validClasses = AccountClassPolicy.getAllowedClasses(accountType);
+      if (validClasses.length > 0 && !(validClasses as readonly string[]).includes(row.accountClass)) {
         return Result.fail(
           `Conta sistêmica "${accountType}" possui classe contábil incompatível ` +
           `(${row.accountClass} não está em [${validClasses.join(', ')}]).`
@@ -1106,5 +1086,124 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
     const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
     return affected > 0 ? 'UPDATED' : 'OCC_CONFLICT';
+  }
+
+  async insertFiatExternalTransaction(data: {
+    providerId: number;
+    fiatAccountId?: number | null;
+    externalTransactionId: string;
+    rawAmount: string;
+    amountBaseUnits?: string | null;
+    direction: 'credit' | 'debit';
+    assetId?: number | null;
+    rawDescription?: string | null;
+    bankTimestamp?: Date | number | null;
+    documentNumber?: string | null;
+    runningBalanceBaseUnits?: string | null;
+    sourceFile?: string | null;
+    sourceFileHash?: string | null;
+    rowFingerprint?: string | null;
+    rawPayload?: string | null;
+    status?: string;
+    reconciliationStatus?: 'unmatched' | 'matched' | 'ignored' | 'discrepancy';
+    financialTransactionId?: number | null;
+  }): Promise<Result<number, RepositoryError>> {
+    try {
+      const bankDate = data.bankTimestamp
+        ? typeof data.bankTimestamp === 'number'
+          ? new Date(data.bankTimestamp)
+          : data.bankTimestamp
+        : null;
+
+      const [row] = await this.executor
+        .insert(fiatExternalTransactions)
+        .values({
+          providerId: data.providerId,
+          fiatAccountId: data.fiatAccountId ?? null,
+          externalTransactionId: data.externalTransactionId,
+          rawAmount: data.rawAmount,
+          amountBaseUnits: data.amountBaseUnits ?? null,
+          direction: data.direction,
+          assetId: data.assetId ?? null,
+          rawDescription: data.rawDescription ?? null,
+          bankTimestamp: bankDate,
+          documentNumber: data.documentNumber ?? null,
+          runningBalanceBaseUnits: data.runningBalanceBaseUnits ?? null,
+          sourceFile: data.sourceFile ?? null,
+          sourceFileHash: data.sourceFileHash ?? null,
+          rowFingerprint: data.rowFingerprint ?? null,
+          rawPayload: data.rawPayload ?? null,
+          status: (data.status as any) || 'pending',
+          reconciliationStatus: data.reconciliationStatus || 'unmatched',
+          financialTransactionId: data.financialTransactionId ?? null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning({ id: fiatExternalTransactions.id });
+
+      if (!row) {
+        return Result.err(
+          RepositoryError.integrity('Falha ao inserir transação externa fiat.')
+        );
+      }
+      return Result.ok(row.id);
+    } catch (e: any) {
+      return Result.err(RepositoryError.transient(e.message, e));
+    }
+  }
+
+  async getFiatExternalTransactionByFingerprint(
+    rowFingerprint: string
+  ): Promise<Result<any | null, RepositoryError>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(fiatExternalTransactions)
+        .where(eq(fiatExternalTransactions.rowFingerprint, rowFingerprint))
+        .limit(1);
+
+      return Result.ok(row || null);
+    } catch (e: any) {
+      return Result.err(RepositoryError.transient(e.message, e));
+    }
+  }
+
+  async updateFiatExternalTransactionReconciliation(
+    id: number,
+    update: {
+      status?: string;
+      reconciliationStatus: 'unmatched' | 'matched' | 'ignored' | 'discrepancy';
+      financialTransactionId?: number | null;
+      amountBaseUnits?: string | null;
+      assetId?: number | null;
+    }
+  ): Promise<Result<void, RepositoryError>> {
+    try {
+      const setPayload: Record<string, any> = {
+        reconciliationStatus: update.reconciliationStatus,
+        updatedAt: new Date(),
+      };
+      if (update.status !== undefined) {
+        setPayload.status = update.status;
+      }
+      if (update.financialTransactionId !== undefined) {
+        setPayload.financialTransactionId = update.financialTransactionId;
+      }
+      if (update.amountBaseUnits !== undefined) {
+        setPayload.amountBaseUnits = update.amountBaseUnits;
+      }
+      if (update.assetId !== undefined) {
+        setPayload.assetId = update.assetId;
+      }
+
+      await this.executor
+        .update(fiatExternalTransactions)
+        .set(setPayload)
+        .where(eq(fiatExternalTransactions.id, id));
+
+      return Result.ok(undefined);
+    } catch (e: any) {
+      return Result.err(RepositoryError.transient(e.message, e));
+    }
   }
 }

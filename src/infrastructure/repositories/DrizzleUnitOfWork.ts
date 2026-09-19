@@ -71,21 +71,6 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
   constructor(private db: any) {}
 
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
-    const isLibSQL = (this.db as any)?.session?.constructor?.name === 'LibSQLSession';
-    const isD1 = !isLibSQL && Boolean(
-      (this.db as any)?.session?.client?.batch ||
-      (this.db as any)?.$client?.batch ||
-      typeof (this.db as any)?.session?.client?.dump === 'function' ||
-      (this.db as any)?.session?.constructor?.name?.toLowerCase().includes('d1')
-    );
-
-    if (isD1) {
-      // Cloudflare D1 does not support interactive BEGIN transactions.
-      // Queries are executed atomically by D1's serverless engine.
-      const factory = new DrizzleRepositoryFactory(this.db, this.db);
-      return await work(factory);
-    }
-
     if (typeof this.db?.transaction === 'function') {
       let result: Result<T> | null = null;
       try {

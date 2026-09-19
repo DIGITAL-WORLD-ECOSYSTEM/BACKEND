@@ -579,6 +579,16 @@ export const fiatExternalTransactionsRelations = relations(
       fields: [fiatExternalTransactions.providerId],
       references: [fiatProviders.id],
     }),
+
+    fiatAccount: one(fiatAccounts, {
+      fields: [fiatExternalTransactions.fiatAccountId],
+      references: [fiatAccounts.id],
+    }),
+
+    asset: one(financialAssets, {
+      fields: [fiatExternalTransactions.assetId],
+      references: [financialAssets.id],
+    }),
   }),
 );
 

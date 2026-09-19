@@ -1,6 +1,10 @@
-import { financialAccounts, financialAssets, accountBalances } from '../../db/finance/tables';
+import { financialAccounts, financialAssets, accountBalances, financialTransactions } from '../../db/finance/tables';
+import { idempotencyKeys } from '../../db/infrastructure/tables';
 import { eq, and } from 'drizzle-orm';
 import { Result } from '../../shared/kernel/Result';
+import { DrizzleFinanceRepository } from '../repositories/DrizzleFinanceRepository';
+import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../../domains/finance/value-objects/Money256';
 
 export interface TreasuryBootstrapOptions {
   currencyCode?: string;
@@ -160,7 +164,7 @@ export class FinanceBootstrapService {
             await tx.insert(accountBalances).values({
               accountId: accId,
               assetId,
-              availableBaseUnits: accId === treasuryAcc.id ? initialBal : '0',
+              availableBaseUnits: '0',
               lockedBaseUnits: '0',
               version: 1,
               updatedAt: new Date(),
@@ -168,6 +172,84 @@ export class FinanceBootstrapService {
           } catch (balErr: any) {
             // Ignora conflito
           }
+        }
+      }
+
+      // Se houver saldo inicial especificado (> 0), registra lançamento contábil de abertura de forma estritamente idempotente
+      const initialBalanceBigInt = options.initialBalanceBaseUnits ?? 0n;
+      if (initialBalanceBigInt > 0n) {
+        const idempotencyKey = `finance:bootstrap:opening-balance:${treasuryAcc.id}:${assetId}`;
+        const [existingIdem] = await tx
+          .select()
+          .from(idempotencyKeys)
+          .where(and(eq(idempotencyKeys.key, idempotencyKey), eq(idempotencyKeys.scope, 'finance')))
+          .limit(1);
+
+        if (!existingIdem || existingIdem.status !== 'completed') {
+          // 1. Cria transação contábil de ajuste/abertura
+          const [openingTx] = await tx
+            .insert(financialTransactions)
+            .values({
+              type: 'adjustment',
+              category: 'operational',
+              status: 'completed',
+              description: 'Genesis Opening Balance Equity Allocation',
+              version: 1,
+              completedAt: new Date(),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning({ id: financialTransactions.id });
+
+          // 2. Partidas Dobradas via repositório canônico (Single Posting Authority)
+          const repo = new DrizzleFinanceRepository(tx);
+          const moneyAmount = Money256.fromString(initialBal, assetId);
+          const ledgerEntries = [
+            new LedgerEntry({ accountId: String(treasuryAcc.id), amount: moneyAmount, type: 'debit' }),
+            new LedgerEntry({ accountId: String(openingEquityAcc.id), amount: moneyAmount, type: 'credit' }),
+          ];
+          const insertLedgerRes = await repo.insertLedgerEntries(ledgerEntries, openingTx.id);
+          if (insertLedgerRes.isFailure) {
+            throw new Error(`Falha ao registrar partidas dobradas de abertura: ${String(insertLedgerRes.error)}`);
+          }
+
+          // 3. Atualiza saldos das duas contas no account_balances
+          await tx
+            .update(accountBalances)
+            .set({
+              availableBaseUnits: initialBal,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(accountBalances.accountId, treasuryAcc.id),
+                eq(accountBalances.assetId, assetId)
+              )
+            );
+
+          await tx
+            .update(accountBalances)
+            .set({
+              availableBaseUnits: initialBal,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(accountBalances.accountId, openingEquityAcc.id),
+                eq(accountBalances.assetId, assetId)
+              )
+            );
+
+          // 4. Registra idempotência como completed para impedir duplicações futuras
+          await tx.insert(idempotencyKeys).values({
+            scope: 'finance',
+            key: idempotencyKey,
+            requestHash: initialBal,
+            financialTransactionId: openingTx.id,
+            status: 'completed',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
         }
       }
 
