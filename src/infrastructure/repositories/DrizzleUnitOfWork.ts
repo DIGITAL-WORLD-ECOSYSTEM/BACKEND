@@ -81,10 +81,9 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
 
             if (result && result.isFailure) {
               if (typeof (tx as any).rollback === 'function') {
-                (tx as any).rollback();
-              } else {
-                throw new Error('ROLLBACK_TRIGGERED_BY_RESULT_FAIL');
+                await Promise.resolve((tx as any).rollback()).catch(() => {});
               }
+              throw new Error('ROLLBACK_TRIGGERED_BY_RESULT_FAIL');
             }
           },
           { behavior: 'immediate' }
