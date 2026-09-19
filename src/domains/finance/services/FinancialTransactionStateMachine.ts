@@ -23,7 +23,8 @@ export type FinancialTransactionStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
-  | 'reversed';
+  | 'reversed'
+  | 'refunded';
 
 const FINANCIAL_TRANSACTION_STATUSES = Object.freeze([
   'pending',
@@ -32,6 +33,7 @@ const FINANCIAL_TRANSACTION_STATUSES = Object.freeze([
   'failed',
   'cancelled',
   'reversed',
+  'refunded',
 ] as const);
 
 function isFinancialTransactionStatus(
@@ -52,10 +54,11 @@ function isFinancialTransactionStatus(
  *
  * pending:    -> processing | failed | cancelled
  * processing: -> completed  | failed
- * completed:  -> reversed
+ * completed:  -> reversed   | refunded
  * failed:     -> terminal (nenhuma)
  * cancelled:  -> terminal (nenhuma)
  * reversed:   -> terminal (nenhuma)
+ * refunded:   -> terminal (nenhuma)
  *
  * REGRA FINANCEIRA CRÍTICA:
  * 'processing -> cancelled' É ESTRITAMENTE PROIBIDO.
@@ -69,10 +72,11 @@ const ALLOWED_TRANSITIONS: Readonly<
 > = Object.freeze({
   pending: Object.freeze(['processing', 'failed', 'cancelled'] as const),
   processing: Object.freeze(['completed', 'failed'] as const),
-  completed: Object.freeze(['reversed'] as const),
+  completed: Object.freeze(['reversed', 'refunded'] as const),
   failed: Object.freeze([] as const),
   cancelled: Object.freeze([] as const),
   reversed: Object.freeze([] as const),
+  refunded: Object.freeze([] as const),
 });
 
 export class FinancialTransactionStateMachine {

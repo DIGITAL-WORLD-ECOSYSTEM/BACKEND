@@ -21,7 +21,7 @@ export type FinancialAccountClass =
   | 'expense'
   | 'equity';
 
-const PERMITTED_CLASSES: Readonly<
+export const PERMITTED_CLASSES: Readonly<
   Record<FinancialAccountType, readonly FinancialAccountClass[]>
 > = Object.freeze({
   user_available: Object.freeze(['liability'] as const),
@@ -39,6 +39,14 @@ const PERMITTED_CLASSES: Readonly<
 });
 
 export class AccountClassPolicy {
+  public static readonly PERMITTED_CLASSES = PERMITTED_CLASSES;
+
+  public static getAllowedClasses(accountType: string): readonly FinancialAccountClass[] {
+    if (AccountClassPolicy.isFinancialAccountType(accountType)) {
+      return PERMITTED_CLASSES[accountType];
+    }
+    return [];
+  }
   /**
    * Valida se o tipo de conta pode utilizar a classe contábil informada.
    *

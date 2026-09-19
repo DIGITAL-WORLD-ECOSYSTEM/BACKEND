@@ -47,6 +47,7 @@ export const FINANCIAL_TRANSACTION_STATUSES = Object.freeze([
   'failed',
   'cancelled',
   'reversed',
+  'refunded',
 ] as const);
 
 export type FinancialTransactionStatus =
