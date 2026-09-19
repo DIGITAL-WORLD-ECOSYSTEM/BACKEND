@@ -8,6 +8,8 @@ import { FinanceController } from '../../controllers/finance/FinanceController';
 import { sessionGuard, requireAal } from '../../middlewares/session_guard';
 import { verifyPermission } from '../../middlewares/rbac';
 
+import { Database } from '../../../../db';
+
 type AppType = {
   Bindings: Bindings;
   Variables: Variables;
@@ -17,7 +19,7 @@ export const financeRouter = new Hono<AppType>();
 
 financeRouter.use('*', sessionGuard);
 
-function buildFinanceDeps(db: any) {
+function buildFinanceDeps(db: Database) {
   const uow = new DrizzleUnitOfWork(db);
   const financeRepo = new DrizzleFinanceRepository(db);
   const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
