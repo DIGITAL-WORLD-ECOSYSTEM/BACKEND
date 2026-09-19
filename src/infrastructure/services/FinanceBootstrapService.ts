@@ -1,279 +1,68 @@
-import { financialAccounts, financialAssets, accountBalances, financialTransactions } from '../../db/finance/tables';
-import { idempotencyKeys } from '../../db/infrastructure/tables';
-import { eq, and, sql } from 'drizzle-orm';
+import { IUnitOfWork } from '../../application/ports/output/IUnitOfWork';
 import { Result } from '../../shared/kernel/Result';
-import { DrizzleFinanceRepository } from '../repositories/DrizzleFinanceRepository';
-import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
+import { LedgerTransaction, LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
 import { Money256 } from '../../domains/finance/value-objects/Money256';
+import { FinancialTransactionOrchestrator } from '../../application/finance/services/FinancialTransactionOrchestrator';
+import {
+  TreasuryBootstrapOptions,
+  TreasuryBootstrapResult,
+} from '../../application/ports/output/IFinanceRepository';
 
-export interface TreasuryBootstrapOptions {
-  currencyCode?: string;
-  initialBalanceBaseUnits?: bigint;
-}
-
-export interface TreasuryBootstrapResult {
-  assetId: number;
-  treasuryAccountId: number;
-  operatingAccountId: number;
-  feeAccountId: number;
-  rewardExpenseAccountId: number;
-  yieldExpenseAccountId: number;
-  clearingAccountId: number;
-  openingEquityAccountId: number;
-  paymentRevenueAccountId: number;
-  refundExpenseAccountId: number;
-}
+export type { TreasuryBootstrapOptions, TreasuryBootstrapResult };
 
 export class FinanceBootstrapService {
   /**
    * Provisiona a infraestrutura básica de contas sistêmicas do Finance Core:
    * 1. Ativo Padrão (ex: BRL, USD, USDT)
    * 2. Contas Sistêmicas com userId = NULL (cumprindo ownerRuleCheck e FIN-019).
+   * 3. Lançamento contábil de abertura atômico via FinancialTransactionOrchestrator.
+   *
+   * Todo o processo executa sob um único Unit of Work (uma única transação de escrita).
    */
   static async seedSystemAccounts(
-    db: any,
+    uow: IUnitOfWork,
     options: TreasuryBootstrapOptions = {}
   ): Promise<Result<TreasuryBootstrapResult>> {
-    const runSeeding = async (tx: any): Promise<TreasuryBootstrapResult> => {
-      const currency = options.currencyCode || 'BRL';
+    return uow.execute(async (factory) => {
+      const financeRepo = factory.getFinanceRepository();
+      const outboxRepo = factory.getOutboxRepository();
 
-      // 1. Assegurar Ativo Financeiro
-      let [asset] = await tx
-        .select()
-        .from(financialAssets)
-        .where(eq(financialAssets.code, currency))
-        .limit(1);
+      // 1. Provisiona infraestrutura (ativo, contas sistêmicas e saldos zerados)
+      const infraRes = await financeRepo.provisionTreasuryInfrastructure(options);
+      if (infraRes.isFailure) {
+        return Result.fail<TreasuryBootstrapResult>(
+          infraRes.errorObject || infraRes.error || 'Falha ao provisionar infraestrutura contábil sistêmica.'
+        );
+      }
+      const infra = infraRes.getValue();
 
-      if (!asset) {
-        try {
-          await tx.insert(financialAssets).values({
-            code: currency,
-            symbol: currency === 'BRL' ? 'R$' : '$',
-            name: `${currency} Base Currency`,
-            decimals: 2,
-            type: 'fiat',
-            status: 'active',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        } catch (insertErr: any) {
-          // Ignora conflito de UNIQUE se já inserido concorrentemente
-        }
-        [asset] = await tx
-          .select()
-          .from(financialAssets)
-          .where(eq(financialAssets.code, currency))
-          .limit(1);
+      // 2. Se houver saldo inicial especificado (> 0n), executa lançamento contábil via Orchestrator
+      const initialBalance = options.initialBalanceBaseUnits ?? 0n;
+      if (initialBalance > 0n) {
+        const openingTransaction = LedgerTransaction.create({
+          idempotencyKey: `finance:bootstrap:opening-balance:${infra.treasuryAccountId}:${infra.assetId}`,
+          description: 'Genesis Opening Balance Equity Allocation',
+          transactionType: 'adjustment',
+          category: 'operational',
+          entries: [
+            new LedgerEntry({
+              accountId: String(infra.treasuryAccountId),
+              amount: Money256.fromBigInt(initialBalance, infra.assetId),
+              type: 'debit',
+            }),
+            new LedgerEntry({
+              accountId: String(infra.openingEquityAccountId),
+              amount: Money256.fromBigInt(initialBalance, infra.assetId),
+              type: 'credit',
+            }),
+          ],
+        });
+
+        const orchestrator = new FinancialTransactionOrchestrator(financeRepo, outboxRepo);
+        await orchestrator.executePosting(openingTransaction);
       }
 
-      const assetId = asset.id;
-
-      // Helper para buscar ou criar conta sistêmica com userId = null
-      const ensureSystemAccount = async (
-        accountType:
-          | 'treasury'
-          | 'operating'
-          | 'fees'
-          | 'reward_expense'
-          | 'yield_expense'
-          | 'clearing'
-          | 'opening_balance_equity'
-          | 'payment_revenue'
-          | 'refund_expense',
-        accountClass: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
-        name: string
-      ) => {
-        let [acc] = await tx
-          .select()
-          .from(financialAccounts)
-          .where(
-            and(
-              eq(financialAccounts.accountType, accountType),
-              eq(financialAccounts.status, 'active')
-            )
-          )
-          .limit(1);
-
-        if (!acc) {
-          try {
-            await tx.insert(financialAccounts).values({
-              userId: null, // P0 FIX: Deve ser estritamente null para não-user_available
-              accountType,
-              accountClass,
-              status: 'active',
-              name,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            });
-          } catch (insertErr: any) {
-            // Re-read em caso de violação do índice UNIQUE singleton
-          }
-          [acc] = await tx
-            .select()
-            .from(financialAccounts)
-            .where(
-              and(
-                eq(financialAccounts.accountType, accountType),
-                eq(financialAccounts.status, 'active')
-              )
-            )
-            .limit(1);
-        }
-        return acc;
-      };
-
-      // Provisionar todas as contas sistêmicas necessárias
-      const treasuryAcc = await ensureSystemAccount('treasury', 'asset', 'Treasury Primary Vault');
-      const operatingAcc = await ensureSystemAccount('operating', 'asset', 'System Operating Vault');
-      const feeAcc = await ensureSystemAccount('fees', 'revenue', 'System Fee Collector');
-      const rewardExpenseAcc = await ensureSystemAccount('reward_expense', 'expense', 'System Reward Expense');
-      const yieldExpenseAcc = await ensureSystemAccount('yield_expense', 'expense', 'System Yield Expense');
-      const clearingAcc = await ensureSystemAccount('clearing', 'asset', 'System FX Clearing Account');
-      const openingEquityAcc = await ensureSystemAccount('opening_balance_equity', 'equity', 'System Opening Balance Equity');
-      const paymentRevenueAcc = await ensureSystemAccount('payment_revenue', 'revenue', 'System Payment Revenue Account');
-      const refundExpenseAcc = await ensureSystemAccount('refund_expense', 'expense', 'System Refund Expense Account');
-
-      // Assegurar saldo zerado ou inicial
-      const initialBal = (options.initialBalanceBaseUnits ?? 0n).toString();
-      const systemAccounts = [
-        treasuryAcc.id,
-        operatingAcc.id,
-        feeAcc.id,
-        rewardExpenseAcc.id,
-        yieldExpenseAcc.id,
-        clearingAcc.id,
-        openingEquityAcc.id,
-        paymentRevenueAcc.id,
-        refundExpenseAcc.id,
-      ];
-
-      for (const accId of systemAccounts) {
-        const [existingBal] = await tx
-          .select()
-          .from(accountBalances)
-          .where(
-            and(
-              eq(accountBalances.accountId, accId),
-              eq(accountBalances.assetId, assetId)
-            )
-          )
-          .limit(1);
-
-        if (!existingBal) {
-          try {
-            await tx.insert(accountBalances).values({
-              accountId: accId,
-              assetId,
-              availableBaseUnits: '0',
-              lockedBaseUnits: '0',
-              version: 1,
-              updatedAt: new Date(),
-            });
-          } catch (balErr: any) {
-            // Ignora conflito
-          }
-        }
-      }
-
-      // Se houver saldo inicial especificado (> 0), registra lançamento contábil de abertura de forma estritamente idempotente
-      const initialBalanceBigInt = options.initialBalanceBaseUnits ?? 0n;
-      if (initialBalanceBigInt > 0n) {
-        const idempotencyKey = `finance:bootstrap:opening-balance:${treasuryAcc.id}:${assetId}`;
-        const [existingIdem] = await tx
-          .select()
-          .from(idempotencyKeys)
-          .where(and(eq(idempotencyKeys.key, idempotencyKey), eq(idempotencyKeys.scope, 'finance')))
-          .limit(1);
-
-        if (!existingIdem || existingIdem.status !== 'completed') {
-          // 1. Cria transação contábil de ajuste/abertura
-          const [openingTx] = await tx
-            .insert(financialTransactions)
-            .values({
-              type: 'adjustment',
-              category: 'operational',
-              status: 'completed',
-              description: 'Genesis Opening Balance Equity Allocation',
-              version: 1,
-              completedAt: new Date(),
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .returning({ id: financialTransactions.id });
-
-          // 2. Partidas Dobradas via repositório canônico (Single Posting Authority)
-          const repo = new DrizzleFinanceRepository(tx);
-          const moneyAmount = Money256.fromString(initialBal, assetId);
-          const ledgerEntries = [
-            new LedgerEntry({ accountId: String(treasuryAcc.id), amount: moneyAmount, type: 'debit' }),
-            new LedgerEntry({ accountId: String(openingEquityAcc.id), amount: moneyAmount, type: 'credit' }),
-          ];
-          const insertLedgerRes = await repo.insertLedgerEntries(ledgerEntries, openingTx.id);
-          if (insertLedgerRes.isFailure) {
-            throw new Error(`Falha ao registrar partidas dobradas de abertura: ${String(insertLedgerRes.error)}`);
-          }
-
-          // 3. Atualiza saldos das duas contas no account_balances com rastreabilidade de version
-          await tx
-            .update(accountBalances)
-            .set({
-              availableBaseUnits: initialBal,
-              version: sql`${accountBalances.version} + 1`,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(accountBalances.accountId, treasuryAcc.id),
-                eq(accountBalances.assetId, assetId)
-              )
-            );
-
-          await tx
-            .update(accountBalances)
-            .set({
-              availableBaseUnits: initialBal,
-              version: sql`${accountBalances.version} + 1`,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(accountBalances.accountId, openingEquityAcc.id),
-                eq(accountBalances.assetId, assetId)
-              )
-            );
-
-          // 4. Registra idempotência como completed para impedir duplicações futuras
-          await tx.insert(idempotencyKeys).values({
-            scope: 'finance',
-            key: idempotencyKey,
-            requestHash: initialBal,
-            financialTransactionId: openingTx.id,
-            status: 'completed',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        }
-      }
-
-      return {
-        assetId,
-        treasuryAccountId: treasuryAcc.id,
-        operatingAccountId: operatingAcc.id,
-        feeAccountId: feeAcc.id,
-        rewardExpenseAccountId: rewardExpenseAcc.id,
-        yieldExpenseAccountId: yieldExpenseAcc.id,
-        clearingAccountId: clearingAcc.id,
-        openingEquityAccountId: openingEquityAcc.id,
-        paymentRevenueAccountId: paymentRevenueAcc.id,
-        refundExpenseAccountId: refundExpenseAcc.id,
-      };
-    };
-
-    try {
-      const res = await runSeeding(db);
-      return Result.ok(res);
-    } catch (err: any) {
-      return Result.fail(`Bootstrap failed: ${err.message}`);
-    }
+      return Result.ok<TreasuryBootstrapResult>(infra);
+    });
   }
 }
