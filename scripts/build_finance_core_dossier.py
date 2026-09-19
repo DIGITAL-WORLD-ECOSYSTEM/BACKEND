@@ -387,7 +387,7 @@ inconsistencies = [
     "- Arquivos de Teste no Diretório de Código-Fonte: Três arquivos de teste automatizado (src/domains/finance/entities/FinancialTransaction.test.ts, src/infrastructure/repositories/DrizzleFinanceRepository.test.ts e src/infrastructure/repositories/DrizzleUnitOfWork.test.ts) residem fisicamente dentro da árvore de produção src/ em vez de estarem localizados sob a árvore canônica tests/.",
     "- Resolução de Import sem Extensão em Arquivo de Rotas: O arquivo src/interfaces/http/routes/finance/finance.routes.ts importa '../.../../types/bindings' sem extensão explícita, resolvendo fisicamente para a declaração de tipos src/types/bindings.d.ts.",
     "- Ausência de Pipeline de Ingestão de Extratos Bancários Reais: O módulo possui a tabela fiat_external_transactions com suporte a row_fingerprint e métodos no repositório, mas ainda não possui parsers de extrato bancário (OFX, CNAB 240/400 ou APIs bancárias de Bradesco, Cora ou Inter) implementados.",
-    "- Defasagem Documental de Contagem de Arquivos: A documentação estática legada docs/FINANCE_CORE_COMPLETE_TREE.md registrava um escopo de 44 arquivos, enquanto a árvore física real e canônica do subsistema compreende 73 arquivos (63 principais + 10 dependências diretas, incluindo testes de arquitetura, integridade de migrations, scripts de seed e governança)."
+    "- Defasagem Documental de Contagem de Arquivos: A documentação estática legada docs/FINANCE_CORE_COMPLETE_TREE.md registrava um escopo de 44 arquivos, enquanto a árvore física real e canônica do subsistema compreende 78 arquivos (68 principais + 10 dependências diretas, incluindo testes de arquitetura, integridade de migrations, scripts de seed e governança)."
 ]
 
 for inc in inconsistencies:
