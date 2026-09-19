@@ -23,6 +23,8 @@ import {
   FinancialAssetStatus,
   BalanceUpdateResult,
   IdempotencyRecord,
+  TreasuryBootstrapOptions,
+  TreasuryBootstrapResult,
 } from '../../application/ports/output/IFinanceRepository';
 import { FinancialLedgerEntryRecord } from '../../domains/finance/contracts/FinancialLedgerEntryRecord';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
@@ -34,6 +36,7 @@ import {
   AssetInactiveError,
 } from '../../domains/finance/errors/FinancialError';
 import { AccountClassPolicy } from '../../domains/finance/policies/AccountClassPolicy';
+import { BaseSQLiteDatabase, SQLiteTransaction } from 'drizzle-orm/sqlite-core';
 
 /**
  * ============================================================================
@@ -109,14 +112,9 @@ export class IdempotencyKeyReusedWithDifferentRequestError extends Error {
   }
 }
 
-/**
- * [AUDIT FIX #10 - ROUND 1, unchanged]
- * Placeholder alias for the Drizzle db/transaction executor type. Swap this
- * for the project's real type (e.g. `BatchItem<'sqlite'>` /
- * `SQLiteTransaction<...>` re-exported from the db client module) as soon
- * as it's available here, to recover compile-time column/type checking.
- */
-type FinanceDbExecutor = any;
+export type FinanceDatabase = BaseSQLiteDatabase<'async', any, any>;
+export type FinanceTransaction = SQLiteTransaction<'async', any, any, any>;
+export type FinanceDbExecutor = FinanceDatabase | FinanceTransaction;
 
 const MAX_UINT256_BASE_UNITS_BIGINT = BigInt(MAX_UINT256_BASE_UNITS_TEXT);
 
@@ -328,8 +326,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           .insert(financialAccounts)
           .values({
             userId: insertValues.userId,
-            accountType: insertValues.accountType,
-            accountClass: insertValues.accountClass,
+            accountType: insertValues.accountType as any,
+            accountClass: insertValues.accountClass as any,
             name: insertValues.name,
             status: 'active',
             createdAt: new Date(),
@@ -508,11 +506,9 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
    */
   private async ensureAccountBalance(
     accountId: number,
-    assetId: number,
-    executorOverride?: FinanceDbExecutor
+    assetId: number
   ): Promise<void> {
-    const exec = executorOverride || this.executor;
-    const [existing] = await exec
+    const [existing] = await this.executor
       .select({ id: accountBalances.id })
       .from(accountBalances)
       .where(
@@ -525,7 +521,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
     if (!existing) {
       try {
-        await exec.insert(accountBalances).values({
+        await this.executor.insert(accountBalances).values({
           accountId,
           assetId,
           availableBaseUnits: '0',
@@ -981,11 +977,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     accountId: number | string,
     assetId: number | string,
     amount: bigint,
-    type: 'debit' | 'credit',
-    executorOverride?: FinanceDbExecutor
+    type: 'debit' | 'credit'
   ): Promise<BalanceUpdateResult> {
-    const exec = executorOverride || this.executor;
-
     if (typeof amount !== 'bigint' || amount <= 0n) {
       throw new Error(`Invalid base units amount for OCC update: ${amount}`);
     }
@@ -1007,7 +1000,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
 
     // 1. Validar status ativo do ativo financeiro (antes de qualquer escrita)
-    const [assetRow] = await exec
+    const [assetRow] = await this.executor
       .select({ status: financialAssets.status })
       .from(financialAssets)
       .where(eq(financialAssets.id, assetIdNum))
@@ -1022,7 +1015,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
     // 2. Determinar a classe e status da conta com switch exaustivo
     //    (também antes de qualquer escrita)
-    const [accRow] = await exec
+    const [accRow] = await this.executor
       .select({
         accountClass: financialAccounts.accountClass,
         status: financialAccounts.status,
@@ -1056,10 +1049,10 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
 
     // 3. Só agora garantir que a linha de saldo exista (auto-provisionamento)
-    await this.ensureAccountBalance(accIdNum, assetIdNum, exec);
+    await this.ensureAccountBalance(accIdNum, assetIdNum);
 
     // 4. Selecionar o saldo com OCC version
-    const [balance] = await exec
+    const [balance] = await this.executor
       .select({
         id: accountBalances.id,
         availableBaseUnits: accountBalances.availableBaseUnits,
@@ -1097,7 +1090,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
     const newAvailableStr = newAvailable.toString();
 
-    const res = await exec
+    const res = await this.executor
       .update(accountBalances)
       .set({
         availableBaseUnits: newAvailableStr,
@@ -1231,6 +1224,184 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       return Result.ok(undefined);
     } catch (e: any) {
       return Result.err(RepositoryError.transient(e.message, e));
+    }
+  }
+
+  /**
+   * Provisiona a infraestrutura básica do Finance Core (Ativo padrão, contas sistêmicas e saldos zerados)
+   * dentro do contexto transacional do repositório (this.executor).
+   */
+  async provisionTreasuryInfrastructure(
+    options: TreasuryBootstrapOptions = {}
+  ): Promise<Result<TreasuryBootstrapResult, RepositoryError>> {
+    const currency = options.currencyCode || 'BRL';
+
+    try {
+      // 1. Assegurar Ativo Financeiro
+      let [asset] = await this.executor
+        .select()
+        .from(financialAssets)
+        .where(eq(financialAssets.code, currency))
+        .limit(1);
+
+      if (!asset) {
+        try {
+          await this.executor.insert(financialAssets).values({
+            code: currency,
+            symbol: currency === 'BRL' ? 'R$' : '$',
+            name: `${currency} Base Currency`,
+            decimals: 2,
+            type: 'fiat',
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        } catch (insertErr: any) {
+          if (!isUniqueConstraintViolation(insertErr)) {
+            return Result.err(RepositoryError.transient(`Falha ao inserir ativo ${currency}: ${insertErr.message}`, insertErr));
+          }
+        }
+        [asset] = await this.executor
+          .select()
+          .from(financialAssets)
+          .where(eq(financialAssets.code, currency))
+          .limit(1);
+      }
+
+      if (!asset) {
+        return Result.err(RepositoryError.notFound(`Ativo ${currency} não pôde ser criado ou recuperado.`));
+      }
+
+      const assetId = asset.id;
+
+      // Helper para buscar ou criar conta sistêmica com userId = null
+      const ensureSystemAccount = async (
+        accountType:
+          | 'treasury'
+          | 'operating'
+          | 'fees'
+          | 'reward_expense'
+          | 'yield_expense'
+          | 'clearing'
+          | 'opening_balance_equity'
+          | 'payment_revenue'
+          | 'refund_expense',
+        accountClass: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
+        name: string
+      ) => {
+        let [acc] = await this.executor
+          .select()
+          .from(financialAccounts)
+          .where(
+            and(
+              eq(financialAccounts.accountType, accountType),
+              eq(financialAccounts.status, 'active')
+            )
+          )
+          .limit(1);
+
+        if (!acc) {
+          try {
+            await this.executor.insert(financialAccounts).values({
+              userId: null,
+              accountType,
+              accountClass,
+              status: 'active',
+              name,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          } catch (insertErr: any) {
+            if (!isUniqueConstraintViolation(insertErr)) {
+              throw insertErr;
+            }
+          }
+          [acc] = await this.executor
+            .select()
+            .from(financialAccounts)
+            .where(
+              and(
+                eq(financialAccounts.accountType, accountType),
+                eq(financialAccounts.status, 'active')
+              )
+            )
+            .limit(1);
+        }
+
+        if (!acc) {
+          throw new Error(`Conta sistêmica '${accountType}' não pôde ser criada ou recuperada.`);
+        }
+        return acc;
+      };
+
+      // Provisionar todas as contas sistêmicas necessárias
+      const treasuryAcc = await ensureSystemAccount('treasury', 'asset', 'Treasury Primary Vault');
+      const operatingAcc = await ensureSystemAccount('operating', 'asset', 'System Operating Vault');
+      const feeAcc = await ensureSystemAccount('fees', 'revenue', 'System Fee Collector');
+      const rewardExpenseAcc = await ensureSystemAccount('reward_expense', 'expense', 'System Reward Expense');
+      const yieldExpenseAcc = await ensureSystemAccount('yield_expense', 'expense', 'System Yield Expense');
+      const clearingAcc = await ensureSystemAccount('clearing', 'asset', 'System FX Clearing Account');
+      const openingEquityAcc = await ensureSystemAccount('opening_balance_equity', 'equity', 'System Opening Balance Equity');
+      const paymentRevenueAcc = await ensureSystemAccount('payment_revenue', 'revenue', 'System Payment Revenue Account');
+      const refundExpenseAcc = await ensureSystemAccount('refund_expense', 'expense', 'System Refund Expense Account');
+
+      const systemAccounts = [
+        treasuryAcc.id,
+        operatingAcc.id,
+        feeAcc.id,
+        rewardExpenseAcc.id,
+        yieldExpenseAcc.id,
+        clearingAcc.id,
+        openingEquityAcc.id,
+        paymentRevenueAcc.id,
+        refundExpenseAcc.id,
+      ];
+
+      // Assegurar saldo zerado inicial para cada conta sistêmica
+      for (const accId of systemAccounts) {
+        const [existingBal] = await this.executor
+          .select({ id: accountBalances.id })
+          .from(accountBalances)
+          .where(
+            and(
+              eq(accountBalances.accountId, accId),
+              eq(accountBalances.assetId, assetId)
+            )
+          )
+          .limit(1);
+
+        if (!existingBal) {
+          try {
+            await this.executor.insert(accountBalances).values({
+              accountId: accId,
+              assetId,
+              availableBaseUnits: '0',
+              lockedBaseUnits: '0',
+              version: 1,
+              updatedAt: new Date(),
+            });
+          } catch (balErr: any) {
+            if (!isUniqueConstraintViolation(balErr)) {
+              throw balErr;
+            }
+          }
+        }
+      }
+
+      return Result.ok({
+        assetId,
+        treasuryAccountId: treasuryAcc.id,
+        operatingAccountId: operatingAcc.id,
+        feeAccountId: feeAcc.id,
+        rewardExpenseAccountId: rewardExpenseAcc.id,
+        yieldExpenseAccountId: yieldExpenseAcc.id,
+        clearingAccountId: clearingAcc.id,
+        openingEquityAccountId: openingEquityAcc.id,
+        paymentRevenueAccountId: paymentRevenueAcc.id,
+        refundExpenseAccountId: refundExpenseAcc.id,
+      });
+    } catch (err: any) {
+      return Result.err(RepositoryError.transient(err?.message || 'Falha ao provisionar infraestrutura contábil', err));
     }
   }
 }
