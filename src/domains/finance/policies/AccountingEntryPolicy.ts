@@ -1405,27 +1405,10 @@ export class AccountingEntryPolicy {
       );
     }
 
-    for (
-      let index = 0;
-      index < normalized.length;
-      index += 1
-    ) {
-      const codeUnit =
-        normalized.charCodeAt(index);
-
-      if (
-        (codeUnit >= 0 &&
-          codeUnit <= 8) ||
-        (codeUnit >= 11 &&
-          codeUnit <= 12) ||
-        (codeUnit >= 14 &&
-          codeUnit <= 31) ||
-        codeUnit === 127
-      ) {
-        throw new AccountingMatrixValidationError(
-          'A descrição do lançamento contábil contém caractere de controle inválido.'
-        );
-      }
+    if (/[\u0000-\u001F\u007F]/u.test(normalized)) {
+      throw new AccountingMatrixValidationError(
+        'A descrição do lançamento contábil contém caractere de controle inválido.'
+      );
     }
 
     return normalized;

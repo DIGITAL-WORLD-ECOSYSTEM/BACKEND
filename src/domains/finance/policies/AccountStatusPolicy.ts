@@ -104,17 +104,8 @@ export class AccountStatusPolicy {
   ): string {
     const normalized = value.normalize('NFC').trim();
 
-    for (let index = 0; index < normalized.length; index += 1) {
-      const codeUnit = normalized.charCodeAt(index);
-
-      if (
-        (codeUnit >= 0 && codeUnit <= 8) ||
-        (codeUnit >= 11 && codeUnit <= 12) ||
-        (codeUnit >= 14 && codeUnit <= 31) ||
-        codeUnit === 127
-      ) {
-        return 'desconhecida';
-      }
+    if (/[\u0000-\u001F\u007F]/u.test(normalized)) {
+      return 'desconhecida';
     }
 
     return normalized;
