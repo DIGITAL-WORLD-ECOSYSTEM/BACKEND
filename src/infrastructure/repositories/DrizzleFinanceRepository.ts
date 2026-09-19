@@ -399,6 +399,11 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
    */
   async getSystemAccount(accountType: SystemAccountType): Promise<Result<FinancialAccountRecord>> {
     try {
+      const validClasses = AccountClassPolicy.getAllowedClasses(accountType);
+      if (validClasses.length === 0) {
+        return Result.fail(`Tipo de conta sistêmica "${accountType}" não é reconhecido por AccountClassPolicy (fail-closed).`);
+      }
+
       const [row] = await this.executor
         .select()
         .from(financialAccounts)
@@ -415,8 +420,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         return Result.fail(`System account of type "${accountType}" not found. Must be provisioned via bootstrap seed.`);
       }
 
-      const validClasses = AccountClassPolicy.getAllowedClasses(accountType);
-      if (validClasses.length > 0 && !(validClasses as readonly string[]).includes(row.accountClass)) {
+      if (!(validClasses as readonly string[]).includes(row.accountClass)) {
         return Result.fail(
           `Conta sistêmica "${accountType}" possui classe contábil incompatível ` +
           `(${row.accountClass} não está em [${validClasses.join(', ')}]).`
