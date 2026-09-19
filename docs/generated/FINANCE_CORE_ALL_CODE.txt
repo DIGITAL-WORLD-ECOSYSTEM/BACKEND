@@ -3,7 +3,7 @@ FINANCE CORE — CÓDIGO-FONTE COMPLETO
 ================================================================================
 
 PROJETO: /home/sandro/Área de trabalho/BackEnd
-DATA DA EXTRAÇÃO: 2026-09-18 21:18:25 -0300
+DATA DA EXTRAÇÃO: 2026-09-18 22:20:23 -0300
 
 ================================================================================
 ÁRVORE REAL DO FINANCE
@@ -111,7 +111,7 @@ CÓDIGO-FONTE INTEGRAL — SUBSISTEMA FINANCE
 ================================================================================
 
 ================================================================================
-ARQUIVO [1/63]: src/domains/finance/contracts/FinancialLedgerEntryRecord.ts
+ARQUIVO [1/67]: src/domains/finance/contracts/FinancialLedgerEntryRecord.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/FinancialLedgerEntryRecord.ts
 ================================================================================
 import type { LedgerEntryDirection } from '../value-objects/BaseUnits';
@@ -135,7 +135,7 @@ export interface FinancialLedgerEntryRecord {
 
 
 ================================================================================
-ARQUIVO [2/63]: src/domains/finance/entities/FinancialTransaction.test.ts
+ARQUIVO [2/67]: src/domains/finance/entities/FinancialTransaction.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/FinancialTransaction.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -1037,7 +1037,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
 
 
 ================================================================================
-ARQUIVO [3/63]: src/domains/finance/entities/LedgerTransaction.ts
+ARQUIVO [3/67]: src/domains/finance/entities/LedgerTransaction.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/LedgerTransaction.ts
 ================================================================================
 import {
@@ -2241,7 +2241,7 @@ export class LedgerTransaction {
 
 
 ================================================================================
-ARQUIVO [4/63]: src/domains/finance/errors/FinancialError.ts
+ARQUIVO [4/67]: src/domains/finance/errors/FinancialError.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/FinancialError.ts
 ================================================================================
 export abstract class FinancialError extends Error {
@@ -2385,7 +2385,7 @@ export class InvalidLedgerTransactionError extends FinancialError {
 
 
 ================================================================================
-ARQUIVO [5/63]: src/domains/finance/errors/LedgerImbalanceError.ts
+ARQUIVO [5/67]: src/domains/finance/errors/LedgerImbalanceError.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/LedgerImbalanceError.ts
 ================================================================================
 import { FinancialError } from './FinancialError';
@@ -2401,7 +2401,7 @@ export class LedgerImbalanceError extends FinancialError {
 
 
 ================================================================================
-ARQUIVO [6/63]: src/domains/finance/policies/AccountClassPolicy.ts
+ARQUIVO [6/67]: src/domains/finance/policies/AccountClassPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountClassPolicy.ts
 ================================================================================
 import { InvalidAccountClassError } from '../errors/FinancialError';
@@ -2624,7 +2624,7 @@ export class AccountClassPolicy {
 
 
 ================================================================================
-ARQUIVO [7/63]: src/domains/finance/policies/AccountingEntryPolicy.ts
+ARQUIVO [7/67]: src/domains/finance/policies/AccountingEntryPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountingEntryPolicy.ts
 ================================================================================
 import {
@@ -4034,27 +4034,10 @@ export class AccountingEntryPolicy {
       );
     }
 
-    for (
-      let index = 0;
-      index < normalized.length;
-      index += 1
-    ) {
-      const codeUnit =
-        normalized.charCodeAt(index);
-
-      if (
-        (codeUnit >= 0 &&
-          codeUnit <= 8) ||
-        (codeUnit >= 11 &&
-          codeUnit <= 12) ||
-        (codeUnit >= 14 &&
-          codeUnit <= 31) ||
-        codeUnit === 127
-      ) {
-        throw new AccountingMatrixValidationError(
-          'A descrição do lançamento contábil contém caractere de controle inválido.'
-        );
-      }
+    if (/[\u0000-\u001F\u007F]/u.test(normalized)) {
+      throw new AccountingMatrixValidationError(
+        'A descrição do lançamento contábil contém caractere de controle inválido.'
+      );
     }
 
     return normalized;
@@ -4084,7 +4067,7 @@ export class AccountingEntryPolicy {
 
 
 ================================================================================
-ARQUIVO [8/63]: src/domains/finance/policies/AccountStatusPolicy.ts
+ARQUIVO [8/67]: src/domains/finance/policies/AccountStatusPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountStatusPolicy.ts
 ================================================================================
 import { AccountInactiveError } from '../errors/FinancialError';
@@ -4193,17 +4176,8 @@ export class AccountStatusPolicy {
   ): string {
     const normalized = value.normalize('NFC').trim();
 
-    for (let index = 0; index < normalized.length; index += 1) {
-      const codeUnit = normalized.charCodeAt(index);
-
-      if (
-        (codeUnit >= 0 && codeUnit <= 8) ||
-        (codeUnit >= 11 && codeUnit <= 12) ||
-        (codeUnit >= 14 && codeUnit <= 31) ||
-        codeUnit === 127
-      ) {
-        return 'desconhecida';
-      }
+    if (/[\u0000-\u001F\u007F]/u.test(normalized)) {
+      return 'desconhecida';
     }
 
     return normalized;
@@ -4212,7 +4186,7 @@ export class AccountStatusPolicy {
 
 
 ================================================================================
-ARQUIVO [9/63]: src/domains/finance/policies/AssetStatusPolicy.ts
+ARQUIVO [9/67]: src/domains/finance/policies/AssetStatusPolicy.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AssetStatusPolicy.ts
 ================================================================================
 import { AssetInactiveError } from '../errors/FinancialError';
@@ -4413,17 +4387,8 @@ export class AssetStatusPolicy {
   ): string {
     const normalized = value.normalize('NFC').trim();
 
-    for (let index = 0; index < normalized.length; index += 1) {
-      const codeUnit = normalized.charCodeAt(index);
-
-      if (
-        (codeUnit >= 0 && codeUnit <= 8) ||
-        (codeUnit >= 11 && codeUnit <= 12) ||
-        (codeUnit >= 14 && codeUnit <= 31) ||
-        codeUnit === 127
-      ) {
-        return 'desconhecido';
-      }
+    if (/[\u0000-\u001F\u007F]/u.test(normalized)) {
+      return 'desconhecido';
     }
 
     return normalized;
@@ -4432,7 +4397,7 @@ export class AssetStatusPolicy {
 
 
 ================================================================================
-ARQUIVO [10/63]: src/domains/finance/services/FinancialTransactionStateMachine.ts
+ARQUIVO [10/67]: src/domains/finance/services/FinancialTransactionStateMachine.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/FinancialTransactionStateMachine.ts
 ================================================================================
 import { Result } from '../../../shared/kernel/Result';
@@ -4594,7 +4559,7 @@ export class FinancialTransactionStateMachine {
 
 
 ================================================================================
-ARQUIVO [11/63]: src/domains/finance/value-objects/BaseUnits.ts
+ARQUIVO [11/67]: src/domains/finance/value-objects/BaseUnits.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/BaseUnits.ts
 ================================================================================
 import {
@@ -4648,7 +4613,7 @@ export function parsePositiveCanonicalBaseUnits(value: unknown): string {
 
 
 ================================================================================
-ARQUIVO [12/63]: src/domains/finance/value-objects/Money256.ts
+ARQUIVO [12/67]: src/domains/finance/value-objects/Money256.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/Money256.ts
 ================================================================================
 import {
@@ -4784,7 +4749,7 @@ export class Money256 {
 
 
 ================================================================================
-ARQUIVO [13/63]: src/application/finance/services/CanonicalRequestHashService.ts
+ARQUIVO [13/67]: src/application/finance/services/CanonicalRequestHashService.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/services/CanonicalRequestHashService.ts
 ================================================================================
 import { createHash } from 'crypto';
@@ -4994,7 +4959,7 @@ export class CanonicalRequestHashService {
 
 
 ================================================================================
-ARQUIVO [14/63]: src/application/finance/services/FinancialTransactionOrchestrator.ts
+ARQUIVO [14/67]: src/application/finance/services/FinancialTransactionOrchestrator.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/services/FinancialTransactionOrchestrator.ts
 ================================================================================
 import { IFinanceRepository } from '../../ports/output/IFinanceRepository';
@@ -5343,7 +5308,7 @@ export class FinancialTransactionOrchestrator {
 
 
 ================================================================================
-ARQUIVO [15/63]: src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts
+ARQUIVO [15/67]: src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5363,7 +5328,7 @@ export class GetTreasuryBalanceUseCase {
 
 
 ================================================================================
-ARQUIVO [16/63]: src/application/finance/use-cases/RecordDepositUseCase.ts
+ARQUIVO [16/67]: src/application/finance/use-cases/RecordDepositUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordDepositUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5452,7 +5417,7 @@ export class RecordDepositUseCase {
 
 
 ================================================================================
-ARQUIVO [17/63]: src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts
+ARQUIVO [17/67]: src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5495,7 +5460,7 @@ export class RecordLedgerTransactionUseCase {
 
 
 ================================================================================
-ARQUIVO [18/63]: src/application/finance/use-cases/RecordTransferUseCase.ts
+ARQUIVO [18/67]: src/application/finance/use-cases/RecordTransferUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTransferUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5599,7 +5564,7 @@ export class RecordTransferUseCase {
 
 
 ================================================================================
-ARQUIVO [19/63]: src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts
+ARQUIVO [19/67]: src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -5670,30 +5635,31 @@ export class RecordTreasuryTransactionUseCase {
       );
     }
 
+    const commandPayload = {
+      userId: dto.userId ?? null,
+      actorUserId: dto.actorUserId ?? null,
+      authorizedByUserId: dto.authorizedByUserId ?? null,
+      type: dto.type,
+      direction: dto.direction ?? null,
+      category: dto.category ?? null,
+      description: dto.description.trim(),
+      amountBaseUnits: dto.amountBaseUnits,
+      assetId: dto.assetId,
+      idempotencyKey: dto.idempotencyKey.trim(),
+      refundOfTransactionId: dto.refundOfTransactionId ?? null,
+    };
+    const canonicalIntentHash = CanonicalRequestHashService.hashCommand(commandPayload);
+
     if (dto.requestHash !== undefined) {
       if (!/^[a-f0-9]{64}$/i.test(dto.requestHash)) {
         return Result.fail<RecordTreasuryTransactionResult>(
           new InvalidFinancialOperationError('Formato de requestHash inválido. Deve ser uma string SHA-256 hexadecimal de 64 caracteres.')
         );
       }
-      const commandPayload = {
-        userId: dto.userId ?? null,
-        actorUserId: dto.actorUserId ?? null,
-        authorizedByUserId: dto.authorizedByUserId ?? null,
-        type: dto.type,
-        direction: dto.direction ?? null,
-        category: dto.category ?? null,
-        description: dto.description.trim(),
-        amountBaseUnits: dto.amountBaseUnits,
-        assetId: dto.assetId,
-        idempotencyKey: dto.idempotencyKey.trim(),
-        refundOfTransactionId: dto.refundOfTransactionId ?? null,
-      };
-      const expectedCommandHash = CanonicalRequestHashService.hashCommand(commandPayload);
-      if (dto.requestHash.toLowerCase() !== expectedCommandHash.toLowerCase()) {
+      if (dto.requestHash.toLowerCase() !== canonicalIntentHash.toLowerCase()) {
         return Result.fail<RecordTreasuryTransactionResult>(
           new IdempotencyConflictError(
-            `409 Conflict: Divergência de requestHash: o hash fornecido (${dto.requestHash}) difere do hash canônico calculado para a intenção (${expectedCommandHash}).`
+            `409 Conflict: Divergência de requestHash: o hash fornecido (${dto.requestHash}) difere do hash canônico calculado para a intenção (${canonicalIntentHash}).`
           )
         );
       }
@@ -5759,26 +5725,7 @@ export class RecordTreasuryTransactionUseCase {
         category = trimmed;
       }
 
-      // 6. Compute Canonical Request Hash over Request DTO payload
-      const canonicalPayload = {
-        amountBaseUnits: dto.amountBaseUnits,
-        assetId: parsedAssetId,
-        category,
-        description,
-        direction: resolvedDirection,
-        refundOfTransactionId: dto.refundOfTransactionId ?? null,
-        type: dto.type,
-        userId: parsedUserId,
-      };
-      const canonicalHash = CanonicalRequestHashService.calculateHash(canonicalPayload);
-
-      if (dto.requestHash !== undefined && dto.requestHash !== canonicalHash) {
-        return Result.fail<RecordTreasuryTransactionResult>(
-          new IdempotencyConflictError('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload.')
-        );
-      }
-
-      // 7. Atomic Unit of Work Execution
+      // 6. Atomic Unit of Work Execution
       return await this.uow.execute(async (factory) => {
         const financeRepo = factory.getFinanceRepository();
 
@@ -6059,9 +6006,9 @@ export class RecordTreasuryTransactionUseCase {
           refundOfTransactionId: dto.refundOfTransactionId ? Number(dto.refundOfTransactionId) : undefined,
         });
 
-        // 10. Execute Posting via Orchestrator
+        // 10. Execute Posting via Orchestrator com o Hash Canônico de Intenção
         const orchestrator = new FinancialTransactionOrchestrator(financeRepo, factory.getOutboxRepository());
-        const orchestratorResult = await orchestrator.executePosting(transaction);
+        const orchestratorResult = await orchestrator.executePosting(transaction, canonicalIntentHash);
 
         // Se o reembolso for integral, atualiza a transação original para 'refunded' NO MESMO UoW antes do commit
         if (isFullRefund && origTxIdToUpdate !== null && !orchestratorResult.isReplayed) {
@@ -6082,7 +6029,7 @@ export class RecordTreasuryTransactionUseCase {
 
 
 ================================================================================
-ARQUIVO [20/63]: src/application/finance/use-cases/RepairFinanceUseCase.ts
+ARQUIVO [20/67]: src/application/finance/use-cases/RepairFinanceUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RepairFinanceUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -6131,7 +6078,7 @@ export class RepairFinanceUseCase {
 
 
 ================================================================================
-ARQUIVO [21/63]: src/application/finance/use-cases/ReverseTransactionUseCase.ts
+ARQUIVO [21/67]: src/application/finance/use-cases/ReverseTransactionUseCase.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/ReverseTransactionUseCase.ts
 ================================================================================
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
@@ -6247,7 +6194,7 @@ export class ReverseTransactionUseCase {
 
 
 ================================================================================
-ARQUIVO [22/63]: src/application/ports/output/IFinanceRepository.ts
+ARQUIVO [22/67]: src/application/ports/output/IFinanceRepository.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IFinanceRepository.ts
 ================================================================================
 import { Result } from '../../../shared/kernel/Result';
@@ -6431,7 +6378,7 @@ export interface IFinanceRepository {
 
 
 ================================================================================
-ARQUIVO [23/63]: src/application/ports/output/IUnitOfWork.ts
+ARQUIVO [23/67]: src/application/ports/output/IUnitOfWork.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IUnitOfWork.ts
 ================================================================================
 import { Result } from '../../../shared/kernel/Result';
@@ -6466,7 +6413,7 @@ export interface IUnitOfWork {
 
 
 ================================================================================
-ARQUIVO [24/63]: src/infrastructure/repositories/DrizzleFinanceRepository.ts
+ARQUIVO [24/67]: src/infrastructure/repositories/DrizzleFinanceRepository.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.ts
 ================================================================================
 import { eq, and, or, lt, inArray, sql } from 'drizzle-orm';
@@ -7043,6 +6990,15 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       }
       return Result.ok(tx.id);
     } catch (e: any) {
+      const msg = e?.message || String(e);
+      if (
+        msg.includes('UNIQUE constraint failed') ||
+        msg.includes('PRIMARY KEY must be unique') ||
+        msg.includes('SQLITE_CONSTRAINT_UNIQUE') ||
+        msg.includes('uq_financial_tx_active_reversal')
+      ) {
+        return Result.err(RepositoryError.conflict(`Conflito de integridade/unicidade na transação financeira: ${msg}`, e));
+      }
       return Result.err(RepositoryError.transient(e.message, e));
     }
   }
@@ -7057,14 +7013,22 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       conditions.push(eq(financialTransactions.version, expectedVersion));
     }
 
+    const updates: Record<string, unknown> = {
+      status,
+      version: sql`${financialTransactions.version} + 1`,
+      updatedAt: new Date(),
+    };
+
+    if (status === 'completed') {
+      updates.completedAt = new Date();
+    } else if (status === 'failed' || status === 'cancelled') {
+      updates.completedAt = null;
+    }
+    // Para 'reversed' e 'refunded': o completedAt histórico original é rigorosamente preservado!
+
     const res = await this.executor
       .update(financialTransactions)
-      .set({
-        status,
-        version: sql`${financialTransactions.version} + 1`,
-        completedAt: status === 'completed' ? new Date() : null,
-        updatedAt: new Date(),
-      })
+      .set(updates)
       .where(and(...conditions));
 
     const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
@@ -7102,9 +7066,19 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           );
         }
 
+        const accountIdNum = Number(r.accountId);
+        const assetIdNum = Number(r.assetId);
+
+        if (!Number.isSafeInteger(accountIdNum) || accountIdNum <= 0) {
+          throw new Error(`Invalid accountId from database for transaction ${transactionId}: ${r.accountId}`);
+        }
+        if (!Number.isSafeInteger(assetIdNum) || assetIdNum <= 0) {
+          throw new Error(`Invalid assetId from database for transaction ${transactionId}: ${r.assetId}`);
+        }
+
         return {
-          accountId: Number(r.accountId),
-          assetId: Number(r.assetId),
+          accountId: accountIdNum,
+          assetId: assetIdNum,
           direction: r.direction as 'debit' | 'credit',
           amountBaseUnits: String(r.amountBaseUnits),
         };
@@ -7381,10 +7355,10 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         const accountIdNum = Number(entry.accountId);
         const assetIdNum = Number(entry.amount.assetId);
 
-        if (!Number.isInteger(accountIdNum) || accountIdNum <= 0) {
+        if (!Number.isSafeInteger(accountIdNum) || accountIdNum <= 0) {
           throw new Error(`Invalid physical accountId: ${entry.accountId}`);
         }
-        if (!Number.isInteger(assetIdNum) || assetIdNum <= 0) {
+        if (!Number.isSafeInteger(assetIdNum) || assetIdNum <= 0) {
           throw new Error(`Invalid physical assetId: ${entry.amount.assetId}`);
         }
 
@@ -7443,10 +7417,10 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     const accIdNum = Number(accountId);
     const assetIdNum = Number(assetId);
 
-    if (!Number.isInteger(accIdNum) || accIdNum <= 0) {
+    if (!Number.isSafeInteger(accIdNum) || accIdNum <= 0) {
       throw new Error(`Invalid physical accountId: ${accountId}`);
     }
-    if (!Number.isInteger(assetIdNum) || assetIdNum <= 0) {
+    if (!Number.isSafeInteger(assetIdNum) || assetIdNum <= 0) {
       throw new Error(`Invalid physical assetId: ${assetId}`);
     }
 
@@ -7681,7 +7655,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
 
 ================================================================================
-ARQUIVO [25/63]: src/infrastructure/repositories/DrizzleFinanceRepository.test.ts
+ARQUIVO [25/67]: src/infrastructure/repositories/DrizzleFinanceRepository.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.test.ts
 ================================================================================
 import { describe, it, expect, vi } from 'vitest';
@@ -7752,7 +7726,7 @@ describe('DrizzleFinanceRepository', () => {
 
 
 ================================================================================
-ARQUIVO [26/63]: src/infrastructure/repositories/DrizzleUnitOfWork.ts
+ARQUIVO [26/67]: src/infrastructure/repositories/DrizzleUnitOfWork.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleUnitOfWork.ts
 ================================================================================
 import { IUnitOfWork, IRepositoryFactory } from '../../application/ports/output/IUnitOfWork';
@@ -7872,7 +7846,7 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
 
 
 ================================================================================
-ARQUIVO [27/63]: src/infrastructure/repositories/DrizzleUnitOfWork.test.ts
+ARQUIVO [27/67]: src/infrastructure/repositories/DrizzleUnitOfWork.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleUnitOfWork.test.ts
 ================================================================================
 import { describe, it, expect, vi } from 'vitest';
@@ -8002,7 +7976,7 @@ describe('DrizzleUnitOfWork', () => {
 
 
 ================================================================================
-ARQUIVO [28/63]: src/infrastructure/repositories/DrizzleOutboxRepository.ts
+ARQUIVO [28/67]: src/infrastructure/repositories/DrizzleOutboxRepository.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleOutboxRepository.ts
 ================================================================================
 import { IDomainEvent } from '../../shared/kernel/DomainEvent';
@@ -8154,12 +8128,12 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
 
 
 ================================================================================
-ARQUIVO [29/63]: src/infrastructure/services/FinanceBootstrapService.ts
+ARQUIVO [29/67]: src/infrastructure/services/FinanceBootstrapService.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinanceBootstrapService.ts
 ================================================================================
 import { financialAccounts, financialAssets, accountBalances, financialTransactions } from '../../db/finance/tables';
 import { idempotencyKeys } from '../../db/infrastructure/tables';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { Result } from '../../shared/kernel/Result';
 import { DrizzleFinanceRepository } from '../repositories/DrizzleFinanceRepository';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
@@ -8372,11 +8346,12 @@ export class FinanceBootstrapService {
             throw new Error(`Falha ao registrar partidas dobradas de abertura: ${String(insertLedgerRes.error)}`);
           }
 
-          // 3. Atualiza saldos das duas contas no account_balances
+          // 3. Atualiza saldos das duas contas no account_balances com rastreabilidade de version
           await tx
             .update(accountBalances)
             .set({
               availableBaseUnits: initialBal,
+              version: sql`${accountBalances.version} + 1`,
               updatedAt: new Date(),
             })
             .where(
@@ -8390,6 +8365,7 @@ export class FinanceBootstrapService {
             .update(accountBalances)
             .set({
               availableBaseUnits: initialBal,
+              version: sql`${accountBalances.version} + 1`,
               updatedAt: new Date(),
             })
             .where(
@@ -8437,7 +8413,7 @@ export class FinanceBootstrapService {
 
 
 ================================================================================
-ARQUIVO [30/63]: src/infrastructure/services/EventInboxService.ts
+ARQUIVO [30/67]: src/infrastructure/services/EventInboxService.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/EventInboxService.ts
 ================================================================================
 import { Result } from '../../shared/kernel/Result';
@@ -8624,13 +8600,14 @@ export class EventInboxService {
 
 
 ================================================================================
-ARQUIVO [31/63]: src/interfaces/http/controllers/finance/FinanceController.ts
+ARQUIVO [31/67]: src/interfaces/http/controllers/finance/FinanceController.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts
 ================================================================================
 import { Context } from 'hono';
 import { GetTreasuryBalanceUseCase } from '../../../../application/finance/use-cases/GetTreasuryBalanceUseCase';
 import { RecordTreasuryTransactionUseCase } from '../../../../application/finance/use-cases/RecordTreasuryTransactionUseCase';
 import { IFinanceRepository } from '../../../../application/ports/output/IFinanceRepository';
+import { FinancialError } from '../../../../domains/finance/errors/FinancialError';
 
 export class FinanceController {
   constructor(
@@ -8648,8 +8625,13 @@ export class FinanceController {
 
       return c.json({ success: true, data: result.getValue() });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Erro interno';
-      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+      const requestId = c.req.header('x-request-id') || crypto.randomUUID();
+      console.error(`[FinanceController] getBalance Internal Error (requestId: ${requestId}):`, err);
+      return c.json({
+        success: false,
+        message: 'Erro interno ao consultar saldo da tesouraria',
+        requestId,
+      }, 500);
     }
   }
 
@@ -8687,32 +8669,48 @@ export class FinanceController {
         return c.json({ success: false, message: 'Idempotency-Key header ou no body é obrigatório' }, 400);
       }
 
-      // 5. Target / Authorized / Actor User ID Resolution
-      const targetUserId = body.targetUserId ?? body.userId ?? actorUserId;
-      const authorizedByUserId = body.authorizedByUserId;
+      // 5. Target / Authorized / Actor User ID Resolution & Real Authorization
+      let targetUserId: number | undefined = undefined;
+      if (body.targetUserId !== undefined && body.targetUserId !== null) {
+        targetUserId = Number(body.targetUserId);
+      } else if (body.userId !== undefined && body.userId !== null) {
+        targetUserId = Number(body.userId);
+      } else if (actorUserId) {
+        targetUserId = Number(actorUserId);
+      }
 
-      // 6. Generate Canonical Request Hash
-      const canonicalPayload = JSON.stringify({
-        amountBaseUnits: String(body.amountBaseUnits),
-        assetId: String(body.assetId),
-        category: String(body.category || ''),
-        description: String(body.description || ''),
-        direction,
-        type: String(type),
-        userId: targetUserId ? String(targetUserId) : ''
-      });
-      
-      const encoder = new TextEncoder();
-      const data = encoder.encode(canonicalPayload);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const requestHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      // Authorization check: Non-admin users cannot operate on third-party target accounts
+      if (
+        actorUserId &&
+        targetUserId !== undefined &&
+        targetUserId !== Number(actorUserId) &&
+        type !== 'adjustment' &&
+        type !== 'deposit'
+      ) {
+        const permissions: string[] = c.get('permissions') || c.get('user')?.permissions || [];
+        const isAdmin = permissions.includes('finance.treasury.admin') || permissions.includes('admin');
+        if (!isAdmin) {
+          return c.json({
+            success: false,
+            message: 'Acesso negado: Você não tem autorização para movimentar contas de terceiros.'
+          }, 403);
+        }
+      }
+
+      // For adjustments, authorizedByUserId is derived from the authenticated actor (or validated admin)
+      let authorizedByUserId: number | undefined = undefined;
+      if (type === 'adjustment') {
+        authorizedByUserId = actorUserId ? Number(actorUserId) : (body.authorizedByUserId ? Number(body.authorizedByUserId) : undefined);
+      }
+
+      // 6. Request Hash: Forward client provided requestHash if present, otherwise let the use case calculate the canonical hash
+      const requestHash = c.req.header('x-request-hash') || body.requestHash || undefined;
 
       // 7. Execute Use Case
       const result = await this.recordTxUseCase.execute({
         userId: targetUserId,
         actorUserId: actorUserId ? Number(actorUserId) : undefined,
-        authorizedByUserId: authorizedByUserId ? Number(authorizedByUserId) : undefined,
+        authorizedByUserId,
         type: type as any,
         direction,
         category: body.category,
@@ -8720,12 +8718,27 @@ export class FinanceController {
         amountBaseUnits: String(body.amountBaseUnits),
         assetId: Number(body.assetId),
         idempotencyKey,
-        requestHash
+        requestHash,
+        refundOfTransactionId: body.refundOfTransactionId ? Number(body.refundOfTransactionId) : undefined,
       });
 
       if (result.isFailure) {
+        const errObj = result.errorObject;
+        if (errObj instanceof FinancialError) {
+          return c.json({
+            success: false,
+            message: errObj.message,
+            code: errObj.code,
+          }, errObj.httpStatus as any);
+        }
+
         const errorMsg = typeof result.error === 'string' ? result.error : (result.error as any)?.message || String(result.error);
-        if (errorMsg.includes('409 Conflict') || errorMsg.includes('Idempotency Key Processing')) {
+        if (
+          errorMsg.includes('409 Conflict') ||
+          errorMsg.includes('Idempotency') ||
+          errorMsg.includes('idempotência') ||
+          errorMsg.includes('Divergência de requestHash')
+        ) {
           return c.json({ success: false, message: errorMsg }, 409);
         }
         return c.json({ success: false, message: errorMsg }, 400);
@@ -8741,8 +8754,13 @@ export class FinanceController {
         data: { transactionId, isReplayed } 
       }, isReplayed ? 200 : 201);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Erro interno';
-      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+      const requestId = c.req.header('x-request-id') || crypto.randomUUID();
+      console.error(`[FinanceController] Internal Error (requestId: ${requestId}):`, err);
+      return c.json({
+        success: false,
+        message: 'Erro interno ao processar a operação financeira',
+        requestId,
+      }, 500);
     }
   }
 
@@ -8785,15 +8803,20 @@ export class FinanceController {
 
       return c.json({ success: true, data: result.getValue() });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Erro interno';
-      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+      const requestId = c.req.header('x-request-id') || crypto.randomUUID();
+      console.error(`[FinanceController] listTransactions Internal Error (requestId: ${requestId}):`, err);
+      return c.json({
+        success: false,
+        message: 'Erro interno ao listar transações financeiras',
+        requestId,
+      }, 500);
     }
   }
 }
 
 
 ================================================================================
-ARQUIVO [32/63]: src/interfaces/http/routes/finance/finance.routes.ts
+ARQUIVO [32/67]: src/interfaces/http/routes/finance/finance.routes.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/interfaces/http/routes/finance/finance.routes.ts
 ================================================================================
 import { Hono } from 'hono';
@@ -8935,7 +8958,7 @@ financeRouter.get(
 
 
 ================================================================================
-ARQUIVO [33/63]: src/db/finance/tables.ts
+ARQUIVO [33/67]: src/db/finance/tables.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/finance/tables.ts
 ================================================================================
 import {
@@ -12458,7 +12481,7 @@ export type NewReconciliationRecord = typeof reconciliationRecords.$inferInsert;
 
 
 ================================================================================
-ARQUIVO [34/63]: src/db/finance/relations.ts
+ARQUIVO [34/67]: src/db/finance/relations.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/finance/relations.ts
 ================================================================================
 import { relations } from 'drizzle-orm';
@@ -13112,7 +13135,7 @@ export const FINANCE_RELATION_LAYER_IS_NAVIGATION_ONLY = true as const;
 
 
 ================================================================================
-ARQUIVO [35/63]: src/db/seed.sql
+ARQUIVO [35/67]: src/db/seed.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/seed.sql
 ================================================================================
 -- ============================================================================
@@ -13208,7 +13231,7 @@ VALUES
 
 
 ================================================================================
-ARQUIVO [36/63]: src/db/seed_treasury_report.sql
+ARQUIVO [36/67]: src/db/seed_treasury_report.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/src/db/seed_treasury_report.sql
 ================================================================================
 -- ============================================================================
@@ -13414,7 +13437,7 @@ VALUES
 
 
 ================================================================================
-ARQUIVO [37/63]: migrations/0000_white_raider.sql
+ARQUIVO [37/67]: migrations/0000_white_raider.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0000_white_raider.sql
 ================================================================================
 CREATE TABLE `membership_cards` (
@@ -15075,7 +15098,7 @@ CREATE TABLE `outbox_events` (
 
 
 ================================================================================
-ARQUIVO [38/63]: migrations/0005_data_remediation.sql
+ARQUIVO [38/67]: migrations/0005_data_remediation.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0005_data_remediation.sql
 ================================================================================
 -- 0005_data_remediation.sql
@@ -15109,7 +15132,7 @@ UPDATE financial_accounts SET version = 1 WHERE version IS NULL OR version < 1;
 
 
 ================================================================================
-ARQUIVO [39/63]: migrations/0006_constraints.sql
+ARQUIVO [39/67]: migrations/0006_constraints.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0006_constraints.sql
 ================================================================================
 -- 0006_constraints.sql
@@ -15148,7 +15171,7 @@ CREATE INDEX IF NOT EXISTS idx_outbox_events_published ON outbox_events (publish
 
 
 ================================================================================
-ARQUIVO [40/63]: migrations/0007_event_inbox.sql
+ARQUIVO [40/67]: migrations/0007_event_inbox.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0007_event_inbox.sql
 ================================================================================
 CREATE TABLE IF NOT EXISTS `event_inbox` (
@@ -15162,7 +15185,7 @@ CREATE TABLE IF NOT EXISTS `event_inbox` (
 
 
 ================================================================================
-ARQUIVO [41/63]: migrations/0008_remediation_schema.sql
+ARQUIVO [41/67]: migrations/0008_remediation_schema.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0008_remediation_schema.sql
 ================================================================================
 -- 0008_remediation_schema.sql
@@ -15207,7 +15230,7 @@ CREATE INDEX IF NOT EXISTS `idx_outbox_events_lease` ON `outbox_events` (`lease_
 
 
 ================================================================================
-ARQUIVO [42/63]: migrations/0009_finance_schema_alignment.sql
+ARQUIVO [42/67]: migrations/0009_finance_schema_alignment.sql
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0009_finance_schema_alignment.sql
 ================================================================================
 -- 0009_finance_schema_alignment.sql
@@ -15356,7 +15379,133 @@ CREATE UNIQUE INDEX `uq_fiat_external_transactions_fingerprint` ON `fiat_externa
 
 
 ================================================================================
-ARQUIVO [43/63]: tests/finance/bootstrap_service.test.ts
+ARQUIVO [43/67]: migrations/0010_finance_fixes_and_rates_alignment.sql
+CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/migrations/0010_finance_fixes_and_rates_alignment.sql
+================================================================================
+-- MIGRATION 0010: CANONICAL SCHEMA ALIGNMENT & FX DEFINITIVE CLOSING
+-- 1. Fortalece constraint ck_financial_tx_completed_state em financial_transactions
+-- 2. Recria exchange_rates com rate_numerator e rate_denominator (sem REAL/FLOAT/CAST AS REAL)
+-- 3. Recria asset_conversions com rate_numerator e rate_denominator e constraints uint256
+
+-- 1. RECREATE financial_transactions COM CONSTRAINT DEFINITIVA DE COMPLETED_AT
+CREATE TABLE `__new_financial_transactions` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`user_id` integer,
+	`reversal_of_transaction_id` integer,
+	`refund_of_transaction_id` integer,
+	`type` text NOT NULL,
+	`category` text DEFAULT 'other' NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`source_type` text,
+	`source_id` text,
+	`correlation_id` text,
+	`description` text NOT NULL,
+	`version` integer DEFAULT 1 NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	`completed_at` integer,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`reversal_of_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`refund_of_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "ck_financial_tx_type" CHECK("type" IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment', 'reversal')),
+	CONSTRAINT "ck_financial_tx_category" CHECK("category" IN ('membership', 'rwa_yield', 'grant', 'operational', 'payment', 'trading', 'withdrawal', 'deposit', 'fee', 'other')),
+	CONSTRAINT "ck_financial_tx_status" CHECK("status" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'refunded')),
+	CONSTRAINT "ck_financial_tx_source_type" CHECK("source_type" IS NULL OR "source_type" IN ('contribution', 'grant', 'membership', 'payroll', 'withdrawal', 'payment', 'conversion', 'system', 'other')),
+	CONSTRAINT "ck_financial_tx_completed_state" CHECK(("status" IN ('completed', 'reversed', 'refunded') AND "completed_at" IS NOT NULL) OR ("status" NOT IN ('completed', 'reversed', 'refunded') AND "completed_at" IS NULL)),
+	CONSTRAINT "ck_financial_tx_dates" CHECK("completed_at" IS NULL OR "completed_at" >= "created_at"),
+	CONSTRAINT "ck_financial_tx_version" CHECK("version" > 0)
+);--> statement-breakpoint
+
+INSERT INTO `__new_financial_transactions`("id", "user_id", "reversal_of_transaction_id", "refund_of_transaction_id", "type", "category", "status", "source_type", "source_id", "correlation_id", "description", "version", "created_at", "updated_at", "completed_at")
+SELECT "id", "user_id", "reversal_of_transaction_id", "refund_of_transaction_id", "type", "category", "status", "source_type", "source_id", "correlation_id", "description", "version", "created_at", "updated_at", "completed_at" FROM `financial_transactions`;--> statement-breakpoint
+
+DROP TABLE `financial_transactions`;--> statement-breakpoint
+ALTER TABLE `__new_financial_transactions` RENAME TO `financial_transactions`;--> statement-breakpoint
+
+CREATE INDEX `idx_financial_transactions_user` ON `financial_transactions` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_type` ON `financial_transactions` (`type`);--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_status` ON `financial_transactions` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_created` ON `financial_transactions` (`created_at`);--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_correlation` ON `financial_transactions` (`correlation_id`);--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_refund_of` ON `financial_transactions` (`refund_of_transaction_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_financial_tx_active_reversal` ON `financial_transactions` (`reversal_of_transaction_id`) WHERE `reversal_of_transaction_id` IS NOT NULL AND `status` NOT IN ('failed', 'cancelled');--> statement-breakpoint
+
+-- 2. RECREATE exchange_rates COM rate_numerator E rate_denominator CANÔNICOS
+CREATE TABLE `__new_exchange_rates` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`base_asset_id` integer NOT NULL,
+	`quote_asset_id` integer NOT NULL,
+	`rate_numerator` text NOT NULL,
+	`rate_denominator` text NOT NULL,
+	`source` text NOT NULL,
+	`quoted_at` integer NOT NULL,
+	`expires_at` integer,
+	FOREIGN KEY (`base_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`quote_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "ck_exchange_rates_different_assets" CHECK("base_asset_id" <> "quote_asset_id"),
+	CONSTRAINT "ck_exchange_rates_numerator_canonical" CHECK("rate_numerator" GLOB '[0-9]*' AND "rate_numerator" NOT GLOB '0[0-9]*' AND length("rate_numerator") > 0 AND length("rate_numerator") <= 78),
+	CONSTRAINT "ck_exchange_rates_denominator_canonical" CHECK("rate_denominator" GLOB '[0-9]*' AND "rate_denominator" NOT GLOB '0[0-9]*' AND length("rate_denominator") > 0 AND length("rate_denominator") <= 78),
+	CONSTRAINT "ck_exchange_rates_source_nonempty" CHECK(length(trim("source")) > 0),
+	CONSTRAINT "ck_exchange_rates_expires_after_quoted" CHECK("expires_at" IS NULL OR "expires_at" >= "quoted_at")
+);--> statement-breakpoint
+
+DROP TABLE IF EXISTS `exchange_rates`;--> statement-breakpoint
+ALTER TABLE `__new_exchange_rates` RENAME TO `exchange_rates`;--> statement-breakpoint
+
+CREATE INDEX `idx_exchange_rates_pair_quoted` ON `exchange_rates` (`base_asset_id`,`quote_asset_id`,`quoted_at`);--> statement-breakpoint
+CREATE INDEX `idx_exchange_rates_pair` ON `exchange_rates` (`base_asset_id`,`quote_asset_id`);--> statement-breakpoint
+CREATE INDEX `idx_exchange_rates_quoted` ON `exchange_rates` (`quoted_at`);--> statement-breakpoint
+CREATE INDEX `idx_exchange_rates_expires` ON `exchange_rates` (`expires_at`);--> statement-breakpoint
+
+-- 3. RECREATE asset_conversions COM rate_numerator E rate_denominator CANÔNICOS
+CREATE TABLE `__new_asset_conversions` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`financial_transaction_id` integer NOT NULL,
+	`from_asset_id` integer NOT NULL,
+	`to_asset_id` integer NOT NULL,
+	`from_amount_base_units` text NOT NULL,
+	`to_amount_base_units` text NOT NULL,
+	`rate_numerator` text NOT NULL,
+	`rate_denominator` text NOT NULL,
+	`rate_source` text,
+	`source_exchange_rate_id` integer,
+	`quoted_at` integer,
+	`fee_asset_id` integer,
+	`fee_amount_base_units` text DEFAULT '0' NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`version` integer DEFAULT 1 NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	`completed_at` integer,
+	FOREIGN KEY (`financial_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`from_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`to_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`source_exchange_rate_id`) REFERENCES `exchange_rates`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`fee_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "ck_asset_conversions_status" CHECK("status" IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
+	CONSTRAINT "ck_asset_conversions_from_amount_canonical" CHECK("from_amount_base_units" GLOB '[0-9]*' AND "from_amount_base_units" NOT GLOB '0[0-9]*' AND length("from_amount_base_units") > 0 AND length("from_amount_base_units") <= 78),
+	CONSTRAINT "ck_asset_conversions_to_amount_canonical" CHECK("to_amount_base_units" GLOB '[0-9]*' AND "to_amount_base_units" NOT GLOB '0[0-9]*' AND length("to_amount_base_units") > 0 AND length("to_amount_base_units") <= 78),
+	CONSTRAINT "ck_asset_conversions_fee_canonical" CHECK(("fee_amount_base_units" GLOB '[0-9]*' AND "fee_amount_base_units" NOT GLOB '0[0-9]*' AND length("fee_amount_base_units") > 0 AND length("fee_amount_base_units") <= 78) OR "fee_amount_base_units" = '0'),
+	CONSTRAINT "ck_asset_conversions_different_assets" CHECK("from_asset_id" <> "to_asset_id"),
+	CONSTRAINT "ck_asset_conversions_completed_state" CHECK(("status" = 'completed' AND "completed_at" IS NOT NULL) OR ("status" != 'completed' AND "completed_at" IS NULL)),
+	CONSTRAINT "ck_asset_conversions_completed_temporal" CHECK("completed_at" IS NULL OR "completed_at" >= "created_at"),
+	CONSTRAINT "ck_asset_conversions_version" CHECK("version" > 0)
+);--> statement-breakpoint
+
+DROP TABLE IF EXISTS `asset_conversions`;--> statement-breakpoint
+ALTER TABLE `__new_asset_conversions` RENAME TO `asset_conversions`;--> statement-breakpoint
+
+CREATE UNIQUE INDEX `uq_asset_conversions_transaction` ON `asset_conversions` (`financial_transaction_id`);--> statement-breakpoint
+CREATE INDEX `idx_asset_conversions_from_asset` ON `asset_conversions` (`from_asset_id`);--> statement-breakpoint
+CREATE INDEX `idx_asset_conversions_to_asset` ON `asset_conversions` (`to_asset_id`);--> statement-breakpoint
+CREATE INDEX `idx_asset_conversions_status` ON `asset_conversions` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_asset_conversions_created` ON `asset_conversions` (`created_at`);--> statement-breakpoint
+CREATE INDEX `idx_asset_conversions_source_exchange_rate` ON `asset_conversions` (`source_exchange_rate_id`);--> statement-breakpoint
+CREATE INDEX `idx_asset_conversions_fee_asset` ON `asset_conversions` (`fee_asset_id`);
+
+
+================================================================================
+ARQUIVO [44/67]: tests/finance/bootstrap_service.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/bootstrap_service.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -15428,7 +15577,253 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
 
 
 ================================================================================
-ARQUIVO [44/63]: tests/finance/concurrency_stress.test.ts
+ARQUIVO [45/67]: tests/finance/concurrency_idempotency_same_key.test.ts
+CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/concurrency_idempotency_same_key.test.ts
+================================================================================
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
+import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
+import { RecordTreasuryTransactionUseCase } from '../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { unlinkSync, existsSync } from 'fs';
+
+describe('Hardening de Concorrência & Idempotência Forte (50 Conexões Simultâneas)', () => {
+  const dbFile = 'test_concurrency_same_key.db';
+  let sqlite: any;
+  let db: any;
+  let assetId: number;
+
+  let writeLock = Promise.resolve();
+  const createUow = () => {
+    return new DrizzleUnitOfWork({
+      ...db,
+      transaction: async (cb: any) => {
+        let release: () => void = () => {};
+        const acquire = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const prevLock = writeLock;
+        writeLock = writeLock.then(() => acquire);
+        await prevLock;
+
+        try {
+          const t = await sqlite.transaction('write');
+          const proxyDb = drizzle(t) as any;
+          proxyDb.rollback = () => { throw new Error('DRIZZLE_ROLLBACK'); };
+          try {
+            const res = await cb(proxyDb);
+            await t.commit();
+            return res;
+          } catch (err: any) {
+            try { await t.rollback(); } catch (e) {}
+            if (err.message === 'DRIZZLE_ROLLBACK') return;
+            throw err;
+          }
+        } finally {
+          release();
+        }
+      }
+    });
+  };
+
+  beforeAll(async () => {
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+
+    await runAllMigrationsLibSql(sqlite);
+
+    // Inserir usuários de teste
+    await sqlite.execute(`
+      INSERT INTO users (id, subject_type, email, email_normalized, status, auth_epoch, created_at, updated_at)
+      VALUES 
+        (10, 'human', 'concurrency10@example.com', 'concurrency10@example.com', 'active', 1, unixepoch(), unixepoch()),
+        (20, 'human', 'concurrency20@example.com', 'concurrency20@example.com', 'active', 1, unixepoch(), unixepoch());
+    `);
+
+    // Provisionar tesouraria
+    const bootRes = await FinanceBootstrapService.seedSystemAccounts(db, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 5000000n, // R$ 50.000,00
+    });
+    if (bootRes.isFailure) {
+      console.error('BOOTSTRAP ERROR IN TEST:', bootRes.error);
+    }
+    assetId = bootRes.getValue().assetId;
+  }, 40000);
+
+  afterAll(() => {
+    try {
+      if (existsSync(dbFile)) unlinkSync(dbFile);
+    } catch (e) {}
+  });
+
+  it('Família A: 50 requisições simultâneas com a MESMA key e MESMO comando -> 1 execução e 49 replays (zero duplicação)', async () => {
+    const key = 'concurrency-family-a-key';
+    const command = {
+      userId: 10,
+      type: 'deposit' as const,
+      direction: 'INBOUND' as const,
+      category: 'operational' as const,
+      description: 'Family A Simultaneous Same Key Replay',
+      amountBaseUnits: '1000',
+      assetId,
+      idempotencyKey: key,
+    };
+
+    // Dispara 50 chamadas simultâneas
+    const promises = Array.from({ length: 50 }).map(async () => {
+      const uow = createUow();
+      const useCase = new RecordTreasuryTransactionUseCase(uow);
+      return useCase.execute(command);
+    });
+
+    const results = await Promise.all(promises);
+
+    // Todas devem ter tido sucesso (1 executada + 49 replays ou retries de replays)
+    const successes = results.filter(r => r.isSuccess);
+    expect(successes.length).toBe(50);
+
+    const values = successes.map(r => r.getValue());
+    const processed = values.filter(v => !v.isReplayed);
+    const replayed = values.filter(v => v.isReplayed);
+
+    expect(processed.length).toBe(1);
+    expect(replayed.length).toBe(49);
+
+    const txId = processed[0].transactionId;
+    for (const r of replayed) {
+      expect(r.transactionId).toBe(txId);
+    }
+
+    // Auditoria física do banco de dados
+    const txRows = await sqlite.execute({
+      sql: `SELECT COUNT(*) as cnt FROM financial_transactions WHERE description = 'Family A Simultaneous Same Key Replay'`,
+      args: [],
+    });
+    expect(Number(txRows.rows[0].cnt)).toBe(1);
+
+    const ledgerRows = await sqlite.execute({
+      sql: `SELECT COUNT(*) as cnt FROM financial_ledger_entries WHERE transaction_id = ?`,
+      args: [txId],
+    });
+    expect(Number(ledgerRows.rows[0].cnt)).toBe(2);
+
+    // Validação de double-entry física no banco
+    const sumRows = await sqlite.execute({
+      sql: `
+        SELECT 
+          SUM(CASE WHEN direction = 'debit' THEN CAST(amount_base_units AS INTEGER) ELSE 0 END) as total_debit,
+          SUM(CASE WHEN direction = 'credit' THEN CAST(amount_base_units AS INTEGER) ELSE 0 END) as total_credit
+        FROM financial_ledger_entries WHERE transaction_id = ?
+      `,
+      args: [txId],
+    });
+    expect(Number(sumRows.rows[0].total_debit)).toBe(1000);
+    expect(Number(sumRows.rows[0].total_credit)).toBe(1000);
+  });
+
+  it('Família B: 50 requisições simultâneas com a MESMA key mas COMANDOS DIFERENTES -> 1 execução e 49 conflitos 409', async () => {
+    const key = 'concurrency-family-b-key';
+
+    // Dispara 50 chamadas com a MESMA chave, mas com quantias diferentes
+    const promises = Array.from({ length: 50 }).map(async (_, idx) => {
+      const uow = createUow();
+      const useCase = new RecordTreasuryTransactionUseCase(uow);
+      return useCase.execute({
+        userId: 10,
+        type: 'deposit',
+        direction: 'INBOUND',
+        category: 'operational',
+        description: `Family B Diversified Payload #${idx}`,
+        amountBaseUnits: String(1000 + idx), // Quantia diferente por chamada
+        assetId,
+        idempotencyKey: key,
+      });
+    });
+
+    const results = await Promise.all(promises);
+
+    const successes = results.filter(r => r.isSuccess);
+    const conflicts = results.filter(r => r.isFailure);
+
+    // Exatamente 1 deve ser aceita e processada; as outras 49 devem sofrer conflito de idempotência
+    expect(successes.length).toBe(1);
+    expect(conflicts.length).toBe(49);
+
+    for (const failure of conflicts) {
+      const errMsg = String(failure.error);
+      expect(errMsg).toMatch(/409 Conflict|idempotência|Idempotency/i);
+    }
+  });
+
+  it('Família C: Múltiplas requisições concorrendo pelo mesmo saldo limitado com OCC -> proteção estrita contra double-spending', async () => {
+    // 1. Provisiona saldo inicial conhecido para o usuário 20 (R$ 100,00 = 10000 unidades)
+    const initUow = createUow();
+    const initUseCase = new RecordTreasuryTransactionUseCase(initUow);
+    const depRes = await initUseCase.execute({
+      userId: 20,
+      type: 'deposit',
+      direction: 'INBOUND',
+      category: 'operational',
+      description: 'Initial balance for OCC competition',
+      amountBaseUnits: '10000',
+      assetId,
+      idempotencyKey: 'occ-user20-init-dep',
+    });
+    expect(depRes.isSuccess).toBe(true);
+
+    // 2. Dispara 20 retiradas concorrentes de 1000 unidades cada (total pretendido: 20.000, mas o saldo é só 10.000!)
+    const withdrawPromises = Array.from({ length: 20 }).map(async (_, idx) => {
+      const uow = createUow();
+      const useCase = new RecordTreasuryTransactionUseCase(uow);
+      return useCase.execute({
+        userId: 20,
+        type: 'withdrawal',
+        direction: 'OUTBOUND',
+        category: 'operational',
+        description: `Competitive Withdrawal #${idx}`,
+        amountBaseUnits: '1000',
+        assetId,
+        idempotencyKey: `occ-comp-withdraw-${idx}`,
+      });
+    });
+
+    const results = await Promise.all(withdrawPromises);
+
+    const successes = results.filter(r => r.isSuccess);
+    const failures = results.filter(r => r.isFailure);
+
+    // No máximo 10 saques podem ter tido sucesso (pois 10 * 1000 = 10000)!
+    expect(successes.length).toBeLessThanOrEqual(10);
+    expect(failures.length).toBeGreaterThanOrEqual(10);
+
+    // 3. Auditoria do saldo final da conta do usuário 20: JAMAIS pode ser negativo!
+    const repo = new DrizzleFinanceRepository(db);
+    const userAccRes = await repo.getOrCreateUserAccount(20);
+    const userAccId = userAccRes.getValue().id;
+
+    const balRow = await sqlite.execute({
+      sql: `SELECT available_base_units FROM account_balances WHERE account_id = ? AND asset_id = ?`,
+      args: [userAccId, assetId],
+    });
+    const finalBalance = BigInt(balRow.rows[0].available_base_units as string);
+    expect(finalBalance).toBeGreaterThanOrEqual(0n);
+
+    // Saldo final deve ser exatamente o saldo inicial (10000) menos a soma dos saques com sucesso
+    const totalWithdrawn = BigInt(successes.length) * 1000n;
+    expect(finalBalance).toBe(10000n - totalWithdrawn);
+  });
+});
+
+
+================================================================================
+ARQUIVO [46/67]: tests/finance/concurrency_stress.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/concurrency_stress.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -15756,7 +16151,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
 
 
 ================================================================================
-ARQUIVO [45/63]: tests/finance/domain_policies.test.ts
+ARQUIVO [47/67]: tests/finance/domain_policies.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/domain_policies.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -16191,7 +16586,7 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
 
 
 ================================================================================
-ARQUIVO [46/63]: tests/finance/event_inbox.test.ts
+ARQUIVO [48/67]: tests/finance/event_inbox.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/event_inbox.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -16253,7 +16648,7 @@ describe('Invariante DOD-14: Event Inbox Idempotency para Webhooks Externos', ()
 
 
 ================================================================================
-ARQUIVO [47/63]: tests/finance/evm_precision.test.ts
+ARQUIVO [49/67]: tests/finance/evm_precision.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/evm_precision.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -16342,7 +16737,7 @@ describe('Precisão Monetária EVM 256-bit - Transações com > 53-bits', () => 
 
 
 ================================================================================
-ARQUIVO [48/63]: tests/finance/failure_injection.test.ts
+ARQUIVO [50/67]: tests/finance/failure_injection.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/failure_injection.test.ts
 ================================================================================
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -16435,7 +16830,296 @@ describe('Gate 4: Failure Injection Matrix & Atomic Rollback Certification (FIN-
 
 
 ================================================================================
-ARQUIVO [49/63]: tests/finance/invariants/balance_projection.test.ts
+ARQUIVO [51/67]: tests/finance/finance_controller_e2e.test.ts
+CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/finance_controller_e2e.test.ts
+================================================================================
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { Hono } from 'hono';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
+import { DrizzleUnitOfWork } from '../../src/infrastructure/repositories/DrizzleUnitOfWork';
+import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
+import { GetTreasuryBalanceUseCase } from '../../src/application/finance/use-cases/GetTreasuryBalanceUseCase';
+import { RecordTreasuryTransactionUseCase } from '../../src/application/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { FinanceController } from '../../src/interfaces/http/controllers/finance/FinanceController';
+import { unlinkSync, existsSync } from 'fs';
+
+describe('FinanceController E2E — Contratos HTTP, Idempotência (201/200/409), Autorização e Erros Seguros', () => {
+  const dbFile = 'test_finance_controller_e2e.db';
+  let sqlite: any;
+  let db: any;
+  let assetId: number;
+  let app: Hono;
+
+  beforeAll(async () => {
+    if (existsSync(dbFile)) {
+      try { unlinkSync(dbFile); } catch (e) {}
+    }
+    sqlite = createClient({ url: `file:${dbFile}` });
+    db = drizzle(sqlite);
+
+    // 1. Executa todas as migrations até a 0010
+    await runAllMigrationsLibSql(sqlite);
+
+    // 2. Inserir usuários de teste
+    await sqlite.execute(`
+      INSERT INTO users (id, subject_type, email, email_normalized, status, auth_epoch, created_at, updated_at)
+      VALUES 
+        (1, 'human', 'user1@example.com', 'user1@example.com', 'active', 1, unixepoch(), unixepoch()),
+        (2, 'human', 'user2@example.com', 'user2@example.com', 'active', 1, unixepoch(), unixepoch());
+    `);
+
+    // 3. Inicializar contas sistêmicas da tesouraria
+    const bootstrapRes = await FinanceBootstrapService.seedSystemAccounts(db, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 10000000n, // R$ 100.000,00
+    });
+    assetId = bootstrapRes.getValue().assetId;
+
+    // 4. Montar aplicação Hono de teste integrando controller real
+    const uow = new DrizzleUnitOfWork({
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => { throw new Error('DRIZZLE_ROLLBACK'); };
+        try {
+          const res = await cb(proxyDb);
+          await t.commit();
+          return res;
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          if (err.message === 'DRIZZLE_ROLLBACK') return;
+          throw err;
+        }
+      }
+    });
+    const financeRepo = new DrizzleFinanceRepository(db);
+    const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+    const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+
+    app = new Hono();
+
+    app.post('/deposits', async (c) => {
+      return controller.recordDeposit(c);
+    });
+
+    app.post('/withdrawals', async (c) => {
+      return controller.recordWithdrawal(c);
+    });
+
+    app.post('/payments', async (c) => {
+      return controller.recordPayment(c);
+    });
+
+    app.post('/refunds', async (c) => {
+      return controller.recordRefund(c);
+    });
+
+    app.post('/adjustments', async (c) => {
+      return controller.recordAdjustment(c);
+    });
+
+    app.get('/treasury/balance', async (c) => {
+      return controller.getBalance(c);
+    });
+  }, 40000);
+
+  afterAll(() => {
+    try {
+      if (existsSync(dbFile)) unlinkSync(dbFile);
+    } catch (e) {}
+  });
+
+  it('Cenário A: Nova operação legítima deve retornar HTTP 201 Created', async () => {
+    const res = await app.request('/deposits', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'idempotency-key': 'http-deposit-001',
+      },
+      body: JSON.stringify({
+        targetUserId: 1,
+        direction: 'INBOUND',
+        category: 'operational',
+        description: 'Depósito Inicial via HTTP',
+        amountBaseUnits: '5000',
+        assetId,
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.transactionId).toBeDefined();
+    expect(body.data.isReplayed).toBe(false);
+    expect(res.headers.get('Idempotency-Replayed')).toBe('false');
+  });
+
+  it('Cenário B: Replay legítimo (mesma key + mesmo payload) deve retornar HTTP 200 OK com Idempotency-Replayed: true', async () => {
+    const res = await app.request('/deposits', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'idempotency-key': 'http-deposit-001',
+      },
+      body: JSON.stringify({
+        targetUserId: 1,
+        direction: 'INBOUND',
+        category: 'operational',
+        description: 'Depósito Inicial via HTTP',
+        amountBaseUnits: '5000',
+        assetId,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.isReplayed).toBe(true);
+    expect(res.headers.get('Idempotency-Replayed')).toBe('true');
+  });
+
+  it('Cenário C: Conflito de idempotência (mesma key + payload divergente) deve retornar HTTP 409 Conflict', async () => {
+    const res = await app.request('/deposits', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'idempotency-key': 'http-deposit-001', // Mesma chave
+      },
+      body: JSON.stringify({
+        targetUserId: 1,
+        direction: 'INBOUND',
+        category: 'operational',
+        description: 'Tentativa de adulteração de quantia',
+        amountBaseUnits: '999999', // Quantia divergente
+        assetId,
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.message).toMatch(/409 Conflict|idempotência|Idempotency/i);
+  });
+
+  it('Cenário D: Erro de validação de payload (ex: quantia inválida) deve retornar HTTP 400 Bad Request', async () => {
+    const res = await app.request('/deposits', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'idempotency-key': 'http-invalid-001',
+      },
+      body: JSON.stringify({
+        targetUserId: 1,
+        direction: 'INBOUND',
+        amountBaseUnits: 'INVALID_AMOUNT', // Não numérico
+        assetId,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.message).toContain('amountBaseUnits');
+  });
+
+  it('Cenário E: Autorização real — usuário comum não pode sacar de conta de terceiro', async () => {
+    const mockApp = new Hono();
+    const uow = new DrizzleUnitOfWork({
+      ...db,
+      transaction: async (cb: any) => {
+        const t = await sqlite.transaction('write');
+        const proxyDb = drizzle(t) as any;
+        proxyDb.rollback = () => { throw new Error('DRIZZLE_ROLLBACK'); };
+        try {
+          const res = await cb(proxyDb);
+          await t.commit();
+          return res;
+        } catch (err: any) {
+          try { await t.rollback(); } catch (e) {}
+          if (err.message === 'DRIZZLE_ROLLBACK') return;
+          throw err;
+        }
+      }
+    });
+    const financeRepo = new DrizzleFinanceRepository(db);
+    const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+    const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
+    const controller = new FinanceController(getBalanceUseCase, recordTxUseCase, financeRepo);
+
+    mockApp.post('/withdrawals', (c) => {
+      // Simula sessão de usuário comum (userId = 2, sem permissão admin)
+      c.set('userId', 2);
+      c.set('permissions', ['finance.withdrawal.create']);
+      return controller.recordWithdrawal(c);
+    });
+
+    // Usuário 2 tenta sacar fundos da conta do usuário 1
+    const res = await mockApp.request('/withdrawals', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'idempotency-key': 'http-unauthorized-target-001',
+      },
+      body: JSON.stringify({
+        targetUserId: 1, // Conta da vítima
+        direction: 'OUTBOUND',
+        category: 'withdrawal',
+        description: 'Tentativa de saque em conta de terceiro',
+        amountBaseUnits: '100',
+        assetId,
+      }),
+    });
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.message).toContain('Acesso negado: Você não tem autorização para movimentar contas de terceiros.');
+  });
+
+  it('Cenário F: Erro interno inesperado deve retornar 500 com mensagem pública genérica e requestId', async () => {
+    const faultyUseCase = {
+      execute: async () => {
+        throw new Error('FATAL SQLITE ERROR: table internal_secrets corrupted at memory 0xDEADBEEF');
+      }
+    } as any;
+
+    const safeController = new FinanceController({} as any, faultyUseCase, {} as any);
+    const errApp = new Hono();
+    errApp.post('/deposits', (c) => safeController.recordDeposit(c));
+
+    const res = await errApp.request('/deposits', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'idempotency-key': 'http-err-001',
+      },
+      body: JSON.stringify({
+        targetUserId: 1,
+        direction: 'INBOUND',
+        amountBaseUnits: '100',
+        assetId,
+      }),
+    });
+
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.message).toBe('Erro interno ao processar a operação financeira');
+    expect(body.requestId).toBeDefined();
+    // Garante que a mensagem técnica bruta NÃO vazou para o cliente
+    expect(JSON.stringify(body)).not.toContain('0xDEADBEEF');
+    expect(JSON.stringify(body)).not.toContain('internal_secrets');
+  });
+});
+
+
+================================================================================
+ARQUIVO [52/67]: tests/finance/invariants/balance_projection.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/balance_projection.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -16604,7 +17288,7 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
 
 
 ================================================================================
-ARQUIVO [50/63]: tests/finance/invariants/commit_failure.test.ts
+ARQUIVO [53/67]: tests/finance/invariants/commit_failure.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/commit_failure.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -16787,7 +17471,7 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
 
 
 ================================================================================
-ARQUIVO [51/63]: tests/finance/invariants/seeds_normal_balance.test.ts
+ARQUIVO [54/67]: tests/finance/invariants/seeds_normal_balance.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/seeds_normal_balance.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -17023,7 +17707,7 @@ describe('Gate Contábil: Invariantes de Partidas Dobradas e Normal Balance nos 
 
 
 ================================================================================
-ARQUIVO [52/63]: tests/finance/invariants/transaction_failure_matrix.test.ts
+ARQUIVO [55/67]: tests/finance/invariants/transaction_failure_matrix.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/transaction_failure_matrix.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -17516,7 +18200,7 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
 
 
 ================================================================================
-ARQUIVO [53/63]: tests/finance/money256.test.ts
+ARQUIVO [56/67]: tests/finance/money256.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/money256.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -17605,7 +18289,7 @@ describe('Money256 Value Object (EVM 256-bit Precision)', () => {
 
 
 ================================================================================
-ARQUIVO [54/63]: tests/finance/posting_authority_hardening.test.ts
+ARQUIVO [57/67]: tests/finance/posting_authority_hardening.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/posting_authority_hardening.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -17929,7 +18613,7 @@ describe('Gate 3/4 Hardening: Autoridade Física de Posting e Fechamento de Bypa
 
 
 ================================================================================
-ARQUIVO [55/63]: tests/finance/reconciliation_3way.test.ts
+ARQUIVO [58/67]: tests/finance/reconciliation_3way.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/reconciliation_3way.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18145,7 +18829,7 @@ describe('3-Way Reconciliation Suite (External Provider <-> Ledger Projection <-
 
 
 ================================================================================
-ARQUIVO [56/63]: tests/finance/reverse_transaction.test.ts
+ARQUIVO [59/67]: tests/finance/reverse_transaction.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/reverse_transaction.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18268,7 +18952,148 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
 
 
 ================================================================================
-ARQUIVO [57/63]: tests/finance/schema_invariants_audit.test.ts
+ARQUIVO [60/67]: tests/finance/schema_drift.test.ts
+CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/schema_drift.test.ts
+================================================================================
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { Database as SqliteDatabase } from 'better-sqlite3';
+import { runAllMigrations } from '../test_helpers/runMigrations';
+import * as fs from 'fs';
+import * as path from 'path';
+
+describe('Gate 0 / Schema Drift Certification: SQLite Físico vs Drizzle tables.ts', () => {
+  let sqlite: SqliteDatabase;
+  const tempDbPath = path.resolve(__dirname, '../../test_schema_drift.db');
+
+  beforeEach(() => {
+    if (fs.existsSync(tempDbPath)) {
+      try { fs.unlinkSync(tempDbPath); } catch (e) {}
+    }
+    sqlite = new (require('better-sqlite3'))(tempDbPath);
+    sqlite.pragma('foreign_keys = ON');
+    runAllMigrations(sqlite);
+  });
+
+  afterEach(() => {
+    try { sqlite.close(); } catch (e) {}
+    if (fs.existsSync(tempDbPath)) {
+      try { fs.unlinkSync(tempDbPath); } catch (e) {}
+    }
+  });
+
+  it('1. valida que exchange_rates possui rate_numerator e rate_denominator e aboliu a coluna legada rate', () => {
+    const columns = sqlite.pragma('table_info(exchange_rates)') as Array<{ name: string; type: string }>;
+    const colNames = columns.map(c => c.name);
+
+    expect(colNames).toContain('id');
+    expect(colNames).toContain('base_asset_id');
+    expect(colNames).toContain('quote_asset_id');
+    expect(colNames).toContain('rate_numerator');
+    expect(colNames).toContain('rate_denominator');
+    expect(colNames).toContain('source');
+    expect(colNames).toContain('quoted_at');
+
+    // Coluna legada que usava CAST(... AS REAL) não pode mais existir no banco físico
+    expect(colNames).not.toContain('rate');
+  });
+
+  it('2. valida que asset_conversions possui rate_numerator e rate_denominator e aboliu rate legada', () => {
+    const columns = sqlite.pragma('table_info(asset_conversions)') as Array<{ name: string; type: string }>;
+    const colNames = columns.map(c => c.name);
+
+    expect(colNames).toContain('id');
+    expect(colNames).toContain('financial_transaction_id');
+    expect(colNames).toContain('from_asset_id');
+    expect(colNames).toContain('to_asset_id');
+    expect(colNames).toContain('from_amount_base_units');
+    expect(colNames).toContain('to_amount_base_units');
+    expect(colNames).toContain('rate_numerator');
+    expect(colNames).toContain('rate_denominator');
+    expect(colNames).toContain('fee_amount_base_units');
+    expect(colNames).toContain('status');
+    expect(colNames).toContain('completed_at');
+
+    expect(colNames).not.toContain('rate');
+  });
+
+  it('3. valida enforcement físico de ck_financial_tx_completed_state em financial_transactions', () => {
+    // Insere usuário dummy para FK
+    sqlite.prepare(`
+      INSERT INTO users (id, email, email_normalized)
+      VALUES (1, 'audit@test.com', 'audit@test.com')
+    `).run();
+
+    // Cenário A: status 'completed' SEM completed_at deve falhar fisicamente
+    expect(() => {
+      sqlite.prepare(`
+        INSERT INTO financial_transactions (user_id, type, category, status, description, version, created_at, updated_at, completed_at)
+        VALUES (1, 'deposit', 'operational', 'completed', 'Test', 1, 1000, 1000, NULL)
+      `).run();
+    }).toThrow(/CHECK constraint failed/);
+
+    // Cenário B: status 'refunded' SEM completed_at deve falhar fisicamente (exige histórico)
+    expect(() => {
+      sqlite.prepare(`
+        INSERT INTO financial_transactions (user_id, type, category, status, description, version, created_at, updated_at, completed_at)
+        VALUES (1, 'refund', 'operational', 'refunded', 'Test', 1, 1000, 1000, NULL)
+      `).run();
+    }).toThrow(/CHECK constraint failed/);
+
+    // Cenário C: status 'reversed' SEM completed_at deve falhar fisicamente
+    expect(() => {
+      sqlite.prepare(`
+        INSERT INTO financial_transactions (user_id, type, category, status, description, version, created_at, updated_at, completed_at)
+        VALUES (1, 'reversal', 'operational', 'reversed', 'Test', 1, 1000, 1000, NULL)
+      `).run();
+    }).toThrow(/CHECK constraint failed/);
+
+    // Cenário D: status 'pending' COM completed_at preenchido deve falhar fisicamente
+    expect(() => {
+      sqlite.prepare(`
+        INSERT INTO financial_transactions (user_id, type, category, status, description, version, created_at, updated_at, completed_at)
+        VALUES (1, 'deposit', 'operational', 'pending', 'Test', 1, 1000, 1000, 1000)
+      `).run();
+    }).toThrow(/CHECK constraint failed/);
+
+    // Cenário E: status 'completed' COM completed_at válido deve ter sucesso
+    const insertRes = sqlite.prepare(`
+      INSERT INTO financial_transactions (user_id, type, category, status, description, version, created_at, updated_at, completed_at)
+      VALUES (1, 'deposit', 'operational', 'completed', 'Valid Completed', 1, 1000, 1000, 1000)
+    `).run();
+    expect(insertRes.changes).toBe(1);
+
+    // Cenário F: status 'refunded' COM completed_at preservado deve ter sucesso
+    const refundRes = sqlite.prepare(`
+      INSERT INTO financial_transactions (user_id, type, category, status, description, version, created_at, updated_at, completed_at)
+      VALUES (1, 'refund', 'operational', 'refunded', 'Valid Refunded', 1, 1000, 1000, 1000)
+    `).run();
+    expect(refundRes.changes).toBe(1);
+  });
+
+  it('4. valida que índices de exchange_rates e asset_conversions estão ativos no banco físico', () => {
+    const rateIndexes = sqlite.prepare(`
+      SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='exchange_rates'
+    `).all() as Array<{ name: string }>;
+    const rateIndexNames = rateIndexes.map(i => i.name);
+
+    expect(rateIndexNames).toContain('idx_exchange_rates_pair');
+    expect(rateIndexNames).toContain('idx_exchange_rates_quoted');
+    expect(rateIndexNames).toContain('idx_exchange_rates_pair_quoted');
+
+    const convIndexes = sqlite.prepare(`
+      SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='asset_conversions'
+    `).all() as Array<{ name: string }>;
+    const convIndexNames = convIndexes.map(i => i.name);
+
+    expect(convIndexNames).toContain('uq_asset_conversions_transaction');
+    expect(convIndexNames).toContain('idx_asset_conversions_from_asset');
+    expect(convIndexNames).toContain('idx_asset_conversions_to_asset');
+  });
+});
+
+
+================================================================================
+ARQUIVO [61/67]: tests/finance/schema_invariants_audit.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance/schema_invariants_audit.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18493,7 +19318,7 @@ describe('Schema Invariants & Security Audit Verification (FIN-DB-001, 004, 008,
 
 
 ================================================================================
-ARQUIVO [58/63]: tests/finance_real_db_e2e.test.ts
+ARQUIVO [62/67]: tests/finance_real_db_e2e.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/finance_real_db_e2e.test.ts
 ================================================================================
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18731,7 +19556,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
 
 
 ================================================================================
-ARQUIVO [59/63]: tests/architecture/finance_posting_authority.test.ts
+ARQUIVO [63/67]: tests/architecture/finance_posting_authority.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/architecture/finance_posting_authority.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -18832,7 +19657,7 @@ describe('Static Architecture Gate: Single Financial Posting Authority & Dead Co
 
 
 ================================================================================
-ARQUIVO [60/63]: tests/architecture/architecture-boundaries.test.ts
+ARQUIVO [64/67]: tests/architecture/architecture-boundaries.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/architecture/architecture-boundaries.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -19103,7 +19928,7 @@ describe('Executable Architectural Boundaries & Governance Suite — Padrão Our
 
 
 ================================================================================
-ARQUIVO [61/63]: tests/architecture/dependency_rules.test.ts
+ARQUIVO [65/67]: tests/architecture/dependency_rules.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/architecture/dependency_rules.test.ts
 ================================================================================
 import * as fs from 'fs';
@@ -19174,7 +19999,7 @@ describe('Architecture Dependency Rules', () => {
 
 
 ================================================================================
-ARQUIVO [62/63]: tests/migrations/migration_integrity.test.ts
+ARQUIVO [66/67]: tests/migrations/migration_integrity.test.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/migrations/migration_integrity.test.ts
 ================================================================================
 import { describe, it, expect } from 'vitest';
@@ -19304,7 +20129,7 @@ describe('Gate 3: Migration Governance & Data Integrity Suite', () => {
 
 
 ================================================================================
-ARQUIVO [63/63]: tests/test_helpers/runMigrations.ts
+ARQUIVO [67/67]: tests/test_helpers/runMigrations.ts
 CAMINHO ABSOLUTO: /home/sandro/Área de trabalho/BackEnd/tests/test_helpers/runMigrations.ts
 ================================================================================
 import * as fs from 'fs';
@@ -20686,16 +21511,16 @@ Dependências diretas incluídas:
 10
 
 Testes Finance:
-21
+24
 
 Migrations relacionadas:
-6
+7
 
 Total de arquivos extraídos:
-73
+77
 
 Total de linhas extraídas:
-20103
+20904
 
 ================================================================================
 MAPA DE POSSÍVEIS INCONSISTÊNCIAS DETECTADAS DURANTE A EXTRAÇÃO

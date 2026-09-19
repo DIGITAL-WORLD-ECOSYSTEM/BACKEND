@@ -71,16 +71,19 @@ migration_files = [
     "migrations/0007_event_inbox.sql",
     "migrations/0008_remediation_schema.sql",
     "migrations/0009_finance_schema_alignment.sql",
+    "migrations/0010_finance_fixes_and_rates_alignment.sql",
 ]
 
 # G. TESTS
 test_files = [
     "tests/finance/bootstrap_service.test.ts",
+    "tests/finance/concurrency_idempotency_same_key.test.ts",
     "tests/finance/concurrency_stress.test.ts",
     "tests/finance/domain_policies.test.ts",
     "tests/finance/event_inbox.test.ts",
     "tests/finance/evm_precision.test.ts",
     "tests/finance/failure_injection.test.ts",
+    "tests/finance/finance_controller_e2e.test.ts",
     "tests/finance/invariants/balance_projection.test.ts",
     "tests/finance/invariants/commit_failure.test.ts",
     "tests/finance/invariants/seeds_normal_balance.test.ts",
@@ -89,6 +92,7 @@ test_files = [
     "tests/finance/posting_authority_hardening.test.ts",
     "tests/finance/reconciliation_3way.test.ts",
     "tests/finance/reverse_transaction.test.ts",
+    "tests/finance/schema_drift.test.ts",
     "tests/finance/schema_invariants_audit.test.ts",
     "tests/finance_real_db_e2e.test.ts",
     "tests/architecture/finance_posting_authority.test.ts",
