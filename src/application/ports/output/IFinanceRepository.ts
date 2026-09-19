@@ -56,6 +56,24 @@ export type FinancialAssetStatus = 'active' | 'inactive' | 'suspended';
 
 export type BalanceUpdateResult = 'UPDATED' | 'INSUFFICIENT_BALANCE' | 'OCC_CONFLICT';
 
+export interface TreasuryBootstrapOptions {
+  currencyCode?: string;
+  initialBalanceBaseUnits?: bigint;
+}
+
+export interface TreasuryBootstrapResult {
+  assetId: number;
+  treasuryAccountId: number;
+  operatingAccountId: number;
+  feeAccountId: number;
+  rewardExpenseAccountId: number;
+  yieldExpenseAccountId: number;
+  clearingAccountId: number;
+  openingEquityAccountId: number;
+  paymentRevenueAccountId: number;
+  refundExpenseAccountId: number;
+}
+
 export type IdempotencyRecord =
   | { status: 'processing'; transactionId: null; requestHash: string }
   | { status: 'completed'; transactionId: number; requestHash: string }
@@ -141,6 +159,14 @@ export interface IFinanceRepository {
   ): Promise<BalanceUpdateResult>;
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
   // NOTE: persistOutboxEvent removed — use IOutboxRepository.saveEvent() within the same UoW transaction.
+
+  /**
+   * Provisiona a infraestrutura básica do Finance Core (Ativo padrão, contas sistêmicas e saldos zerados)
+   * dentro do contexto transacional do repositório.
+   */
+  provisionTreasuryInfrastructure(
+    options?: TreasuryBootstrapOptions
+  ): Promise<Result<TreasuryBootstrapResult, RepositoryError>>;
 
   // Ingestion-first External Bank Transactions
   insertFiatExternalTransaction(data: {
