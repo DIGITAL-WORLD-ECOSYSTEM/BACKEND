@@ -5,6 +5,8 @@ import { FinanceBootstrapService } from '../../src/infrastructure/services/Finan
 import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
 import { unlinkSync, existsSync } from 'fs';
 
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
+
 describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sistema', () => {
   const dbFile = 'test_bootstrap_service.db';
   let sqlite: any;
@@ -17,53 +19,11 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
     sqlite = createClient({ url: `file:${dbFile}` });
     db = drizzle(sqlite);
 
-    // DDL de teste
-    await sqlite.execute(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL
-      );
-    `);
-    await sqlite.execute(`
-      CREATE TABLE IF NOT EXISTS financial_assets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        code TEXT NOT NULL,
-        symbol TEXT NOT NULL,
-        name TEXT NOT NULL,
-        decimals INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        status TEXT NOT NULL,
-        created_at INTEGER,
-        updated_at INTEGER
-      );
-    `);
-    await sqlite.execute(`
-      CREATE TABLE IF NOT EXISTS financial_accounts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        account_type TEXT NOT NULL CHECK(account_type IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow', 'reward_expense', 'yield_expense', 'clearing', 'opening_balance_equity', 'payment_revenue', 'refund_expense')),
-        account_class TEXT NOT NULL CHECK(account_class IN ('asset', 'liability', 'equity', 'revenue', 'expense')),
-        status TEXT NOT NULL CHECK(status IN ('active', 'inactive', 'suspended')),
-        name TEXT NOT NULL,
-        version INTEGER DEFAULT 1 NOT NULL,
-        created_at INTEGER,
-        updated_at INTEGER
-      );
-    `);
-    await sqlite.execute(`
-      CREATE TABLE IF NOT EXISTS account_balances (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        account_id INTEGER NOT NULL,
-        asset_id INTEGER NOT NULL,
-        available_base_units TEXT DEFAULT '0' NOT NULL,
-        locked_base_units TEXT DEFAULT '0' NOT NULL,
-        version INTEGER DEFAULT 1 NOT NULL,
-        updated_at INTEGER
-      );
-    `);
+    // Executa as migrations oficiais
+    await runAllMigrationsLibSql(sqlite);
 
     // Inserir usuário inicial
-    await sqlite.execute(`INSERT INTO users (id, name) VALUES (1, 'Admin');`);
+    await sqlite.execute(`INSERT INTO users (id, subject_type, email, email_normalized, status, auth_epoch, created_at, updated_at) VALUES (1, 'human', 'admin@example.com', 'admin@example.com', 'active', 1, unixepoch(), unixepoch());`);
   }, 30000);
 
   it('deve inicializar com sucesso o banco e provisionar contas de Tesouraria, Operacional e Fee', async () => {
@@ -89,5 +49,18 @@ describe('FinanceBootstrapService - Bootstrapping de Tesouraria e Contas do Sist
     const treasuryGet = await repo.getTreasuryAccount();
     expect(treasuryGet.isSuccess).toBe(true);
     expect(treasuryGet.getValue().accountType).toBe('treasury');
+
+    // 4. Executar bootstrap uma segunda vez com os mesmos parâmetros (idempotência)
+    const seedRes2 = await FinanceBootstrapService.seedSystemAccounts(db, {
+      currencyCode: 'BRL',
+      initialBalanceBaseUnits: 1000000n,
+    });
+    expect(seedRes2.isSuccess).toBe(true);
+
+    // 5. Verificar que o saldo da tesouraria permanece exatamente 1000000n (não duplicou)
+    const balances = await repo.getTreasuryBalance();
+    expect(balances.isSuccess).toBe(true);
+    const brlBalance = balances.getValue().find((b) => b.assetId === data.assetId);
+    expect(brlBalance?.availableBaseUnits).toBe('1000000');
   }, 30000);
 });

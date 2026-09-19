@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
-import { accountBalances, financialLedgerEntries } from '../../src/db/finance/tables';
+import { accountBalances, financialLedgerEntries, fiatProviders } from '../../src/db/finance/tables';
 import { users } from '../../src/db/user/tables';
 import { FinanceBootstrapService } from '../../src/infrastructure/services/FinanceBootstrapService';
 import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/DrizzleFinanceRepository';
@@ -130,4 +130,81 @@ describe('3-Way Reconciliation Suite (External Provider <-> Ledger Projection <-
     expect(materializedBalance).toBe(ledgerProjection);
     expect(ledgerProjection).toBe(externalProviderCustody);
   });
+
+  it('supports ingestion-first model with fingerprint idempotency and reconciliation matching', async () => {
+    const repo = new DrizzleFinanceRepository(db);
+
+    // Ensure fiat provider exists
+    const [existingProvider] = await db.select().from(fiatProviders).where(eq(fiatProviders.id, 1));
+    if (!existingProvider) {
+      await db.insert(fiatProviders).values({
+        id: 1,
+        name: 'Banco Itaú',
+        code: 'ITAU',
+        type: 'bank',
+        status: 'active',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    const fingerprint = 'sha256:itau:tx-bank-999:2026-09-18:500.00:credit';
+
+    // 1. Ingest bank transaction without financial_transaction_id
+    const insertRes = await repo.insertFiatExternalTransaction({
+      providerId: 1,
+      externalTransactionId: 'EXT-TX-999',
+      rawAmount: '500.00',
+      amountBaseUnits: '50000',
+      direction: 'credit',
+      assetId: 1,
+      rawDescription: 'TED RECEBIDA - CLIENTE ALICE',
+      bankTimestamp: new Date('2026-09-18T12:00:00Z'),
+      sourceFile: 'extrato_itau_20260918.ofx',
+      sourceFileHash: 'hash-file-ofx-001',
+      rowFingerprint: fingerprint,
+      status: 'pending',
+      reconciliationStatus: 'unmatched',
+      financialTransactionId: null,
+    });
+
+    expect(insertRes.isSuccess).toBe(true);
+    const externalTxId = insertRes.getValue();
+    expect(externalTxId).toBeGreaterThan(0);
+
+    // 2. Query by fingerprint
+    const queryRes = await repo.getFiatExternalTransactionByFingerprint(fingerprint);
+    expect(queryRes.isSuccess).toBe(true);
+    const fetched = queryRes.getValue();
+    expect(fetched).not.toBeNull();
+    expect(fetched.externalTransactionId).toBe('EXT-TX-999');
+    expect(fetched.reconciliationStatus).toBe('unmatched');
+    expect(fetched.financialTransactionId).toBeNull();
+
+    // 3. Ingesting again with same fingerprint should fail or return error due to unique index
+    const dupRes = await repo.insertFiatExternalTransaction({
+      providerId: 1,
+      externalTransactionId: 'EXT-TX-999-DUP',
+      rawAmount: '500.00',
+      direction: 'credit',
+      rowFingerprint: fingerprint,
+    });
+    expect(dupRes.isFailure).toBe(true);
+
+    // 4. Update reconciliation status to 'matched' with internal transaction
+    const updateRes = await repo.updateFiatExternalTransactionReconciliation(externalTxId, {
+      status: 'completed',
+      reconciliationStatus: 'matched',
+      financialTransactionId: 1,
+    });
+    expect(updateRes.isSuccess).toBe(true);
+
+    const reFetchedRes = await repo.getFiatExternalTransactionByFingerprint(fingerprint);
+    expect(reFetchedRes.isSuccess).toBe(true);
+    const updated = reFetchedRes.getValue();
+    expect(updated.reconciliationStatus).toBe('matched');
+    expect(updated.status).toBe('completed');
+    expect(updated.financialTransactionId).toBe(1);
+  });
 });
+

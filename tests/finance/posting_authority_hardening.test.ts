@@ -80,9 +80,11 @@ describe('Gate 3/4 Hardening: Autoridade Física de Posting e Fechamento de Bypa
       -- Conta 3: User 20 INACTIVE (user_available, liability, inactive)
       INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at)
         VALUES (3, 20, 'user_available', 'liability', 'inactive', 'User 20 Inactive Account', 1, 1000, 1000);
-      -- Conta 4: Incompatible class (fees com class 'asset' ao invés de 'revenue')
+      -- Conta 4: Incompatible class (fees com class 'asset' ao invés de 'revenue') - Inserida para teste de defesa em profundidade do runtime
+      PRAGMA ignore_check_constraints = ON;
       INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at)
         VALUES (4, NULL, 'fees', 'asset', 'active', 'Mismatched Fees Account', 1, 1000, 1000);
+      PRAGMA ignore_check_constraints = OFF;
 
       INSERT INTO account_balances (id, account_id, asset_id, available_base_units, locked_base_units, version, updated_at)
         VALUES (1, 1, 1, '5000', '0', 1, 1000);

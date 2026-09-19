@@ -80,7 +80,7 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
 
     const res1 = await uow.execute(async (f) => {
       const repo = f.getFinanceRepository();
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, f.getOutboxRepository());
       return await orchestrator.executePosting(tx1, 'hash1');
     });
     expect(res1.transactionId).toBeDefined();
@@ -99,7 +99,7 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
 
     const res2 = await uow.execute(async (f) => {
       const repo = f.getFinanceRepository();
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, f.getOutboxRepository());
       return await orchestrator.executePosting(tx2, 'hash2');
     });
     expect(res2.transactionId).toBeDefined();
@@ -118,7 +118,7 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
 
     const res3 = await uow.execute(async (f) => {
       const repo = f.getFinanceRepository();
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, f.getOutboxRepository());
       return await orchestrator.executePosting(tx3, 'hash3');
     });
     expect(res3.transactionId).toBeDefined();

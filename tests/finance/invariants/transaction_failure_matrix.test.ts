@@ -91,7 +91,7 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
 
     const result = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
       return await orchestrator.executePosting(invalidTx, 'hash-fail-4');
     });
 
@@ -336,8 +336,10 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
   });
 
   it('P1.3: Rejeita conta sistêmica com classe contábil incompatível', async () => {
-    // Temporarily mutate account_class of payment_revenue to 'asset' (should be 'revenue')
+    // Temporarily mutate account_class of payment_revenue to 'asset' (should be 'revenue') using ignore_check_constraints
+    await sqlite.execute(`PRAGMA ignore_check_constraints = ON;`);
     await sqlite.execute(`UPDATE financial_accounts SET account_class = 'asset' WHERE account_type = 'payment_revenue';`);
+    await sqlite.execute(`PRAGMA ignore_check_constraints = OFF;`);
 
     const sysAccRes = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
@@ -348,7 +350,9 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
     expect(sysAccRes.error).toContain('classe contábil incompatível');
 
     // Restore original class
+    await sqlite.execute(`PRAGMA ignore_check_constraints = ON;`);
     await sqlite.execute(`UPDATE financial_accounts SET account_class = 'revenue' WHERE account_type = 'payment_revenue';`);
+    await sqlite.execute(`PRAGMA ignore_check_constraints = OFF;`);
   });
 
   it('P1.4: Preserva objeto de erro estruturado (FinancialError) no Result.fail', async () => {

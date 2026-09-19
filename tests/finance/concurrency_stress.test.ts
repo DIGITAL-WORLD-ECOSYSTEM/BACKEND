@@ -96,7 +96,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
         userId: 42,
       });
 
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
       return Result.ok(await orchestrator.executePosting(tx));
     });
 
@@ -137,7 +137,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
             userId: 42,
           });
 
-          const orchestrator = new FinancialTransactionOrchestrator(repo);
+          const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
           return Result.ok(await orchestrator.executePosting(tx));
         });
         if (res.isFailure) {
@@ -231,7 +231,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
         userId: 55,
       });
 
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
       return Result.ok(await orchestrator.executePosting(tx));
     });
 
@@ -290,7 +290,7 @@ describe('Gate 4: Real Double-Spend Multi-Client Concurrency Stress Certificatio
             userId: 55,
           });
 
-          const orchestrator = new FinancialTransactionOrchestrator(repo);
+          const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
           return Result.ok(await orchestrator.executePosting(tx));
         });
 

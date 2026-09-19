@@ -82,7 +82,7 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
 
     const origRes = await uow.execute(async (f) => {
       const repo = f.getFinanceRepository();
-      const orchestrator = new FinancialTransactionOrchestrator(repo);
+      const orchestrator = new FinancialTransactionOrchestrator(repo, f.getOutboxRepository());
       const postingResult = await orchestrator.executePosting(originalTx);
       return Result.ok(postingResult);
     });
