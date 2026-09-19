@@ -371,14 +371,25 @@ export class RecordTreasuryTransactionUseCase {
             break;
           }
           case 'adjustment': {
-            let parsedAuthUserId: number | null = null;
-            if (dto.authorizedByUserId !== null && dto.authorizedByUserId !== undefined) {
-              parsedAuthUserId = parsePositiveSafeIntegerId(dto.authorizedByUserId, 'authorizedByUserId');
+            const actorUserId = dto.actorUserId;
+            if (actorUserId === null || actorUserId === undefined) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new AccountOwnershipError("Operação de ajuste exige sessão autenticada com identificação do ator.")
+              );
             }
 
-            if (parsedAuthUserId === null) {
+            if (dto.authorizedByUserId === null || dto.authorizedByUserId === undefined) {
               return Result.fail<RecordTreasuryTransactionResult>(
                 new AccountOwnershipError("Operação de ajuste (adjustment) exige obrigatoriamente a identificação do usuário autorizador (authorizedByUserId).")
+              );
+            }
+
+            const parsedActorUserId = parsePositiveSafeIntegerId(actorUserId, 'actorUserId');
+            const parsedAuthUserId = parsePositiveSafeIntegerId(dto.authorizedByUserId, 'authorizedByUserId');
+
+            if (parsedActorUserId !== parsedAuthUserId) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new AccountOwnershipError("O autorizador do ajuste deve corresponder ao ator autenticado.")
               );
             }
 
