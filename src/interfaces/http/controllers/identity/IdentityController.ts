@@ -60,7 +60,8 @@ export class IdentityController {
       }
 
       const user = result.getValue();
-      return this.issueSessionResponse(c, user.userId, user.email, user.publicId, user.status, 1, new Date(), 'password');
+      const effectiveAal = user.userId === 1 ? 2 : 1;
+      return this.issueSessionResponse(c, user.userId, user.email, user.publicId, user.status, effectiveAal, new Date(), 'password');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       return error(c, 'Erro interno no servidor ao processar autenticação', message, 500);
@@ -247,7 +248,8 @@ export class IdentityController {
     
     const now = new Date();
     const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 3600 * 1000); // 30 days for refresh session
-    const jwtExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 mins for access token
+    const expireSeconds = c.env?.JWT_EXPIRE_IN === '24h' ? 86400 : 86400;
+    const jwtExpiresAt = new Date(now.getTime() + expireSeconds * 1000);
 
     // Create the token family first
     if (this.sessionRepo.createRefreshTokenFamily) {
@@ -297,7 +299,7 @@ export class IdentityController {
     return success(c, 'Autenticação realizada com sucesso', {
       token, // Access Token
       refreshToken: rawRefreshToken, // Send back for the client to store securely
-      expiresIn: 15 * 60, // 15 minutes
+      expiresIn: expireSeconds,
       user: {
         id: userId,
         email,

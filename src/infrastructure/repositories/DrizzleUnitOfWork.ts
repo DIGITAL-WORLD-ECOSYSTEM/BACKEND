@@ -73,11 +73,9 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
   constructor(private readonly db: FinanceDatabase) {}
 
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
-    if (isD1Database(this.db) && typeof (this.db as any).transaction !== 'function') {
-      throw new Error(
-        'DrizzleUnitOfWork exige driver com transações interativas (libSQL/better-sqlite3/Durable Object SQLite com transactionSync). ' +
-        'O driver Cloudflare D1 direto não suporta transações interativas no worker context; utilize um Durable Object para o ledger ou adaptador transacional compatível.'
-      );
+    if (isD1Database(this.db)) {
+      const factory = new DrizzleRepositoryFactory(this.db as any, this.db);
+      return await work(factory);
     }
 
     if (typeof this.db?.transaction === 'function') {
