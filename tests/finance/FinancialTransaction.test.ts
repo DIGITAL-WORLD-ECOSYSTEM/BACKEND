@@ -6,19 +6,19 @@ import {
   SUPPORTED_FINANCIAL_TRANSACTION_TYPES,
   FINANCIAL_TRANSACTION_STATUSES,
   isUuidV4,
-} from './LedgerTransaction';
-import { Money256 } from '../value-objects/Money256';
+} from '@/domains/finance/entities/LedgerTransaction';
+import { Money256 } from '@/domains/finance/value-objects/Money256';
 import {
   parseCanonicalBaseUnits,
   parsePositiveCanonicalBaseUnits,
-} from '../value-objects/BaseUnits';
-import { LedgerImbalanceError } from '../errors/LedgerImbalanceError';
+} from '@/domains/finance/value-objects/BaseUnits';
+import { LedgerImbalanceError } from '@/domains/finance/errors/LedgerImbalanceError';
 import {
   InvalidLedgerTransactionError,
   InvalidMoneyFormatError,
   InvalidIdentifierError,
   Money256OverflowError,
-} from '../errors/FinancialError';
+} from '@/domains/finance/errors/FinancialError';
 
 describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', () => {
   describe('01. Double-Entry Balance & Asset Segregation', () => {

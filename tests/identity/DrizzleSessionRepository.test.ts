@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { DrizzleSessionRepository } from './DrizzleSessionRepository';
+import { DrizzleSessionRepository } from '@/infrastructure/repositories/DrizzleSessionRepository';
 
 describe('DrizzleSessionRepository', () => {
   it('should insert a new session correctly', async () => {

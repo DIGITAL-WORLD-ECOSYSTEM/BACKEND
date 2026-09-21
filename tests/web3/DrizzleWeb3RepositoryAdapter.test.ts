@@ -4,7 +4,7 @@
  * DrizzleWeb3RepositoryAdapter is the single canonical implementation with OCC.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { DrizzleWeb3RepositoryAdapter } from './DrizzleWeb3RepositoryAdapter';
+import { DrizzleWeb3RepositoryAdapter } from '@/infrastructure/repositories/DrizzleWeb3RepositoryAdapter';
 
 describe('DrizzleWeb3RepositoryAdapter', () => {
   it('should return null if wallet not found by address', async () => {

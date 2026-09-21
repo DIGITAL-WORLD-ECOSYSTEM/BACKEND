@@ -36,8 +36,12 @@
 
     /* Skip type checking all .d.ts files. */
     "skipLibCheck": true,
-    "types": ["./worker-configuration.d.ts", "@cloudflare/workers-types"]
+    "types": ["./worker-configuration.d.ts", "@cloudflare/workers-types"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
-  "exclude": ["test"],
-  "include": ["worker-configuration.d.ts", "src/**/*.ts"]
+  "exclude": ["node_modules"],
+  "include": ["worker-configuration.d.ts", "src/**/*.ts", "tests/**/*.ts"]
 }

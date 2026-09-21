@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AuthenticateAccountUseCase } from './AuthenticateAccountUseCase';
-import { IUnitOfWork } from '../../../application/ports/output/IUnitOfWork';
-import { IPasswordHasher } from '../../../application/ports/security/IPasswordHasher';
-import { ISecurityAuditPort } from '../../../application/ports/output/ISecurityAuditPort';
-import { UserAccount, UserAccountProps } from '../../../domains/identity/entities/UserAccount';
+import { AuthenticateAccountUseCase } from '@/application/use-cases/identity/AuthenticateAccountUseCase';
+import { IUnitOfWork } from '@/application/ports/output/IUnitOfWork';
+import { IPasswordHasher } from '@/application/ports/security/IPasswordHasher';
+import { ISecurityAuditPort } from '@/application/ports/output/ISecurityAuditPort';
+import { UserAccount, UserAccountProps } from '@/domains/identity/entities/UserAccount';
 
 describe('AuthenticateAccountUseCase', () => {
   let uow: any;

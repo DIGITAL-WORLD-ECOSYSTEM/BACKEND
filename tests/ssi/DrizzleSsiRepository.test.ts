@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { DrizzleSsiRepository } from './DrizzleSsiRepository';
+import { DrizzleSsiRepository } from '@/infrastructure/repositories/DrizzleSsiRepository';
 
 describe('DrizzleSsiRepository', () => {
   it('should return failure if active DID not found for user', async () => {

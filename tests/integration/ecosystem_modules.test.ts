@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { Result } from '../shared/kernel/Result';
-import { RegisterCitizenUseCase } from '../application/use-cases/civil-identity/RegisterCitizenUseCase';
-import { SubmitKycVerificationUseCase } from '../application/use-cases/civil-identity/SubmitKycVerificationUseCase';
-import { CreateDidUseCase } from '../application/use-cases/ssi/CreateDidUseCase';
-import { IssueVerifiableCredentialUseCase } from '../application/use-cases/ssi/IssueVerifiableCredentialUseCase';
-import { RevokeCredentialUseCase } from '../application/use-cases/ssi/RevokeCredentialUseCase';
-import { GetTreasuryBalanceUseCase } from '../application/finance/use-cases/GetTreasuryBalanceUseCase';
-import { RecordTreasuryTransactionUseCase } from '../application/finance/use-cases/RecordTreasuryTransactionUseCase';
+import { Result } from '@/shared/kernel/Result';
+import { RegisterCitizenUseCase } from '@/application/use-cases/civil-identity/RegisterCitizenUseCase';
+import { SubmitKycVerificationUseCase } from '@/application/use-cases/civil-identity/SubmitKycVerificationUseCase';
+import { CreateDidUseCase } from '@/application/use-cases/ssi/CreateDidUseCase';
+import { IssueVerifiableCredentialUseCase } from '@/application/use-cases/ssi/IssueVerifiableCredentialUseCase';
+import { RevokeCredentialUseCase } from '@/application/use-cases/ssi/RevokeCredentialUseCase';
+import { GetTreasuryBalanceUseCase } from '@/application/finance/use-cases/GetTreasuryBalanceUseCase';
+import { RecordTreasuryTransactionUseCase } from '@/application/finance/use-cases/RecordTreasuryTransactionUseCase';
 
 describe('Ecosystem Modules Suite (Civil Identity, SSI & Treasury)', () => {
   describe('Civil Identity Use Cases', () => {
@@ -195,17 +195,18 @@ describe('Ecosystem Modules Suite (Civil Identity, SSI & Treasury)', () => {
           id,
           status: 'active',
           accountType: id === 1 ? 'treasury' : 'operating',
-          accountClass: id === 1 ? 'asset' : 'revenue',
+          accountClass: 'asset',
         })),
         getSystemAccount: vi.fn().mockImplementation(async (type) => Result.ok({
           id: type === 'treasury' ? 1 : 3,
           accountType: type,
-          accountClass: type === 'treasury' ? 'asset' : 'revenue',
+          accountClass: 'asset',
           status: 'active',
         })),
         getTreasuryAccount: vi.fn().mockResolvedValue(Result.ok({ id: 1, status: 'active', accountType: 'treasury', accountClass: 'asset' })),
-        getOrCreateUserAccount: vi.fn().mockResolvedValue(Result.ok({ id: 2, status: 'active', accountType: 'user', accountClass: 'liability' })),
-        getOrCreateOperatingAccount: vi.fn().mockResolvedValue(Result.ok({ id: 3, status: 'active', accountType: 'operating', accountClass: 'revenue' })),
+        getOrCreateUserAccount: vi.fn().mockResolvedValue(Result.ok({ id: 2, status: 'active', accountType: 'user_available', accountClass: 'liability' })),
+        getOrCreateOperatingAccount: vi.fn().mockResolvedValue(Result.ok({ id: 3, status: 'active', accountType: 'operating', accountClass: 'asset' })),
+        getIdempotencyRecord: vi.fn().mockResolvedValue(null),
         claimIdempotency: vi.fn().mockResolvedValue(true),
         insertTransaction: vi.fn().mockResolvedValue(Result.ok(10)),
         insertLedgerEntries: vi.fn().mockResolvedValue(Result.ok()),

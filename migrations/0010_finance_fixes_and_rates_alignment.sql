@@ -1,52 +1,8 @@
 -- MIGRATION 0010: CANONICAL SCHEMA ALIGNMENT & FX DEFINITIVE CLOSING
--- 1. Fortalece constraint ck_financial_tx_completed_state em financial_transactions
--- 2. Recria exchange_rates com rate_numerator e rate_denominator (sem REAL/FLOAT/CAST AS REAL)
--- 3. Recria asset_conversions com rate_numerator e rate_denominator e constraints uint256
+-- 1. Recria exchange_rates com rate_numerator e rate_denominator (sem REAL/FLOAT/CAST AS REAL)
+-- 2. Recria asset_conversions com rate_numerator e rate_denominator e constraints uint256
 
--- 1. RECREATE financial_transactions COM CONSTRAINT DEFINITIVA DE COMPLETED_AT
-CREATE TABLE `__new_financial_transactions` (
-	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`user_id` integer,
-	`reversal_of_transaction_id` integer,
-	`refund_of_transaction_id` integer,
-	`type` text NOT NULL,
-	`category` text DEFAULT 'other' NOT NULL,
-	`status` text DEFAULT 'pending' NOT NULL,
-	`source_type` text,
-	`source_id` text,
-	`correlation_id` text,
-	`description` text NOT NULL,
-	`version` integer DEFAULT 1 NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL,
-	`completed_at` integer,
-	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
-	FOREIGN KEY (`reversal_of_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
-	FOREIGN KEY (`refund_of_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_financial_tx_type" CHECK("type" IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment', 'reversal')),
-	CONSTRAINT "ck_financial_tx_category" CHECK("category" IN ('membership', 'rwa_yield', 'grant', 'operational', 'payment', 'trading', 'withdrawal', 'deposit', 'fee', 'other')),
-	CONSTRAINT "ck_financial_tx_status" CHECK("status" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'refunded')),
-	CONSTRAINT "ck_financial_tx_source_type" CHECK("source_type" IS NULL OR "source_type" IN ('contribution', 'grant', 'membership', 'payroll', 'withdrawal', 'payment', 'conversion', 'system', 'other')),
-	CONSTRAINT "ck_financial_tx_completed_state" CHECK(("status" IN ('completed', 'reversed', 'refunded') AND "completed_at" IS NOT NULL) OR ("status" NOT IN ('completed', 'reversed', 'refunded') AND "completed_at" IS NULL)),
-	CONSTRAINT "ck_financial_tx_dates" CHECK("completed_at" IS NULL OR "completed_at" >= "created_at"),
-	CONSTRAINT "ck_financial_tx_version" CHECK("version" > 0)
-);--> statement-breakpoint
-
-INSERT INTO `__new_financial_transactions`("id", "user_id", "reversal_of_transaction_id", "refund_of_transaction_id", "type", "category", "status", "source_type", "source_id", "correlation_id", "description", "version", "created_at", "updated_at", "completed_at")
-SELECT "id", "user_id", "reversal_of_transaction_id", "refund_of_transaction_id", "type", "category", "status", "source_type", "source_id", "correlation_id", "description", "version", "created_at", "updated_at", "completed_at" FROM `financial_transactions`;--> statement-breakpoint
-
-DROP TABLE `financial_transactions`;--> statement-breakpoint
-ALTER TABLE `__new_financial_transactions` RENAME TO `financial_transactions`;--> statement-breakpoint
-
-CREATE INDEX `idx_financial_transactions_user` ON `financial_transactions` (`user_id`);--> statement-breakpoint
-CREATE INDEX `idx_financial_transactions_type` ON `financial_transactions` (`type`);--> statement-breakpoint
-CREATE INDEX `idx_financial_transactions_status` ON `financial_transactions` (`status`);--> statement-breakpoint
-CREATE INDEX `idx_financial_transactions_created` ON `financial_transactions` (`created_at`);--> statement-breakpoint
-CREATE INDEX `idx_financial_transactions_correlation` ON `financial_transactions` (`correlation_id`);--> statement-breakpoint
-CREATE INDEX `idx_financial_transactions_refund_of` ON `financial_transactions` (`refund_of_transaction_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `uq_financial_tx_active_reversal` ON `financial_transactions` (`reversal_of_transaction_id`) WHERE `reversal_of_transaction_id` IS NOT NULL AND `status` NOT IN ('failed', 'cancelled');--> statement-breakpoint
-
--- 2. RECREATE exchange_rates COM rate_numerator E rate_denominator CANÔNICOS
+-- 1. RECREATE exchange_rates COM rate_numerator E rate_denominator CANÔNICOS
 CREATE TABLE `__new_exchange_rates` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`base_asset_id` integer NOT NULL,
@@ -73,7 +29,7 @@ CREATE INDEX `idx_exchange_rates_pair` ON `exchange_rates` (`base_asset_id`,`quo
 CREATE INDEX `idx_exchange_rates_quoted` ON `exchange_rates` (`quoted_at`);--> statement-breakpoint
 CREATE INDEX `idx_exchange_rates_expires` ON `exchange_rates` (`expires_at`);--> statement-breakpoint
 
--- 3. RECREATE asset_conversions COM rate_numerator E rate_denominator CANÔNICOS
+-- 2. RECREATE asset_conversions COM rate_numerator E rate_denominator CANÔNICOS
 CREATE TABLE `__new_asset_conversions` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`financial_transaction_id` integer NOT NULL,

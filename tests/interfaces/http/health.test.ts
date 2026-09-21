@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { app } from '../../../../index';
+import { app } from '@/index';
 
 describe('Backend Health Check', () => {
   it('should return 200 OK on /api/core/health/health', async () => {

@@ -1,13 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
-import { SetupTotpUseCase } from './SetupTotpUseCase';
-import { AuthenticateTotpUseCase } from './AuthenticateTotpUseCase';
-import { RequestPasswordResetUseCase } from './RequestPasswordResetUseCase';
-import { ConfirmPasswordResetUseCase } from './ConfirmPasswordResetUseCase';
-import { RefreshTokenUseCase } from './RefreshTokenUseCase';
+import { SetupTotpUseCase } from '@/application/use-cases/identity/SetupTotpUseCase';
+import { AuthenticateTotpUseCase } from '@/application/use-cases/identity/AuthenticateTotpUseCase';
+import { RequestPasswordResetUseCase } from '@/application/use-cases/identity/RequestPasswordResetUseCase';
+import { ConfirmPasswordResetUseCase } from '@/application/use-cases/identity/ConfirmPasswordResetUseCase';
+import { RefreshTokenUseCase } from '@/application/use-cases/identity/RefreshTokenUseCase';
 import { authenticator } from 'otplib';
-import { Result } from '../../../shared/kernel/Result';
-import { CryptoVault } from '../../../infrastructure/security/crypto/crypto';
-import { AuthenticateAccountUseCase } from './AuthenticateAccountUseCase';
+import { Result } from '@/shared/kernel/Result';
+import { CryptoVault } from '@/infrastructure/security/crypto/crypto';
+import { AuthenticateAccountUseCase } from '@/application/use-cases/identity/AuthenticateAccountUseCase';
 
 describe('Auxiliary Authentication Use Cases Suite', () => {
   describe('AuthenticateAccountUseCase Lockout Protection', () => {

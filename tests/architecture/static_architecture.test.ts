@@ -19,7 +19,7 @@ function walkDir(dir: string, fileList: string[] = []): string[] {
 }
 
 describe('AF-012 Static Architecture & Anti-Shadow Account Governance', () => {
-  const srcPath = path.resolve(__dirname, '../src');
+  const srcPath = path.resolve(__dirname, '../../src');
   const sourceFiles = walkDir(srcPath);
 
   it('prohibits pseudo-domain shadow account email patterns (@web3.local, @ssi.local)', () => {

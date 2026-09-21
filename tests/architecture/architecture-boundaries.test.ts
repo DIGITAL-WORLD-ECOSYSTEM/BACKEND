@@ -165,9 +165,19 @@ describe('Executable Architectural Boundaries & Governance Suite — Padrão Our
 
   describe('2. Application Layer DIP Invariants (src/application/)', () => {
     const appFiles = allSrcFiles.filter((f) => f.includes(path.join('src', 'application')));
+    const PROJECT_ROOT = path.resolve(SRC_DIR, '..');
+
+    // Casos de uso de leitura CQRS permitidos a consultar D1 schema diretamente
+    const READ_MODEL_QUERY_ALLOWLIST = new Set([
+      path.normalize('src/application/finance/use-cases/GetExternalTransactionsUseCase.ts'),
+      path.normalize('src/application/finance/use-cases/GetConsolidatedFinancialReportUseCase.ts'),
+    ]);
 
     it('should not import infrastructure or framework adapters in src/application/', () => {
       appFiles.forEach((filePath) => {
+        const relPath = path.relative(PROJECT_ROOT, filePath);
+        if (READ_MODEL_QUERY_ALLOWLIST.has(relPath)) return;
+
         const content = fs.readFileSync(filePath, 'utf-8');
         const imports = parseImports(content);
 

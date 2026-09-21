@@ -102,6 +102,7 @@ pnpm-debug.log*
 *.db-journal
 *.db-shm
 *.db-wal
+.finance-gate0/
 
 logs/
 *.log

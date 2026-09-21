@@ -4,14 +4,14 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { unlinkSync } from 'fs';
 import { eq } from 'drizzle-orm';
 
-import { DrizzleUnitOfWork } from '../src/infrastructure/repositories/DrizzleUnitOfWork';
-import { LedgerTransaction, LedgerEntry } from '../src/domains/finance/entities/LedgerTransaction';
-import { Money256 } from '../src/domains/finance/value-objects/Money256';
-import { FinancialTransactionOrchestrator } from '../src/application/finance/services/FinancialTransactionOrchestrator';
-import { idempotencyKeys, outboxEvents } from '../src/db/infrastructure/tables';
-import { financialTransactions, financialLedgerEntries, accountBalances } from '../src/db/finance/tables';
-import { Result } from '../src/shared/kernel/Result';
-import { runAllMigrationsLibSql } from './test_helpers/runMigrations';
+import { DrizzleUnitOfWork } from '@/infrastructure/repositories/DrizzleUnitOfWork';
+import { LedgerTransaction, LedgerEntry } from '@/domains/finance/entities/LedgerTransaction';
+import { Money256 } from '@/domains/finance/value-objects/Money256';
+import { FinancialTransactionOrchestrator } from '@/application/finance/services/FinancialTransactionOrchestrator';
+import { idempotencyKeys, outboxEvents } from '@/db/infrastructure/tables';
+import { financialTransactions, financialLedgerEntries, accountBalances } from '@/db/finance/tables';
+import { Result } from '@/shared/kernel/Result';
+import { runAllMigrationsLibSql } from '../test_helpers/runMigrations';
 
 describe('Finance Core E2E Certification (Real DB)', () => {
   let sqlite: any;

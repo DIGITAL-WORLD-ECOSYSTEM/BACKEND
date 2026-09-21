@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { DrizzleFinanceRepository } from '../src/infrastructure/repositories/DrizzleFinanceRepository';
-import { DrizzleAuthenticationRepositoryAdapter } from '../src/infrastructure/repositories/DrizzleAuthenticationRepositoryAdapter';
-import { DrizzleAuthTransactionRepository } from '../src/infrastructure/repositories/DrizzleAuthTransactionRepository';
-import { AuthenticationTransaction } from '../src/domains/identity/entities/AuthenticationTransaction';
+import { DrizzleFinanceRepository } from '@/infrastructure/repositories/DrizzleFinanceRepository';
+import { DrizzleAuthenticationRepositoryAdapter } from '@/infrastructure/repositories/DrizzleAuthenticationRepositoryAdapter';
+import { DrizzleAuthTransactionRepository } from '@/infrastructure/repositories/DrizzleAuthTransactionRepository';
+import { AuthenticationTransaction } from '@/domains/identity/entities/AuthenticationTransaction';
 
 describe('Concurrency & Double-Spend Forensic Stress Suite', () => {
   describe('Finance Domain - OCC Balance & Double-Spend Protection', () => {

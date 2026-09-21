@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { DrizzleUnitOfWork } from './DrizzleUnitOfWork';
-import { Result } from '../../shared/kernel/Result';
+import { DrizzleUnitOfWork } from '@/infrastructure/repositories/DrizzleUnitOfWork';
+import { Result } from '@/shared/kernel/Result';
 
 describe('DrizzleUnitOfWork', () => {
   it('should COMMIT when the callback returns a success Result', async () => {

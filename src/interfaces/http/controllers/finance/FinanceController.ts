@@ -2,6 +2,8 @@ import { Context } from 'hono';
 import { GetTreasuryBalanceUseCase } from '../../../../application/finance/use-cases/GetTreasuryBalanceUseCase';
 import { RecordTreasuryTransactionUseCase } from '../../../../application/finance/use-cases/RecordTreasuryTransactionUseCase';
 import { RecordTransferUseCase } from '../../../../application/finance/use-cases/RecordTransferUseCase';
+import { GetExternalTransactionsUseCase } from '../../../../application/finance/use-cases/GetExternalTransactionsUseCase';
+import { GetConsolidatedFinancialReportUseCase } from '../../../../application/finance/use-cases/GetConsolidatedFinancialReportUseCase';
 import { IFinanceRepository } from '../../../../application/ports/output/IFinanceRepository';
 import { FinancialError } from '../../../../domains/finance/errors/FinancialError';
 
@@ -10,7 +12,9 @@ export class FinanceController {
     private readonly getTreasuryBalanceUseCase: GetTreasuryBalanceUseCase,
     private readonly recordTxUseCase: RecordTreasuryTransactionUseCase,
     private readonly financeRepo: IFinanceRepository,
-    private readonly recordTransferUseCase?: RecordTransferUseCase
+    private readonly recordTransferUseCase?: RecordTransferUseCase,
+    private readonly getExternalTransactionsUseCase?: GetExternalTransactionsUseCase,
+    private readonly getConsolidatedReportUseCase?: GetConsolidatedFinancialReportUseCase
   ) {}
 
   async getBalance(c: Context): Promise<Response> {
@@ -320,4 +324,78 @@ export class FinanceController {
       }, 500);
     }
   }
+
+  async getExternalTransactions(c: Context): Promise<Response> {
+    try {
+      if (!this.getExternalTransactionsUseCase) {
+        return c.json({ success: false, message: 'Serviço de transações externas não configurado' }, 500);
+      }
+
+      const limitParam = c.req.query('limit');
+      const cursorParam = c.req.query('cursor');
+      const providerCode = c.req.query('provider');
+      const directionParam = c.req.query('direction');
+      const startDate = c.req.query('startDate');
+      const endDate = c.req.query('endDate');
+      const reconStatus = c.req.query('reconciliationStatus');
+      const includePayloadParam = c.req.query('includePayload');
+
+      const limit = limitParam && /^[1-9]\d*$/.test(limitParam) ? Number(limitParam) : 50;
+      const cursor = cursorParam && /^[1-9]\d*$/.test(cursorParam) ? Number(cursorParam) : undefined;
+      const direction =
+        directionParam && ['credit', 'debit'].includes(directionParam.toLowerCase())
+          ? (directionParam.toLowerCase() as 'credit' | 'debit')
+          : undefined;
+      const includePayload = includePayloadParam === 'true' || includePayloadParam === '1';
+
+      const result = await this.getExternalTransactionsUseCase.execute({
+        limit,
+        cursor,
+        providerCode,
+        direction,
+        startDate,
+        endDate,
+        reconciliationStatus: reconStatus,
+        includePayload,
+      });
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, data: result.getValue() });
+    } catch (err: unknown) {
+      const requestId = c.req.header('x-request-id') || crypto.randomUUID();
+      console.error(`[FinanceController] getExternalTransactions Internal Error (requestId: ${requestId}):`, err);
+      return c.json({
+        success: false,
+        message: 'Erro interno ao consultar transações externas',
+        requestId,
+      }, 500);
+    }
+  }
+
+  async getConsolidatedReport(c: Context): Promise<Response> {
+    try {
+      if (!this.getConsolidatedReportUseCase) {
+        return c.json({ success: false, message: 'Serviço de relatório financeiro não configurado' }, 500);
+      }
+
+      const result = await this.getConsolidatedReportUseCase.execute();
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, data: result.getValue() });
+    } catch (err: unknown) {
+      const requestId = c.req.header('x-request-id') || crypto.randomUUID();
+      console.error(`[FinanceController] getConsolidatedReport Internal Error (requestId: ${requestId}):`, err);
+      return c.json({
+        success: false,
+        message: 'Erro interno ao gerar relatório financeiro consolidado',
+        requestId,
+      }, 500);
+    }
+  }
 }
+

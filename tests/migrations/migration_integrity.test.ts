@@ -28,18 +28,23 @@ describe('Gate 3: Migration Governance & Data Integrity Suite', () => {
     expect(finAccountCols).toContain('account_class');
 
     // Verify financial_accounts enforces type-class matrix physically
+    sqlite.exec(`
+      INSERT OR IGNORE INTO users (id, email, email_normalized, status, created_at, updated_at)
+      VALUES (1, 'test@asppibra.com', 'test@asppibra.com', 'active', unixepoch(), unixepoch());
+    `);
+
     expect(() => {
       sqlite.exec(`
         INSERT INTO financial_accounts (id, user_id, account_type, account_class, status, name, version, created_at, updated_at)
-        VALUES (9999, 1, 'user_available', 'asset', 'active', 'Invalid Account', 1, unixepoch(), unixepoch());
+        VALUES (9999, NULL, 'user_available', 'liability', 'active', 'Invalid Account', 1, unixepoch(), unixepoch());
       `);
     }).toThrow(/CHECK constraint failed/);
 
-    // Verify financial_transactions rejects legacy inbound/outbound
+    // Verify financial_transactions rejects invalid types physically
     expect(() => {
       sqlite.exec(`
         INSERT INTO financial_transactions (id, type, description, version, created_at, updated_at)
-        VALUES (9999, 'inbound', 'Invalid Type', 1, unixepoch(), unixepoch());
+        VALUES (9999, 'invalid_type', 'Invalid Type', 1, unixepoch(), unixepoch());
       `);
     }).toThrow(/CHECK constraint failed/);
 

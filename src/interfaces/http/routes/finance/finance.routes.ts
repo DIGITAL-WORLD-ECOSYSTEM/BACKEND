@@ -5,6 +5,8 @@ import { DrizzleFinanceRepository } from '../../../../infrastructure/repositorie
 import { GetTreasuryBalanceUseCase } from '../../../../application/finance/use-cases/GetTreasuryBalanceUseCase';
 import { RecordTreasuryTransactionUseCase } from '../../../../application/finance/use-cases/RecordTreasuryTransactionUseCase';
 import { RecordTransferUseCase } from '../../../../application/finance/use-cases/RecordTransferUseCase';
+import { GetExternalTransactionsUseCase } from '../../../../application/finance/use-cases/GetExternalTransactionsUseCase';
+import { GetConsolidatedFinancialReportUseCase } from '../../../../application/finance/use-cases/GetConsolidatedFinancialReportUseCase';
 import { FinanceController } from '../../controllers/finance/FinanceController';
 import { sessionGuard, requireAal } from '../../middlewares/session_guard';
 import { verifyPermission } from '../../middlewares/rbac';
@@ -26,7 +28,17 @@ function buildFinanceDeps(db: Database) {
   const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
   const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
   const recordTransferUseCase = new RecordTransferUseCase(uow);
-  return { uow, financeRepo, getBalanceUseCase, recordTxUseCase, recordTransferUseCase };
+  const getExternalTransactionsUseCase = new GetExternalTransactionsUseCase(db);
+  const getConsolidatedReportUseCase = new GetConsolidatedFinancialReportUseCase(db);
+  return {
+    uow,
+    financeRepo,
+    getBalanceUseCase,
+    recordTxUseCase,
+    recordTransferUseCase,
+    getExternalTransactionsUseCase,
+    getConsolidatedReportUseCase,
+  };
 }
 
 financeRouter.get(
@@ -138,3 +150,44 @@ financeRouter.get(
     return controller.listTransactions(c);
   }
 );
+
+// Staging External Transactions (Read-Only)
+financeRouter.get(
+  '/external-transactions',
+  requireAal(2),
+  verifyPermission('finance.treasury.read'),
+  async (c) => {
+    const db = c.get('db');
+    const deps = buildFinanceDeps(db);
+    const controller = new FinanceController(
+      deps.getBalanceUseCase,
+      deps.recordTxUseCase,
+      deps.financeRepo,
+      deps.recordTransferUseCase,
+      deps.getExternalTransactionsUseCase,
+      deps.getConsolidatedReportUseCase
+    );
+    return controller.getExternalTransactions(c);
+  }
+);
+
+// Consolidated Financial Report (Read-Only)
+financeRouter.get(
+  '/reports/consolidated',
+  requireAal(2),
+  verifyPermission('finance.treasury.read'),
+  async (c) => {
+    const db = c.get('db');
+    const deps = buildFinanceDeps(db);
+    const controller = new FinanceController(
+      deps.getBalanceUseCase,
+      deps.recordTxUseCase,
+      deps.financeRepo,
+      deps.recordTransferUseCase,
+      deps.getExternalTransactionsUseCase,
+      deps.getConsolidatedReportUseCase
+    );
+    return controller.getConsolidatedReport(c);
+  }
+);
+
