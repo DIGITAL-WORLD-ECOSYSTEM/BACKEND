@@ -25,10 +25,12 @@ import { DrizzleUserRepositoryAdapter } from '../../../infrastructure/repositori
 
 export const sessionGuard = async (c: Context, next: Next) => {
   const authHeader = c.req.header('Authorization');
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.substring(7)
+    : (c.req.query('token') || null);
 
   if (!token) {
-    return c.json({ success: false, message: 'Authentication required (Bearer token missing).' }, 401);
+    return c.json({ success: false, message: 'Authentication required (Bearer token or ?token= query param missing).' }, 401);
   }
 
   const secret = c.env.JWT_SECRET;
