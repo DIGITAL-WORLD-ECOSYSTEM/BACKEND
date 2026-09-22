@@ -1,7 +1,7 @@
 # Arquitetura Técnica, Diagrama Canônico e Checklist de Estabilização — Finance Core
 
 > **Classificação Oficial do Documento:**  
-> **ARQUITETURA DE ESTADO HOMOLOGADO (PÓS-CARGA & LEITURA EM PRODUÇÃO) + CHECKLIST AUDITÁVEL DE ESTABILIZAÇÃO + ALVO DE RECONCILIAÇÃO**  
+> **ARQUITETURA DE ESTADO HOMOLOGADO (PÓS-CARGA & LEITURA EM PRODUÇÃO) + CHECKLIST AUDITÁVEL DE ESTABILIZAÇÃO + MODELO RELACIONAL ERD + ALVO DE RECONCILIAÇÃO**  
 > **Única Fonte de Verdade Técnica:** Estado físico verificado do repositório `/home/sandro/Área de trabalho/BackEnd` e do banco Cloudflare D1 `w3-db`.  
 > **Data de Atualização:** 22 de Setembro de 2026.
 
@@ -156,7 +156,171 @@ flowchart TD
 
 ---
 
-# BLOCO B — ORIGEM EXTERNA / STAGING HISTÓRICO (HOMOLOGADO)
+# BLOCO B — MODELO RELACIONAL DE DADOS (ERD): AS DUAS VISÕES
+
+O modelo físico do banco de dados no Cloudflare D1 (`w3-db`) opera com separação estrita entre a **Visão 1 (Staging de Extratos Bancários)** e a **Visão 2 (Core Ledger de Partidas Dobradas)**:
+
+```mermaid
+erDiagram
+    %% VISÃO 1: ORIGEM EXTERNA (STAGING DE EXTRATOS HOMOLOGADA NO D1)
+    FIAT_PROVIDERS ||--o{ FIAT_EXTERNAL_TRANSACTIONS : "origina 2.225 registros"
+    FIAT_PROVIDERS ||--o{ FIAT_ACCOUNTS : "mantém contas"
+    
+    FIAT_EXTERNAL_TRANSACTIONS {
+        integer id PK "1 a 2.225 em produção"
+        integer provider_id FK "1: Bradesco, 2: Cora, 3: Inter, 4: Caixa"
+        integer fiat_account_id FK "Conta associada (NULL na staging)"
+        text external_transaction_id "ID do Banco ou Linha"
+        text raw_amount "Valor literal original"
+        text amount_base_units "Centavos uint256 canônicos"
+        text direction "credit ou debit"
+        text raw_description "Descrição original do extrato"
+        integer bank_timestamp "Data da operação em ms"
+        text source_file "Nome do arquivo original"
+        text source_file_hash "SHA-256 do arquivo original"
+        text row_fingerprint UK "SHA-256 idempotente da linha"
+        text raw_payload "JSON com linha bruta original"
+        text status "completed"
+        text reconciliation_status "unmatched (100% dos 2.225 registros)"
+        integer financial_transaction_id FK "NULL em 100% dos registros"
+    }
+
+    FIAT_PROVIDERS {
+        integer id PK "1, 2, 3, 4"
+        text code UK "BRADESCO, CORA, INTER, CAIXA"
+        text name "Nome da Instituição Financeira"
+        text type "bank"
+        text status "active"
+    }
+
+    FIAT_ACCOUNTS {
+        integer id PK "Identificador da conta bancária"
+        integer user_id FK "Titular"
+        integer provider_id FK "Instituição bancária"
+        text external_account_id "Número da conta"
+        text account_type "checking ou payment"
+        text status "active"
+    }
+
+    %% CONEXÃO DE CONCILIAÇÃO (ALVO FUTURO)
+    FIAT_EXTERNAL_TRANSACTIONS }o--o| FINANCIAL_TRANSACTIONS : "conciliação contábil futura"
+
+    %% VISÃO 2: FINANCE CORE (LEDGER DE PARTIDAS DOBRADAS)
+    USERS ||--o{ FINANCIAL_ACCOUNTS : "titularidade"
+    FINANCIAL_ACCOUNTS ||--o{ ACCOUNT_BALANCES : "mantém saldos OCC"
+    FINANCIAL_ACCOUNTS ||--o{ BALANCE_HOLDS : "mantém retenções"
+    FINANCIAL_ACCOUNTS ||--o{ FINANCIAL_LEDGER_ENTRIES : "movimentada em"
+    FINANCIAL_ASSETS ||--o{ ACCOUNT_BALANCES : "denominado em"
+    FINANCIAL_ASSETS ||--o{ FINANCIAL_LEDGER_ENTRIES : "denominado em"
+    FINANCIAL_TRANSACTIONS ||--|{ FINANCIAL_LEDGER_ENTRIES : "possui lançamentos (débito + crédito)"
+
+    FINANCIAL_ACCOUNTS {
+        integer id PK "Identificador da conta"
+        integer user_id FK "NULL para contas corporativas"
+        text account_type "treasury, operating, user, fees"
+        text account_class "asset, liability, equity, revenue, expense"
+        text status "active, frozen, closed"
+        text name "Nome descritivo"
+        integer version "Controle OCC de concorrência"
+    }
+
+    ACCOUNT_BALANCES {
+        integer id PK "Identificador do saldo"
+        integer account_id FK "Conta financeira"
+        integer asset_id FK "Ativo (1: BRL)"
+        text available_base_units "Saldo disponível (uint256 string)"
+        text locked_base_units "Saldo retido (uint256 string)"
+        integer version "Controle OCC de concorrência"
+    }
+
+    BALANCE_HOLDS {
+        integer id PK "Identificador da retenção"
+        integer account_id FK "Conta financeira"
+        integer asset_id FK "Ativo BRL"
+        text amount_base_units "Valor retido"
+        text status "active, released, consumed"
+    }
+
+    FINANCIAL_TRANSACTIONS {
+        integer id PK "1 registro Genesis em produção"
+        integer user_id FK "Usuário associado"
+        integer actor_user_id "Ator autenticado"
+        integer authorized_by_user_id "Autorizador (AAL2)"
+        text type "deposit, transfer, withdrawal, adjustment"
+        text category "other"
+        text status "completed"
+        text description "Histórico contábil"
+        integer reversal_of_transaction_id FK "Referência a estorno"
+        integer refund_of_transaction_id FK "Referência a reembolso"
+        text source_type "Tipo de origem"
+        text source_id "ID de origem"
+        text correlation_id "Rastreamento ponta a ponta"
+    }
+
+    FINANCIAL_LEDGER_ENTRIES {
+        integer id PK "1 lançamento Genesis em produção"
+        integer transaction_id FK "Transação mãe"
+        integer account_id FK "Conta afetada"
+        integer asset_id FK "Ativo BRL (id 1)"
+        text direction "credit ou debit"
+        text amount_base_units "100000 centavos (R$ 1.000,00)"
+        integer created_at "Timestamp indelével"
+    }
+
+    FINANCIAL_ASSETS {
+        integer id PK "Identificador do ativo"
+        text code UK "BRL, USD, BTC, ETH"
+        text symbol "R$, US$, ₿, ETH"
+        integer decimals "2 para Fiat, 8 para BTC, 18 para ETH"
+        text type "fiat ou crypto"
+        text status "active"
+    }
+
+    FINANCIAL_FEES {
+        integer id PK "Identificador da tarifa"
+        integer transaction_id FK "Transação associada"
+        text fee_type "platform, network, exchange"
+        text amount_base_units "Valor da tarifa"
+    }
+
+    EXCHANGE_RATES {
+        integer id PK "Identificador da taxa"
+        integer from_asset_id FK "Ativo origem"
+        integer to_asset_id FK "Ativo destino"
+        text rate "Taxa de conversão uint256"
+        integer timestamp "Data da cotação"
+    }
+
+    ASSET_CONVERSIONS {
+        integer id PK "Identificador da conversão"
+        integer from_asset_id FK "Ativo de saída"
+        integer to_asset_id FK "Ativo de entrada"
+        text from_amount "Valor de saída"
+        text to_amount "Valor de entrada"
+        text fee_amount "Tarifa aplicada"
+    }
+
+    IDEMPOTENCY_KEYS {
+        text key PK "Chave única da requisição"
+        integer user_id FK "Usuário"
+        text request_hash "SHA-256 do payload"
+        text response_body "Resposta serializada"
+        integer expires_at "Timestamp de expiração"
+    }
+
+    RECONCILIATION_RECORDS {
+        integer id PK "Identificador do matching"
+        integer external_transaction_id FK "Transação de staging"
+        integer financial_transaction_id FK "Transação do ledger"
+        text match_type "exact, fuzzy, manual"
+        text status "matched, discrepancy, rejected"
+        text notes "Justificativa de auditoria"
+    }
+```
+
+---
+
+# BLOCO C — ORIGEM EXTERNA / STAGING HISTÓRICO (HOMOLOGADO)
 
 Área dedicada aos extratos bancários brutos, pipeline de ingestão e garantias forenses contra duplicidade:
 
@@ -196,13 +360,25 @@ flowchart TD
     Insert --> StageTable
 ```
 
+### Fotografia Financeira Certificada em Produção (Gate de Leitura)
+
+| Provedor | Código | ID Remoto | Condição da Fonte | Registros | Créditos | Débitos | Resultado Líquido | Volume Bruto |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Bradesco** | `BRADESCO` | 1 | `completa` | 472 | R$ 212.697,38 | R$ 0,00 | R$ 212.697,38 | R$ 212.697,38 |
+| **Cora SCFI** | `CORA` | 2 | `completa` | 92 | R$ 42.056,12 | R$ 0,00 | R$ 42.056,12 | R$ 42.056,12 |
+| **Banco Inter** | `INTER` | 3 | `completa` | 370 | R$ 106.301,45 | R$ 0,00 | R$ 106.301,45 | R$ 106.301,45 |
+| **Caixa Econômica** | `CAIXA` | 4 | `mista` | 1.291 | R$ 107.472,25 | R$ 109.181,00 | -R$ 1.708,75 | R$ 216.653,25 |
+| *— Caixa Período A (2016–2020)* | `CAIXA` | 4 | `incompleta (33 quebras)` | 141 | R$ 2.525,00 | R$ 4.233,75 | -R$ 1.708,75 | R$ 6.758,75 |
+| *— Caixa Período B (2021–2026)* | `CAIXA` | 4 | `cadeia_continua (0 quebras)` | 1.150 | R$ 104.947,25 | R$ 104.947,25 | R$ 0,00 | R$ 209.894,50 |
+| **TOTAL GERAL** | — | — | — | **2.225** | **R$ 468.527,20** | **R$ 109.181,00** | **R$ 359.346,20** | **R$ 577.708,20** |
+
 > [!IMPORTANT]
 > **Distinção Contábil Obrigatória:**  
 > O resultado líquido apurado no staging (**R$ 359.346,20**) e o volume bruto movimentado (**R$ 577.708,20**) representam **estatísticas dos extratos de origem**, e **NÃO** devem ser confundidos com saldo patrimonial, saldo bancário da entidade ou resultado contábil do ledger corporativo.
 
 ---
 
-# BLOCO C — LEITURA E RELATÓRIO FINANCEIRO (HOMOLOGADO EM PRODUÇÃO)
+# BLOCO D — LEITURA E RELATÓRIO FINANCEIRO (HOMOLOGADO EM PRODUÇÃO)
 
 Os endpoints de auditoria e leitura da base real foram construídos, auditados e homologados diretamente no Cloudflare Workers e D1:
 
@@ -246,7 +422,7 @@ sequenceDiagram
 
 ---
 
-# BLOCO D — RECONCILIAÇÃO CONTÁBIL (PRÓXIMA ETAPA)
+# BLOCO E — RECONCILIAÇÃO CONTÁBIL (PRÓXIMA ETAPA)
 
 > [!WARNING]
 > **RECONCILIAÇÃO $\neq$ LANÇAMENTO AUTOMÁTICO**  
@@ -294,7 +470,7 @@ flowchart TD
 
 ---
 
-# BLOCO E — POSTING CONTÁBIL & INVARIANTES DE DOMÍNIO
+# BLOCO F — POSTING CONTÁBIL & INVARIANTES DE DOMÍNIO
 
 Fluxo contábil formal executado quando uma transação legítima é gravada no livro-razão (*Core Ledger*):
 
@@ -346,7 +522,7 @@ flowchart TD
 
 ---
 
-# BLOCO F — RESSALVAS DE PRODUÇÃO & PENDÊNCIAS DE ESTABILIZAÇÃO
+# BLOCO G — RESSALVAS DE PRODUÇÃO & PENDÊNCIAS DE ESTABILIZAÇÃO
 
 Mapeamento transparente de todas as limitações técnicas e pendências físicas verificadas no código atual:
 
@@ -360,7 +536,55 @@ Mapeamento transparente de todas as limitações técnicas e pendências física
 
 ---
 
-# BLOCO G — CHECKLIST EXAUSTIVO DE ESTABILIZAÇÃO
+# BLOCO H — RASTREABILIDADE FÍSICA DOS 39 ARQUIVOS DO FINANCE CORE
+
+Mapeamento exaustivo de todos os arquivos físicos que compõem o subsistema:
+
+| # | Camada | Arquivo Físico no Repositório | Classificação Atual | Status / Papel Operacional |
+| :---: | :--- | :--- | :---: | :--- |
+| **1** | Domain / Contracts | `src/domains/finance/contracts/FinancialLedgerEntryRecord.ts` | ✅ `[VALIDADO]` | Contrato imutável de entrada contábil. |
+| **2** | Domain / Entities | `src/domains/finance/entities/LedgerTransaction.ts` | ✅ `[VALIDADO]` | Entidade raiz de transação contábil. |
+| **3** | Domain / Errors | `src/domains/finance/errors/FinancialError.ts` | ✅ `[VALIDADO]` | Erros base do domínio financeiro. |
+| **4** | Domain / Errors | `src/domains/finance/errors/LedgerImbalanceError.ts` | ✅ `[VALIDADO]` | Erro de violação de partidas dobradas. |
+| **5** | Domain / Policies | `src/domains/finance/policies/AccountClassPolicy.ts` | ✅ `[VALIDADO]` | Matriz de classes contábeis (Asset, Liability, etc). |
+| **6** | Domain / Policies | `src/domains/finance/policies/AccountingEntryPolicy.ts` | ✅ `[VALIDADO]` | Regra estrita de partidas dobradas ($\sum D = \sum C$). |
+| **7** | Domain / Policies | `src/domains/finance/policies/AccountStatusPolicy.ts` | ✅ `[VALIDADO]` | Bloqueio de contas inativas/suspensas. |
+| **8** | Domain / Policies | `src/domains/finance/policies/AssetStatusPolicy.ts` | ✅ `[VALIDADO]` | Bloqueio de ativos congelados. |
+| **9** | Domain / Services | `src/domains/finance/services/FinancialTransactionStateMachine.ts` | ✅ `[VALIDADO]` | Máquina de estados finita DOD-12. |
+| **10** | Domain / ValueObjects | `src/domains/finance/value-objects/BaseUnits.ts` | ✅ `[VALIDADO]` | Centavos inteiros canônicos sem float. |
+| **11** | Domain / ValueObjects | `src/domains/finance/value-objects/Money256.ts` | ✅ `[VALIDADO]` | Aritmética arbitrária uint256 BigInt. |
+| **12** | Application / Services | `src/application/finance/services/CanonicalRequestHashService.ts` | ✅ `[VALIDADO]` | Hash determinístico para idempotência. |
+| **13** | Application / Services | `src/application/finance/services/FinancialTransactionOrchestrator.ts` | 🟡 `[PENDÊNCIA]` | Orquestrador (falta propagar colunas 0011). |
+| **14** | Application / UseCases | `src/application/finance/use-cases/GetExternalTransactionsUseCase.ts` | 🔵 `[PRODUÇÃO]` | Consulta paginada keyset + BigInt summary. |
+| **15** | Application / UseCases | `src/application/finance/use-cases/GetConsolidatedFinancialReportUseCase.ts` | 🔵 `[PRODUÇÃO]` | Relatório consolidado discriminado oficial. |
+| **16** | Application / UseCases | `src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts` | ✅ `[VALIDADO]` | Consulta de saldos materializados OCC. |
+| **17** | Application / UseCases | `src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts` | ✅ `[VALIDADO]` | Lançamento no ledger corporativo. |
+| **18** | Application / UseCases | `src/application/finance/use-cases/RecordDepositUseCase.ts` | ✅ `[VALIDADO]` | Aporte idempotente de tesouraria. |
+| **19** | Application / UseCases | `src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts` | ✅ `[VALIDADO]` | Lançamento genérico de partidas dobradas. |
+| **20** | Application / UseCases | `src/application/finance/use-cases/ReverseTransactionUseCase.ts` | ✅ `[VALIDADO]` | Estorno auditado compensatório. |
+| **21** | Application / UseCases | `src/application/finance/use-cases/RepairFinanceUseCase.ts` | ✅ `[VALIDADO]` | Reparo e saneamento contábil. |
+| **22** | Application / UseCases | `src/application/finance/use-cases/RecordTransferUseCase.ts` | 🟡 `[PENDÊNCIA]` | Transferência P2P (requer isolamento de custódia). |
+| **23** | Application / Ports | `src/application/ports/output/IFinanceRepository.ts` | ✅ `[VALIDADO]` | Interface de persistência contábil. |
+| **24** | Application / Ports | `src/application/ports/output/IUnitOfWork.ts` | ✅ `[VALIDADO]` | Interface de transação atômica. |
+| **25** | Application / Ports | `src/application/ports/output/IOutboxRepository.ts` | ⚪ `[COMPARTILHADO]`| Interface outbox compartilhada. |
+| **26** | Infrastructure / Repos | `src/infrastructure/repositories/DrizzleFinanceRepository.ts` | 🟡 `[PENDÊNCIA]` | Repositório ORM Drizzle (falta colunas 0011). |
+| **27** | Infrastructure / Repos | `src/infrastructure/repositories/DrizzleUnitOfWork.ts` | 🟡 `[PENDÊNCIA]` | UoW (opera no D1; rollback pleno requer DO). |
+| **28** | Infrastructure / Repos | `src/infrastructure/repositories/DrizzleOutboxRepository.ts` | ✅ `[VALIDADO]` | Persistência transacional de eventos outbox. |
+| **29** | Infrastructure / Services | `src/infrastructure/services/FinancialHistoricalImportService.ts` | 🔵 `[PRODUÇÃO]` | Importador XLSX/PDF (741 linhas, 2.225 reg). |
+| **30** | Infrastructure / Services | `src/infrastructure/services/FinanceBootstrapService.ts` | 🟡 `[PENDÊNCIA]` | Bootstrap de contas (isolado em produção). |
+| **31** | Infrastructure / Services | `src/infrastructure/services/EventInboxService.ts` | ✅ `[VALIDADO]` | Ingestão e controle de eventos de entrada. |
+| **32** | HTTP / Controllers | `src/interfaces/http/controllers/finance/FinanceController.ts` | 🔵 `[PRODUÇÃO]` | Controlador HTTP com handlers de leitura e escrita. |
+| **33** | HTTP / Routes | `src/interfaces/http/routes/finance/finance.routes.ts` | 🔵 `[PRODUÇÃO]` | Rotas protegidas por sessionGuard, AAL2 e RBAC. |
+| **34** | Database / Schema | `src/db/finance/tables.ts` | 🔵 `[PRODUÇÃO]` | 16 tabelas Drizzle e constraints contábeis. |
+| **35** | Database / Relations | `src/db/finance/relations.ts` | 🔵 `[PRODUÇÃO]` | Relacionamentos e joins tipados no Drizzle. |
+| **36** | Database / Migrations | `migrations/0009_finance_schema_alignment.sql` | 🔵 `[PRODUÇÃO]` | Migração de alinhamento e staging de extratos. |
+| **37** | Database / Migrations | `migrations/0010_finance_fixes_and_rates_alignment.sql` | 🔵 `[PRODUÇÃO]` | Migração de taxas de conversão canônicas. |
+| **38** | Database / Migrations | `migrations/0011_treasury_singleton_and_forensic_audit.sql` | 🔵 `[PRODUÇÃO]` | Migração de auditoria forense e tesouraria singleton. |
+| **39** | Tests / Suite | `tests/finance/` (24 suítes automatizadas) | ✅ `[VALIDADO]` | 100% dos testes organizados fora de `src/`. |
+
+---
+
+# BLOCO I — CHECKLIST EXAUSTIVO DE ESTABILIZAÇÃO
 
 Checklist de controle de qualidade para validação e auditoria contínua do módulo:
 
@@ -452,7 +676,7 @@ Checklist de controle de qualidade para validação e auditoria contínua do mó
 
 ---
 
-# BLOCO H — QUADRO DE STATUS GLOBAL DE ESTABILIZAÇÃO
+# BLOCO J — QUADRO DE STATUS GLOBAL DE ESTABILIZAÇÃO
 
 ```text
 ========================================================================================
@@ -479,7 +703,7 @@ Checklist de controle de qualidade para validação e auditoria contínua do mó
  • P4: Trava distribuída de lease expiry no EventInboxService
  • Motor Canônico de Reconciliação Contábil (matching dos 2.225 registros unmatched)
 
- [ ZONA 3: ALVO FUTURO (FORA DO ESCOPO ATUAL) ] ⏳
+ [ ZONA 3: ALVO FUTURO (FORA DO ESCOPO ATUAL) ] ⏳ 
  --------------------------------------------------------------------------------------
  • Integração direta via APIs bancárias (Open Finance / BaaS)
  • Sincronização automática de extratos em tempo real
