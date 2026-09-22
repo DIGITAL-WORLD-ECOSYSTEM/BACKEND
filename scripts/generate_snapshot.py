@@ -22,6 +22,7 @@ IGNORE_DIRS = {
     ".cache",
     "__pycache__",
     "scratch",
+    ".finance-gate0",
 }
 
 IGNORE_FILE_PATTERNS = {
