@@ -3,6 +3,19 @@ import {
   parsePositiveSafeIntegerId,
 } from '../value-objects/Money256';
 
+import {
+  MAX_UINT256,
+  MAX_LEDGER_ENTRIES,
+  MAX_LEDGER_DESCRIPTION_LENGTH,
+} from '../constants/FinancialLimits';
+
+import {
+  type LedgerEntryDirection,
+  isLedgerEntryDirection,
+} from '../value-objects/BaseUnits';
+
+import { FinancialTextPolicy } from './FinancialTextPolicy';
+
 import { FinancialError } from '../errors/FinancialError';
 
 import type { FinancialLedgerEntryRecord } from '../contracts/FinancialLedgerEntryRecord';
@@ -12,14 +25,15 @@ import type {
   FinancialTransactionCategory,
 } from '../entities/LedgerTransaction';
 
-export type LedgerEntryDirection = 'debit' | 'credit';
+export { type LedgerEntryDirection, isLedgerEntryDirection };
+export { MAX_LEDGER_DESCRIPTION_LENGTH };
 
 export interface RawLedgerEntrySpec {
-  accountId: number;
-  assetId: number;
-  entryType: LedgerEntryDirection;
-  amount: Money256;
-  description: string;
+  readonly accountId: number;
+  readonly assetId: number;
+  readonly entryType: LedgerEntryDirection;
+  readonly amount: Money256;
+  readonly description: string;
 }
 
 export interface AccountingContext {
@@ -35,21 +49,16 @@ export interface AccountingContext {
 }
 
 export class AccountingMatrixValidationError extends FinancialError {
-  constructor(message: string) {
+  constructor(message: string, details?: Record<string, unknown>) {
     super(
       message,
       'ACCOUNTING_MATRIX_VALIDATION_FAILED',
       false,
-      422
+      details
     );
   }
 }
 
-const MAX_UINT256 = (1n << 256n) - 1n;
-
-const MAX_LEDGER_ENTRIES = 100;
-
-const MAX_DESCRIPTION_LENGTH = 2000;
 
 export class AccountingEntryPolicy {
   /**
@@ -776,15 +785,15 @@ export class AccountingEntryPolicy {
    * pertence à ReversalPolicy / State Machine / Orchestrator.
    */
   public static createReversalEntries(
-    originalEntries: RawLedgerEntrySpec[],
+    originalEntries: ReadonlyArray<RawLedgerEntrySpec> | RawLedgerEntrySpec[],
     reason: string
-  ): RawLedgerEntrySpec[] {
+  ): ReadonlyArray<RawLedgerEntrySpec> {
     if (
       !Array.isArray(originalEntries) ||
-      originalEntries.length === 0
+      originalEntries.length < 2
     ) {
       throw new AccountingMatrixValidationError(
-        'Não há lançamentos originais para estornar.'
+        'Estorno exige ao menos 2 lançamentos originais.'
       );
     }
 
@@ -803,24 +812,27 @@ export class AccountingEntryPolicy {
       );
 
     const reversalEntries =
-      originalEntries.map((orig) => {
+      originalEntries.map((orig, index) => {
+        if (!orig || typeof orig !== 'object') {
+          throw new AccountingMatrixValidationError(
+            `Lançamento original na posição ${index} é inválido.`
+          );
+        }
+
         AccountingEntryPolicy.assertRawEntryShape(
           orig
         );
 
-        let entryType: LedgerEntryDirection;
+        const rawDirection = (orig as any).entryType ?? (orig as any).direction;
 
-        if (orig.entryType === 'debit') {
-          entryType = 'credit';
-        } else if (orig.entryType === 'credit') {
-          entryType = 'debit';
-        } else {
+        if (!isLedgerEntryDirection(rawDirection)) {
           throw new AccountingMatrixValidationError(
-            `Lançamento original possui entryType inválido: ${String(
-              orig.entryType
-            )}.`
+            `Lançamento original na posição ${index} possui entryType inválido.`
           );
         }
+
+        const entryType: LedgerEntryDirection =
+          rawDirection === 'debit' ? 'credit' : 'debit';
 
         const accountId =
           parsePositiveSafeIntegerId(
@@ -845,36 +857,94 @@ export class AccountingEntryPolicy {
           );
         }
 
-        const description =
-          AccountingEntryPolicy.normalizeDescription(
+        const reversalDescription =
+          FinancialTextPolicy.formatReversalDescription(
+            normalizedReason,
             orig.description
           );
 
-        return {
+        return AccountingEntryPolicy.createEntry({
           accountId,
           assetId,
           entryType,
           amount,
-          description:
-            `Reversal (${normalizedReason}): ${description}`,
-        };
+          description: reversalDescription,
+        });
       });
 
     AccountingEntryPolicy.validateEntriesBalance(
       reversalEntries
     );
 
-    return reversalEntries;
+    return Object.freeze(reversalEntries);
+  }
+
+  /**
+   * Saldo de abertura para contas com natureza devedora (Normal Debit: Ativos).
+   * Dr Target Account (+Ativo)
+   * Cr Opening Equity Account (+PL Abertura)
+   */
+  public static createAssetOpeningBalanceEntries(params: {
+    targetAccountId: number;
+    openingEquityAccountId: number;
+    amount: Money256;
+    description: string;
+    authorizedByUserId: number;
+  }): RawLedgerEntrySpec[] {
+    return AccountingEntryPolicy.buildOpeningBalanceEntries({
+      ...params,
+      targetDirection: 'debit',
+      equityDirection: 'credit',
+      label: 'Asset',
+    });
+  }
+
+  /**
+   * Saldo de abertura para contas com natureza credora (Normal Credit: Passivos).
+   * Dr Opening Equity Account (-PL Abertura)
+   * Cr Target Account (+Passivo)
+   */
+  public static createLiabilityOpeningBalanceEntries(params: {
+    targetAccountId: number;
+    openingEquityAccountId: number;
+    amount: Money256;
+    description: string;
+    authorizedByUserId: number;
+  }): RawLedgerEntrySpec[] {
+    return AccountingEntryPolicy.buildOpeningBalanceEntries({
+      ...params,
+      targetDirection: 'credit',
+      equityDirection: 'debit',
+      label: 'Liability',
+    });
+  }
+
+  /**
+   * Saldo de abertura para contas com natureza credora (Normal Credit: Patrimônio Líquido).
+   * Dr Opening Equity Account (-PL Abertura)
+   * Cr Target Account (+PL)
+   */
+  public static createEquityOpeningBalanceEntries(params: {
+    targetAccountId: number;
+    openingEquityAccountId: number;
+    amount: Money256;
+    description: string;
+    authorizedByUserId: number;
+  }): RawLedgerEntrySpec[] {
+    return AccountingEntryPolicy.buildOpeningBalanceEntries({
+      ...params,
+      targetDirection: 'credit',
+      equityDirection: 'debit',
+      label: 'Equity',
+    });
   }
 
   /**
    * 12. OPENING BALANCE:
    *
-   * Dr Asset Account
-   * Cr Opening Equity
-   *
-   * A autorização administrativa efetiva deve ser garantida
-   * antes da chamada deste método.
+   * Fábrica despachante com suporte explícito a contas de Ativo (debit),
+   * Passivo (credit) e Patrimônio Líquido (credit).
+   * Assume 'asset' (ou 'debit') por default para retrocompatibilidade total.
    */
   public static createOpeningBalanceEntries(params: {
     targetAccountId: number;
@@ -882,6 +952,55 @@ export class AccountingEntryPolicy {
     amount: Money256;
     description: string;
     authorizedByUserId: number;
+    accountNature?: 'asset' | 'liability' | 'equity';
+    normalBalance?: 'debit' | 'credit';
+  }): RawLedgerEntrySpec[] {
+    if (params.accountNature !== undefined) {
+      if (
+        params.accountNature !== 'asset' &&
+        params.accountNature !== 'liability' &&
+        params.accountNature !== 'equity'
+      ) {
+        throw new AccountingMatrixValidationError(
+          'Natureza contábil inválida para abertura de saldo.'
+        );
+      }
+    }
+
+    if (params.normalBalance !== undefined) {
+      if (params.normalBalance !== 'debit' && params.normalBalance !== 'credit') {
+        throw new AccountingMatrixValidationError(
+          'normalBalance inválido para abertura de saldo.'
+        );
+      }
+    }
+
+    if (params.accountNature === 'liability') {
+      return AccountingEntryPolicy.createLiabilityOpeningBalanceEntries(params);
+    }
+    if (params.accountNature === 'equity') {
+      return AccountingEntryPolicy.createEquityOpeningBalanceEntries(params);
+    }
+    if (params.accountNature === 'asset') {
+      return AccountingEntryPolicy.createAssetOpeningBalanceEntries(params);
+    }
+
+    if (params.normalBalance === 'credit') {
+      return AccountingEntryPolicy.createLiabilityOpeningBalanceEntries(params);
+    }
+
+    return AccountingEntryPolicy.createAssetOpeningBalanceEntries(params);
+  }
+
+  private static buildOpeningBalanceEntries(params: {
+    targetAccountId: number;
+    openingEquityAccountId: number;
+    amount: Money256;
+    description: string;
+    authorizedByUserId: number;
+    targetDirection: LedgerEntryDirection;
+    equityDirection: LedgerEntryDirection;
+    label: string;
   }): RawLedgerEntrySpec[] {
     AccountingEntryPolicy.assertOperationParams(params);
 
@@ -919,22 +1038,28 @@ export class AccountingEntryPolicy {
       'A conta de destino e a conta de opening equity não podem ser idênticas.'
     );
 
+    const targetDesc = `Opening ${params.label} ${
+      params.targetDirection === 'debit' ? 'Debit' : 'Credit'
+    } (AuthUser #${authorizedBy}): ${description}`;
+
+    const equityDesc = `Opening Equity ${
+      params.equityDirection === 'debit' ? 'Debit' : 'Credit'
+    } (AuthUser #${authorizedBy}): ${description}`;
+
     const entries: RawLedgerEntrySpec[] = [
       AccountingEntryPolicy.createEntry({
         accountId: targetAcc,
         assetId: amount.assetId,
-        entryType: 'debit',
+        entryType: params.targetDirection,
         amount,
-        description:
-          `Opening Balance Debit (AuthUser #${authorizedBy}): ${description}`,
+        description: targetDesc,
       }),
       AccountingEntryPolicy.createEntry({
         accountId: equityAcc,
         assetId: amount.assetId,
-        entryType: 'credit',
+        entryType: params.equityDirection,
         amount,
-        description:
-          `Opening Equity Credit (AuthUser #${authorizedBy}): ${description}`,
+        description: equityDesc,
       }),
     ];
 
@@ -954,7 +1079,7 @@ export class AccountingEntryPolicy {
    * RawLedgerEntrySpec.
    */
   public static validateEntriesBalance(
-    entries: RawLedgerEntrySpec[]
+    entries: ReadonlyArray<RawLedgerEntrySpec> | RawLedgerEntrySpec[]
   ): void {
     if (
       !Array.isArray(entries) ||
@@ -1055,9 +1180,7 @@ export class AccountingEntryPolicy {
          * Qualquer valor diferente de debit/credit é inválido.
          */
         throw new AccountingMatrixValidationError(
-          `Tipo de lançamento inválido: ${String(
-            entry.entryType
-          )}.`
+          'Tipo de lançamento inválido.'
         );
       }
     }
@@ -1082,6 +1205,8 @@ export class AccountingEntryPolicy {
         );
       }
     }
+
+    Object.freeze(entries);
   }
 
   /**
@@ -1110,6 +1235,35 @@ export class AccountingEntryPolicy {
       throw new AccountingMatrixValidationError(
         'revenueAccountId é obrigatório para identificar o lançamento de receita de forma segura.'
       );
+    }
+
+    for (const entry of entries) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new AccountingMatrixValidationError(
+          'A transação original contém lançamentos contábeis malformados.'
+        );
+      }
+      try {
+        parsePositiveSafeIntegerId(entry.accountId, 'accountId');
+        parsePositiveSafeIntegerId(entry.assetId, 'assetId');
+      } catch {
+        throw new AccountingMatrixValidationError(
+          'Identificador físico inválido no lançamento contábil.'
+        );
+      }
+      if (entry.direction !== 'debit' && entry.direction !== 'credit') {
+        throw new AccountingMatrixValidationError(
+          'Direção do lançamento contábil original inválida.'
+        );
+      }
+      if (
+        typeof entry.amountBaseUnits !== 'string' ||
+        !/^(0|[1-9]\d*)$/.test(entry.amountBaseUnits)
+      ) {
+        throw new AccountingMatrixValidationError(
+          'O valor-base do lançamento de receita é inválido.'
+        );
+      }
     }
 
     const normalizedAssetId =
@@ -1222,17 +1376,11 @@ export class AccountingEntryPolicy {
     const raw =
       entry as Partial<RawLedgerEntrySpec>;
 
-    if (
-      typeof raw.entryType !== 'string' ||
-      (
-        raw.entryType !== 'debit' &&
-        raw.entryType !== 'credit'
-      )
-    ) {
+    const direction = raw.entryType ?? (raw as any).direction;
+
+    if (!isLedgerEntryDirection(direction)) {
       throw new AccountingMatrixValidationError(
-        `Tipo de lançamento inválido: ${String(
-          raw.entryType
-        )}.`
+        'Tipo de lançamento inválido.'
       );
     }
 
@@ -1338,9 +1486,7 @@ export class AccountingEntryPolicy {
       params.entryType !== 'credit'
     ) {
       throw new AccountingMatrixValidationError(
-        `entryType inválido: ${String(
-          params.entryType
-        )}.`
+        'entryType inválido.'
       );
     }
 
@@ -1359,13 +1505,13 @@ export class AccountingEntryPolicy {
         params.description
       );
 
-    return {
+    return Object.freeze({
       accountId,
       assetId,
       entryType: params.entryType,
       amount,
       description,
-    };
+    });
   }
 
   /**
@@ -1380,38 +1526,16 @@ export class AccountingEntryPolicy {
   private static normalizeDescription(
     value: string
   ): string {
-    if (typeof value !== 'string') {
-      throw new AccountingMatrixValidationError(
-        'A descrição do lançamento contábil deve ser uma string.'
+    try {
+      return FinancialTextPolicy.normalizeSafeDescription(
+        value,
+        MAX_LEDGER_DESCRIPTION_LENGTH,
+        'descrição do lançamento contábil'
       );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Descrição inválida.';
+      throw new AccountingMatrixValidationError(msg);
     }
-
-    const normalized = value
-      .normalize('NFC')
-      .trim();
-
-    if (normalized.length === 0) {
-      throw new AccountingMatrixValidationError(
-        'A descrição do lançamento contábil não pode ser vazia.'
-      );
-    }
-
-    if (
-      normalized.length >
-      MAX_DESCRIPTION_LENGTH
-    ) {
-      throw new AccountingMatrixValidationError(
-        `A descrição do lançamento contábil não pode exceder ${MAX_DESCRIPTION_LENGTH} caracteres.`
-      );
-    }
-
-    if (/[\u0000-\u001F\u007F]/u.test(normalized)) {
-      throw new AccountingMatrixValidationError(
-        'A descrição do lançamento contábil contém caractere de controle inválido.'
-      );
-    }
-
-    return normalized;
   }
 
   /**
@@ -1434,4 +1558,28 @@ export class AccountingEntryPolicy {
       value
     );
   }
+
+  /**
+   * Calcula o delta assinado canônico Delta_normal(entry) de acordo com a classe contábil.
+   *
+   * Asset / Expense:
+   *   debit  => +amount
+   *   credit => -amount
+   *
+   * Liability / Equity / Revenue:
+   *   credit => +amount
+   *   debit  => -amount
+   */
+  public static calculateNormalDelta(
+    accountClass: 'asset' | 'expense' | 'liability' | 'equity' | 'revenue',
+    direction: 'debit' | 'credit',
+    amount: bigint
+  ): bigint {
+    const isDebit = direction === 'debit';
+    if (accountClass === 'asset' || accountClass === 'expense') {
+      return isDebit ? amount : -amount;
+    }
+    return isDebit ? -amount : amount;
+  }
 }
+

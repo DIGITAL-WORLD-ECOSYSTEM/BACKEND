@@ -16,3 +16,23 @@ export interface FinancialLedgerEntryRecord {
   readonly direction: LedgerEntryDirection;
   readonly amountBaseUnits: string;
 }
+
+import { parsePositiveSafeIntegerId } from '../value-objects/Money256';
+
+/**
+ * Validador e normalizador canônico de FinancialLedgerEntryRecord para consumo pelo domínio.
+ * Garante que accountId e assetId satisfaçam a política de inteiros seguros canônicos (parsePositiveSafeIntegerId).
+ */
+export function validateCanonicalLedgerEntryRecord(record: FinancialLedgerEntryRecord): {
+  readonly accountId: number;
+  readonly assetId: number;
+  readonly direction: LedgerEntryDirection;
+  readonly amountBaseUnits: string;
+} {
+  return Object.freeze({
+    accountId: parsePositiveSafeIntegerId(record.accountId, 'record.accountId'),
+    assetId: parsePositiveSafeIntegerId(record.assetId, 'record.assetId'),
+    direction: record.direction,
+    amountBaseUnits: record.amountBaseUnits,
+  });
+}

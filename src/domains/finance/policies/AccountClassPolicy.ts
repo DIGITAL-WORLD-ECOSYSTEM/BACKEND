@@ -1,4 +1,5 @@
 import { InvalidAccountClassError } from '../errors/FinancialError';
+import { FinancialTextPolicy } from './FinancialTextPolicy';
 
 export type FinancialAccountType =
   | 'user_available'
@@ -42,17 +43,22 @@ export class AccountClassPolicy {
   public static readonly PERMITTED_CLASSES = PERMITTED_CLASSES;
 
   public static getAllowedClasses(accountType: string): readonly FinancialAccountClass[] {
-    if (AccountClassPolicy.isFinancialAccountType(accountType)) {
-      return PERMITTED_CLASSES[accountType];
+    if (typeof accountType !== 'string') {
+      return [];
+    }
+    const normalized = accountType.trim();
+    if (AccountClassPolicy.isFinancialAccountType(normalized)) {
+      return PERMITTED_CLASSES[normalized];
     }
     return [];
   }
+
   /**
-   * Sanitiza strings contra log injection removendo caracteres de controle.
+   * Sanitiza strings contra log injection removendo caracteres de controle e perigosos.
    */
   private static sanitizeForError(value: unknown): string {
-    const str = String(value ?? '').normalize('NFC').trim();
-    return str.replace(/[\u0000-\u001F\u007F]/gu, '');
+    const stripped = FinancialTextPolicy.stripDangerousCharacters(value).trim();
+    return stripped.length > 50 ? stripped.slice(0, 47) + '...' : stripped;
   }
 
   /**
@@ -196,7 +202,7 @@ export class AccountClassPolicy {
   ): readonly FinancialAccountClass[] {
     if (typeof accountType !== 'string') {
       throw new InvalidAccountClassError(
-        String(accountType),
+        '[invalid accountType]',
         'unknown'
       );
     }

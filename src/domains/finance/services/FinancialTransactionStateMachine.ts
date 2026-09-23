@@ -1,51 +1,37 @@
 import { Result } from '../../../shared/kernel/Result';
+import {
+  type FinancialTransactionStatus,
+  FINANCIAL_TRANSACTION_STATUSES,
+  isFinancialTransactionStatus,
+} from '../value-objects/FinancialTransactionStatus';
+import { InvalidStateTransitionError } from '../errors/FinancialError';
+
+export {
+  type FinancialTransactionStatus,
+  FINANCIAL_TRANSACTION_STATUSES,
+  isFinancialTransactionStatus,
+};
 
 /**
- * ============================================================
- * FINANCIAL TRANSACTION STATUS
- * ============================================================
- *
- * Representa exclusivamente o lifecycle de negócio da transação.
- *
- * IMPORTANTE:
- * FinancialTransactionStatus NÃO representa:
- * - posting state (not_posted vs posted);
- * - idempotency state (processing vs completed);
- * - OCC state (versioning de saldo);
- * - settlement state;
- * - estado de outbox.
- *
- * Esses conceitos pertencem às respectivas camadas/policies de infraestrutura e liquidação.
+ * Classificação formal e tipada do resultado de uma avaliação de transição.
+ * Permite que orquestradores e casos de uso da Fase 2 diferenciem explicitamente
+ * operações estéreis (NO_OP) de mutações reais (CHANGED) e falhas (INVALID).
  */
-export type FinancialTransactionStatus =
-  | 'pending'
-  | 'processing'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-  | 'reversed'
-  | 'refunded';
+export type TransitionKind = 'NO_OP' | 'CHANGED' | 'INVALID';
 
-const FINANCIAL_TRANSACTION_STATUSES = Object.freeze([
-  'pending',
-  'processing',
-  'completed',
-  'failed',
-  'cancelled',
-  'reversed',
-  'refunded',
-] as const);
-
-function isFinancialTransactionStatus(
-  value: unknown
-): value is FinancialTransactionStatus {
-  return (
-    typeof value === 'string' &&
-    FINANCIAL_TRANSACTION_STATUSES.includes(
-      value as FinancialTransactionStatus
-    )
-  );
-}
+export type TransitionResult =
+  | {
+      readonly kind: 'CHANGED';
+      readonly status: FinancialTransactionStatus;
+    }
+  | {
+      readonly kind: 'NO_OP';
+      readonly status: FinancialTransactionStatus;
+    }
+  | {
+      readonly kind: 'INVALID';
+      readonly error: string;
+    };
 
 /**
  * ============================================================
@@ -60,9 +46,11 @@ function isFinancialTransactionStatus(
  * reversed:   -> terminal (nenhuma)
  * refunded:   -> terminal (nenhuma)
  *
- * REGRA FINANCEIRA CRÍTICA:
- * 'processing -> cancelled' É ESTRITAMENTE PROIBIDO.
- * O cancelamento só pode ocorrer enquanto a transação estiver em 'pending'.
+ * REGRAS FINANCEIRAS CRÍTICAS:
+ * 1. 'processing -> cancelled' É ESTRITAMENTE PROIBIDO. O cancelamento só pode ocorrer em 'pending'.
+ * 2. Estados terminais ('failed', 'cancelled', 'reversed', 'refunded') NÃO admitem nenhuma transição (inclusive auto-transição).
+ * 3. 'completed -> completed' é rejeitado como reposting proibido.
+ * 4. Apenas 'pending -> pending' e 'processing -> processing' são admitidos como NO_OP seguro (sem side effects nem outbox).
  */
 const ALLOWED_TRANSITIONS: Readonly<
   Record<
@@ -81,11 +69,42 @@ const ALLOWED_TRANSITIONS: Readonly<
 
 export class FinancialTransactionStateMachine {
   /**
+   * Avalia a transição retornando um contrato tipado TransitionResult (NO_OP / CHANGED / INVALID).
+   * O chamador (Fase 2) pode verificar if (res.kind === 'CHANGED') para disparar eventos/outbox,
+   * e if (res.kind === 'NO_OP') para garantir zero efeitos colaterais.
+   */
+  static evaluateTransition(
+    currentStatus: FinancialTransactionStatus,
+    targetStatus: FinancialTransactionStatus
+  ): TransitionResult {
+    const res = this.transition(currentStatus, targetStatus);
+    if (res.isFailure) {
+      return Object.freeze({
+        kind: 'INVALID',
+        error: res.error || 'Transição de estado inválida.',
+      });
+    }
+
+    if (currentStatus === targetStatus) {
+      return Object.freeze({
+        kind: 'NO_OP',
+        status: currentStatus,
+      });
+    }
+
+    return Object.freeze({
+      kind: 'CHANGED',
+      status: targetStatus,
+    });
+  }
+
+  /**
    * Executa e valida a transição de estado da transação financeira.
    *
    * Retorna:
-   *   Result.ok(targetStatus) se a transição for permitida ou for no-op idempotente.
-   *   Result.fail(mensagem) se o status for inválido ou a transição for proibida.
+   *   Result.ok(targetStatus) se a transição for permitida ou for no-op seguro (pending/processing).
+   *   Result.fail(mensagem) se o status for inválido, se tentar transicionar de estado terminal,
+   *   ou se a transição for proibida pela matriz contábil.
    */
   static transition(
     currentStatus: FinancialTransactionStatus,
@@ -99,7 +118,21 @@ export class FinancialTransactionStateMachine {
       return Result.fail('Status de transação financeira de destino inválido.');
     }
 
-    // No-op idempotente: transição para o mesmo estado é segura e permitida
+    // Estados estritamente terminais rejeitam qualquer transição de saída ou reexecução
+    if (FinancialTransactionStateMachine.isTerminal(currentStatus)) {
+      return Result.fail(
+        `Transição de estado inválida: '${currentStatus}' -> '${targetStatus}'. O status '${currentStatus}' é terminal e não admite novas transições.`
+      );
+    }
+
+    // Transação completada não admite reexecução / reposting para si mesma
+    if (currentStatus === 'completed' && targetStatus === 'completed') {
+      return Result.fail(
+        "Transição de estado inválida: a transação já foi finalizada ('completed') e não admite reexecução."
+      );
+    }
+
+    // No-op idempotente seguro exclusivamente para estados com continuidade em andamento (sem side-effects)
     if (currentStatus === targetStatus) {
       return Result.ok(targetStatus);
     }
@@ -123,6 +156,27 @@ export class FinancialTransactionStateMachine {
     targetStatus: FinancialTransactionStatus
   ): boolean {
     return this.transition(currentStatus, targetStatus).isSuccess;
+  }
+
+  /**
+   * Afirma transição válida ou dispara InvalidStateTransitionError com contexto estéril.
+   */
+  static assertTransition(
+    currentStatus: FinancialTransactionStatus,
+    targetStatus: FinancialTransactionStatus,
+    context?: Record<string, unknown>
+  ): void {
+    const res = this.transition(currentStatus, targetStatus);
+    if (res.isFailure) {
+      throw new InvalidStateTransitionError(
+        res.error || 'Transição de estado inválida para a transação financeira.',
+        {
+          currentStatus,
+          targetStatus,
+          ...context,
+        }
+      );
+    }
   }
 
   /**

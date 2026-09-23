@@ -1,205 +1,116 @@
-import { AssetInactiveError } from '../errors/FinancialError';
-import { Result } from '../../../shared/kernel/Result';
+import { AssetInactiveError, InvalidIdentifierError } from '../errors/FinancialError';
 import { parsePositiveSafeIntegerId } from '../value-objects/Money256';
+import { Result } from '../../../shared/kernel/Result';
+import { DANGEROUS_TEXT_CHARACTERS_REGEX } from './FinancialTextPolicy';
 
-export type AssetStatus =
-  | 'active'
-  | 'inactive'
-  | 'suspended'
-  | 'blocked'
-  | 'retired'
-  | 'pending';
-
-export interface AssetStatusContext {
-  id: number | string;
-  status: AssetStatus;
-  code?: string;
-}
-
-const KNOWN_ASSET_STATUSES = Object.freeze([
+/**
+ * Catálogo canônico de status de ativos financeiros.
+ * Preserva integralmente os 6 estados conhecidos na arquitetura.
+ */
+export const ASSET_STATUSES = [
   'active',
   'inactive',
   'suspended',
   'blocked',
   'retired',
   'pending',
-] as const);
+] as const;
+
+export type AssetStatus = (typeof ASSET_STATUSES)[number];
+
+export function isAssetStatus(value: unknown): value is AssetStatus {
+  return typeof value === 'string' && ASSET_STATUSES.includes(value as AssetStatus);
+}
+
+function normalizeDisplayCode(code?: string): string {
+  if (!code || typeof code !== 'string') {
+    return 'desconhecido';
+  }
+  const normalized = code.normalize('NFC').trim();
+  if (!normalized || DANGEROUS_TEXT_CHARACTERS_REGEX.test(normalized)) {
+    return 'desconhecido';
+  }
+  return normalized;
+}
 
 export class AssetStatusPolicy {
   /**
-   * Mantemos os overloads originais para preservar compatibilidade.
-   *
-   * Forma canônica:
-   *   validateActive({ id, status, code })
-   *
-   * Forma compatível:
-   *   validateActive(assetId, status)
+   * Avalia se um ativo é negociável/transacionável operacionalmente.
+   * Somente ativos 'active' podem ser movimentados em transações contábeis.
    */
-  public static validateActive(
-    asset: AssetStatusContext
-  ): void;
+  public static isTradeable(status: string | AssetStatus): boolean {
+    return status === 'active';
+  }
 
+  /**
+   * Bloqueia movimentações se o ativo financeiro não estiver ativo (DOD-10).
+   * Suporta chamada com objeto { id, status, code } ou com parâmetros posicionais (assetId, status).
+   * Preservado para compatibilidade integral de API com a Fase 2 e testes.
+   */
+  public static validateActive(asset: { id: number | string; status: string; code?: string }): void;
+  public static validateActive(assetId: number | string, status: string): void;
   public static validateActive(
-    assetId: number | string,
-    status: string
-  ): void;
-
-  public static validateActive(
-    assetInput: AssetStatusContext | number | string,
+    assetInput: { id: number | string; status: string; code?: string } | number | string,
     status?: string
   ): void {
-    const context = AssetStatusPolicy.normalizeContext(
-      assetInput,
-      status
-    );
+    let assetId: number | string;
+    let assetStatus: string;
+    let code: string | undefined;
 
-    const assetId = parsePositiveSafeIntegerId(
-      context.id,
-      'asset.id'
-    );
-
-    if (!AssetStatusPolicy.isAssetStatus(context.status)) {
-      throw new AssetInactiveError(
-        `Ativo financeiro #${assetId} possui status inválido: "${String(
-          context.status
-        )}".`
-      );
+    if (typeof assetInput === 'object' && assetInput !== null) {
+      assetId = assetInput.id;
+      assetStatus = assetInput.status;
+      code = assetInput.code;
+    } else {
+      assetId = assetInput;
+      assetStatus = status || '';
     }
 
-    if (context.status !== 'active') {
-      const code =
-        typeof context.code === 'string' &&
-        context.code.trim().length > 0
-          ? AssetStatusPolicy.normalizeDisplayCode(context.code)
-          : 'desconhecido';
+    const numericId = parsePositiveSafeIntegerId(assetId, 'assetId');
 
+    if (assetStatus !== 'active') {
+      const displayCode = normalizeDisplayCode(code);
       throw new AssetInactiveError(
-        `Ativo financeiro #${assetId} (${code}) está com status "${context.status}". ` +
-          'Operações financeiras exigem que o ativo esteja ativo.'
+        `Ativo financeiro #${numericId} (${displayCode}) está com status "${assetStatus}". Operações financeiras exigem que o ativo esteja ativo.`
       );
     }
   }
 
   /**
-   * Validação equivalente usando Result.
-   *
-   * Mantida para compatibilidade com callers que adotam o padrão Result.
+   * Validação canônica estilo Result kernel sem lançar exceção.
    */
-  public static validateActiveResult(
-    assetId: string | number,
-    status: string
-  ): Result<void> {
+  public static validateActiveResult(assetId: string | number, status: string): Result<void> {
+    let numericId: number;
     try {
-      const normalizedAssetId =
-        parsePositiveSafeIntegerId(
-          assetId,
-          'asset.id'
-        );
+      numericId = parsePositiveSafeIntegerId(assetId, 'assetId');
+    } catch {
+      return Result.fail('Identificador de ativo inválido.');
+    }
 
-      if (!AssetStatusPolicy.isAssetStatus(status)) {
-        return Result.fail(
-          `Operação bloqueada por política de domínio: Ativo ${normalizedAssetId} possui status inválido '${String(
-            status
-          )}'.`
-        );
-      }
-
-      if (status !== 'active') {
-        return Result.fail(
-          `Operação bloqueada por política de domínio: Ativo ${normalizedAssetId} está com status '${status}' (esperado: 'active').`
-        );
-      }
-
-      return Result.ok(undefined);
-    } catch (error) {
+    if (!isAssetStatus(status)) {
       return Result.fail(
-        error instanceof Error
-          ? error.message
-          : 'Falha ao validar o status do ativo financeiro.'
+        `Operação bloqueada por política de domínio: Ativo ${numericId} possui status inválido: '${status}'.`
       );
     }
+
+    if (status !== 'active') {
+      return Result.fail(
+        `Operação bloqueada por política de domínio: Ativo ${numericId} está com status '${status}' (esperado: 'active').`
+      );
+    }
+
+    return Result.ok(undefined);
   }
 
   /**
-   * Runtime type guard para status conhecidos.
+   * Afirmação de transacionabilidade para operações de negócio.
    */
-  public static isAssetStatus(
-    value: unknown
-  ): value is AssetStatus {
-    return (
-      typeof value === 'string' &&
-      (KNOWN_ASSET_STATUSES as readonly string[]).includes(value)
-    );
-  }
-
-  /**
-   * Normaliza as duas formas públicas de entrada em um único
-   * contrato interno.
-   */
-  private static normalizeContext(
-    assetInput: AssetStatusContext | number | string,
-    status?: string
-  ): AssetStatusContext {
-    if (
-      assetInput !== null &&
-      typeof assetInput === 'object' &&
-      !Array.isArray(assetInput)
-    ) {
-      const context = assetInput as AssetStatusContext;
-
-      if (
-        !('id' in context) ||
-        !('status' in context)
-      ) {
-        throw new AssetInactiveError(
-          'Contexto de ativo financeiro incompleto.'
-        );
-      }
-
-      return {
-        id: context.id,
-        status: context.status,
-        code:
-          typeof context.code === 'string'
-            ? context.code.trim()
-            : undefined,
-      };
+  public static assertCanTransact(status: string | AssetStatus, assetId: number | string): void {
+    const numericId = parsePositiveSafeIntegerId(assetId, 'assetId');
+    if (!this.isTradeable(status)) {
+      throw new AssetInactiveError(
+        `Asset #${numericId} is not active (status: ${status}) and cannot be transacted.`
+      );
     }
-
-    if (
-      typeof assetInput === 'number' ||
-      typeof assetInput === 'string'
-    ) {
-      if (typeof status !== 'string') {
-        throw new AssetInactiveError(
-          'Status do ativo financeiro é obrigatório.'
-        );
-      }
-
-      return {
-        id: assetInput,
-        status: status as AssetStatus,
-      };
-    }
-
-    throw new AssetInactiveError(
-      'Contexto de ativo financeiro inválido.'
-    );
-  }
-
-  /**
-   * Evita que dados de apresentação com caracteres de controle
-   * poluam mensagens de erro/log.
-   */
-  private static normalizeDisplayCode(
-    value: string
-  ): string {
-    const normalized = value.normalize('NFC').trim();
-
-    if (/[\u0000-\u001F\u007F]/u.test(normalized)) {
-      return 'desconhecido';
-    }
-
-    return normalized;
   }
 }

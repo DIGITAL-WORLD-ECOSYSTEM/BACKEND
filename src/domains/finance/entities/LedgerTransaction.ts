@@ -3,11 +3,29 @@ import {
   parsePositiveSafeIntegerId,
 } from '../value-objects/Money256';
 
-import type { LedgerEntryDirection } from '../value-objects/BaseUnits';
+import {
+  MAX_UINT256,
+  MAX_LEDGER_ENTRIES,
+  MAX_LEDGER_DESCRIPTION_LENGTH,
+  MAX_IDEMPOTENCY_KEY_LENGTH,
+  MAX_RAW_TEXT_CEILING,
+} from '../constants/FinancialLimits';
 
 import {
+  type LedgerEntryDirection,
   isLedgerEntryDirection,
 } from '../value-objects/BaseUnits';
+
+import {
+  FinancialTransactionStatus,
+  FINANCIAL_TRANSACTION_STATUSES,
+  isFinancialTransactionStatus,
+} from '../value-objects/FinancialTransactionStatus';
+
+import {
+  FinancialTextPolicy,
+  DANGEROUS_TEXT_CHARACTERS_REGEX,
+} from '../policies/FinancialTextPolicy';
 
 import { LedgerImbalanceError } from '../errors/LedgerImbalanceError';
 
@@ -17,15 +35,11 @@ import {
   InvalidIdentifierError,
 } from '../errors/FinancialError';
 
-/**
- * ============================================================
- * LIMITES FÍSICOS DO DOMÍNIO
- * ============================================================
- *
- * O domínio financeiro trabalha com inteiros exatos.
- * Nenhum cálculo monetário deve utilizar number para montantes.
- */
-const MAX_UINT256 = (1n << 256n) - 1n;
+export {
+  FINANCIAL_TRANSACTION_STATUSES,
+  isFinancialTransactionStatus,
+  type FinancialTransactionStatus,
+};
 
 /**
  * Limite máximo suportado pelo objeto Date do JavaScript.
@@ -33,36 +47,6 @@ const MAX_UINT256 = (1n << 256n) - 1n;
  * O timestamp é armazenado internamente como integer epoch milliseconds.
  */
 const MAX_VALID_DATE_EPOCH_MS = 8_640_000_000_000_000;
-
-/**
- * ============================================================
- * STATUS DA TRANSAÇÃO
- * ============================================================
- */
-
-export const FINANCIAL_TRANSACTION_STATUSES = Object.freeze([
-  'pending',
-  'processing',
-  'completed',
-  'failed',
-  'cancelled',
-  'reversed',
-  'refunded',
-] as const);
-
-export type FinancialTransactionStatus =
-  (typeof FINANCIAL_TRANSACTION_STATUSES)[number];
-
-export function isFinancialTransactionStatus(
-  value: unknown
-): value is FinancialTransactionStatus {
-  return (
-    typeof value === 'string' &&
-    FINANCIAL_TRANSACTION_STATUSES.includes(
-      value as FinancialTransactionStatus
-    )
-  );
-}
 
 /**
  * ============================================================
@@ -245,11 +229,17 @@ export function normalizeUuidV4(
 function normalizeRequiredText(
   value: unknown,
   fieldName: string,
-  maxLength: number
+  maxLength: number = MAX_LEDGER_DESCRIPTION_LENGTH
 ): string {
   if (typeof value !== 'string') {
     throw new InvalidLedgerTransactionError(
       `${fieldName} must be a string.`
+    );
+  }
+
+  if (value.length > MAX_RAW_TEXT_CEILING) {
+    throw new InvalidLedgerTransactionError(
+      `${fieldName} length exceeds raw ceiling of ${MAX_RAW_TEXT_CEILING}.`
     );
   }
 
@@ -267,13 +257,43 @@ function normalizeRequiredText(
     );
   }
 
-  if (/[\u0000-\u001F\u007F]/u.test(normalized)) {
+  if (DANGEROUS_TEXT_CHARACTERS_REGEX.test(normalized)) {
     throw new InvalidLedgerTransactionError(
       `${fieldName} contains forbidden control characters.`
     );
   }
 
   return normalized;
+}
+
+function validateStrictIdempotencyKey(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new InvalidLedgerTransactionError('Idempotency key must be a string.');
+  }
+
+  if (value.length > MAX_RAW_TEXT_CEILING) {
+    throw new InvalidLedgerTransactionError(
+      `Idempotency key length exceeds raw ceiling of ${MAX_RAW_TEXT_CEILING}.`
+    );
+  }
+
+  if (value.trim().length === 0) {
+    throw new InvalidLedgerTransactionError('Idempotency key is required.');
+  }
+
+  if (value.length > 255) {
+    throw new InvalidLedgerTransactionError('Idempotency key exceeds maximum length of 255 characters.');
+  }
+
+  if (DANGEROUS_TEXT_CHARACTERS_REGEX.test(value)) {
+    throw new InvalidLedgerTransactionError('Idempotency key contains forbidden control characters.');
+  }
+
+  if (value !== value.trim()) {
+    throw new InvalidLedgerTransactionError('Idempotency key must not contain leading or trailing whitespace.');
+  }
+
+  return value;
 }
 
 /**
@@ -295,19 +315,23 @@ function normalizeOptionalOpaqueIdentifier(
     );
   }
 
-  const normalized = value.trim().normalize('NFC');
-
   if (
-    normalized.length === 0 ||
-    normalized.length > 255 ||
-    /[\u0000-\u001F\u007F]/u.test(normalized)
+    value.length === 0 ||
+    value.length > 255 ||
+    DANGEROUS_TEXT_CHARACTERS_REGEX.test(value)
   ) {
     throw new InvalidIdentifierError(
       'Invalid LedgerEntry id.'
     );
   }
 
-  return normalized;
+  if (value !== value.trim()) {
+    throw new InvalidIdentifierError(
+      'Invalid LedgerEntry id.'
+    );
+  }
+
+  return value;
 }
 
 /**
@@ -320,7 +344,7 @@ export type LedgerEntryType = LedgerEntryDirection;
 
 export interface LedgerEntryProps {
   id?: string;
-  accountId: string;
+  accountId: string | number;
   amount: Money256;
   type: LedgerEntryDirection;
   description?: string;
@@ -357,33 +381,14 @@ export class LedgerEntry {
      * Account ID
      * --------------------------------------------------------
      *
-     * Mantido como string na entidade para preservar a representação
-     * canônica e evitar conversões repetidas.
+     * Validação canônica estrita (/^[1-9]\d*$/ ou safe positive int).
+     * Armazenado como string canônica na entidade.
      */
-    if (typeof props.accountId !== 'string') {
-      throw new InvalidIdentifierError(
-        'LedgerEntry accountId is required and must be a string.'
-      );
-    }
-
-    const trimmedAccountId = props.accountId.trim();
-
-    if (!/^[1-9]\d*$/.test(trimmedAccountId)) {
-      throw new InvalidIdentifierError(
-        'Invalid LedgerEntry accountId. Must be a positive integer string without signs, spaces or decimals.'
-      );
-    }
-
-    const numericAccountId = Number(trimmedAccountId);
-
-    if (
-      !Number.isSafeInteger(numericAccountId) ||
-      numericAccountId <= 0
-    ) {
-      throw new InvalidIdentifierError(
-        'Invalid LedgerEntry accountId. Out of safe integer range.'
-      );
-    }
+    const numericAccountId = parsePositiveSafeIntegerId(
+      props.accountId,
+      'accountId'
+    );
+    this.accountId = numericAccountId.toString(10);
 
     /**
      * --------------------------------------------------------
@@ -446,7 +451,7 @@ export class LedgerEntry {
         );
       }
 
-      if (/[\u0000-\u001F\u007F]/u.test(candidate)) {
+      if (DANGEROUS_TEXT_CHARACTERS_REGEX.test(candidate)) {
         throw new InvalidLedgerTransactionError(
           'LedgerEntry description contains forbidden control characters.'
         );
@@ -456,7 +461,6 @@ export class LedgerEntry {
         candidate.length > 0 ? candidate : undefined;
     }
 
-    this.accountId = trimmedAccountId;
     this.amount = props.amount;
     this.type = props.type;
     this.description = normalizedDescription;
@@ -489,8 +493,21 @@ export interface CreateLedgerTransactionProps {
   userId?: number | null;
   transactionType: SupportedFinancialTransactionType;
   category: FinancialTransactionCategory;
-  reversalOfTransactionId?: number;
-  refundOfTransactionId?: number;
+  reversalOfTransactionId?: number | string;
+  refundOfTransactionId?: number | string;
+  businessReason?: string;
+  auditRef?: string;
+  source?: string;
+  destination?: string;
+  providerId?: string;
+  externalEventId?: string;
+  feeType?: string;
+  actorUserId?: number | null;
+  authorizedByUserId?: number | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
+  correlationId?: string | null;
+  scope?: string | null;
 }
 
 /**
@@ -513,6 +530,19 @@ export interface LedgerTransactionSnapshot {
   createdAtEpochMs: number;
   reversalOfTransactionId?: number;
   refundOfTransactionId?: number;
+  businessReason?: string;
+  auditRef?: string;
+  source?: string;
+  destination?: string;
+  providerId?: string;
+  externalEventId?: string;
+  feeType?: string;
+  actorUserId?: number | null;
+  authorizedByUserId?: number | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
+  correlationId?: string | null;
+  scope?: string | null;
 }
 
 /**
@@ -551,6 +581,19 @@ export class LedgerTransaction {
   public readonly status: FinancialTransactionStatus;
   public readonly reversalOfTransactionId?: number;
   public readonly refundOfTransactionId?: number;
+  public readonly businessReason?: string;
+  public readonly auditRef?: string;
+  public readonly source?: string;
+  public readonly destination?: string;
+  public readonly providerId?: string;
+  public readonly externalEventId?: string;
+  public readonly feeType?: string;
+  public readonly actorUserId?: number | null;
+  public readonly authorizedByUserId?: number | null;
+  public readonly sourceType?: string | null;
+  public readonly sourceId?: string | null;
+  public readonly correlationId?: string | null;
+  public readonly scope?: string | null;
 
   private readonly createdAtEpochMs: number;
 
@@ -576,6 +619,19 @@ export class LedgerTransaction {
     createdAtEpochMs: number;
     reversalOfTransactionId?: number;
     refundOfTransactionId?: number;
+    businessReason?: string;
+    auditRef?: string;
+    source?: string;
+    destination?: string;
+    providerId?: string;
+    externalEventId?: string;
+    feeType?: string;
+    actorUserId?: number | null;
+    authorizedByUserId?: number | null;
+    sourceType?: string | null;
+    sourceId?: string | null;
+    correlationId?: string | null;
+    scope?: string | null;
   }) {
     this.publicId = params.publicId;
     this.id = params.publicId;
@@ -595,10 +651,21 @@ export class LedgerTransaction {
     this.category = params.category;
     this.status = params.status;
     this.createdAtEpochMs = params.createdAtEpochMs;
-    this.reversalOfTransactionId =
-      params.reversalOfTransactionId;
-    this.refundOfTransactionId =
-      params.refundOfTransactionId;
+    this.reversalOfTransactionId = params.reversalOfTransactionId;
+    this.refundOfTransactionId = params.refundOfTransactionId;
+    this.businessReason = params.businessReason;
+    this.auditRef = params.auditRef;
+    this.source = params.source;
+    this.destination = params.destination;
+    this.providerId = params.providerId;
+    this.externalEventId = params.externalEventId;
+    this.feeType = params.feeType;
+    this.actorUserId = params.actorUserId ?? null;
+    this.authorizedByUserId = params.authorizedByUserId ?? null;
+    this.sourceType = params.sourceType ?? null;
+    this.sourceId = params.sourceId ?? null;
+    this.correlationId = params.correlationId ?? null;
+    this.scope = params.scope ?? null;
 
     /**
      * Congelamento do Aggregate Root.
@@ -630,16 +697,14 @@ export class LedgerTransaction {
       );
     }
 
-    const idempotencyKey = normalizeRequiredText(
-      props.idempotencyKey,
-      'Idempotency key',
-      255
+    const idempotencyKey = validateStrictIdempotencyKey(
+      props.idempotencyKey
     );
 
     const description = normalizeRequiredText(
       props.description,
       'Transaction description',
-      255
+      MAX_LEDGER_DESCRIPTION_LENGTH
     );
 
     LedgerTransaction.validateEntriesCollection(
@@ -679,9 +744,8 @@ export class LedgerTransaction {
 
     const transactionType = rawTransactionType;
 
-    if (
-      !isFinancialTransactionCategory(props.category)
-    ) {
+    const category = props.category === undefined ? 'operational' : props.category;
+    if (!isFinancialTransactionCategory(category)) {
       throw new InvalidLedgerTransactionError(
         'Invalid financial transaction category.'
       );
@@ -703,6 +767,25 @@ export class LedgerTransaction {
       props.refundOfTransactionId
     );
 
+    // Invariante relacional: Bloqueia auto-referência explícita se o ID for conhecido
+    const explicitId = (props as any).id ?? (props as any).databaseId;
+    if (explicitId !== undefined && explicitId !== null) {
+      const explicitStr =
+        typeof explicitId === 'number'
+          ? explicitId.toString(10)
+          : typeof explicitId === 'string'
+            ? explicitId
+            : null;
+      if (explicitStr !== null) {
+        if (reversalId !== undefined && reversalId.toString(10) === explicitStr) {
+          throw new InvalidLedgerTransactionError('A transaction cannot reverse itself.');
+        }
+        if (refundId !== undefined && refundId.toString(10) === explicitStr) {
+          throw new InvalidLedgerTransactionError('A transaction cannot refund itself.');
+        }
+      }
+    }
+
     /**
      * Identidade pública criada internamente.
      */
@@ -721,11 +804,63 @@ export class LedgerTransaction {
     );
 
     /**
-     * Validação contábil final.
+     * Validação contábil final e cardinalidade de ativos.
      */
     LedgerTransaction.validateDoubleEntry(
       props.entries
     );
+
+    LedgerTransaction.validateAssetCardinality(
+      transactionType,
+      props.entries
+    );
+
+    // Invariante relacional: businessReason (undefined -> ausência, '' -> inválido)
+    let businessReason: string | undefined = undefined;
+    if (props.businessReason !== undefined) {
+      if (typeof props.businessReason !== 'string' || props.businessReason.trim().length === 0) {
+        throw new InvalidLedgerTransactionError(
+          'businessReason when provided must be a non-empty string.'
+        );
+      }
+      businessReason = props.businessReason.trim();
+    }
+
+    if (transactionType === 'adjustment' && businessReason === undefined) {
+      throw new InvalidLedgerTransactionError(
+        'Adjustment transaction requires a businessReason.'
+      );
+    }
+
+    // Invariante de paridade entre providerId e externalEventId
+    let providerId: string | undefined = undefined;
+    if (props.providerId !== undefined) {
+      if (typeof props.providerId !== 'string' || props.providerId.trim().length === 0) {
+        throw new InvalidLedgerTransactionError(
+          'providerId when provided must be a non-empty string.'
+        );
+      }
+      providerId = props.providerId.trim();
+    }
+
+    let externalEventId: string | undefined = undefined;
+    if (props.externalEventId !== undefined) {
+      if (typeof props.externalEventId !== 'string' || props.externalEventId.trim().length === 0) {
+        throw new InvalidLedgerTransactionError(
+          'externalEventId when provided must be a non-empty string.'
+        );
+      }
+      externalEventId = props.externalEventId.trim();
+    }
+
+    const hasProviderId = providerId !== undefined;
+    const hasExternalEventId = externalEventId !== undefined;
+
+    if ((hasProviderId && !hasExternalEventId) || (!hasProviderId && hasExternalEventId)) {
+      throw new InvalidLedgerTransactionError(
+        'providerId and externalEventId must either both be provided or both be omitted.'
+      );
+    }
 
     return new LedgerTransaction({
       publicId,
@@ -734,11 +869,24 @@ export class LedgerTransaction {
       entries: props.entries,
       userId,
       transactionType,
-      category: props.category,
+      category,
       status: 'pending',
       createdAtEpochMs,
       reversalOfTransactionId: reversalId,
       refundOfTransactionId: refundId,
+      businessReason,
+      auditRef: props.auditRef,
+      source: props.source,
+      destination: props.destination,
+      providerId,
+      externalEventId,
+      feeType: props.feeType,
+      actorUserId: props.actorUserId,
+      authorizedByUserId: props.authorizedByUserId,
+      sourceType: props.sourceType,
+      sourceId: props.sourceId,
+      correlationId: props.correlationId,
+      scope: props.scope,
     });
   }
 
@@ -857,7 +1005,7 @@ export class LedgerTransaction {
      */
     if (
       reversalId !== undefined &&
-      reversalId === databaseId
+      (reversalId === databaseId || snapshot.publicId === reversalId.toString(10) || (snapshot as any).id === reversalId)
     ) {
       throw new InvalidLedgerTransactionError(
         'A transaction cannot reverse itself.'
@@ -866,7 +1014,7 @@ export class LedgerTransaction {
 
     if (
       refundId !== undefined &&
-      refundId === databaseId
+      (refundId === databaseId || snapshot.publicId === refundId.toString(10) || (snapshot as any).id === refundId)
     ) {
       throw new InvalidLedgerTransactionError(
         'A transaction cannot refund itself.'
@@ -882,6 +1030,11 @@ export class LedgerTransaction {
       snapshot.entries
     );
 
+    LedgerTransaction.validateAssetCardinality(
+      transactionType,
+      snapshot.entries
+    );
+
     return new LedgerTransaction({
       publicId,
       databaseId,
@@ -892,10 +1045,22 @@ export class LedgerTransaction {
       transactionType,
       category: snapshot.category,
       status: snapshot.status,
-      createdAtEpochMs:
-        snapshot.createdAtEpochMs,
+      createdAtEpochMs: snapshot.createdAtEpochMs,
       reversalOfTransactionId: reversalId,
       refundOfTransactionId: refundId,
+      businessReason: snapshot.businessReason,
+      auditRef: snapshot.auditRef,
+      source: snapshot.source,
+      destination: snapshot.destination,
+      providerId: snapshot.providerId,
+      externalEventId: snapshot.externalEventId,
+      feeType: snapshot.feeType,
+      actorUserId: snapshot.actorUserId,
+      authorizedByUserId: snapshot.authorizedByUserId,
+      sourceType: snapshot.sourceType,
+      sourceId: snapshot.sourceId,
+      correlationId: snapshot.correlationId,
+      scope: snapshot.scope,
     });
   }
 
@@ -997,8 +1162,8 @@ export class LedgerTransaction {
    */
   private static validateRelationships(
     type: FinancialTransactionType,
-    reversalId?: number,
-    refundId?: number
+    reversalId?: number | string,
+    refundId?: number | string
   ): {
     reversalId?: number;
     refundId?: number;
@@ -1100,6 +1265,50 @@ export class LedgerTransaction {
     ) {
       throw new InvalidLedgerTransactionError(
         `${fieldName} must be a valid positive safe integer timestamp.`
+      );
+    }
+  }
+
+  /**
+   * ==========================================================
+   * ASSET CARDINALITY
+   * ==========================================================
+   *
+   * Valida a cardinalidade de ativos por tipo de transação contábil:
+   * - standard (deposit, withdrawal, transfer, payment, refund, fee, reward, yield, adjustment): exatamente 1 ativo.
+   * - conversion: exatamente 2 ativos distintos.
+   * - reversal: 1 ou 2 ativos (preservando a cardinalidade da operação original).
+   */
+  private static validateAssetCardinality(
+    transactionType: FinancialTransactionType,
+    entries: readonly LedgerEntry[]
+  ): void {
+    const uniqueAssets = new Set<number>();
+    for (const entry of entries) {
+      uniqueAssets.add(entry.amount.assetId);
+    }
+
+    if (transactionType === 'conversion') {
+      if (uniqueAssets.size !== 2) {
+        throw new InvalidLedgerTransactionError(
+          'Transações do tipo conversion exigem exatamente 2 ativos distintos.'
+        );
+      }
+      return;
+    }
+
+    if (transactionType === 'reversal') {
+      if (uniqueAssets.size !== 1 && uniqueAssets.size !== 2) {
+        throw new InvalidLedgerTransactionError(
+          'Transações de estorno (reversal) admitem apenas 1 ou 2 ativos.'
+        );
+      }
+      return;
+    }
+
+    if (uniqueAssets.size !== 1) {
+      throw new InvalidLedgerTransactionError(
+        `Transações do tipo ${transactionType} devem ser estritamente monoativo (exatamente 1 ativo).`
       );
     }
   }
