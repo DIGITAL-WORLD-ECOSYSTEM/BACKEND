@@ -22,10 +22,20 @@ import { Result } from '../../shared/kernel/Result';
 import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
 import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
 import { isD1Database } from './db_helper';
+import { PostingSession, PostingCapabilityToken } from '../../domains/finance/contracts/PostingSession';
+import { IPostingExecutor } from '../../application/ports/output/IPostingExecutor';
+import { D1AtomicPostingExecutor } from '../services/D1AtomicPostingExecutor';
 import { FinancialError } from '../../domains/finance/errors/FinancialError';
 
 class DrizzleRepositoryFactory implements IRepositoryFactory {
-  constructor(private readonly tx: FinanceTransaction, private readonly db?: FinanceDatabase) {}
+  private _postingSession?: PostingSession;
+  private _postingExecutor?: IPostingExecutor;
+
+  constructor(
+    private readonly tx: FinanceTransaction,
+    private readonly db?: FinanceDatabase,
+    private readonly postingCapabilityToken?: typeof PostingCapabilityToken
+  ) {}
 
   getUserRepository(): IUserRepository {
     return new DrizzleUserRepositoryAdapter((this.tx || this.db) as any);
@@ -64,7 +74,27 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
   }
 
   getFinanceRepository(): IFinanceRepository {
-    return new DrizzleFinanceRepository(this.tx);
+    return new DrizzleFinanceRepository((this.tx || this.db) as any);
+  }
+
+  getPostingSession(): PostingSession {
+    if (!this._postingSession) {
+      if (!this.postingCapabilityToken) {
+        throw new Error('PostingCapabilityToken não disponível nesta fábrica transacional.');
+      }
+      const isD1 = isD1Database(this.db || this.tx);
+      const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
+      const sessionId = `ps_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      this._postingSession = PostingSession.createAuthorizedSession(this.postingCapabilityToken, mode, sessionId);
+    }
+    return this._postingSession;
+  }
+
+  getPostingExecutor(): IPostingExecutor {
+    if (!this._postingExecutor) {
+      this._postingExecutor = new D1AtomicPostingExecutor(this.tx || this.db);
+    }
+    return this._postingExecutor;
   }
 }
 
@@ -73,17 +103,12 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
   constructor(private readonly db: FinanceDatabase) {}
 
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
-    if (isD1Database(this.db)) {
-      const factory = new DrizzleRepositoryFactory(this.db as any, this.db);
-      return await work(factory);
-    }
-
     if (typeof this.db?.transaction === 'function') {
       let result: Result<T> | null = null;
       try {
         await (this.db as any).transaction(
           async (tx: FinanceTransaction) => {
-            const factory = new DrizzleRepositoryFactory(tx);
+            const factory = new DrizzleRepositoryFactory(tx, this.db, PostingCapabilityToken);
             result = await work(factory);
 
             if (result && result.isFailure) {
@@ -113,6 +138,12 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
         // Se a callback retornou Result.ok(), mas o COMMIT/banco falhou, DEVE RETORNAR FALHA! (DOD-05)
         return Result.fail(`Falha na transação do banco de dados (Commit/Execution): ${errorMessage}`);
       }
+    }
+
+    if (isD1Database(this.db)) {
+      throw new Error(
+        'DrizzleUnitOfWork exige driver com transações interativas (BEGIN IMMEDIATE). O driver Cloudflare D1 não suporta transações interativas — utilize o D1AtomicPostingExecutor para lotes contábeis atômicos.'
+      );
     }
 
     // BLOCKER FIX: If there is no transaction support, we must FAIL immediately,
