@@ -59,6 +59,7 @@ export type BalanceUpdateResult = 'UPDATED' | 'INSUFFICIENT_BALANCE' | 'OCC_CONF
 export interface TreasuryBootstrapOptions {
   currencyCode?: string;
   initialBalanceBaseUnits?: bigint;
+  allowProductionBootstrap?: boolean;
 }
 
 export interface TreasuryBootstrapResult {
@@ -125,10 +126,13 @@ export interface FinancialTransactionRecord {
 
 export interface IFinanceRepository {
   getAccountById(accountId: number): Promise<Result<FinancialAccountRecord>>;
+  getUserAccount(userId: number): Promise<Result<FinancialAccountRecord>>;
+  getAccountBalance(accountId: number, assetId: number): Promise<Result<AccountBalanceRecord>>;
   getTreasuryAccount(): Promise<Result<FinancialAccountRecord>>;
   getOrCreateUserAccount(userId: number): Promise<Result<FinancialAccountRecord>>;
   getOrCreateOperatingAccount(): Promise<Result<FinancialAccountRecord>>;
   getSystemAccount(accountType: SystemAccountType): Promise<Result<FinancialAccountRecord>>;
+  resolveSystemAccount(accountType: SystemAccountType | string, providerId?: number | null): Promise<Result<FinancialAccountRecord>>;
   getTreasuryBalance(): Promise<Result<AccountBalanceRecord[]>>;
   getAssetById(assetId: number): Promise<Result<{ id: number; code: string; status: FinancialAssetStatus }>>;
 
@@ -141,6 +145,8 @@ export interface IFinanceRepository {
   getIdempotencyRecord(key: string, scope: string): Promise<IdempotencyRecord | null>;
   claimIdempotency(idempotencyKey: string, userId: number | null | undefined, scope: string, requestHash: string): Promise<boolean | IdempotencyClaimResult>;
   completeIdempotency(key: string, scope: string, transactionId: number): Promise<void>;
+  failIdempotency(key: string, scope: string, failureCode?: string): Promise<void>;
+  releaseIdempotencyClaim(key: string, scope: string): Promise<void>;
   insertTransaction(data: {
     userId?: number | null;
     actorUserId?: number | null;

@@ -53,4 +53,23 @@ export interface IOutboxRepository {
    * Registra a recepção idempotente do consumidor via event_consumer_receipts.
    */
   recordConsumerReceipt(consumerId: string, eventId: string): Promise<Result<boolean>>;
+
+  /**
+   * Marca o evento como publicado garantindo a titularidade do lease (CAS via leaseGeneration).
+   */
+  markPublished?(
+    eventId: string,
+    ownerId: string,
+    currentGeneration: number
+  ): Promise<Result<boolean>>;
+
+  /**
+   * Marca o evento como falho liberando o lease para reprocessamento futuro.
+   */
+  markFailed?(
+    eventId: string,
+    ownerId: string,
+    currentGeneration: number,
+    error: string
+  ): Promise<Result<boolean>>;
 }

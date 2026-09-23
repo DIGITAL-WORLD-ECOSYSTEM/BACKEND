@@ -20,6 +20,8 @@ export interface IRepositoryFactory {
   getOutboxRepository(): IOutboxRepository;
   getPasswordResetRepository(): IPasswordResetRepository;
   getFinanceRepository(): IFinanceRepository;
+  getPostingSession(): import('../../../domains/finance/contracts/PostingSession').PostingSession;
+  getPostingExecutor(): import('./IPostingExecutor').IPostingExecutor;
 }
 
 
