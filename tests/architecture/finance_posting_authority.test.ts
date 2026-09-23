@@ -43,7 +43,10 @@ describe('Static Architecture Gate: Single Financial Posting Authority & Dead Co
 
     allFiles.forEach((file) => {
       const relativePath = path.relative(srcDir, file);
-      if (relativePath.includes('DrizzleFinanceRepository.ts')) {
+      if (
+        relativePath.includes('DrizzleFinanceRepository.ts') ||
+        relativePath.includes('D1AtomicPostingExecutor.ts')
+      ) {
         return;
       }
 

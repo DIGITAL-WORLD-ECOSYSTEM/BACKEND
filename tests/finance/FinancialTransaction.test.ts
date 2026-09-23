@@ -89,11 +89,29 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
       }).toThrowError(LedgerImbalanceError);
     });
 
-    it('deve aceitar transação com múltiplos ativos onde cada ativo individualmente está balanceado', () => {
+    it('deve rejeitar transferência com múltiplos ativos (operações ordinárias devem ser estritamente monoativo)', () => {
+      expect(() => {
+        LedgerTransaction.create({
+          idempotencyKey: crypto.randomUUID(),
+          description: 'Dois ativos em transferência',
+          transactionType: 'transfer',
+          category: 'operational',
+          entries: [
+            new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
+            new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),
+            new LedgerEntry({ accountId: '3', amount: Money256.fromBigInt(50n, 2), type: 'debit' }),
+            new LedgerEntry({ accountId: '4', amount: Money256.fromBigInt(50n, 2), type: 'credit' }),
+          ],
+        });
+      }).toThrowError(/estritamente monoativo/);
+    });
+
+    it('deve aceitar estorno (reversal) com múltiplos ativos onde cada ativo individualmente está balanceado', () => {
       const tx = LedgerTransaction.create({
         idempotencyKey: crypto.randomUUID(),
-        description: 'Dois ativos balanceados independentemente',
-        transactionType: 'transfer',
+        description: 'Dois ativos balanceados independentemente em reversal',
+        transactionType: 'reversal',
+        reversalOfTransactionId: 999,
         category: 'operational',
         entries: [
           new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
@@ -177,6 +195,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
         description: 'Exatamente 100 entries',
         transactionType: 'adjustment',
         category: 'operational',
+        businessReason: 'Teste de estresse de 100 entries',
         entries,
       });
       expect(tx.entries.length).toBe(100);
@@ -452,7 +471,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
         const tx = LedgerTransaction.create({
           idempotencyKey: crypto.randomUUID(),
           description: `Teste cat ${cat}`,
-          transactionType: 'adjustment',
+          transactionType: 'deposit',
           category: cat,
           entries: [
             new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
@@ -471,6 +490,7 @@ describe('LedgerTransaction & Financial Domain Hardening (Gates 1, 2, 3, 6)', ()
           description: `Teste type ${type}`,
           transactionType: type,
           category: 'operational',
+          businessReason: type === 'adjustment' ? 'Motivo operacional de auditoria' : undefined,
           entries: [
             new LedgerEntry({ accountId: '1', amount: Money256.fromBigInt(100n, 1), type: 'debit' }),
             new LedgerEntry({ accountId: '2', amount: Money256.fromBigInt(100n, 1), type: 'credit' }),

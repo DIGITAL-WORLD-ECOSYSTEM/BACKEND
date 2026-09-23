@@ -9,11 +9,10 @@ export function runAllMigrations(sqlite: any) {
     const fullPath = path.join(migrationsDir, file);
     const rawSql = fs.readFileSync(fullPath, 'utf-8');
 
-    // Split by Drizzle statement breakpoint or semicolon
-    const statements = rawSql
-      .split(/--> statement-breakpoint|;/g)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+    // Split by Drizzle statement breakpoint if present, otherwise semicolon
+    const statements = rawSql.includes('--> statement-breakpoint')
+      ? rawSql.split('--> statement-breakpoint').map((s) => s.trim()).filter((s) => s.length > 0)
+      : rawSql.split(';').map((s) => s.trim()).filter((s) => s.length > 0);
 
     for (const statement of statements) {
       try {
@@ -37,10 +36,9 @@ export async function runAllMigrationsLibSql(client: any) {
     const fullPath = path.join(migrationsDir, file);
     const rawSql = fs.readFileSync(fullPath, 'utf-8');
 
-    const statements = rawSql
-      .split(/--> statement-breakpoint|;/g)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+    const statements = rawSql.includes('--> statement-breakpoint')
+      ? rawSql.split('--> statement-breakpoint').map((s) => s.trim()).filter((s) => s.length > 0)
+      : rawSql.split(';').map((s) => s.trim()).filter((s) => s.length > 0);
 
     for (const statement of statements) {
       try {

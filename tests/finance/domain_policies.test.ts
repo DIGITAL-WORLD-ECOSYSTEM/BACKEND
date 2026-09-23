@@ -54,14 +54,22 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
       expect(FinancialTransactionStateMachine.transition('processing', 'failed').isSuccess).toBe(true);
     });
 
-    it('deve tratar self-transition como no-op idempotente', () => {
+    it('deve tratar self-transition de pending e processing como no-op, mas rejeitar em completed e terminais', () => {
       const resPending = FinancialTransactionStateMachine.transition('pending', 'pending');
       expect(resPending.isSuccess).toBe(true);
       expect(resPending.getValue()).toBe('pending');
 
+      const resProcessing = FinancialTransactionStateMachine.transition('processing', 'processing');
+      expect(resProcessing.isSuccess).toBe(true);
+      expect(resProcessing.getValue()).toBe('processing');
+
       const resCompleted = FinancialTransactionStateMachine.transition('completed', 'completed');
-      expect(resCompleted.isSuccess).toBe(true);
-      expect(resCompleted.getValue()).toBe('completed');
+      expect(resCompleted.isFailure).toBe(true);
+      expect(resCompleted.error).toContain('completed');
+
+      const resFailed = FinancialTransactionStateMachine.transition('failed', 'failed');
+      expect(resFailed.isFailure).toBe(true);
+      expect(resFailed.error).toContain('terminal');
     });
 
     it('deve rejeitar status atual ou de destino desconhecido em runtime', () => {
@@ -231,7 +239,7 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
       const entries = Array.from({ length: 102 }, (_, i) => ({
         accountId: i + 1,
         assetId: 1,
-        entryType: (i % 2 === 0 ? 'debit' : 'credit') as const,
+        entryType: i % 2 === 0 ? ('debit' as const) : ('credit' as const),
         amount: Money256.fromBigInt(10n, 1),
         description: `Entry ${i}`,
       }));

@@ -372,9 +372,10 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
 
     expect(result.isFailure).toBe(true);
     expect(result.errorObject).toBeDefined();
-    const errObj = result.errorObject as any;
+    const { mapFinancialErrorToHttpStatus } = await import('../../../src/application/finance/errors/FinancialErrorMapper');
+    const errObj = (result as any).errorObject;
     expect(errObj.code).toBe('ACCOUNT_OWNERSHIP_MISMATCH');
-    expect(errObj.httpStatus).toBe(403);
+    expect(mapFinancialErrorToHttpStatus(errObj)).toBe(403);
   });
 
   it('P1.5: Garante serialização e proteção contra over-refund em requisições concorrentes (BEGIN IMMEDIATE)', async () => {
@@ -462,9 +463,10 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
 
   it('P1.7: Rejeita classe contábil inválida em updateBalanceWithOCC com InvalidAccountClassError', async () => {
     const { InvalidAccountClassError } = await import('../../../src/domains/finance/errors/FinancialError');
+    const { mapFinancialErrorToHttpStatus } = await import('../../../src/application/finance/errors/FinancialErrorMapper');
     const err = new InvalidAccountClassError('Classe contábil invalida.');
     expect(err.code).toBe('INVALID_ACCOUNT_CLASS');
-    expect(err.httpStatus).toBe(422);
+    expect(mapFinancialErrorToHttpStatus(err)).toBe(422);
   });
 
   it('P1.8: Rejeita quantia excedente a UINT256 com Money256OverflowError', async () => {
