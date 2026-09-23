@@ -6,6 +6,7 @@ import { GetExternalTransactionsUseCase } from '../../../../application/finance/
 import { GetConsolidatedFinancialReportUseCase } from '../../../../application/finance/use-cases/GetConsolidatedFinancialReportUseCase';
 import { IFinanceRepository } from '../../../../application/ports/output/IFinanceRepository';
 import { FinancialError } from '../../../../domains/finance/errors/FinancialError';
+import { mapFinancialErrorToHttpStatus } from '../../../../application/finance/errors/FinancialErrorMapper';
 
 export class FinanceController {
   constructor(
@@ -139,16 +140,18 @@ export class FinanceController {
         idempotencyKey,
         requestHash,
         refundOfTransactionId: body.refundOfTransactionId ? Number(body.refundOfTransactionId) : undefined,
+        businessReason: body.businessReason || (type === 'adjustment' ? 'administrative_adjustment' : undefined),
       });
 
       if (result.isFailure) {
         const errObj = result.errorObject;
         if (errObj instanceof FinancialError) {
+          const httpStatus = mapFinancialErrorToHttpStatus(errObj);
           return c.json({
             success: false,
             message: errObj.message,
             code: errObj.code,
-          }, errObj.httpStatus as any);
+          }, httpStatus as any);
         }
 
         const errorMsg = typeof result.error === 'string' ? result.error : (result.error as any)?.message || String(result.error);

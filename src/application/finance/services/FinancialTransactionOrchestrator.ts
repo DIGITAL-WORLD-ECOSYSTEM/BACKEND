@@ -176,16 +176,18 @@ export class FinancialTransactionOrchestrator {
     // 1. Hash canônico calculado pelo servidor (ou override fornecido para testes)
     const computedHash = requestHashOverride || CanonicalRequestHashService.calculateHash(transaction);
 
+    const scope = transaction.scope || 'finance';
+
     // 2. Reivindicação atômica de idempotência antes de qualquer I/O de validação mutável
     const claimed = await this.financeRepo.claimIdempotency(
       transaction.idempotencyKey,
       transaction.userId,
-      'finance',
+      scope,
       computedHash
     );
 
     if (!claimed) {
-      const existing = await this.financeRepo.getIdempotencyRecord(transaction.idempotencyKey, 'finance');
+      const existing = await this.financeRepo.getIdempotencyRecord(transaction.idempotencyKey, scope);
       if (!existing) {
         throw new IdempotencyInProgressError('Conflito de concorrência ao verificar chave de idempotência.');
       }
@@ -219,12 +221,17 @@ export class FinancialTransactionOrchestrator {
     // 5. Inserção do registro pai da transação com o status derivado da State Machine
     const txResult = await this.financeRepo.insertTransaction({
       userId: transaction.userId ?? null,
+      actorUserId: transaction.actorUserId ?? transaction.userId ?? null,
+      authorizedByUserId: transaction.authorizedByUserId ?? null,
       type: transaction.transactionType ?? 'adjustment',
       category: transaction.category || 'operational',
       description: transaction.description,
       status: processingStatus,
       reversalOfTransactionId: transaction.reversalOfTransactionId,
       refundOfTransactionId: transaction.refundOfTransactionId,
+      sourceType: transaction.sourceType ?? null,
+      sourceId: transaction.sourceId ?? null,
+      correlationId: transaction.correlationId ?? null,
     });
     if (txResult.isFailure) {
       throw new Error(txResult.typedError?.message || txResult.error || 'Falha ao inserir registro de transação financeira.');
@@ -340,7 +347,7 @@ export class FinancialTransactionOrchestrator {
     }
 
     // 12. Conclusão do registro de Idempotência
-    await this.financeRepo.completeIdempotency(transaction.idempotencyKey, 'finance', transactionId);
+    await this.financeRepo.completeIdempotency(transaction.idempotencyKey, scope, transactionId);
 
     return { transactionId, isReplayed: false };
   }

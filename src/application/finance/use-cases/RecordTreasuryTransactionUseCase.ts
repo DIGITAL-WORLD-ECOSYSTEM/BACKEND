@@ -32,6 +32,7 @@ export interface RecordTreasuryTransactionDTO {
   idempotencyKey: string;
   requestHash?: string;
   refundOfTransactionId?: number;
+  businessReason?: string;
 }
 
 export interface RecordTreasuryTransactionResult {
@@ -461,6 +462,9 @@ export class RecordTreasuryTransactionUseCase {
           transactionType: dto.type,
           category,
           refundOfTransactionId: dto.refundOfTransactionId ? Number(dto.refundOfTransactionId) : undefined,
+          businessReason: dto.businessReason || (dto.type === 'adjustment' ? 'administrative_adjustment' : undefined),
+          actorUserId: dto.actorUserId ?? null,
+          authorizedByUserId: dto.authorizedByUserId ?? null,
         });
 
         // 10. Execute Posting via Orchestrator com o Hash Canônico de Intenção
