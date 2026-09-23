@@ -1,10 +1,14 @@
-import { FinancialError } from './FinancialError';
+import { InvalidLedgerTransactionError } from './FinancialError';
 
-export class LedgerImbalanceError extends FinancialError {
+/**
+ * Erro disparado quando uma transação contábil viola o princípio fundamental
+ * das partidas dobradas (ΣDébitos !== ΣCréditos para um ou mais ativos).
+ */
+export class LedgerImbalanceError extends InvalidLedgerTransactionError {
   constructor(
-    message: string = 'A transação não está balanceada. A soma dos débitos deve ser exatamente igual à soma dos créditos.'
+    message: string = 'Double-entry imbalance: Total debits must equal total credits per asset.',
+    details?: Record<string, unknown>
   ) {
-    super(message, 'LEDGER_IMBALANCE', false, 422);
+    super(message, 'LEDGER_IMBALANCE', false, details);
   }
 }
-
