@@ -80,11 +80,12 @@ VALUES
   (2, 2, 'deposit', 'deposit', 'completed', 'Aporte Inicial Genesis Felipe Dev (R$ 1.000,00)', unixepoch(), 1, unixepoch(), unixepoch());
 
 -- 10. DOUBLE-ENTRY LEDGER ENTRIES (Partidas Dobradas Estritas: Σ(Débitos) === Σ(Créditos))
-INSERT INTO financial_ledger_entries (id, transaction_id, account_id, asset_id, direction, amount_base_units, created_at)
+INSERT INTO financial_ledger_entries (id, transaction_id, entry_ordinal, account_id, asset_id, direction, amount_base_units, created_at)
 VALUES 
   -- Transação 1: Abertura de Tesouraria contra Capital Inicial
-  (1, 1, 1, 1, 'debit', '100000000', unixepoch()),  -- Dr Tesouraria (+R$ 1.000.000,00 no Ativo)
-  (2, 1, 5, 1, 'credit', '100000000', unixepoch()), -- Cr Opening Balance Equity (+R$ 1.000.000,00 no Patrimônio)
+  (1, 1, 0, 1, 1, 'debit', '100000000', unixepoch()),  -- Dr Tesouraria (+R$ 1.000.000,00 no Ativo)
+  (2, 1, 1, 5, 1, 'credit', '100000000', unixepoch()), -- Cr Opening Balance Equity (+R$ 1.000.000,00 no Patrimônio)
   -- Transação 2: Depósito do Felipe
-  (3, 2, 1, 1, 'debit', '100000', unixepoch()),     -- Dr Tesouraria (+R$ 1.000,00 no Ativo)
-  (4, 2, 4, 1, 'credit', '100000', unixepoch());    -- Cr Felipe user_available (+R$ 1.000,00 no Passivo)
+  (3, 2, 0, 1, 1, 'debit', '100000', unixepoch()),     -- Dr Tesouraria (+R$ 1.000,00 no Ativo)
+  (4, 2, 1, 4, 1, 'credit', '100000', unixepoch());    -- Cr Felipe user_available (+R$ 1.000,00 no Passivo)
+

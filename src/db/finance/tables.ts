@@ -769,6 +769,14 @@ export const financialTransactions = sqliteTable(
     completedAt: integer('completed_at', {
       mode: 'timestamp_ms',
     }),
+
+    reversedAt: integer('reversed_at', {
+      mode: 'timestamp_ms',
+    }),
+
+    refundedAt: integer('refunded_at', {
+      mode: 'timestamp_ms',
+    }),
   },
 
   (table) => ({
@@ -1061,6 +1069,10 @@ export const financialLedgerEntries = sqliteTable(
       'amount_base_units',
     ).notNull(),
 
+    entryOrdinal: integer('entry_ordinal')
+      .notNull()
+      .default(0),
+
     createdAt: integer('created_at', {
       mode: 'timestamp_ms',
     })
@@ -1088,6 +1100,10 @@ export const financialLedgerEntries = sqliteTable(
     assetIdx: index(
       'idx_financial_ledger_entries_asset',
     ).on(table.assetId),
+
+    uqLedgerEntryOrdinal: uniqueIndex(
+      'uq_ledger_entry_ordinal',
+    ).on(table.transactionId, table.entryOrdinal),
 
     createdIdx: index(
       'idx_financial_ledger_entries_created',
@@ -3528,4 +3544,43 @@ export type NewFiatExternalTransaction = typeof fiatExternalTransactions.$inferI
 
 export type ReconciliationRecord = typeof reconciliationRecords.$inferSelect;
 export type NewReconciliationRecord = typeof reconciliationRecords.$inferInsert;
+
+/* ============================================================================
+ * 17. SQL ASSERTIONS & SYSTEM ACCOUNT ROUTES
+ * ========================================================================== */
+
+export const sqlAssertions = sqliteTable(
+  '_sql_assertions',
+  {
+    id: integer('id').primaryKey(),
+    guard: integer('guard').notNull(),
+  },
+  (table) => ({
+    guardCheck: check('ck_sql_assertions_guard', sql`${table.guard} = 1`),
+    idCheck: check('ck_sql_assertions_id', sql`${table.id} = 1`),
+  })
+);
+
+export const systemAccountRoutes = sqliteTable(
+  'system_account_routes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    accountType: text('account_type').notNull(),
+    providerId: integer('provider_id').references(() => fiatProviders.id, { onDelete: 'restrict' }),
+    accountId: integer('account_id').notNull().references(() => financialAccounts.id, { onDelete: 'restrict' }),
+    status: text('status', { enum: ['active', 'inactive'] }).notNull().default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(unixepoch())`).notNull(),
+  },
+  (table) => ({
+    providerRouteUq: uniqueIndex('uq_system_route_provider')
+      .on(table.accountType, table.providerId)
+      .where(sql`${table.status} = 'active' AND ${table.providerId} IS NOT NULL`),
+    globalRouteUq: uniqueIndex('uq_system_route_global')
+      .on(table.accountType)
+      .where(sql`${table.status} = 'active' AND ${table.providerId} IS NULL`),
+  })
+);
+
+export type SystemAccountRoute = typeof systemAccountRoutes.$inferSelect;
+export type NewSystemAccountRoute = typeof systemAccountRoutes.$inferInsert;
 
