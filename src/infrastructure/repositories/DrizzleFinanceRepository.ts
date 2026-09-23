@@ -6,6 +6,7 @@ import {
   financialLedgerEntries,
   financialAssets,
   fiatExternalTransactions,
+  systemAccountRoutes,
   MAX_UINT256_BASE_UNITS_TEXT,
 } from '../../db/finance/tables';
 import { idempotencyKeys } from '../../db/infrastructure/tables';
@@ -360,6 +361,67 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
+  async getUserAccount(userId: number): Promise<Result<FinancialAccountRecord>> {
+    try {
+      const [row] = await this.executor
+        .select()
+        .from(financialAccounts)
+        .where(
+          and(
+            eq(financialAccounts.userId, userId),
+            eq(financialAccounts.accountType, 'user_available')
+          )
+        )
+        .limit(1);
+
+      if (!row) {
+        return Result.fail(`Conta de usuário não encontrada para userId ${userId}.`);
+      }
+
+      return Result.ok({
+        id: row.id,
+        userId: row.userId,
+        accountType: row.accountType as any,
+        accountClass: row.accountClass as any,
+        status: row.status as any,
+        name: row.name,
+        version: row.version,
+      });
+    } catch (err: any) {
+      return Result.fail(`Falha ao obter conta de usuário: ${err?.message || String(err)}`);
+    }
+  }
+
+  async getAccountBalance(accountId: number, assetId: number): Promise<Result<AccountBalanceRecord>> {
+    try {
+      const [row] = await this.executor
+        .select({
+          id: accountBalances.id,
+          accountId: accountBalances.accountId,
+          assetId: accountBalances.assetId,
+          availableBaseUnits: accountBalances.availableBaseUnits,
+          lockedBaseUnits: accountBalances.lockedBaseUnits,
+          version: accountBalances.version,
+        })
+        .from(accountBalances)
+        .where(
+          and(
+            eq(accountBalances.accountId, accountId),
+            eq(accountBalances.assetId, assetId)
+          )
+        )
+        .limit(1);
+
+      if (!row) {
+        return Result.fail(`Saldo não encontrado para conta #${accountId} e ativo #${assetId}.`);
+      }
+
+      return Result.ok(row);
+    } catch (err: any) {
+      return Result.fail(`Falha ao obter saldo: ${err?.message || String(err)}`);
+    }
+  }
+
   async getOrCreateUserAccount(userId: number): Promise<Result<FinancialAccountRecord>> {
     return this.getOrCreateSingletonAccount(
       and(
@@ -440,6 +502,51 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       });
     } catch (err: any) {
       return Result.fail(err.message);
+    }
+  }
+
+  async resolveSystemAccount(
+    accountType: SystemAccountType | string,
+    providerId?: number | null
+  ): Promise<Result<FinancialAccountRecord>> {
+    try {
+      if (providerId !== undefined && providerId !== null) {
+        const [providerRoute] = await this.executor
+          .select({ accountId: systemAccountRoutes.accountId })
+          .from(systemAccountRoutes)
+          .where(
+            and(
+              eq(systemAccountRoutes.accountType, accountType),
+              eq(systemAccountRoutes.providerId, providerId),
+              eq(systemAccountRoutes.status, 'active')
+            )
+          )
+          .limit(1);
+
+        if (providerRoute) {
+          return await this.getAccountById(providerRoute.accountId);
+        }
+      }
+
+      const [globalRoute] = await this.executor
+        .select({ accountId: systemAccountRoutes.accountId })
+        .from(systemAccountRoutes)
+        .where(
+          and(
+            eq(systemAccountRoutes.accountType, accountType),
+            sql`${systemAccountRoutes.providerId} IS NULL`,
+            eq(systemAccountRoutes.status, 'active')
+          )
+        )
+        .limit(1);
+
+      if (globalRoute) {
+        return await this.getAccountById(globalRoute.accountId);
+      }
+
+      return await this.getSystemAccount(accountType as any);
+    } catch (err: any) {
+      return Result.fail(`Erro ao resolver rota de conta sistêmica: ${err.message}`);
     }
   }
 
@@ -896,7 +1003,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
    * Call this from the use case's failure path right after
    * claimIdempotency() succeeds but the domain operation itself fails.
    */
-  async failIdempotency(key: string, scope: string): Promise<void> {
+  async failIdempotency(key: string, scope: string, failureCode?: string): Promise<void> {
     await this.executor
       .update(idempotencyKeys)
       .set({
@@ -910,9 +1017,18 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           eq(idempotencyKeys.status, 'processing')
         )
       );
-    // Intentionally not throwing if 0 rows affected: the caller is on a
-    // failure path already, and a missing/already-resolved row here
-    // shouldn't mask the original domain error.
+  }
+
+  async releaseIdempotencyClaim(key: string, scope: string): Promise<void> {
+    await this.executor
+      .delete(idempotencyKeys)
+      .where(
+        and(
+          eq(idempotencyKeys.key, key),
+          eq(idempotencyKeys.scope, scope),
+          eq(idempotencyKeys.status, 'processing')
+        )
+      );
   }
 
   async completeIdempotency(key: string, scope: string, transactionId: number): Promise<void> {
@@ -942,7 +1058,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     try {
       const balanceByAsset = new Map<number, bigint>();
 
-      const payload = entries.map(entry => {
+      const payload = entries.map((entry, index) => {
         const amountBigInt = entry.amount.toBigInt();
 
         if (amountBigInt <= 0n) {
@@ -970,6 +1086,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
         return {
           transactionId,
+          entryOrdinal: index,
           accountId: accountIdNum,
           assetId: assetIdNum,
           direction: entry.type,

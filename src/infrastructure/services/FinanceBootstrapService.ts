@@ -23,6 +23,12 @@ export class FinanceBootstrapService {
     uow: IUnitOfWork,
     options: TreasuryBootstrapOptions = {}
   ): Promise<Result<TreasuryBootstrapResult>> {
+    if (process.env.NODE_ENV === 'production' && !options.allowProductionBootstrap) {
+      return Result.fail<TreasuryBootstrapResult>(
+        'Bloqueio de Segurança: Bootstrap de contas sistêmicas em produção exige confirmação explícita (allowProductionBootstrap: true).'
+      );
+    }
+
     return uow.execute(async (factory) => {
       const financeRepo = factory.getFinanceRepository();
       const outboxRepo = factory.getOutboxRepository();
@@ -43,6 +49,7 @@ export class FinanceBootstrapService {
           idempotencyKey: `finance:bootstrap:opening-balance:${infra.treasuryAccountId}:${infra.assetId}`,
           description: 'Genesis Opening Balance Equity Allocation',
           transactionType: 'adjustment',
+          businessReason: 'genesis_opening_balance',
           category: 'operational',
           entries: [
             new LedgerEntry({

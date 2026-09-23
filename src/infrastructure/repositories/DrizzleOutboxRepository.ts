@@ -64,6 +64,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
           .set({
             leaseOwner: ownerId,
             leaseGeneration: nextGen,
+            attempts: sql`${outboxEvents.attempts} + 1`,
             leaseExpiresAt,
             status: 'processing',
           })
@@ -71,7 +72,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
             and(
               eq(outboxEvents.id, candidate.id),
               eq(outboxEvents.leaseGeneration, candidate.leaseGeneration ?? 0),
-              sql`(${outboxEvents.leaseExpiresAt} IS NULL OR ${outboxEvents.leaseExpiresAt} < ${now})`
+              sql`(${outboxEvents.status} IN ('pending', 'failed') OR (${outboxEvents.status} = 'processing' AND (${outboxEvents.leaseExpiresAt} <= ${now} OR ${outboxEvents.leaseOwner} = ${ownerId})))`
             )
           );
 
@@ -81,6 +82,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
             ...candidate,
             leaseOwner: ownerId,
             leaseGeneration: nextGen,
+            attempts: (candidate.attempts ?? 0) + 1,
             leaseExpiresAt,
             status: 'processing',
           });
@@ -140,6 +142,67 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         return Result.ok(false);
       }
       return Result.fail(`Failed to record consumer receipt: ${error.message}`);
+    }
+  }
+
+  async markPublished(
+    eventId: string,
+    ownerId: string,
+    currentGeneration: number
+  ): Promise<Result<boolean>> {
+    try {
+      const res = await this.db
+        .update(outboxEvents)
+        .set({
+          status: 'published',
+          publishedAt: new Date(),
+          leaseOwner: null,
+          leaseExpiresAt: null,
+        })
+        .where(
+          and(
+            eq(outboxEvents.id, eventId),
+            eq(outboxEvents.leaseOwner, ownerId),
+            eq(outboxEvents.leaseGeneration, currentGeneration),
+            eq(outboxEvents.status, 'processing')
+          )
+        );
+
+      const affected = (res?.meta?.changes ?? res?.rowsAffected ?? 0);
+      return Result.ok(affected > 0);
+    } catch (error: any) {
+      return Result.fail(`Failed to mark outbox event as published: ${error.message}`);
+    }
+  }
+
+  async markFailed(
+    eventId: string,
+    ownerId: string,
+    currentGeneration: number,
+    error: string
+  ): Promise<Result<boolean>> {
+    try {
+      const res = await this.db
+        .update(outboxEvents)
+        .set({
+          status: 'failed',
+          error,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+        })
+        .where(
+          and(
+            eq(outboxEvents.id, eventId),
+            eq(outboxEvents.leaseOwner, ownerId),
+            eq(outboxEvents.leaseGeneration, currentGeneration),
+            eq(outboxEvents.status, 'processing')
+          )
+        );
+
+      const affected = (res?.meta?.changes ?? res?.rowsAffected ?? 0);
+      return Result.ok(affected > 0);
+    } catch (error: any) {
+      return Result.fail(`Failed to mark outbox event as failed: ${error.message}`);
     }
   }
 }
