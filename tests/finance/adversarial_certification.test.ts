@@ -9,7 +9,7 @@ import { DrizzleFinanceRepository } from '../../src/infrastructure/repositories/
 import { D1AtomicPostingExecutor } from '../../src/infrastructure/services/D1AtomicPostingExecutor';
 import { PostingAuthority } from '../../src/application/finance/services/PostingAuthority';
 import { PostingPlanBuilder } from '../../src/domains/finance/services/PostingPlanBuilder';
-import { PostingSession, PostingCapabilityToken } from '../../src/domains/finance/contracts/PostingSession';
+import { PostingSession } from '../../domains/finance/contracts/PostingSession';
 import { RecordTransferUseCase } from '../../src/application/finance/use-cases/RecordTransferUseCase';
 import {
   financialAccounts,
@@ -209,8 +209,8 @@ describe('Fase 7: Certificação Adversarial do Finance Core (Gates 0 a 13)', ()
     );
 
     const results = await Promise.all(promises);
-    const winners = results.filter((r) => r === true);
-    const losers = results.filter((r) => r === false);
+    const winners = results.filter((r) => r.claimed === true);
+    const losers = results.filter((r) => r.claimed === false);
 
     expect(winners.length).toBe(1);
     expect(losers.length).toBe(49);
@@ -354,7 +354,7 @@ describe('Fase 7: Certificação Adversarial do Finance Core (Gates 0 a 13)', ()
 
     // 4. Executa commit via PostingAuthority / D1AtomicPostingExecutor
     const executor = new D1AtomicPostingExecutor(db);
-    const session = PostingSession.createAuthorizedSession(PostingCapabilityToken, 'sqlite-transaction', 'session-fence-01');
+    const session = financeRepo.getPostingSession();
 
     const commitResult = await executor.execute(plan, session);
 
@@ -368,5 +368,102 @@ describe('Fase 7: Certificação Adversarial do Finance Core (Gates 0 a 13)', ()
       .from(accountBalances)
       .where(eq(accountBalances.accountId, sourceAccountId));
     expect(balanceAfter.availableBaseUnits).toBe('50000');
+  });
+
+  it('TEST-FENCE-STALE-01: Prova de que Worker A (stale generation=1) é fisicamente bloqueado após Worker B conquistar generation=2', async () => {
+    const idemKey = 'adversarial-fence-stale-key-01';
+    const reqHash = 'adversarial-fence-hash-01';
+    const scope = 'finance';
+
+    // 1. Worker A executa claimIdempotency e ganha leaseOwner='worker-A', generation=1
+    const claimA = await financeRepo.claimIdempotency(idemKey, 100, scope, reqHash, {
+      leaseOwner: 'worker-A',
+      leaseDurationMs: 60000,
+    });
+
+    expect(claimA.claimed).toBe(true);
+    expect(claimA.leaseOwner).toBe('worker-A');
+    expect(claimA.leaseGeneration).toBe(1);
+
+    // 2. Simula expiração segura do lease envelhecendo timestamps no banco (preserva created_at < expires_at)
+    await sqlite.execute(
+      `UPDATE idempotency_keys SET created_at = unixepoch() - 20, expires_at = unixepoch() - 5 WHERE key = '${idemKey}';`
+    );
+
+    // 3. Worker B executa reclaim via CAS e conquista leaseOwner='worker-B', generation=2
+    const claimB = await financeRepo.claimIdempotency(idemKey, 100, scope, reqHash, {
+      leaseOwner: 'worker-B',
+      leaseDurationMs: 60000,
+    });
+
+    expect(claimB.claimed).toBe(true);
+    expect(claimB.leaseOwner).toBe('worker-B');
+    expect(claimB.leaseGeneration).toBe(2);
+
+    // 4. Worker A acorda após longo processamento.
+    // Conforme a regra P0-A, Worker A NUNCA lê o banco para adotar a identidade de Worker B.
+    // Worker A utiliza estritamente sua própria identidade conquistada (generation=1).
+    const [accAlice] = await db.select().from(financialAccounts).where(eq(financialAccounts.userId, 100));
+    const [accBob] = await db.select().from(financialAccounts).where(eq(financialAccounts.userId, 200));
+    const [balAlice] = await db.select().from(accountBalances).where(eq(accountBalances.accountId, accAlice.id));
+    const [balBob] = await db.select().from(accountBalances).where(eq(accountBalances.accountId, accBob.id));
+
+    const planStaleA = PostingPlanBuilder.build({
+      scope,
+      idempotencyKey: idemKey,
+      requestHash: reqHash,
+      transactionType: 'transfer',
+      category: 'operational',
+      description: 'Stale Worker A attempt',
+      actorUserId: 100,
+      authorizedByUserId: null,
+      authorizationDecision: { allowed: true },
+      leaseOwner: claimA.leaseOwner, // 'worker-A'
+      leaseGeneration: claimA.leaseGeneration, // 1 (STALE!)
+      entries: [
+        {
+          accountId: accAlice.id,
+          assetId: 1,
+          accountClass: accAlice.accountClass,
+          accountStatus: accAlice.status,
+          direction: 'debit',
+          amount: 100n,
+          description: 'Debit Alice',
+          currentAvailableBaseUnits: BigInt(balAlice.availableBaseUnits),
+          currentVersion: balAlice.version,
+        },
+        {
+          accountId: accBob.id,
+          assetId: 1,
+          accountClass: accBob.accountClass,
+          accountStatus: accBob.status,
+          direction: 'credit',
+          amount: 100n,
+          description: 'Credit Bob',
+          currentAvailableBaseUnits: BigInt(balBob.availableBaseUnits),
+          currentVersion: balBob.version,
+        },
+      ],
+    });
+
+    // 5. Worker A tenta commitar via PostingAuthority / D1AtomicPostingExecutor
+    const authority = financeRepo.getPostingAuthority();
+    const sessionA = financeRepo.getPostingSession();
+
+    const commitResultA = await authority.commit(planStaleA, sessionA);
+
+    // O commit de Worker A DEVE falhar fisicamente: o lease_generation no banco é 2, não 1!
+    expect(commitResultA.isFailure).toBe(true);
+    expect(commitResultA.error).toMatch(/guarda física|guard = 1|assertion/i);
+
+    // 6. Prova de que o registro de idempotência no banco continua intacto com Worker B (generation=2)
+    const [idempRecord] = await db
+      .select()
+      .from(idempotencyKeys)
+      .where(eq(idempotencyKeys.key, idemKey));
+
+    expect(idempRecord.leaseOwner).toBe('worker-B');
+    expect(idempRecord.leaseGeneration).toBe(2);
+    expect(idempRecord.status).toBe('processing');
   });
 });
