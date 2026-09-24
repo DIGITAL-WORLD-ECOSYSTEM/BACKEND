@@ -22,6 +22,7 @@ export interface IRepositoryFactory {
   getFinanceRepository(): IFinanceRepository;
   getPostingSession(): import('../../../domains/finance/contracts/PostingSession').PostingSession;
   getPostingExecutor(): import('./IPostingExecutor').IPostingExecutor;
+  getPostingAuthority?(): import('../../finance/services/PostingAuthority').PostingAuthority;
 }
 
 
