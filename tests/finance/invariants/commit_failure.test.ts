@@ -115,15 +115,15 @@ describe('Invariante DOD-05: Unitaridade do Commit & Proteção contra Mascarame
     const countIdempotencyInitial = Number((await sqlite.execute('SELECT COUNT(*) as c FROM idempotency_keys')).rows[0].c);
     const countOutboxInitial = Number((await sqlite.execute('SELECT COUNT(*) as c FROM outbox_events')).rows[0].c);
 
+    // Injeta falha física deliberada na inserção do Outbox para provar atomicidade do batch
+    await sqlite.execute(
+      `CREATE TRIGGER fault_outbox_trigger BEFORE INSERT ON outbox_events BEGIN SELECT RAISE(ABORT, 'FAULT_INJECTION_OUTBOX_STORAGE_CRASH'); END;`
+    );
+
     // Executa postagem com FALHA INJETADA no Outbox
     const result = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository() as DrizzleFinanceRepository;
       const outbox = factory.getOutboxRepository();
-
-      // Injeta falha deliberada no saveEvent do Outbox
-      outbox.saveEvent = async () => {
-        throw new Error('FAULT_INJECTION_OUTBOX_STORAGE_CRASH');
-      };
 
       const userAccRes = await repo.getOrCreateUserAccount(99);
       const userAccountId = userAccRes.getValue().id;
