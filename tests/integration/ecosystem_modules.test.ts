@@ -208,7 +208,7 @@ describe('Ecosystem Modules Suite (Civil Identity, SSI & Treasury)', () => {
         getOrCreateOperatingAccount: vi.fn().mockResolvedValue(Result.ok({ id: 3, status: 'active', accountType: 'operating', accountClass: 'asset' })),
         getAccountBalance: vi.fn().mockResolvedValue(Result.ok({ availableBaseUnits: '100000', lockedBaseUnits: '0', version: 1 })),
         getIdempotencyRecord: vi.fn().mockResolvedValue(null),
-        claimIdempotency: vi.fn().mockResolvedValue(true),
+        claimIdempotency: vi.fn().mockResolvedValue({ claimed: true, leaseOwner: 'mock-owner', leaseGeneration: 1 }),
         insertTransaction: vi.fn().mockResolvedValue(Result.ok(10)),
         insertLedgerEntries: vi.fn().mockResolvedValue(Result.ok()),
         updateBalanceWithOCC: vi.fn().mockResolvedValue('UPDATED'),
