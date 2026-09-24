@@ -68,6 +68,10 @@ export const idempotencyKeys = sqliteTable(
     })
       .notNull()
       .default('processing'),
+    leaseOwner: text('lease_owner'),
+    leaseGeneration: integer('lease_generation').notNull().default(0),
+    responseStatus: integer('response_status'),
+    responsePayload: text('response_payload'),
     createdAt: integer('created_at', { mode: 'timestamp' })
       .default(sql`(unixepoch())`)
       .notNull(),
@@ -79,6 +83,7 @@ export const idempotencyKeys = sqliteTable(
   (table) => ({
     scopeKeyUnq: uniqueIndex('uq_idempotency_scope_key').on(table.scope, table.key),
     statusIdx: index('idx_idempotency_keys_status').on(table.status),
+    leaseOwnerIdx: index('idx_idempotency_keys_lease').on(table.leaseOwner, table.leaseGeneration),
   })
 );
 
