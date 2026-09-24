@@ -94,7 +94,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
     const resultRes = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
       const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
-      const postResult = await orchestrator.executePosting(tx, reqHash);
+      const postResult = await orchestrator.executePostingForTesting(tx, reqHash);
       return Result.ok(postResult);
     });
 
@@ -135,7 +135,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
     const result = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
       const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
-      const postResult = await orchestrator.executePosting(tx, 'hash-fail');
+      const postResult = await orchestrator.executePosting(tx);
       return Result.ok(postResult);
     });
 
@@ -167,7 +167,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
     const resultRes = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
       const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
-      const postResult = await orchestrator.executePosting(tx, 'hash123');
+      const postResult = await orchestrator.executePostingForTesting(tx, 'hash123');
       return Result.ok(postResult);
     });
 
@@ -194,7 +194,7 @@ describe('Finance Core E2E Certification (Real DB)', () => {
     const result = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
       const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
-      const postResult = await orchestrator.executePosting(tx, 'hash-diferente');
+      const postResult = await orchestrator.executePostingForTesting(tx, 'hash-diferente');
       return Result.ok(postResult);
     });
 
@@ -215,8 +215,8 @@ describe('Finance Core E2E Certification (Real DB)', () => {
     expect(claimRes.isSuccess).toBe(true);
 
     const result = await uow.execute(async (factory) => {
-       const claimed = await factory.getFinanceRepository().claimIdempotency(idemKey, 2, 'finance', reqHash);
-       if (!claimed) {
+       const claimRes = await factory.getFinanceRepository().claimIdempotency(idemKey, 2, 'finance', reqHash);
+       if (!claimRes.claimed) {
           return Result.fail('Transação em andamento (Idempotency Key Processing).');
        }
        return Result.ok(true);
