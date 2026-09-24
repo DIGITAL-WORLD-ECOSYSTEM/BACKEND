@@ -180,8 +180,16 @@ export interface IFinanceRepository {
     transactionId: number,
     options?: { leaseOwner?: string; leaseGeneration?: number; responseStatus?: number; responsePayload?: string }
   ): Promise<void>;
-  failIdempotency(key: string, scope: string, failureCode?: string): Promise<void>;
-  releaseIdempotencyClaim(key: string, scope: string): Promise<void>;
+  failIdempotency(
+    key: string,
+    scope: string,
+    options?: { leaseOwner?: string; leaseGeneration?: number; failureCode?: string } | string
+  ): Promise<void>;
+  releaseIdempotencyClaim(
+    key: string,
+    scope: string,
+    options?: { leaseOwner?: string; leaseGeneration?: number }
+  ): Promise<void>;
   insertTransaction(data: {
     userId?: number | null;
     actorUserId?: number | null;
