@@ -173,24 +173,41 @@ export interface IFinanceRepository {
     scope: string,
     requestHash: string,
     options?: { leaseOwner?: string; leaseTimeoutMs?: number }
-  ): Promise<boolean | IdempotencyClaimResult>;
+  ): Promise<IdempotencyClaimResult>;
   completeIdempotency(
     key: string,
     scope: string,
     transactionId: number,
-    options?: { leaseOwner?: string; leaseGeneration?: number; responseStatus?: number; responsePayload?: string }
+    options: {
+      requestHash: string;
+      leaseOwner: string;
+      leaseGeneration: number;
+      responseStatus?: number;
+      responsePayload?: string;
+    }
   ): Promise<void>;
   failIdempotency(
     key: string,
     scope: string,
-    options?: { leaseOwner?: string; leaseGeneration?: number; failureCode?: string } | string
+    options: {
+      leaseOwner: string;
+      leaseGeneration: number;
+      failureCode?: string;
+    }
   ): Promise<void>;
   releaseIdempotencyClaim(
     key: string,
     scope: string,
-    options?: { leaseOwner?: string; leaseGeneration?: number }
+    options: {
+      leaseOwner: string;
+      leaseGeneration: number;
+    }
   ): Promise<void>;
-  insertTransaction(data: {
+
+  /**
+   * @deprecated [GATE 0 P0] Bypass contábil. Toda escrita deve passar pela PostingAuthority.
+   */
+  insertTransaction?(data: {
     userId?: number | null;
     actorUserId?: number | null;
     authorizedByUserId?: number | null;
@@ -204,14 +221,25 @@ export interface IFinanceRepository {
     sourceId?: string | null;
     correlationId?: string | null;
   }): Promise<Result<number, RepositoryError>>;
-  insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<Result<void, RepositoryError>>;
-  updateBalanceWithOCC(
+
+  /**
+   * @deprecated [GATE 0 P0] Bypass contábil. Toda escrita deve passar pela PostingAuthority.
+   */
+  insertLedgerEntries?(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<Result<void, RepositoryError>>;
+
+  /**
+   * @deprecated [GATE 0 P0] Bypass contábil. Mutações diretas de saldo fora do lote atômico são proibidas.
+   */
+  updateBalanceWithOCC?(
     accountId: number | string,
     assetId: number | string,
     amount: bigint,
     type: 'debit' | 'credit'
   ): Promise<BalanceUpdateResult>;
+
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
+  getPostingAuthority?(): any;
+  getPostingSession?(): any;
   // NOTE: persistOutboxEvent removed — use IOutboxRepository.saveEvent() within the same UoW transaction.
 
   /**
