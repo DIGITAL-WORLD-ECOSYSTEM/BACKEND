@@ -4,6 +4,7 @@ import {
   BalanceMutationPlan,
   PostingTransactionRecordPlan,
   PostingOutboxEventPlan,
+  POSTING_PLAN_SEAL,
 } from '../contracts/PostingPlan';
 import { AuthorizationDecision } from '../contracts/AuthorizationContext';
 import { DeterministicIdGenerator } from '../contracts/DeterministicIdGenerator';
@@ -55,14 +56,15 @@ export interface BuildPostingPlanParams {
 
 export class PostingPlanBuilder {
   /**
-   * Constrói e valida rigorosamente um PostingPlan imutável em memória.
+   * Constrói e valida rigorosamente um PostingPlan imutável e selado em memória.
    *
    * Garantias Soberanas:
    * 1. Invariante FIN-001 de partidas dobradas (débitos == créditos por ativo).
-   * 2. Ordinais físicos determinísticos e estritamente únicos para cada perna do ledger (entryOrdinal).
+   * 2. Ordinais físicos determinísticos e estritamente únicos para cada perna do ledger (entryOrdinal 1..N).
    * 3. Consolidação e ordenação canônica de mutações de saldo por (accountId, assetId).
-   * 4. Validação de suficiência de fundos e limites uint256.
+   * 4. Validação de suficiência de fundos, SafeInteger de IDs e limites uint256.
    * 5. Identidade determinística da transação gerada antes do batch (DeterministicIdGenerator).
+   * 6. Selamento criptográfico em runtime via POSTING_PLAN_SEAL para prova de autenticidade (P0-07).
    */
   public static build(params: BuildPostingPlanParams): PostingPlan {
     // 0. Validação de Autorização Soberana (DENIED -> Bloqueio imediato do PostingPlan)
@@ -90,11 +92,26 @@ export class PostingPlanBuilder {
       );
     }
 
-    // 1. Validação de valores estritamente positivos e contas ativas
+    // 1. Validação de valores estritamente positivos, limites uint256, IDs seguros e contas ativas
     for (const entry of params.entries) {
+      if (!Number.isSafeInteger(entry.accountId) || entry.accountId <= 0) {
+        throw new InvalidLedgerTransactionError(
+          `Identificador de conta financeira inválido (${entry.accountId}). Deve ser um inteiro seguro positivo.`
+        );
+      }
+      if (!Number.isSafeInteger(entry.assetId) || entry.assetId <= 0) {
+        throw new InvalidLedgerTransactionError(
+          `Identificador de ativo financeiro inválido (${entry.assetId}). Deve ser um inteiro seguro positivo.`
+        );
+      }
       if (entry.amount <= 0n) {
         throw new InvalidLedgerTransactionError(
           `Invariante do Ledger violado: Quantia contábil inválida (${entry.amount}). O valor deve ser estritamente positivo (> 0).`
+        );
+      }
+      if (entry.amount > MAX_UINT256) {
+        throw new Money256OverflowError(
+          `Quantia contábil informada (${entry.amount}) excede o limite uint256.`
         );
       }
       if (entry.accountStatus !== 'active') {
@@ -163,7 +180,7 @@ export class PostingPlanBuilder {
 
     for (const agg of sortedAggregations) {
       if (agg.netSignedDelta === 0n) {
-        continue; // Débitos e créditos cancelam-se perfeitamente
+        continue;
       }
 
       const targetAvailable = agg.currentAvailable + agg.netSignedDelta;
@@ -191,16 +208,16 @@ export class PostingPlanBuilder {
       );
     }
 
-    // 4. Geração determinística de identidade (após todas as validações prévias passarem)
+    // 4. Geração determinística de identidade
     const transactionId = DeterministicIdGenerator.nextTransactionId();
     const planId = `plan_${transactionId}_${Date.now()}`;
     const correlationId = params.correlationId || `corr_${transactionId}`;
 
-    // 5. Compilação das pernas contábeis com entryOrdinal sequencial (P1-14)
+    // 5. Compilação das pernas contábeis com entryOrdinal sequencial canônico 1..N (P0-18)
     const ledgerEntries: PostingLedgerEntryPlan[] = params.entries.map((entry, index) => {
       return Object.freeze({
         transactionId,
-        entryOrdinal: index,
+        entryOrdinal: index + 1,
         accountId: entry.accountId,
         assetId: entry.assetId,
         direction: entry.direction,
@@ -254,13 +271,15 @@ export class PostingPlanBuilder {
         idempotencyKey: params.idempotencyKey,
       });
 
+    // 8. Selamento Soberano e Imutabilidade Profunda (P0-07, P0-20)
     return Object.freeze({
+      [POSTING_PLAN_SEAL]: POSTING_PLAN_SEAL,
       planId,
       scope: params.scope,
       idempotencyKey: params.idempotencyKey,
       requestHash: params.requestHash,
       transactionId,
-      authorizationDecision: params.authorizationDecision,
+      authorizationDecision: Object.freeze({ ...params.authorizationDecision }),
       transactionRecord,
       ledgerEntries: Object.freeze(ledgerEntries),
       balanceMutations: Object.freeze(balanceMutations),
