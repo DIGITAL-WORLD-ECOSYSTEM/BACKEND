@@ -92,7 +92,7 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
     const result = await uow.execute(async (factory) => {
       const repo = factory.getFinanceRepository();
       const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
-      return await orchestrator.executePosting(invalidTx, 'hash-fail-4');
+      return await orchestrator.executePosting(invalidTx);
     });
 
     expect(result.isFailure).toBe(true);
@@ -140,7 +140,11 @@ describe('Invariante DOD-06: Matriz de Falhas e Rollback Integral nos Passos Tra
       await repo.updateTransactionStatus(dbTxId, 'completed');
       
       // Força completeIdempotency com chave ERRADA que afetará 0 linhas
-      await repo.completeIdempotency('NON_EXISTENT_KEY', 'finance', dbTxId);
+      await repo.completeIdempotency('NON_EXISTENT_KEY', 'finance', dbTxId, {
+        requestHash: 'hash-6',
+        leaseOwner: 'owner-test',
+        leaseGeneration: 1,
+      });
       return Result.ok(true);
     });
 
