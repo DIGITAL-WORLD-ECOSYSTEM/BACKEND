@@ -22,7 +22,7 @@ import { Result } from '../../shared/kernel/Result';
 import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
 import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
 import { isD1Database } from './db_helper';
-import { PostingSession, PostingCapabilityToken } from '../../domains/finance/contracts/PostingSession';
+import { PostingSession, issueBoundaryPostingSession } from '../../domains/finance/contracts/PostingSession';
 import { IPostingExecutor } from '../../application/ports/output/IPostingExecutor';
 import { D1AtomicPostingExecutor } from '../services/D1AtomicPostingExecutor';
 import { FinancialError } from '../../domains/finance/errors/FinancialError';
@@ -33,8 +33,7 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
 
   constructor(
     private readonly tx: FinanceTransaction,
-    private readonly db?: FinanceDatabase,
-    private readonly postingCapabilityToken?: typeof PostingCapabilityToken
+    private readonly db?: FinanceDatabase
   ) {}
 
   getUserRepository(): IUserRepository {
@@ -79,13 +78,10 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
 
   getPostingSession(): PostingSession {
     if (!this._postingSession) {
-      if (!this.postingCapabilityToken) {
-        throw new Error('PostingCapabilityToken não disponível nesta fábrica transacional.');
-      }
       const isD1 = isD1Database(this.db || this.tx);
       const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
-      const sessionId = `ps_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      this._postingSession = PostingSession.createAuthorizedSession(this.postingCapabilityToken, mode, sessionId);
+      const boundaryId = `uow_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      this._postingSession = issueBoundaryPostingSession(mode, boundaryId);
     }
     return this._postingSession;
   }
@@ -108,7 +104,7 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
       try {
         await (this.db as any).transaction(
           async (tx: FinanceTransaction) => {
-            const factory = new DrizzleRepositoryFactory(tx, this.db, PostingCapabilityToken);
+            const factory = new DrizzleRepositoryFactory(tx, this.db);
             result = await work(factory);
 
             if (result && result.isFailure) {
