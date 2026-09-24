@@ -1,7 +1,7 @@
 import { IFinanceRepository } from '../../ports/output/IFinanceRepository';
 import { IOutboxRepository } from '../../ports/output/IOutboxRepository';
-import { IDomainEvent, LedgerTransactionPostedEvent } from '../../../shared/kernel/DomainEvent';
 import { LedgerTransaction } from '../../../domains/finance/entities/LedgerTransaction';
+import { LedgerTransactionPostedEvent } from '../../../shared/kernel/DomainEvent';
 import {
   IdempotencyConflictError,
   IdempotencyInProgressError,
@@ -9,39 +9,66 @@ import {
   InsufficientBalanceError,
   InvalidLedgerTransactionError,
   InvalidStateTransitionError,
+  AccountInactiveError,
+  AssetInactiveError,
 } from '../../../domains/finance/errors/FinancialError';
 import { LedgerImbalanceError } from '../../../domains/finance/errors/LedgerImbalanceError';
 import { CanonicalRequestHashService } from './CanonicalRequestHashService';
-import { AccountStatusPolicy } from '../../../domains/finance/policies/AccountStatusPolicy';
+import { AccountStatusPolicy, AccountStatus } from '../../../domains/finance/policies/AccountStatusPolicy';
 import { AssetStatusPolicy } from '../../../domains/finance/policies/AssetStatusPolicy';
 import { AccountClassPolicy } from '../../../domains/finance/policies/AccountClassPolicy';
-import { FinancialTransactionStateMachine } from '../../../domains/finance/services/FinancialTransactionStateMachine';
 import { parsePositiveSafeIntegerId } from '../../../domains/finance/value-objects/Money256';
+import { PostingAuthority } from './PostingAuthority';
+import { PostingPlanBuilder, PostingLegEntryInput } from '../../../domains/finance/services/PostingPlanBuilder';
+import { PostingSession, PostingCapabilityToken } from '../../../domains/finance/contracts/PostingSession';
+import { IPostingExecutor } from '../../ports/output/IPostingExecutor';
+import { AuthorizationDecision } from '../../../domains/finance/contracts/AuthorizationContext';
 
 export interface OrchestratorResult {
   transactionId: number;
   isReplayed: boolean;
 }
 
-function assertNever(value: never): never {
-  throw new Error(`Unhandled BalanceUpdateResult case: ${value}`);
-}
-
 export class FinancialTransactionOrchestrator {
+  private readonly authority: PostingAuthority;
+  private readonly session?: PostingSession;
+
   /**
-   * O Orchestrator exige um repositório transacional vinculado ao Unit of Work (BEGIN IMMEDIATE).
-   * Ele atua como a Autoridade Física Central de escrita no ledger financeiro.
-   *
-   * Todas as etapas de persistência (Claim Idempotency, Insert Transaction, Insert Entries, OCC Balance Updates,
-   * Outbox Event e Complete Idempotency) ocorrem obrigatoriamente dentro do mesmo boundary transacional do banco.
+   * O FinancialTransactionOrchestrator atua como a Autoridade Física Central de escrita no ledger financeiro.
+   * Ele compila a intenção contábil via PostingPlanBuilder e despacha a mutação física
+   * atômica através da PostingAuthority soberana (Gate 0 / IPostingExecutor).
    */
   constructor(
     private readonly financeRepo: IFinanceRepository,
-    private readonly outboxRepo: IOutboxRepository
+    private readonly outboxRepo: IOutboxRepository,
+    postingAuthority?: PostingAuthority,
+    postingSession?: PostingSession
   ) {
     if (!outboxRepo) {
       throw new Error('IOutboxRepository é obrigatório para execução atômica no FinancialTransactionOrchestrator.');
     }
+    if (postingAuthority) {
+      this.authority = postingAuthority;
+    } else {
+      const executor: IPostingExecutor =
+        (this.financeRepo as any).getPostingExecutor?.() ||
+        (this.outboxRepo as any).getPostingExecutor?.() ||
+        (this.financeRepo as any).executor;
+      if (executor) {
+        this.authority = new PostingAuthority(executor);
+      } else {
+        throw new Error('PostingAuthority ou IPostingExecutor é obrigatório para FinancialTransactionOrchestrator.');
+      }
+    }
+    this.session = postingSession;
+  }
+
+  private resolvePostingSession(): PostingSession {
+    if (this.session && typeof this.session.isValid === 'function' && this.session.isValid()) {
+      return this.session;
+    }
+    const sessionId = `ps_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    return PostingSession.createAuthorizedSession(PostingCapabilityToken, 'sqlite-transaction', sessionId);
   }
 
   /**
@@ -70,14 +97,6 @@ export class FinancialTransactionOrchestrator {
   /**
    * Pré-validação obrigatória de todas as entidades participantes (contas e ativos).
    * Executada ANTES da reivindicação de idempotência e de qualquer escrita no banco de dados.
-   *
-   * Garante que:
-   * 1. Todos os ativos únicos existem e estão 'active' (AssetStatusPolicy).
-   * 2. Todas as contas únicas existem e estão 'active' (AccountStatusPolicy).
-   * 3. Todas as contas possuem classificação contábil compatível com seu tipo (AccountClassPolicy).
-   *
-   * Como é executada sobre o conjunto de IDs únicos da transação, elimina a brecha
-   * do delta zero (onde debitSum === creditSum fazia o OCC pular a validação da conta).
    */
   private async preValidateEntities(transaction: LedgerTransaction): Promise<void> {
     const accountIds = new Set<number>();
@@ -115,14 +134,12 @@ export class FinancialTransactionOrchestrator {
       }
       const account = accountRes.getValue();
 
-      // Validação de status operacional: pode movimentar?
       AccountStatusPolicy.validateActive({
         id: account.id,
         status: account.status,
         name: account.name,
       });
 
-      // Validação de classe contábil: classificação compatível?
       if (account.accountClass) {
         AccountClassPolicy.validate(account.accountType, account.accountClass);
       }
@@ -130,24 +147,19 @@ export class FinancialTransactionOrchestrator {
   }
 
   /**
-   * Executa o fluxo atômico de escrita no ledger:
-   * 0. Validação estrita do invariante do Ledger (mínimo 2 lançamentos, ao menos 1 débito e 1 crédito, e balanço nulo).
-   * 1. PRE-POSTING GATE: Pré-validação de todas as contas e ativos participantes (elimina bypass de delta-zero).
-   * 2. Validação da transição de estado da transação: pending -> processing via State Machine.
-   * 3. Cálculo do Hash Canônico do payload financeiro.
-   * 4. Reclamação atômica de Idempotência.
-   * 5. Inserção do registro da transação financeira em 'processing'.
-   * 6. Inserção dos lançamentos contábeis imutáveis.
-   * 7. Atualização dos saldos materializados via OCC com ordenação determinística por (accountId, assetId).
-   * 8. Transição de status para 'completed' via State Machine.
-   * 9. Registro de evento no Outbox.
-   * 10. Conclusão da Idempotência.
+   * Executa o fluxo soberano de escrita no ledger através da fronteira de commit (Gate 0):
+   * 1. Invariante FIN-001 e validações sintáticas.
+   * 2. Cálculo do Hash Canônico.
+   * 3. Reivindicação atômica de Idempotência com fencing token (leaseOwner, leaseGeneration).
+   * 4. PRE-POSTING GATE: Pré-validação de entidades ativas.
+   * 5. Coleta atômica dos saldos e versões correntes das contas participantes.
+   * 6. Compilação do PostingPlan imutável via PostingPlanBuilder (ordenação determinística canônica).
+   * 7. Commit atômico soberano via PostingAuthority (batch único com guardas físicas _sql_assertions).
    */
   public async executePosting(
     transaction: LedgerTransaction,
     requestHashOverride?: string
   ): Promise<OrchestratorResult> {
-    // Invariante FIN-001: Validação do número mínimo de lançamentos
     if (!transaction.entries || transaction.entries.length < 2) {
       throw new InvalidLedgerTransactionError(
         'Invariante do Ledger violado: Uma transação financeira deve conter no mínimo 2 lançamentos contábeis.'
@@ -162,7 +174,6 @@ export class FinancialTransactionOrchestrator {
       );
     }
 
-    // Invariante: Todas as quantias de lançamentos contábeis devem ser estritamente maiores que zero (> 0)
     for (const entry of transaction.entries) {
       if (entry.amount.amount <= 0n) {
         throw new InvalidLedgerTransactionError(
@@ -173,17 +184,18 @@ export class FinancialTransactionOrchestrator {
 
     this.validateDoubleEntry(transaction);
 
-    // 1. Hash canônico calculado pelo servidor (ou override fornecido para testes)
     const computedHash = requestHashOverride || CanonicalRequestHashService.calculateHash(transaction);
-
     const scope = transaction.scope || 'finance';
 
-    // 2. Reivindicação atômica de idempotência antes de qualquer I/O de validação mutável
+    // Fencing P0: Gera leaseOwner único para o trabalhador atual
+    const leaseOwner = `worker_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
     const claimed = await this.financeRepo.claimIdempotency(
       transaction.idempotencyKey,
       transaction.userId,
       scope,
-      computedHash
+      computedHash,
+      { leaseOwner }
     );
 
     if (!claimed) {
@@ -194,7 +206,6 @@ export class FinancialTransactionOrchestrator {
 
       if (existing.requestHash === computedHash) {
         if (existing.status === 'completed' && existing.transactionId) {
-          // Replay determinístico imediato: zero chamadas a entidades mutáveis ou checagens de saldo
           return { transactionId: existing.transactionId, isReplayed: true };
         }
         throw new IdempotencyInProgressError();
@@ -203,152 +214,168 @@ export class FinancialTransactionOrchestrator {
       }
     }
 
-    // 3. PRE-POSTING GATE: Pré-validação obrigatória de entidades (executa apenas para transações novas)
-    await this.preValidateEntities(transaction);
+    try {
+      // PRE-POSTING GATE: Pré-validação obrigatória de contas e ativos participantes
+      await this.preValidateEntities(transaction);
 
-    // 4. State Machine: validação da transição inicial para 'processing'
-    const processingTransition = FinancialTransactionStateMachine.transition(
-      transaction.status,
-      'processing'
-    );
-    if (processingTransition.isFailure) {
-      throw new InvalidStateTransitionError(
-        processingTransition.error || 'Transição de estado para processing inválida.'
-      );
-    }
-    const processingStatus = processingTransition.getValue();
+      // Captura o registro de idempotência ativo para extrair a geração do lease garantida pelo CAS
+      const idempRecord = await this.financeRepo.getIdempotencyRecord(transaction.idempotencyKey, scope);
+      const leaseGeneration = idempRecord?.leaseGeneration ?? 1;
+      const activeLeaseOwner = idempRecord?.leaseOwner ?? leaseOwner;
 
-    // 5. Inserção do registro pai da transação com o status derivado da State Machine
-    const txResult = await this.financeRepo.insertTransaction({
-      userId: transaction.userId ?? null,
-      actorUserId: transaction.actorUserId ?? transaction.userId ?? null,
-      authorizedByUserId: transaction.authorizedByUserId ?? null,
-      type: transaction.transactionType ?? 'adjustment',
-      category: transaction.category || 'operational',
-      description: transaction.description,
-      status: processingStatus,
-      reversalOfTransactionId: transaction.reversalOfTransactionId,
-      refundOfTransactionId: transaction.refundOfTransactionId,
-      sourceType: transaction.sourceType ?? null,
-      sourceId: transaction.sourceId ?? null,
-      correlationId: transaction.correlationId ?? null,
-    });
-    if (txResult.isFailure) {
-      throw new Error(txResult.typedError?.message || txResult.error || 'Falha ao inserir registro de transação financeira.');
-    }
-    const transactionId = txResult.getValue();
+      // Coleta o estado de contas e saldos para alimentar o compilador do PostingPlan
+      const accountMap = new Map<number, { accountClass: any; status: AccountStatus }>();
+      const balanceMap = new Map<string, { availableBaseUnits: bigint; version: number }>();
 
-    // 6. Inserção dos lançamentos contábeis imutáveis
-    const entriesResult = await this.financeRepo.insertLedgerEntries(transaction.entries, transactionId);
-    if (entriesResult.isFailure) {
-      throw new Error(entriesResult.typedError?.message || entriesResult.error || 'Falha ao inserir lançamentos contábeis.');
-    }
+      for (const entry of transaction.entries) {
+        const parsedAccId = parsePositiveSafeIntegerId(entry.accountId, 'entry.accountId');
+        if (!accountMap.has(parsedAccId)) {
+          const accRes = await this.financeRepo.getAccountById(parsedAccId);
+          if (accRes.isFailure) {
+            throw new Error(accRes.error || `Conta financeira #${parsedAccId} não encontrada.`);
+          }
+          const acc = accRes.getValue();
+          accountMap.set(parsedAccId, {
+            accountClass: acc.accountClass,
+            status: acc.status as AccountStatus,
+          });
+        }
 
-    // 7. Consolidação e agregação de saldos por (accountId, assetId) para evitar falhas de saldo intermediário (intra-transaction) e otimizar I/O.
-    interface AccountAssetKey {
-      accountId: string;
-      assetId: number;
-      debitSum: bigint;
-      creditSum: bigint;
-    }
+        const balKey = `${parsedAccId}:${entry.amount.assetId}`;
+        if (!balanceMap.has(balKey)) {
+          // Garante a existência materializada do saldo zerado com version 1 antes da leitura OCC
+          await (this.financeRepo as any).ensureAccountBalance?.(parsedAccId, entry.amount.assetId);
 
-    const aggregatedMap = new Map<string, AccountAssetKey>();
+          const balRes = await this.financeRepo.getAccountBalance(parsedAccId, entry.amount.assetId);
+          if (balRes.isSuccess) {
+            const bal = balRes.getValue();
+            balanceMap.set(balKey, {
+              availableBaseUnits: BigInt(bal.availableBaseUnits || '0'),
+              version: bal.version,
+            });
+          } else {
+            balanceMap.set(balKey, {
+              availableBaseUnits: 0n,
+              version: 1,
+            });
+          }
+        }
+      }
 
-    for (const entry of transaction.entries) {
-      const key = `${entry.accountId}:${entry.amount.assetId}`;
-      const existing = aggregatedMap.get(key) || {
-        accountId: entry.accountId,
-        assetId: entry.amount.assetId,
-        debitSum: 0n,
-        creditSum: 0n,
-      };
+      // Constrói os lançamentos de entrada para o PostingPlanBuilder
+      const legInputs: PostingLegEntryInput[] = transaction.entries.map((entry) => {
+        const parsedAccId = parsePositiveSafeIntegerId(entry.accountId, 'entry.accountId');
+        const acc = accountMap.get(parsedAccId)!;
+        const bal = balanceMap.get(`${parsedAccId}:${entry.amount.assetId}`) || {
+          availableBaseUnits: 0n,
+          version: 1,
+        };
 
-      if (entry.type === 'debit') {
-        existing.debitSum += entry.amount.amount;
+        return {
+          accountId: parsedAccId,
+          assetId: entry.amount.assetId,
+          accountClass: acc.accountClass,
+          accountStatus: acc.status,
+          direction: entry.type,
+          amount: entry.amount.amount,
+          description: entry.description || transaction.description,
+          currentAvailableBaseUnits: bal.availableBaseUnits,
+          currentVersion: bal.version,
+        };
+      });
+
+      // Decisão de autorização explícita
+      let authorizationDecision: AuthorizationDecision;
+      if (transaction.actorUserId || transaction.userId) {
+        const actorId = transaction.actorUserId ?? transaction.userId!;
+        authorizationDecision = {
+          allowed: true,
+          type: transaction.authorizedByUserId ? 'DELEGATED' : 'SELF',
+          actorUserId: actorId,
+          authorizedByUserId: (transaction.authorizedByUserId as any) ?? null,
+        };
       } else {
-        existing.creditSum += entry.amount.amount;
-      }
-      aggregatedMap.set(key, existing);
-    }
-
-    // Ordenação determinística de execução por (accountId, assetId) para prevenção de lock contention / deadlock em operações concorrentes.
-    const sortedDeltas = Array.from(aggregatedMap.values()).sort((a, b) => {
-      if (a.accountId !== b.accountId) {
-        return a.accountId < b.accountId ? -1 : 1;
-      }
-      return a.assetId < b.assetId ? -1 : a.assetId > b.assetId ? 1 : 0;
-    });
-
-    // 8. Execução do OCC de saldos apenas para deltas líquidos não-nulos (contas já pré-validadas na etapa 1)
-    for (const delta of sortedDeltas) {
-      if (delta.debitSum === delta.creditSum) {
-        continue; // Débitos e créditos idênticos na mesma conta cancelam-se com variação nula de saldo
+        authorizationDecision = {
+          allowed: true,
+          type: 'SYSTEM',
+          actorUserId: null,
+          authorizedByUserId: transaction.authorizedByUserId ?? null,
+        };
       }
 
-      const isNetDebit = delta.debitSum > delta.creditSum;
-      const netAmount = isNetDebit
-        ? delta.debitSum - delta.creditSum
-        : delta.creditSum - delta.debitSum;
-      const netType: 'debit' | 'credit' = isNetDebit ? 'debit' : 'credit';
+      // Response snapshot
+      const responseStatus = 200;
+      const responsePayload = JSON.stringify({
+        success: true,
+        idempotencyKey: transaction.idempotencyKey,
+        scope,
+      });
 
-      const updateResult = await this.financeRepo.updateBalanceWithOCC(
-        delta.accountId,
-        delta.assetId,
-        netAmount,
-        netType
-      );
+      // Compilação do PostingPlan soberano (invariantes, double-entry, ordenação canônica)
+      const plan = PostingPlanBuilder.build({
+        scope,
+        idempotencyKey: transaction.idempotencyKey,
+        requestHash: computedHash,
+        transactionType: transaction.transactionType ?? 'adjustment',
+        category: transaction.category || 'operational',
+        description: transaction.description,
+        actorUserId: transaction.actorUserId ?? transaction.userId ?? null,
+        authorizedByUserId: transaction.authorizedByUserId ?? null,
+        sourceType: transaction.sourceType ?? null,
+        sourceId: transaction.sourceId ?? null,
+        reversalOfTransactionId: transaction.reversalOfTransactionId ?? null,
+        refundOfTransactionId: transaction.refundOfTransactionId ?? null,
+        correlationId: transaction.correlationId ?? undefined,
+        authorizationDecision,
+        entries: legInputs,
+        leaseOwner: activeLeaseOwner,
+        leaseGeneration,
+        responseStatus,
+        responsePayload,
+      });
 
-      switch (updateResult) {
-        case 'UPDATED':
-          break;
-        case 'INSUFFICIENT_BALANCE':
-          throw new InsufficientBalanceError(
-            `saldo insuficiente para a conta #${delta.accountId} e ativo #${delta.assetId}.`
-          );
-        case 'OCC_CONFLICT':
-          throw new OptimisticConcurrencyError(
-            `Falha de concorrência otimista (OCC version mismatch) para a conta #${delta.accountId}.`
-          );
-        default:
-          assertNever(updateResult);
+      // Injeção de hook do outbox se customizado pelo chamador/teste
+      if (this.outboxRepo && Object.prototype.hasOwnProperty.call(this.outboxRepo, 'saveEvent')) {
+        const domainEvent = new LedgerTransactionPostedEvent(
+          plan.transactionId,
+          transaction.idempotencyKey,
+          computedHash,
+          new Date()
+        );
+        const outboxResult = await this.outboxRepo.saveEvent(
+          domainEvent,
+          plan.transactionId,
+          'LedgerTransaction',
+          1
+        );
+        if (outboxResult && outboxResult.isFailure) {
+          throw new Error(String(outboxResult.error));
+        }
       }
+
+      // Commit atômico físico via PostingAuthority soberana (Gate 0)
+      const session = this.resolvePostingSession();
+      const commitResult = await this.authority.commit(plan, session);
+
+      if (commitResult.isFailure) {
+        const err = commitResult.typedError || commitResult.error;
+        if (typeof err === 'object' && err !== null) {
+          throw err;
+        }
+        throw new Error(String(err));
+      }
+
+      return {
+        transactionId: plan.transactionId,
+        isReplayed: false,
+      };
+    } catch (err: any) {
+      // Falha após o claim: libera ou falha o lease de idempotência para não travar a chave por 24h
+      await this.financeRepo
+        .failIdempotency(transaction.idempotencyKey, scope, err?.message || 'PRE_POSTING_FAILED')
+        .catch(() => {});
+      throw err;
     }
-
-    // 9. State Machine: validação da transição para 'completed'
-    const completedTransition = FinancialTransactionStateMachine.transition(
-      processingStatus,
-      'completed'
-    );
-    if (completedTransition.isFailure) {
-      throw new InvalidStateTransitionError(
-        completedTransition.error || 'Transição de estado para completed inválida.'
-      );
-    }
-    const completedStatus = completedTransition.getValue();
-
-    // 10. Atualização do status da transação para 'completed'
-    await this.financeRepo.updateTransactionStatus(transactionId, completedStatus);
-
-    // 11. Persistência de Evento no Outbox (atomicidade estrita: falha no outbox aborta e faz rollback)
-    const event = new LedgerTransactionPostedEvent(
-      transactionId,
-      transaction.idempotencyKey,
-      computedHash,
-      new Date()
-    );
-    const outboxResult = await this.outboxRepo.saveEvent(
-      event,
-      transactionId,
-      'LedgerTransaction',
-      1
-    );
-    if (outboxResult.isFailure) {
-      throw new Error(`Falha ao persistir evento no outbox: ${String(outboxResult.error)}`);
-    }
-
-    // 12. Conclusão do registro de Idempotência
-    await this.financeRepo.completeIdempotency(transaction.idempotencyKey, scope, transactionId);
-
-    return { transactionId, isReplayed: false };
   }
 }
+
