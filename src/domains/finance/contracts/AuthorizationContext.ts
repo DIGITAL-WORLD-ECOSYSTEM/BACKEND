@@ -16,7 +16,16 @@ export interface AuthorizationContext {
 }
 
 export interface CustodyOperationSpec {
-  readonly operationType: 'transfer' | 'withdrawal' | 'payment' | 'refund' | 'adjustment' | 'reversal';
+  readonly operationType:
+    | 'transfer'
+    | 'withdrawal'
+    | 'payment'
+    | 'refund'
+    | 'adjustment'
+    | 'reversal'
+    | 'fee'
+    | 'reward'
+    | 'yield';
   readonly sourceAccountId: number;
   readonly sourceAccountOwnerId: number | null;
   readonly destinationAccountId?: number | null;
@@ -97,7 +106,27 @@ export class CustodyAuthorizationPolicy {
       };
     }
 
-    // 3. Operação Delegada: Operador / Suporte com capacidade explícita
+    // 3. Operação Sistêmica / Estorno / Reversão / Ajuste Administrativo / Taxa
+    if (
+      (context.principalType === 'system' ||
+        context.capabilities.includes('finance.system.operate') ||
+        context.capabilities.includes('finance.system.reversal')) &&
+      (spec.operationType === 'reversal' ||
+        spec.operationType === 'refund' ||
+        spec.operationType === 'adjustment' ||
+        spec.operationType === 'fee' ||
+        spec.operationType === 'reward' ||
+        spec.operationType === 'yield')
+    ) {
+      return {
+        allowed: true,
+        type: 'SYSTEM',
+        actorUserId: null,
+        authorizedByUserId: context.principalId > 0 ? context.principalId : null,
+      };
+    }
+
+    // 4. Operação Delegada: Operador / Suporte com capacidade explícita
     if (
       context.capabilities.includes('finance.transfer.delegate') &&
       context.delegatedForUserId === spec.sourceAccountOwnerId
