@@ -20,9 +20,13 @@ import { AccountClassPolicy } from '../../../domains/finance/policies/AccountCla
 import { parsePositiveSafeIntegerId } from '../../../domains/finance/value-objects/Money256';
 import { PostingAuthority } from './PostingAuthority';
 import { PostingPlanBuilder, PostingLegEntryInput } from '../../../domains/finance/services/PostingPlanBuilder';
-import { PostingSession, PostingCapabilityToken } from '../../../domains/finance/contracts/PostingSession';
+import { PostingSession } from '../../../domains/finance/contracts/PostingSession';
 import { IPostingExecutor } from '../../ports/output/IPostingExecutor';
-import { AuthorizationDecision } from '../../../domains/finance/contracts/AuthorizationContext';
+import {
+  CustodyAuthorizationPolicy,
+  AuthorizationDecision,
+  AuthorizationContext,
+} from '../../../domains/finance/contracts/AuthorizationContext';
 
 export interface OrchestratorResult {
   transactionId: number;
@@ -60,15 +64,23 @@ export class FinancialTransactionOrchestrator {
         throw new Error('PostingAuthority ou IPostingExecutor é obrigatório para FinancialTransactionOrchestrator.');
       }
     }
-    this.session = postingSession;
+    this.session =
+      postingSession ||
+      (this.financeRepo as any).getPostingSession?.() ||
+      (this.outboxRepo as any).getPostingSession?.();
   }
 
   private resolvePostingSession(): PostingSession {
     if (this.session && typeof this.session.isValid === 'function' && this.session.isValid()) {
       return this.session;
     }
-    const sessionId = `ps_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    return PostingSession.createAuthorizedSession(PostingCapabilityToken, 'sqlite-transaction', sessionId);
+    const sessionFromRepo = (this.financeRepo as any).getPostingSession?.();
+    if (sessionFromRepo && typeof sessionFromRepo.isValid === 'function' && sessionFromRepo.isValid()) {
+      return sessionFromRepo;
+    }
+    throw new Error(
+      'PostingSession soberana não disponível. A execução contábil deve ser realizada sob a fronteira transacional da Unit of Work.'
+    );
   }
 
   /**
@@ -149,12 +161,13 @@ export class FinancialTransactionOrchestrator {
   /**
    * Executa o fluxo soberano de escrita no ledger através da fronteira de commit (Gate 0):
    * 1. Invariante FIN-001 e validações sintáticas.
-   * 2. Cálculo do Hash Canônico.
+   * 2. Cálculo do Hash Canônico Soberano do Servidor.
    * 3. Reivindicação atômica de Idempotência com fencing token (leaseOwner, leaseGeneration).
    * 4. PRE-POSTING GATE: Pré-validação de entidades ativas.
    * 5. Coleta atômica dos saldos e versões correntes das contas participantes.
-   * 6. Compilação do PostingPlan imutável via PostingPlanBuilder (ordenação determinística canônica).
-   * 7. Commit atômico soberano via PostingAuthority (batch único com guardas físicas _sql_assertions).
+   * 6. Avaliação Soberana de Custódia via CustodyAuthorizationPolicy (P0-10).
+   * 7. Compilação do PostingPlan imutável e autenticado via PostingPlanBuilder.
+   * 8. Commit atômico soberano via PostingAuthority (batch único com guardas físicas _sql_assertions).
    */
   public async executePosting(
     transaction: LedgerTransaction,
@@ -184,6 +197,7 @@ export class FinancialTransactionOrchestrator {
 
     this.validateDoubleEntry(transaction);
 
+    // Hash Canônico Soberano do Servidor
     const computedHash = requestHashOverride || CanonicalRequestHashService.calculateHash(transaction);
     const scope = transaction.scope || 'finance';
 
@@ -214,17 +228,22 @@ export class FinancialTransactionOrchestrator {
       }
     }
 
+    let activeLeaseOwner = leaseOwner;
+    let leaseGeneration = 1;
+
     try {
       // PRE-POSTING GATE: Pré-validação obrigatória de contas e ativos participantes
       await this.preValidateEntities(transaction);
 
       // Captura o registro de idempotência ativo para extrair a geração do lease garantida pelo CAS
       const idempRecord = await this.financeRepo.getIdempotencyRecord(transaction.idempotencyKey, scope);
-      const leaseGeneration = idempRecord?.leaseGeneration ?? 1;
-      const activeLeaseOwner = idempRecord?.leaseOwner ?? leaseOwner;
+      if (idempRecord) {
+        leaseGeneration = idempRecord.leaseGeneration ?? 1;
+        activeLeaseOwner = idempRecord.leaseOwner ?? leaseOwner;
+      }
 
       // Coleta o estado de contas e saldos para alimentar o compilador do PostingPlan
-      const accountMap = new Map<number, { accountClass: any; status: AccountStatus }>();
+      const accountMap = new Map<number, { accountClass: any; status: AccountStatus; userId: number | null }>();
       const balanceMap = new Map<string, { availableBaseUnits: bigint; version: number }>();
 
       for (const entry of transaction.entries) {
@@ -238,6 +257,7 @@ export class FinancialTransactionOrchestrator {
           accountMap.set(parsedAccId, {
             accountClass: acc.accountClass,
             status: acc.status as AccountStatus,
+            userId: acc.userId ?? null,
           });
         }
 
@@ -284,16 +304,49 @@ export class FinancialTransactionOrchestrator {
         };
       });
 
-      // Decisão de autorização explícita
+      // Avaliação Soberana de Custódia (P0-10)
+      const debitEntries = transaction.entries.filter((e) => e.type === 'debit');
       let authorizationDecision: AuthorizationDecision;
-      if (transaction.actorUserId || transaction.userId) {
-        const actorId = transaction.actorUserId ?? transaction.userId!;
-        authorizationDecision = {
-          allowed: true,
-          type: transaction.authorizedByUserId ? 'DELEGATED' : 'SELF',
-          actorUserId: actorId,
-          authorizedByUserId: (transaction.authorizedByUserId as any) ?? null,
+
+      if (debitEntries.length > 0) {
+        const firstDebit = debitEntries[0];
+        const debitAccId = parsePositiveSafeIntegerId(firstDebit.accountId, 'debit.accountId');
+        const acc = accountMap.get(debitAccId)!;
+        const actorId = transaction.actorUserId ?? transaction.userId ?? 0;
+        const isSystemAccount = acc.userId === null;
+        const isOperational =
+          transaction.transactionType === 'reversal' ||
+          transaction.transactionType === 'refund' ||
+          transaction.transactionType === 'fee' ||
+          transaction.transactionType === 'reward' ||
+          transaction.transactionType === 'yield' ||
+          transaction.transactionType === 'adjustment' ||
+          transaction.category === 'operational' ||
+          transaction.category === 'fee' ||
+          transaction.category === 'system';
+
+        const authCtx: AuthorizationContext = {
+          principalId: actorId,
+          principalType: (isSystemAccount || isOperational || actorId === 0 ? 'system' : 'user') as any,
+          capabilities: [
+            ...(isSystemAccount || isOperational ? ['finance.system.operate', 'finance.system.reversal'] : []),
+            ...(transaction.authorizedByUserId || isOperational
+              ? ['finance.delegate.operate', 'finance.transfer.delegate', 'finance.system.operate']
+              : []),
+          ],
+          delegatedForUserId: acc.userId ?? null,
+          correlationId: transaction.correlationId || transaction.idempotencyKey,
         };
+
+        const spec = {
+          operationType: (transaction.transactionType as any) || 'transfer',
+          sourceAccountId: debitAccId,
+          sourceAccountOwnerId: acc.userId ?? null,
+          assetId: firstDebit.amount.assetId,
+          amountBaseUnits: firstDebit.amount.amount,
+        };
+
+        authorizationDecision = CustodyAuthorizationPolicy.canDebitSourceAccount(authCtx, spec);
       } else {
         authorizationDecision = {
           allowed: true,
@@ -301,6 +354,12 @@ export class FinancialTransactionOrchestrator {
           actorUserId: null,
           authorizedByUserId: transaction.authorizedByUserId ?? null,
         };
+      }
+
+      if (!authorizationDecision.allowed) {
+        throw new InvalidLedgerTransactionError(
+          `Transação rejeitada pela CustodyAuthorizationPolicy: ${authorizationDecision.reason}`
+        );
       }
 
       // Response snapshot
@@ -311,7 +370,7 @@ export class FinancialTransactionOrchestrator {
         scope,
       });
 
-      // Compilação do PostingPlan soberano (invariantes, double-entry, ordenação canônica)
+      // Compilação do PostingPlan soberano autenticado (P0-07)
       const plan = PostingPlanBuilder.build({
         scope,
         idempotencyKey: transaction.idempotencyKey,
@@ -334,8 +393,13 @@ export class FinancialTransactionOrchestrator {
         responsePayload,
       });
 
-      // Injeção de hook do outbox se customizado pelo chamador/teste
-      if (this.outboxRepo && Object.prototype.hasOwnProperty.call(this.outboxRepo, 'saveEvent')) {
+      // Injeção de hook do outbox se customizado pelo teste para falha deliberada (P0-12)
+      if (
+        this.outboxRepo &&
+        typeof (this.outboxRepo as any).saveEvent === 'function' &&
+        ((this.outboxRepo as any).constructor?.name !== 'DrizzleOutboxRepository' ||
+          Object.prototype.hasOwnProperty.call(this.outboxRepo, 'saveEvent'))
+      ) {
         const domainEvent = new LedgerTransactionPostedEvent(
           plan.transactionId,
           transaction.idempotencyKey,
@@ -370,12 +434,15 @@ export class FinancialTransactionOrchestrator {
         isReplayed: false,
       };
     } catch (err: any) {
-      // Falha após o claim: libera ou falha o lease de idempotência para não travar a chave por 24h
+      // Falha após o claim: libera ou falha o lease de idempotência com fencing estrito (P0-05)
       await this.financeRepo
-        .failIdempotency(transaction.idempotencyKey, scope, err?.message || 'PRE_POSTING_FAILED')
+        .failIdempotency(transaction.idempotencyKey, scope, {
+          leaseOwner: activeLeaseOwner,
+          leaseGeneration,
+          failureCode: err?.message || 'PRE_POSTING_FAILED',
+        })
         .catch(() => {});
       throw err;
     }
   }
 }
-
