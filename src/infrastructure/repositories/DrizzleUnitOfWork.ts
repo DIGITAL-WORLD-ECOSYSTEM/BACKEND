@@ -22,13 +22,13 @@ import { Result } from '../../shared/kernel/Result';
 import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
 import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
 import { isD1Database } from './db_helper';
-import { PostingSession, issueBoundaryPostingSession } from '../../domains/finance/contracts/PostingSession';
+import { PostingSession } from '../../domains/finance/contracts/PostingSession';
 import { IPostingExecutor } from '../../application/ports/output/IPostingExecutor';
 import { D1AtomicPostingExecutor } from '../services/D1AtomicPostingExecutor';
+import { PostingAuthority } from '../../application/finance/services/PostingAuthority';
 import { FinancialError } from '../../domains/finance/errors/FinancialError';
 
 class DrizzleRepositoryFactory implements IRepositoryFactory {
-  private _postingSession?: PostingSession;
   private _postingExecutor?: IPostingExecutor;
 
   constructor(
@@ -77,13 +77,16 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
   }
 
   getPostingSession(): PostingSession {
-    if (!this._postingSession) {
-      const isD1 = isD1Database(this.db || this.tx);
-      const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
-      const boundaryId = `uow_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      this._postingSession = issueBoundaryPostingSession(mode, boundaryId);
-    }
-    return this._postingSession;
+    const isD1 = isD1Database(this.db || this.tx);
+    const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
+    const boundaryId = `uow_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const physicalDb = (this.tx || this.db) as object;
+    return new PostingSession(physicalDb, mode, boundaryId);
+  }
+
+  getPostingAuthority(): PostingAuthority {
+    const physicalDb = (this.tx || this.db) as object;
+    return new PostingAuthority(new D1AtomicPostingExecutor(physicalDb));
   }
 
   getPostingExecutor(): IPostingExecutor {
