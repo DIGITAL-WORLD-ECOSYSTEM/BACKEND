@@ -25,11 +25,16 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
   }
 
   async execute(plan: PostingPlan, session: PostingSession): Promise<Result<PostingExecutionResult>> {
-    if (!session || !session.sessionId) {
-      return Result.fail('PostingSession inválida ou ausente. Execução contábil abortada.');
+    if (!session || typeof session.isValid !== 'function' || !session.isValid()) {
+      return Result.fail('PostingSession inválida, forjada ou ausente. Execução contábil abortada.');
+    }
+
+    if (!plan || !plan.leaseOwner || typeof plan.leaseOwner !== 'string' || typeof plan.leaseGeneration !== 'number') {
+      return Result.fail('Fencing de concorrência P0 violado: leaseOwner e leaseGeneration são obrigatórios no PostingPlan.');
     }
 
     const now = new Date();
+    let committedTxId = plan.transactionId;
 
     try {
       if (typeof this.db.batch === 'function') {
@@ -49,6 +54,8 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
             status: 'completed',
             sourceType: plan.transactionRecord.sourceType,
             sourceId: plan.transactionRecord.sourceId,
+            reversalOfTransactionId: plan.transactionRecord.reversalOfTransactionId ?? null,
+            refundOfTransactionId: plan.transactionRecord.refundOfTransactionId ?? null,
             correlationId: plan.transactionRecord.correlationId,
             createdAt: now,
             completedAt: now,
@@ -116,22 +123,32 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
           })
         );
 
-        // 5. Idempotency Completion & Physical Assertion Guard
+        // 5. Idempotency Completion & Physical Assertion Guard (Fencing P0 Estrito)
+        const idempotencyConditions = [
+          eq(idempotencyKeys.scope, plan.scope),
+          eq(idempotencyKeys.key, plan.idempotencyKey),
+          eq(idempotencyKeys.status, 'processing'),
+          eq(idempotencyKeys.leaseOwner, plan.leaseOwner),
+          eq(idempotencyKeys.leaseGeneration, plan.leaseGeneration),
+        ];
+
+        const idempotencyUpdateSet: any = {
+          status: 'completed',
+          financialTransactionId: plan.transactionId,
+          updatedAt: now,
+        };
+        if (plan.responseStatus !== undefined && plan.responseStatus !== null) {
+          idempotencyUpdateSet.responseStatus = plan.responseStatus;
+        }
+        if (plan.responsePayload !== undefined && plan.responsePayload !== null) {
+          idempotencyUpdateSet.responsePayload = plan.responsePayload;
+        }
+
         statements.push(
           this.db
             .update(idempotencyKeys)
-            .set({
-              status: 'completed',
-              financialTransactionId: plan.transactionId,
-              updatedAt: now,
-            })
-            .where(
-              and(
-                eq(idempotencyKeys.scope, plan.scope),
-                eq(idempotencyKeys.key, plan.idempotencyKey),
-                eq(idempotencyKeys.status, 'processing')
-              )
-            )
+            .set(idempotencyUpdateSet)
+            .where(and(...idempotencyConditions))
         );
 
         statements.push(
@@ -146,15 +163,15 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
       } else if (isD1Database(this.db)) {
         // Fallback for D1 client with raw batch
         const d1 = this.db.$client || this.db.session?.client;
-        if (d1 && typeof d1.batch === 'function') {
+        if (d1 && typeof d1.batch === 'function' && typeof d1.prepare === 'function') {
           // If raw D1 client
           const statements: any[] = [];
           // 1. Transaction
           statements.push(
             d1
               .prepare(
-                `INSERT INTO financial_transactions (id, user_id, actor_user_id, authorized_by_user_id, type, category, description, status, source_type, source_id, correlation_id, created_at, completed_at, version)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, 1)`
+                `INSERT INTO financial_transactions (id, user_id, actor_user_id, authorized_by_user_id, type, category, description, status, source_type, source_id, reversal_of_transaction_id, refund_of_transaction_id, correlation_id, created_at, completed_at, version)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, 1)`
               )
               .bind(
                 plan.transactionRecord.id,
@@ -166,6 +183,8 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
                 plan.transactionRecord.description,
                 plan.transactionRecord.sourceType,
                 plan.transactionRecord.sourceId,
+                plan.transactionRecord.reversalOfTransactionId ?? null,
+                plan.transactionRecord.refundOfTransactionId ?? null,
                 plan.transactionRecord.correlationId,
                 now.getTime(),
                 now.getTime()
@@ -242,23 +261,31 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
               )
           );
 
-          // 5. Idempotency completion + assertion
+          // 5. Idempotency completion + assertion (Fencing P0 Estrito)
           statements.push(
             d1
               .prepare(
                 `UPDATE idempotency_keys
                  SET status = 'completed',
                      financial_transaction_id = ?,
+                     response_status = ?,
+                     response_payload = ?,
                      updated_at = ?
                  WHERE scope = ?
                    AND key = ?
-                   AND status = 'processing'`
+                   AND status = 'processing'
+                   AND lease_owner = ?
+                   AND lease_generation = ?`
               )
               .bind(
                 plan.transactionId,
+                plan.responseStatus,
+                plan.responsePayload,
                 Math.floor(now.getTime() / 1000),
                 plan.scope,
-                plan.idempotencyKey
+                plan.idempotencyKey,
+                plan.leaseOwner,
+                plan.leaseGeneration
               )
           );
 
@@ -278,17 +305,17 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
         // SQLite Immediate Transaction
         await this.db.transaction(
           async (tx: any) => {
-            await this.executeStatementsOnExecutor(tx, plan, now);
+            committedTxId = await this.executeStatementsOnExecutor(tx, plan, now);
           },
           { behavior: 'immediate' }
         );
       } else {
         // Already inside a transaction or single connection executor
-        await this.executeStatementsOnExecutor(this.db, plan, now);
+        committedTxId = await this.executeStatementsOnExecutor(this.db, plan, now);
       }
 
       return Result.ok({
-        transactionId: plan.transactionId,
+        transactionId: committedTxId,
         planId: plan.planId,
         executedAt: now,
       });
@@ -322,10 +349,9 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
     executor: any,
     plan: PostingPlan,
     now: Date
-  ): Promise<void> {
+  ): Promise<number> {
     // 1. Financial Transaction
-    await executor.insert(financialTransactions).values({
-      id: plan.transactionRecord.id,
+    const [inserted] = await executor.insert(financialTransactions).values({
       userId: plan.transactionRecord.actorUserId ?? null,
       actorUserId: plan.transactionRecord.actorUserId,
       authorizedByUserId: plan.transactionRecord.authorizedByUserId,
@@ -335,16 +361,20 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
       status: 'completed',
       sourceType: plan.transactionRecord.sourceType,
       sourceId: plan.transactionRecord.sourceId,
+      reversalOfTransactionId: plan.transactionRecord.reversalOfTransactionId ?? null,
+      refundOfTransactionId: plan.transactionRecord.refundOfTransactionId ?? null,
       correlationId: plan.transactionRecord.correlationId,
       createdAt: now,
       completedAt: now,
       version: 1,
-    });
+    }).returning({ id: financialTransactions.id });
+
+    const finalTxId = inserted?.id ?? plan.transactionRecord.id;
 
     // 2. Financial Ledger Entries
     for (const entry of plan.ledgerEntries) {
       await executor.insert(financialLedgerEntries).values({
-        transactionId: entry.transactionId,
+        transactionId: finalTxId,
         entryOrdinal: entry.entryOrdinal,
         accountId: entry.accountId,
         assetId: entry.assetId,
@@ -383,7 +413,7 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
     await executor.insert(outboxEvents).values({
       id: plan.outboxEvent.eventId,
       eventName: plan.outboxEvent.eventName,
-      aggregateId: plan.outboxEvent.aggregateId,
+      aggregateId: String(finalTxId),
       aggregateType: 'LedgerTransaction',
       aggregateVersion: plan.outboxEvent.aggregateVersion,
       payload: plan.outboxEvent.payload,
@@ -393,26 +423,38 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
       createdAt: now,
     });
 
-    // 5. Idempotency Completion & Physical Assertion Guard
+    // 5. Idempotency Completion & Assertion Guard (Fencing P0 Estrito)
+    const execIdempConditions = [
+      eq(idempotencyKeys.scope, plan.scope),
+      eq(idempotencyKeys.key, plan.idempotencyKey),
+      eq(idempotencyKeys.status, 'processing'),
+      eq(idempotencyKeys.leaseOwner, plan.leaseOwner),
+      eq(idempotencyKeys.leaseGeneration, plan.leaseGeneration),
+    ];
+
+    const execIdempUpdateSet: any = {
+      status: 'completed',
+      financialTransactionId: finalTxId,
+      updatedAt: now,
+    };
+    if (plan.responseStatus !== undefined && plan.responseStatus !== null) {
+      execIdempUpdateSet.responseStatus = plan.responseStatus;
+    }
+    if (plan.responsePayload !== undefined && plan.responsePayload !== null) {
+      execIdempUpdateSet.responsePayload = plan.responsePayload;
+    }
+
     await executor
       .update(idempotencyKeys)
-      .set({
-        status: 'completed',
-        financialTransactionId: plan.transactionId,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(idempotencyKeys.scope, plan.scope),
-          eq(idempotencyKeys.key, plan.idempotencyKey),
-          eq(idempotencyKeys.status, 'processing')
-        )
-      );
+      .set(execIdempUpdateSet)
+      .where(and(...execIdempConditions));
 
     await executor.run(sql`
       INSERT INTO _sql_assertions (id, guard)
       VALUES (1, (SELECT CASE WHEN changes() = 1 THEN 1 ELSE 0 END))
       ON CONFLICT(id) DO UPDATE SET guard = (SELECT CASE WHEN changes() = 1 THEN 1 ELSE 0 END);
     `);
+
+    return finalTxId;
   }
 }
