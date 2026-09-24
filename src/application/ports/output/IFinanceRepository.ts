@@ -76,9 +76,33 @@ export interface TreasuryBootstrapResult {
 }
 
 export type IdempotencyRecord =
-  | { status: 'processing'; transactionId: null; requestHash: string }
-  | { status: 'completed'; transactionId: number; requestHash: string }
-  | { status: 'failed'; transactionId: null; requestHash: string };
+  | {
+      status: 'processing';
+      transactionId: null;
+      requestHash: string;
+      leaseOwner?: string | null;
+      leaseGeneration?: number | null;
+      expiresAt?: Date | null;
+      responseStatus?: number | null;
+      responsePayload?: string | null;
+    }
+  | {
+      status: 'completed';
+      transactionId: number;
+      requestHash: string;
+      leaseOwner?: string | null;
+      leaseGeneration?: number | null;
+      expiresAt?: Date | null;
+      responseStatus?: number | null;
+      responsePayload?: string | null;
+    }
+  | {
+      status: 'failed';
+      transactionId: null;
+      requestHash: string;
+      leaseOwner?: string | null;
+      leaseGeneration?: number | null;
+    };
 
 export type IdempotencyClaimResult =
   | { status: 'CLAIMED' }
@@ -143,8 +167,19 @@ export interface IFinanceRepository {
   getTransactionEntries(transactionId: number): Promise<Result<FinancialLedgerEntryRecord[]>>;
 
   getIdempotencyRecord(key: string, scope: string): Promise<IdempotencyRecord | null>;
-  claimIdempotency(idempotencyKey: string, userId: number | null | undefined, scope: string, requestHash: string): Promise<boolean | IdempotencyClaimResult>;
-  completeIdempotency(key: string, scope: string, transactionId: number): Promise<void>;
+  claimIdempotency(
+    idempotencyKey: string,
+    userId: number | null | undefined,
+    scope: string,
+    requestHash: string,
+    options?: { leaseOwner?: string; leaseTimeoutMs?: number }
+  ): Promise<boolean | IdempotencyClaimResult>;
+  completeIdempotency(
+    key: string,
+    scope: string,
+    transactionId: number,
+    options?: { leaseOwner?: string; leaseGeneration?: number; responseStatus?: number; responsePayload?: string }
+  ): Promise<void>;
   failIdempotency(key: string, scope: string, failureCode?: string): Promise<void>;
   releaseIdempotencyClaim(key: string, scope: string): Promise<void>;
   insertTransaction(data: {
