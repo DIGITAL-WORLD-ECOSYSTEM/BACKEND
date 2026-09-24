@@ -35,6 +35,8 @@ export interface PostingTransactionRecordPlan {
   readonly authorizedByUserId: number | null;
   readonly sourceType: string | null;
   readonly sourceId: string | null;
+  readonly reversalOfTransactionId?: number | null;
+  readonly refundOfTransactionId?: number | null;
   readonly correlationId: string;
 }
 
@@ -64,4 +66,9 @@ export interface PostingPlan {
   readonly ledgerEntries: ReadonlyArray<PostingLedgerEntryPlan>;
   readonly balanceMutations: ReadonlyArray<BalanceMutationPlan>;
   readonly outboxEvent: PostingOutboxEventPlan;
+  readonly leaseOwner: string;
+  readonly leaseGeneration: number;
+  readonly responseStatus: number;
+  readonly responsePayload: string;
 }
+
