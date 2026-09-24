@@ -38,6 +38,8 @@ import {
 } from '../../domains/finance/errors/FinancialError';
 import { AccountClassPolicy } from '../../domains/finance/policies/AccountClassPolicy';
 import { BaseSQLiteDatabase, SQLiteTransaction } from 'drizzle-orm/sqlite-core';
+import { IPostingExecutor } from '../../application/ports/output/IPostingExecutor';
+import { D1AtomicPostingExecutor } from '../services/D1AtomicPostingExecutor';
 
 /**
  * ============================================================================
@@ -838,7 +840,11 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         status: idempotencyKeys.status,
         requestHash: idempotencyKeys.requestHash,
         transactionId: idempotencyKeys.financialTransactionId,
+        leaseOwner: idempotencyKeys.leaseOwner,
+        leaseGeneration: idempotencyKeys.leaseGeneration,
         expiresAt: idempotencyKeys.expiresAt,
+        responseStatus: idempotencyKeys.responseStatus,
+        responsePayload: idempotencyKeys.responsePayload,
       })
       .from(idempotencyKeys)
       .where(
@@ -856,6 +862,11 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         status: 'completed',
         transactionId: record.transactionId,
         requestHash: record.requestHash,
+        leaseOwner: record.leaseOwner,
+        leaseGeneration: record.leaseGeneration,
+        expiresAt: record.expiresAt,
+        responseStatus: record.responseStatus,
+        responsePayload: record.responsePayload,
       };
     }
 
@@ -864,6 +875,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         status: 'failed',
         transactionId: null,
         requestHash: record.requestHash,
+        leaseOwner: record.leaseOwner,
+        leaseGeneration: record.leaseGeneration,
       };
     }
 
@@ -880,6 +893,11 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       status: 'processing',
       transactionId: null,
       requestHash: record.requestHash,
+      leaseOwner: record.leaseOwner,
+      leaseGeneration: record.leaseGeneration,
+      expiresAt: record.expiresAt,
+      responseStatus: record.responseStatus,
+      responsePayload: record.responsePayload,
     };
   }
 
@@ -903,10 +921,13 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     idempotencyKey: string,
     userId: number | null | undefined,
     scope: string,
-    requestHash: string
+    requestHash: string,
+    options?: { leaseOwner?: string; leaseTimeoutMs?: number }
   ): Promise<boolean> {
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const leaseTimeoutMs = options?.leaseTimeoutMs ?? 24 * 60 * 60 * 1000;
+    const expiresAt = new Date(now.getTime() + leaseTimeoutMs);
+    const leaseOwner = options?.leaseOwner ?? `worker_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     try {
       await this.executor.insert(idempotencyKeys).values({
@@ -915,6 +936,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         key: idempotencyKey,
         requestHash,
         status: 'processing',
+        leaseOwner,
+        leaseGeneration: 1,
         expiresAt,
         createdAt: now,
         updatedAt: now,
@@ -930,6 +953,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           status: idempotencyKeys.status,
           requestHash: idempotencyKeys.requestHash,
           expiresAt: idempotencyKeys.expiresAt,
+          leaseGeneration: idempotencyKeys.leaseGeneration,
         })
         .from(idempotencyKeys)
         .where(
@@ -971,11 +995,14 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         );
       }
 
+      // Atomic CAS Reclaim with monotonic lease generation increment and new owner
       const res = await this.executor
         .update(idempotencyKeys)
         .set({
           status: 'processing',
           financialTransactionId: null,
+          leaseOwner,
+          leaseGeneration: sql`${idempotencyKeys.leaseGeneration} + 1`,
           expiresAt,
           updatedAt: now,
         })
@@ -1031,20 +1058,40 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       );
   }
 
-  async completeIdempotency(key: string, scope: string, transactionId: number): Promise<void> {
+  async completeIdempotency(
+    key: string,
+    scope: string,
+    transactionId: number,
+    options?: { leaseOwner?: string; leaseGeneration?: number; responseStatus?: number; responsePayload?: string }
+  ): Promise<void> {
+    const updateSet: any = {
+      status: 'completed',
+      financialTransactionId: transactionId,
+      updatedAt: new Date(),
+    };
+    if (options?.responseStatus !== undefined && options?.responseStatus !== null) {
+      updateSet.responseStatus = options.responseStatus;
+    }
+    if (options?.responsePayload !== undefined && options?.responsePayload !== null) {
+      updateSet.responsePayload = options.responsePayload;
+    }
+
+    const whereConditions = [
+      eq(idempotencyKeys.key, key),
+      eq(idempotencyKeys.scope, scope),
+      eq(idempotencyKeys.status, 'processing'),
+    ];
+    if (options?.leaseOwner !== undefined && options?.leaseOwner !== null) {
+      whereConditions.push(eq(idempotencyKeys.leaseOwner, options.leaseOwner));
+    }
+    if (options?.leaseGeneration !== undefined && options?.leaseGeneration !== null) {
+      whereConditions.push(eq(idempotencyKeys.leaseGeneration, options.leaseGeneration));
+    }
+
     const res = await this.executor
       .update(idempotencyKeys)
-      .set({
-        status: 'completed',
-        financialTransactionId: transactionId
-      })
-      .where(
-        and(
-          eq(idempotencyKeys.key, key),
-          eq(idempotencyKeys.scope, scope),
-          eq(idempotencyKeys.status, 'processing')
-        )
-      );
+      .set(updateSet)
+      .where(and(...whereConditions));
 
     const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
     if (affected === 0) {
@@ -1242,13 +1289,23 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       .where(
         and(
           eq(accountBalances.id, balance.id),
-          eq(accountBalances.version, currentVersion)
+          eq(accountBalances.version, currentVersion),
+          sql`(SELECT status FROM financial_accounts WHERE id = ${accIdNum}) = 'active'`
         )
       );
 
     const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
     return affected > 0 ? 'UPDATED' : 'OCC_CONFLICT';
   }
+
+  public getDbExecutor(): FinanceDbExecutor {
+    return this.db;
+  }
+
+  public getPostingExecutor(): IPostingExecutor {
+    return new D1AtomicPostingExecutor(this.db);
+  }
+
 
   async insertFiatExternalTransaction(data: {
     providerId: number;
