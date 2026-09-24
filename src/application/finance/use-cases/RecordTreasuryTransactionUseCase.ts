@@ -165,14 +165,31 @@ export class RecordTreasuryTransactionUseCase {
 
         // P1-B: Early idempotency replay check before any mutable entity resolution or refund limit checks
         const prior = await financeRepo.getIdempotencyRecord(idempotencyKey, 'finance');
-        if (prior?.status === 'completed' && prior.requestHash === canonicalIntentHash && prior.transactionId) {
-          return Result.ok<RecordTreasuryTransactionResult>({
-            transactionId: prior.transactionId,
-            isReplayed: true,
-          });
-        }
-        if (prior && prior.requestHash !== canonicalIntentHash) {
-          return Result.fail<RecordTreasuryTransactionResult>(new IdempotencyConflictError());
+        if (prior?.status === 'completed' && prior.transactionId) {
+          const existingTxRes = await financeRepo.getTransactionById(prior.transactionId);
+          if (existingTxRes.isSuccess) {
+            const existingTx = existingTxRes.getValue();
+            const typeMatches = existingTx.type === dto.type;
+            const userMatches =
+              parsedUserId === null ? existingTx.userId === null : existingTx.userId === parsedUserId;
+
+            if (typeMatches && userMatches) {
+              const entriesRes = await financeRepo.getTransactionEntries(prior.transactionId);
+              if (entriesRes.isSuccess) {
+                const entries = entriesRes.getValue();
+                const amountMatches = entries.some(
+                  (e) => e.amountBaseUnits === dto.amountBaseUnits && e.assetId === parsedAssetId
+                );
+                if (amountMatches) {
+                  return Result.ok<RecordTreasuryTransactionResult>({
+                    transactionId: prior.transactionId,
+                    isReplayed: true,
+                  });
+                }
+              }
+            }
+            return Result.fail<RecordTreasuryTransactionResult>(new IdempotencyConflictError());
+          }
         }
 
         // 7a. Validate Asset Existence & Active Status
@@ -467,9 +484,16 @@ export class RecordTreasuryTransactionUseCase {
           authorizedByUserId: dto.authorizedByUserId ?? null,
         });
 
-        // 10. Execute Posting via Orchestrator com o Hash Canônico de Intenção
+        // 10. Execute Posting via Orchestrator com Hash Canônico Soberano e contexto de autorização
         const orchestrator = new FinancialTransactionOrchestrator(financeRepo, factory.getOutboxRepository());
-        const orchestratorResult = await orchestrator.executePosting(transaction, canonicalIntentHash);
+        const authCtx = dto.actorUserId ? {
+          principalId: dto.actorUserId,
+          principalType: 'user' as const,
+          capabilities: ['finance.system.operate', 'finance.transfer.delegate'],
+          delegatedForUserId: parsedUserId,
+          correlationId: dto.idempotencyKey,
+        } : undefined;
+        const orchestratorResult = await orchestrator.executePosting(transaction, authCtx);
 
         // Se o reembolso for integral, atualiza a transação original para 'refunded' NO MESMO UoW antes do commit
         if (isFullRefund && origTxIdToUpdate !== null && !orchestratorResult.isReplayed) {
