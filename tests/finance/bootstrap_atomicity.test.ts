@@ -206,24 +206,22 @@ describe('GATE 1 & 2: FinanceBootstrapService — Atomicidade e Executor Typing'
   });
 
   it('Teste E — falha no final do fluxo: provoca rollback integral e não deixa resíduos no banco', async () => {
-    // Cria um UoW que injeta uma falha intencional imediatamente antes do commit
+    // Injeta falha física deliberada na inserção do outbox durante o genesis
+    await sqlite.execute(
+      `CREATE TRIGGER IF NOT EXISTS fail_genesis BEFORE INSERT ON outbox_events BEGIN SELECT RAISE(ABORT, 'Injected Outbox Failure during Genesis'); END;`
+    );
+
     const failingUow = {
       async execute<T>(work: any): Promise<any> {
         const t = await sqlite.transaction('write');
         const proxyDb = drizzle(t) as any;
         proxyDb.rollback = () => { throw new Error('DRIZZLE_ROLLBACK'); };
         try {
-          // Cria factory transacional
           const { DrizzleFinanceRepository } = await import('../../src/infrastructure/repositories/DrizzleFinanceRepository');
+          const { DrizzleOutboxRepository } = await import('../../src/infrastructure/repositories/DrizzleOutboxRepository');
           const factory = {
             getFinanceRepository: () => new DrizzleFinanceRepository(proxyDb),
-            getOutboxRepository: () => ({
-              // Simula falha catastrófica no Outbox
-              saveEvent: async () => {
-                const { Result } = await import('../../src/shared/kernel/Result');
-                return Result.fail('Injected Outbox Failure during Genesis');
-              },
-            }),
+            getOutboxRepository: () => new DrizzleOutboxRepository(proxyDb),
           };
 
           const res = await work(factory);
@@ -245,6 +243,8 @@ describe('GATE 1 & 2: FinanceBootstrapService — Atomicidade e Executor Typing'
       currencyCode: 'BRL',
       initialBalanceBaseUnits: 1000000n,
     });
+
+    await sqlite.execute(`DROP TRIGGER IF EXISTS fail_genesis;`);
 
     expect(res.isFailure).toBe(true);
 
