@@ -1,5 +1,7 @@
 import { AuthorizationDecision } from './AuthorizationContext';
 
+export const POSTING_PLAN_SEAL: unique symbol = Symbol('POSTING_PLAN_SEAL');
+
 /**
  * Mutação atômica de saldo projetado.
  *
@@ -17,7 +19,7 @@ export interface BalanceMutationPlan {
 
 export interface PostingLedgerEntryPlan {
   readonly transactionId: number;
-  readonly entryOrdinal: number; // 0, 1, 2... Garante unicidade estrutural da perna
+  readonly entryOrdinal: number; // 1, 2, 3... Garante unicidade estrutural da perna
   readonly accountId: number;
   readonly assetId: number;
   readonly direction: 'debit' | 'credit';
@@ -56,6 +58,7 @@ export interface PostingOutboxEventPlan {
  * o executor apenas traduz os dados em statements estáticos e os despacha.
  */
 export interface PostingPlan {
+  readonly [POSTING_PLAN_SEAL]: typeof POSTING_PLAN_SEAL;
   readonly planId: string;
   readonly scope: string;
   readonly idempotencyKey: string;
@@ -71,4 +74,3 @@ export interface PostingPlan {
   readonly responseStatus: number;
   readonly responsePayload: string;
 }
-
