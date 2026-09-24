@@ -16,5 +16,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_treasury_active_singleton
 ON financial_accounts (account_type) WHERE account_type = 'treasury' AND status = 'active';--> statement-breakpoint
 
 -- 3. Forensic Lineage & Audit Columns on financial_transactions
-ALTER TABLE financial_transactions ADD COLUMN actor_user_id integer;--> statement-breakpoint
-ALTER TABLE financial_transactions ADD COLUMN authorized_by_user_id integer;
+ALTER TABLE financial_transactions ADD COLUMN actor_user_id integer REFERENCES users(id);--> statement-breakpoint
+ALTER TABLE financial_transactions ADD COLUMN authorized_by_user_id integer REFERENCES users(id);
