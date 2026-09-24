@@ -4,69 +4,68 @@
  * Representa a autoridade não-forjável para executar exatamente um lote
  * de mutação contábil dentro da fronteira transacional física (D1.batch / SQLite tx).
  *
- * Em conformidade com o princípio de Object-Capability (P0-01, P0-19):
+ * Em conformidade com o princípio de Object-Capability (P0-01, P0-19, P0-B):
  * 1. O token interno é estritamente privado ao módulo (não-exportado).
- * 2. A sessão é vinculada à fronteira de execução (boundaryId).
+ * 2. A sessão é vinculada à instância física da fronteira de execução (boundaryRef / db) e seu identificador (boundaryId).
  * 3. A sessão é de uso estritamente único (single-use: markConsumed).
+ * 4. Eliminação de tokens públicos (PostingCapabilityToken) e fábricas públicas estáticas
+ *    para impedir forja de autoridade por chamadores externos.
  */
 
-const InternalPostingCapabilityToken: unique symbol = Symbol('InternalPostingCapabilityToken');
-
-/**
- * Token de autoridade para testes e fronteiras especializadas que necessitam criar PostingSession.
- */
-export const PostingCapabilityToken: unique symbol = Symbol('PostingCapabilityToken');
+const InternalBoundaryToken: unique symbol = Symbol('InternalBoundaryToken');
 
 export type PostingExecutionMode = 'd1-batch' | 'sqlite-transaction';
 
 export class PostingSession {
-  private readonly _token: typeof InternalPostingCapabilityToken;
+  private readonly _token: typeof InternalBoundaryToken;
   public readonly mode: PostingExecutionMode;
   public readonly sessionId: string;
   public readonly boundaryId: string;
+  public readonly boundaryRef: object;
   public readonly createdAt: Date;
   private _consumed: boolean = false;
 
-  private constructor(
-    token: typeof InternalPostingCapabilityToken,
+  /**
+   * Construtor protegido: exige uma referência física legítima da infraestrutura
+   * (instância do banco / driver) e identificadores de fronteira.
+   */
+  public constructor(
+    boundaryRef: object,
     mode: PostingExecutionMode,
-    sessionId: string,
     boundaryId: string
   ) {
-    this._token = token;
+    if (!boundaryRef || (typeof boundaryRef !== 'object' && typeof boundaryRef !== 'function')) {
+      throw new Error('PostingSession exige uma referência física de infraestrutura (banco) válida.');
+    }
+    if (mode !== 'd1-batch' && mode !== 'sqlite-transaction') {
+      throw new Error(`Modo de execução inválido para PostingSession: ${mode}`);
+    }
+    if (!boundaryId || typeof boundaryId !== 'string') {
+      throw new Error('Identificador de fronteira física obrigatório para PostingSession.');
+    }
+
+    this._token = InternalBoundaryToken;
     this.mode = mode;
-    this.sessionId = sessionId;
     this.boundaryId = boundaryId;
+    this.boundaryRef = boundaryRef;
+    this.sessionId = `ps_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     this.createdAt = new Date();
   }
 
   /**
-   * Método de compatibilidade para criação autorizada por portadores do capability token.
-   */
-  public static createAuthorizedSession(
-    token: unknown,
-    mode: PostingExecutionMode,
-    sessionId: string,
-    boundaryId: string = 'authorized-boundary'
-  ): PostingSession {
-    if (token !== PostingCapabilityToken && token !== InternalPostingCapabilityToken) {
-      throw new Error('Token de capability inválido para criar PostingSession.');
-    }
-    return new PostingSession(InternalPostingCapabilityToken, mode, sessionId, boundaryId);
-  }
-
-  /**
-   * Valida em runtime se esta instância foi criada legitimamente pela fronteira
-   * e ainda não foi consumida (invariante de uso único).
+   * Valida em runtime se esta instância foi criada legitimamente pela fronteira,
+   * retém a autoridade e ainda não foi consumida (invariante de uso único).
    */
   public isValid(): boolean {
     return (
-      this._token === InternalPostingCapabilityToken &&
+      this._token === InternalBoundaryToken &&
       !this._consumed &&
       typeof this.sessionId === 'string' &&
       this.sessionId.length > 0 &&
       typeof this.boundaryId === 'string' &&
       this.boundaryId.length > 0 &&
+      this.boundaryRef !== null &&
+      (typeof this.boundaryRef === 'object' || typeof this.boundaryRef === 'function') &&
       (this.mode === 'd1-batch' || this.mode === 'sqlite-transaction')
     );
   }
@@ -77,31 +76,4 @@ export class PostingSession {
   public markConsumed(): void {
     this._consumed = true;
   }
-
-  /**
-   * @internal Fábrica de emissão exclusiva da fronteira transacional física (Unit of Work).
-   */
-  public static _mintFromBoundary(
-    mode: PostingExecutionMode,
-    boundaryId: string
-  ): PostingSession {
-    if (!boundaryId || typeof boundaryId !== 'string') {
-      throw new Error('Identificador de fronteira física obrigatório para emitir PostingSession.');
-    }
-    if (mode !== 'd1-batch' && mode !== 'sqlite-transaction') {
-      throw new Error(`Modo de execução inválido para PostingSession: ${mode}`);
-    }
-    const sessionId = `ps_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    return new PostingSession(InternalPostingCapabilityToken, mode, sessionId, boundaryId);
-  }
-}
-
-/**
- * Função de emissão restrita à fronteira transacional da infraestrutura (Unit of Work / Repository).
- */
-export function issueBoundaryPostingSession(
-  mode: PostingExecutionMode,
-  boundaryId: string
-): PostingSession {
-  return PostingSession._mintFromBoundary(mode, boundaryId);
 }
