@@ -206,6 +206,7 @@ describe('Ecosystem Modules Suite (Civil Identity, SSI & Treasury)', () => {
         getTreasuryAccount: vi.fn().mockResolvedValue(Result.ok({ id: 1, status: 'active', accountType: 'treasury', accountClass: 'asset' })),
         getOrCreateUserAccount: vi.fn().mockResolvedValue(Result.ok({ id: 2, status: 'active', accountType: 'user_available', accountClass: 'liability' })),
         getOrCreateOperatingAccount: vi.fn().mockResolvedValue(Result.ok({ id: 3, status: 'active', accountType: 'operating', accountClass: 'asset' })),
+        getAccountBalance: vi.fn().mockResolvedValue(Result.ok({ availableBaseUnits: '100000', lockedBaseUnits: '0', version: 1 })),
         getIdempotencyRecord: vi.fn().mockResolvedValue(null),
         claimIdempotency: vi.fn().mockResolvedValue(true),
         insertTransaction: vi.fn().mockResolvedValue(Result.ok(10)),
@@ -213,6 +214,24 @@ describe('Ecosystem Modules Suite (Civil Identity, SSI & Treasury)', () => {
         updateBalanceWithOCC: vi.fn().mockResolvedValue('UPDATED'),
         updateTransactionStatus: vi.fn().mockResolvedValue(undefined),
         completeIdempotency: vi.fn().mockResolvedValue(undefined),
+        failIdempotency: vi.fn().mockResolvedValue(undefined),
+        getPostingExecutor: vi.fn().mockReturnValue({
+          execute: vi.fn().mockImplementation(async () => {
+            await (mockFinanceRepo as any).insertTransaction();
+            return {
+              isSuccess: true,
+              isFailure: false,
+              getValue: () => ({ transactionId: 10, isReplayed: false }),
+            };
+          }),
+        }),
+        getPostingSession: vi.fn().mockReturnValue({
+          isValid: () => true,
+          markConsumed: () => {},
+          mode: 'sqlite-transaction',
+          sessionId: 'mock-session',
+          boundaryId: 'mock-boundary',
+        }),
       };
       const mockOutboxRepo = {
         saveEvent: vi.fn().mockResolvedValue(Result.ok()),
