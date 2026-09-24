@@ -41,7 +41,8 @@ import { BaseSQLiteDatabase, SQLiteTransaction } from 'drizzle-orm/sqlite-core';
 import { IPostingExecutor } from '../../application/ports/output/IPostingExecutor';
 import { D1AtomicPostingExecutor } from '../services/D1AtomicPostingExecutor';
 import { isD1Database } from './db_helper';
-import { PostingSession, issueBoundaryPostingSession } from '../../domains/finance/contracts/PostingSession';
+import { PostingSession } from '../../domains/finance/contracts/PostingSession';
+import { PostingAuthority } from '../../application/finance/services/PostingAuthority';
 
 /**
  * ============================================================================
@@ -398,7 +399,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
   async getAccountBalance(accountId: number, assetId: number): Promise<Result<AccountBalanceRecord>> {
     try {
-      const [row] = await this.executor
+      let [row] = await this.executor
         .select({
           id: accountBalances.id,
           accountId: accountBalances.accountId,
@@ -415,6 +416,27 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           )
         )
         .limit(1);
+
+      if (!row) {
+        await this.ensureAccountBalance(accountId, assetId);
+        [row] = await this.executor
+          .select({
+            id: accountBalances.id,
+            accountId: accountBalances.accountId,
+            assetId: accountBalances.assetId,
+            availableBaseUnits: accountBalances.availableBaseUnits,
+            lockedBaseUnits: accountBalances.lockedBaseUnits,
+            version: accountBalances.version,
+          })
+          .from(accountBalances)
+          .where(
+            and(
+              eq(accountBalances.accountId, accountId),
+              eq(accountBalances.assetId, assetId)
+            )
+          )
+          .limit(1);
+      }
 
       if (!row) {
         return Result.fail(`Saldo não encontrado para conta #${accountId} e ativo #${assetId}.`);
@@ -924,10 +946,10 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     userId: number | null | undefined,
     scope: string,
     requestHash: string,
-    options?: { leaseOwner?: string; leaseTimeoutMs?: number }
-  ): Promise<boolean> {
+    options?: { leaseOwner?: string; leaseTimeoutMs?: number; leaseDurationMs?: number }
+  ): Promise<IdempotencyClaimResult> {
     const now = new Date();
-    const leaseTimeoutMs = options?.leaseTimeoutMs ?? 24 * 60 * 60 * 1000;
+    const leaseTimeoutMs = options?.leaseTimeoutMs ?? options?.leaseDurationMs ?? 24 * 60 * 60 * 1000;
     const expiresAt = new Date(now.getTime() + leaseTimeoutMs);
     const leaseOwner = options?.leaseOwner ?? `worker_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
@@ -944,7 +966,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         createdAt: now,
         updatedAt: now,
       });
-      return true;
+      return { claimed: true, leaseOwner, leaseGeneration: 1 };
     } catch (err: any) {
       if (!isUniqueConstraintViolation(err)) {
         throw err;
@@ -955,6 +977,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           status: idempotencyKeys.status,
           requestHash: idempotencyKeys.requestHash,
           expiresAt: idempotencyKeys.expiresAt,
+          leaseOwner: idempotencyKeys.leaseOwner,
           leaseGeneration: idempotencyKeys.leaseGeneration,
         })
         .from(idempotencyKeys)
@@ -967,9 +990,6 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         .limit(1);
 
       if (!existing) {
-        // Race: the row disappeared between the failed INSERT and this
-        // SELECT. Extremely unlikely, but surfaced explicitly rather than
-        // silently retried.
         throw new Error(
           `Falha de concorrência: idempotency key '${idempotencyKey}' (scope '${scope}') não encontrada após violação de UNIQUE.`
         );
@@ -983,11 +1003,11 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       const isReclaimable = existing.status === 'failed' || isExpiredProcessing;
 
       if (!isReclaimable) {
-        // Either 'completed', or 'processing' and still within its
-        // expiresAt window — a legitimate concurrent/duplicate claim
-        // attempt. Not an error: the caller should treat this as "already
-        // claimed by someone else" and back off.
-        return false;
+        return {
+          claimed: false,
+          leaseOwner: existing.leaseOwner || '',
+          leaseGeneration: existing.leaseGeneration || 0,
+        };
       }
 
       if (existing.requestHash !== requestHash) {
@@ -997,6 +1017,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         );
       }
 
+      const newGeneration = (existing.leaseGeneration || 1) + 1;
+
       // Atomic CAS Reclaim with monotonic lease generation increment and new owner
       const res = await this.executor
         .update(idempotencyKeys)
@@ -1004,7 +1026,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           status: 'processing',
           financialTransactionId: null,
           leaseOwner,
-          leaseGeneration: sql`${idempotencyKeys.leaseGeneration} + 1`,
+          leaseGeneration: newGeneration,
           expiresAt,
           updatedAt: now,
         })
@@ -1013,6 +1035,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
             eq(idempotencyKeys.key, idempotencyKey),
             eq(idempotencyKeys.scope, scope),
             eq(idempotencyKeys.requestHash, requestHash),
+            eq(idempotencyKeys.leaseGeneration, existing.leaseGeneration),
             or(
               eq(idempotencyKeys.status, 'failed'),
               and(
@@ -1024,32 +1047,27 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         );
 
       const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
-      return affected > 0;
+      if (affected > 0) {
+        return { claimed: true, leaseOwner, leaseGeneration: newGeneration };
+      }
+      return {
+        claimed: false,
+        leaseOwner: existing.leaseOwner || '',
+        leaseGeneration: existing.leaseGeneration || 0,
+      };
     }
   }
 
   /**
-  /**
-   * Call this from the use case's failure path right after
-   * claimIdempotency() succeeds but the domain operation itself fails.
-   * [AUDIT FIX P0-05] Aplica lease fencing estrito para impedir que stale workers alterem leases subsequentes.
+   * [P0-05] Aplica lease fencing estrito obrigatório: exige leaseOwner e leaseGeneration.
    */
   async failIdempotency(
     key: string,
     scope: string,
-    options?: { leaseOwner?: string; leaseGeneration?: number; failureCode?: string } | string
+    options: { leaseOwner: string; leaseGeneration: number; failureCode?: string }
   ): Promise<void> {
-    const opts = typeof options === 'object' && options !== null ? options : {};
-    const conditions = [
-      eq(idempotencyKeys.key, key),
-      eq(idempotencyKeys.scope, scope),
-      eq(idempotencyKeys.status, 'processing'),
-    ];
-    if (opts.leaseOwner) {
-      conditions.push(eq(idempotencyKeys.leaseOwner, opts.leaseOwner));
-    }
-    if (typeof opts.leaseGeneration === 'number') {
-      conditions.push(eq(idempotencyKeys.leaseGeneration, opts.leaseGeneration));
+    if (!options || !options.leaseOwner || typeof options.leaseGeneration !== 'number') {
+      throw new Error('failIdempotency exige obrigatoriamente leaseOwner e leaseGeneration para fencing P0.');
     }
 
     await this.executor
@@ -1058,73 +1076,91 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         status: 'failed',
         updatedAt: new Date(),
       })
-      .where(and(...conditions));
+      .where(
+        and(
+          eq(idempotencyKeys.key, key),
+          eq(idempotencyKeys.scope, scope),
+          eq(idempotencyKeys.status, 'processing'),
+          eq(idempotencyKeys.leaseOwner, options.leaseOwner),
+          eq(idempotencyKeys.leaseGeneration, options.leaseGeneration)
+        )
+      );
   }
 
   /**
-   * [AUDIT FIX P0-06] Aplica lease fencing estrito na liberação de claim.
+   * [P0-06] Aplica lease fencing estrito obrigatório na liberação de claim.
    */
   async releaseIdempotencyClaim(
     key: string,
     scope: string,
-    options?: { leaseOwner?: string; leaseGeneration?: number }
+    options: { leaseOwner: string; leaseGeneration: number }
   ): Promise<void> {
-    const conditions = [
-      eq(idempotencyKeys.key, key),
-      eq(idempotencyKeys.scope, scope),
-      eq(idempotencyKeys.status, 'processing'),
-    ];
-    if (options?.leaseOwner) {
-      conditions.push(eq(idempotencyKeys.leaseOwner, options.leaseOwner));
-    }
-    if (typeof options?.leaseGeneration === 'number') {
-      conditions.push(eq(idempotencyKeys.leaseGeneration, options.leaseGeneration));
+    if (!options || !options.leaseOwner || typeof options.leaseGeneration !== 'number') {
+      throw new Error('releaseIdempotencyClaim exige obrigatoriamente leaseOwner e leaseGeneration para fencing P0.');
     }
 
     await this.executor
       .delete(idempotencyKeys)
-      .where(and(...conditions));
+      .where(
+        and(
+          eq(idempotencyKeys.key, key),
+          eq(idempotencyKeys.scope, scope),
+          eq(idempotencyKeys.status, 'processing'),
+          eq(idempotencyKeys.leaseOwner, options.leaseOwner),
+          eq(idempotencyKeys.leaseGeneration, options.leaseGeneration)
+        )
+      );
   }
 
+  /**
+   * [P0-04] Conclusão de idempotência estritamente com fencing e requestHash.
+   */
   async completeIdempotency(
     key: string,
     scope: string,
     transactionId: number,
-    options?: { leaseOwner?: string; leaseGeneration?: number; responseStatus?: number; responsePayload?: string }
+    options: {
+      requestHash: string;
+      leaseOwner: string;
+      leaseGeneration: number;
+      responseStatus?: number;
+      responsePayload?: string;
+    }
   ): Promise<void> {
+    if (!options || !options.requestHash || !options.leaseOwner || typeof options.leaseGeneration !== 'number') {
+      throw new Error('completeIdempotency exige obrigatoriamente requestHash, leaseOwner e leaseGeneration para fencing P0.');
+    }
+
     const updateSet: any = {
       status: 'completed',
       financialTransactionId: transactionId,
       updatedAt: new Date(),
     };
-    if (options?.responseStatus !== undefined && options?.responseStatus !== null) {
+    if (options.responseStatus !== undefined && options.responseStatus !== null) {
       updateSet.responseStatus = options.responseStatus;
     }
-    if (options?.responsePayload !== undefined && options?.responsePayload !== null) {
+    if (options.responsePayload !== undefined && options.responsePayload !== null) {
       updateSet.responsePayload = options.responsePayload;
-    }
-
-    const whereConditions = [
-      eq(idempotencyKeys.key, key),
-      eq(idempotencyKeys.scope, scope),
-      eq(idempotencyKeys.status, 'processing'),
-    ];
-    if (options?.leaseOwner !== undefined && options?.leaseOwner !== null) {
-      whereConditions.push(eq(idempotencyKeys.leaseOwner, options.leaseOwner));
-    }
-    if (options?.leaseGeneration !== undefined && options?.leaseGeneration !== null) {
-      whereConditions.push(eq(idempotencyKeys.leaseGeneration, options.leaseGeneration));
     }
 
     const res = await this.executor
       .update(idempotencyKeys)
       .set(updateSet)
-      .where(and(...whereConditions));
+      .where(
+        and(
+          eq(idempotencyKeys.key, key),
+          eq(idempotencyKeys.scope, scope),
+          eq(idempotencyKeys.status, 'processing'),
+          eq(idempotencyKeys.requestHash, options.requestHash),
+          eq(idempotencyKeys.leaseOwner, options.leaseOwner),
+          eq(idempotencyKeys.leaseGeneration, options.leaseGeneration)
+        )
+      );
 
     const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
     if (affected === 0) {
       throw new Error(
-        `Falha ao concluir Idempotency Key (${key}): Registro de idempotência não encontrado ou não está em estado 'processing'.`
+        `Falha ao concluir Idempotency Key (${key}): Registro de idempotência não encontrado ou lease não coincide.`
       );
     }
   }
@@ -1326,21 +1362,28 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     return affected > 0 ? 'UPDATED' : 'OCC_CONFLICT';
   }
 
-  private _postingSession?: PostingSession;
-
   /**
-   * [AUDIT FIX P0-01, P0-02] Emissão de PostingSession restrita à fronteira transacional.
+   * [AUDIT FIX P0-B, P1-12] Emissão de PostingSession autêntica e fresca por postagem física.
+   * Não reutiliza instâncias consumidas e vincula a sessão à instância física de this.db.
    */
   public getPostingSession(): PostingSession {
-    if (!this._postingSession) {
-      const isD1 = isD1Database(this.db);
-      const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
-      const boundaryId = `repo_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      this._postingSession = issueBoundaryPostingSession(mode, boundaryId);
-    }
-    return this._postingSession;
+    const isD1 = isD1Database(this.db);
+    const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
+    const boundaryId = `repo_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    return new PostingSession(this.db as object, mode, boundaryId);
   }
 
+  /**
+   * [AUDIT FIX P0-C] PostingAuthority soberana como ponto único de commit do repositório.
+   */
+  public getPostingAuthority(): PostingAuthority {
+    return new PostingAuthority(new D1AtomicPostingExecutor(this.db));
+  }
+
+  /**
+   * @deprecated [GATE 0 P0] O executor físico bruto não deve ser chamado diretamente pela aplicação.
+   * Utilize getPostingAuthority() para commit com validação e selamento contábil.
+   */
   public getPostingExecutor(): IPostingExecutor {
     return new D1AtomicPostingExecutor(this.db);
   }
