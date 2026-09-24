@@ -103,7 +103,10 @@ describe('Hardening de Concorrência & Idempotência Forte (50 Conexões Simult�
 
     const results = await Promise.all(promises);
 
-    // Todas devem ter tido sucesso (1 executada + 49 replays ou retries de replays)
+    const failures = results.filter(r => r.isFailure);
+    if (failures.length > 0) {
+      console.log('CONCURRENCY_FAILURES_SAMPLE:', failures[0].error);
+    }
     const successes = results.filter(r => r.isSuccess);
     expect(successes.length).toBe(50);
 
