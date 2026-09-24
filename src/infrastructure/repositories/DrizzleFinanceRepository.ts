@@ -40,6 +40,8 @@ import { AccountClassPolicy } from '../../domains/finance/policies/AccountClassP
 import { BaseSQLiteDatabase, SQLiteTransaction } from 'drizzle-orm/sqlite-core';
 import { IPostingExecutor } from '../../application/ports/output/IPostingExecutor';
 import { D1AtomicPostingExecutor } from '../services/D1AtomicPostingExecutor';
+import { isD1Database } from './db_helper';
+import { PostingSession, issueBoundaryPostingSession } from '../../domains/finance/contracts/PostingSession';
 
 /**
  * ============================================================================
@@ -1027,35 +1029,61 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   }
 
   /**
+  /**
    * Call this from the use case's failure path right after
    * claimIdempotency() succeeds but the domain operation itself fails.
+   * [AUDIT FIX P0-05] Aplica lease fencing estrito para impedir que stale workers alterem leases subsequentes.
    */
-  async failIdempotency(key: string, scope: string, failureCode?: string): Promise<void> {
+  async failIdempotency(
+    key: string,
+    scope: string,
+    options?: { leaseOwner?: string; leaseGeneration?: number; failureCode?: string } | string
+  ): Promise<void> {
+    const opts = typeof options === 'object' && options !== null ? options : {};
+    const conditions = [
+      eq(idempotencyKeys.key, key),
+      eq(idempotencyKeys.scope, scope),
+      eq(idempotencyKeys.status, 'processing'),
+    ];
+    if (opts.leaseOwner) {
+      conditions.push(eq(idempotencyKeys.leaseOwner, opts.leaseOwner));
+    }
+    if (typeof opts.leaseGeneration === 'number') {
+      conditions.push(eq(idempotencyKeys.leaseGeneration, opts.leaseGeneration));
+    }
+
     await this.executor
       .update(idempotencyKeys)
       .set({
         status: 'failed',
         updatedAt: new Date(),
       })
-      .where(
-        and(
-          eq(idempotencyKeys.key, key),
-          eq(idempotencyKeys.scope, scope),
-          eq(idempotencyKeys.status, 'processing')
-        )
-      );
+      .where(and(...conditions));
   }
 
-  async releaseIdempotencyClaim(key: string, scope: string): Promise<void> {
+  /**
+   * [AUDIT FIX P0-06] Aplica lease fencing estrito na liberação de claim.
+   */
+  async releaseIdempotencyClaim(
+    key: string,
+    scope: string,
+    options?: { leaseOwner?: string; leaseGeneration?: number }
+  ): Promise<void> {
+    const conditions = [
+      eq(idempotencyKeys.key, key),
+      eq(idempotencyKeys.scope, scope),
+      eq(idempotencyKeys.status, 'processing'),
+    ];
+    if (options?.leaseOwner) {
+      conditions.push(eq(idempotencyKeys.leaseOwner, options.leaseOwner));
+    }
+    if (typeof options?.leaseGeneration === 'number') {
+      conditions.push(eq(idempotencyKeys.leaseGeneration, options.leaseGeneration));
+    }
+
     await this.executor
       .delete(idempotencyKeys)
-      .where(
-        and(
-          eq(idempotencyKeys.key, key),
-          eq(idempotencyKeys.scope, scope),
-          eq(idempotencyKeys.status, 'processing')
-        )
-      );
+      .where(and(...conditions));
   }
 
   async completeIdempotency(
@@ -1298,8 +1326,19 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     return affected > 0 ? 'UPDATED' : 'OCC_CONFLICT';
   }
 
-  public getDbExecutor(): FinanceDbExecutor {
-    return this.db;
+  private _postingSession?: PostingSession;
+
+  /**
+   * [AUDIT FIX P0-01, P0-02] Emissão de PostingSession restrita à fronteira transacional.
+   */
+  public getPostingSession(): PostingSession {
+    if (!this._postingSession) {
+      const isD1 = isD1Database(this.db);
+      const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
+      const boundaryId = `repo_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      this._postingSession = issueBoundaryPostingSession(mode, boundaryId);
+    }
+    return this._postingSession;
   }
 
   public getPostingExecutor(): IPostingExecutor {
