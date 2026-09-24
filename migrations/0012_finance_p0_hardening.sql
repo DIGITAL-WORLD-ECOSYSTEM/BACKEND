@@ -5,8 +5,17 @@
 ALTER TABLE financial_transactions ADD COLUMN reversed_at integer;--> statement-breakpoint
 ALTER TABLE financial_transactions ADD COLUMN refunded_at integer;--> statement-breakpoint
 
--- 2. Structural Ledger Leg Ordinal (P1-14)
-ALTER TABLE financial_ledger_entries ADD COLUMN entry_ordinal integer NOT NULL DEFAULT 0;--> statement-breakpoint
+-- 2. Structural Ledger Leg Ordinal (P1-14, P0-16) com backfill determinístico 1..N
+ALTER TABLE financial_ledger_entries ADD COLUMN entry_ordinal integer;--> statement-breakpoint
+
+UPDATE financial_ledger_entries
+SET entry_ordinal = (
+  SELECT COUNT(*)
+  FROM financial_ledger_entries e2
+  WHERE e2.transaction_id = financial_ledger_entries.transaction_id
+    AND e2.id <= financial_ledger_entries.id
+);--> statement-breakpoint
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_entry_ordinal ON financial_ledger_entries (transaction_id, entry_ordinal);--> statement-breakpoint
 
 -- 3. SQL Mutation-Count Assertion Guard Table (Gate 11 / PLAN-02)
