@@ -18,6 +18,14 @@ SET entry_ordinal = (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_entry_ordinal ON financial_ledger_entries (transaction_id, entry_ordinal);--> statement-breakpoint
 
+CREATE TRIGGER IF NOT EXISTS trg_ledger_entry_ordinal_not_null
+BEFORE INSERT ON financial_ledger_entries
+FOR EACH ROW
+WHEN NEW.entry_ordinal IS NULL
+BEGIN
+  SELECT RAISE(ABORT, 'ORDINAL_REQUIRED: entry_ordinal não pode ser NULL.');
+END;--> statement-breakpoint
+
 -- 3. SQL Mutation-Count Assertion Guard Table (Gate 11 / PLAN-02)
 CREATE TABLE IF NOT EXISTS _sql_assertions (
   id integer PRIMARY KEY CHECK (id = 1),
