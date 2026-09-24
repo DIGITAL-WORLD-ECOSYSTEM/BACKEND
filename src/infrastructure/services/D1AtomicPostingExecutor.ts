@@ -93,7 +93,8 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
                   eq(accountBalances.accountId, mutation.accountId),
                   eq(accountBalances.assetId, mutation.assetId),
                   eq(accountBalances.version, mutation.expectedVersion),
-                  sql`(SELECT status FROM financial_accounts WHERE id = ${mutation.accountId}) = 'active'`
+                  sql`(SELECT status FROM financial_accounts WHERE id = ${mutation.accountId}) = 'active'`,
+                  sql`(SELECT status FROM financial_assets WHERE id = ${mutation.assetId}) = 'active'`
                 )
               )
           );
@@ -128,6 +129,7 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
           eq(idempotencyKeys.scope, plan.scope),
           eq(idempotencyKeys.key, plan.idempotencyKey),
           eq(idempotencyKeys.status, 'processing'),
+          eq(idempotencyKeys.requestHash, plan.requestHash),
           eq(idempotencyKeys.leaseOwner, plan.leaseOwner),
           eq(idempotencyKeys.leaseGeneration, plan.leaseGeneration),
         ];
@@ -223,7 +225,8 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
                    WHERE account_id = ?
                      AND asset_id = ?
                      AND version = ?
-                     AND (SELECT status FROM financial_accounts WHERE id = ?) = 'active'`
+                     AND (SELECT status FROM financial_accounts WHERE id = ?) = 'active'
+                     AND (SELECT status FROM financial_assets WHERE id = ?) = 'active'`
                 )
                 .bind(
                   mutation.newAvailableBaseUnits,
@@ -231,7 +234,8 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
                   mutation.accountId,
                   mutation.assetId,
                   mutation.expectedVersion,
-                  mutation.accountId
+                  mutation.accountId,
+                  mutation.assetId
                 )
             );
 
@@ -261,7 +265,7 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
               )
           );
 
-          // 5. Idempotency completion + assertion (Fencing P0 Estrito)
+          // 5. Idempotency completion + assertion (Fencing P0 Estrito com requestHash)
           statements.push(
             d1
               .prepare(
@@ -274,6 +278,7 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
                  WHERE scope = ?
                    AND key = ?
                    AND status = 'processing'
+                   AND request_hash = ?
                    AND lease_owner = ?
                    AND lease_generation = ?`
               )
@@ -284,6 +289,7 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
                 Math.floor(now.getTime() / 1000),
                 plan.scope,
                 plan.idempotencyKey,
+                plan.requestHash,
                 plan.leaseOwner,
                 plan.leaseGeneration
               )
@@ -313,6 +319,8 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
         // Already inside a transaction or single connection executor
         committedTxId = await this.executeStatementsOnExecutor(this.db, plan, now);
       }
+
+      session.markConsumed();
 
       return Result.ok({
         transactionId: committedTxId,
@@ -398,7 +406,8 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
             eq(accountBalances.accountId, mutation.accountId),
             eq(accountBalances.assetId, mutation.assetId),
             eq(accountBalances.version, mutation.expectedVersion),
-            sql`(SELECT status FROM financial_accounts WHERE id = ${mutation.accountId}) = 'active'`
+            sql`(SELECT status FROM financial_accounts WHERE id = ${mutation.accountId}) = 'active'`,
+            sql`(SELECT status FROM financial_assets WHERE id = ${mutation.assetId}) = 'active'`
           )
         );
 
@@ -428,6 +437,7 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
       eq(idempotencyKeys.scope, plan.scope),
       eq(idempotencyKeys.key, plan.idempotencyKey),
       eq(idempotencyKeys.status, 'processing'),
+      eq(idempotencyKeys.requestHash, plan.requestHash),
       eq(idempotencyKeys.leaseOwner, plan.leaseOwner),
       eq(idempotencyKeys.leaseGeneration, plan.leaseGeneration),
     ];
