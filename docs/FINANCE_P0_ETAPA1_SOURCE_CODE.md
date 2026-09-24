@@ -7,7 +7,7 @@
 
 ```typescript
 import { IPostingExecutor, PostingExecutionResult } from '../../application/ports/output/IPostingExecutor';
-import { PostingPlan } from '../../domains/finance/contracts/PostingPlan';
+import { PostingPlan, POSTING_PLAN_SEAL } from '../../domains/finance/contracts/PostingPlan';
 import { PostingSession } from '../../domains/finance/contracts/PostingSession';
 import { Result } from '../../shared/kernel/Result';
 import {
@@ -37,7 +37,19 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
       return Result.fail('PostingSession inválida, forjada ou ausente. Execução contábil abortada.');
     }
 
-    if (!plan || !plan.leaseOwner || typeof plan.leaseOwner !== 'string' || typeof plan.leaseGeneration !== 'number') {
+    if (session.boundaryRef !== this.db) {
+      return Result.fail('PostingSession não pertence à fronteira física deste executor.');
+    }
+
+    if (!plan || (plan as any)[POSTING_PLAN_SEAL] !== POSTING_PLAN_SEAL) {
+      return Result.fail('PostingPlan forjado ou não-autenticado: ausência do selo POSTING_PLAN_SEAL.');
+    }
+
+    if (!plan.authorizationDecision || !plan.authorizationDecision.allowed) {
+      return Result.fail('PostingPlan rejeitado por falta de autorização de custódia.');
+    }
+
+    if (!plan.leaseOwner || typeof plan.leaseOwner !== 'string' || typeof plan.leaseGeneration !== 'number') {
       return Result.fail('Fencing de concorrência P0 violado: leaseOwner e leaseGeneration são obrigatórios no PostingPlan.');
     }
 
@@ -508,13 +520,13 @@ import { Result } from '../../shared/kernel/Result';
 import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
 import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
 import { isD1Database } from './db_helper';
-import { PostingSession, issueBoundaryPostingSession } from '../../domains/finance/contracts/PostingSession';
+import { PostingSession } from '../../domains/finance/contracts/PostingSession';
 import { IPostingExecutor } from '../../application/ports/output/IPostingExecutor';
 import { D1AtomicPostingExecutor } from '../services/D1AtomicPostingExecutor';
+import { PostingAuthority } from '../../application/finance/services/PostingAuthority';
 import { FinancialError } from '../../domains/finance/errors/FinancialError';
 
 class DrizzleRepositoryFactory implements IRepositoryFactory {
-  private _postingSession?: PostingSession;
   private _postingExecutor?: IPostingExecutor;
 
   constructor(
@@ -563,13 +575,16 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
   }
 
   getPostingSession(): PostingSession {
-    if (!this._postingSession) {
-      const isD1 = isD1Database(this.db || this.tx);
-      const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
-      const boundaryId = `uow_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      this._postingSession = issueBoundaryPostingSession(mode, boundaryId);
-    }
-    return this._postingSession;
+    const isD1 = isD1Database(this.db || this.tx);
+    const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
+    const boundaryId = `uow_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const physicalDb = (this.tx || this.db) as object;
+    return new PostingSession(physicalDb, mode, boundaryId);
+  }
+
+  getPostingAuthority(): PostingAuthority {
+    const physicalDb = (this.tx || this.db) as object;
+    return new PostingAuthority(new D1AtomicPostingExecutor(physicalDb));
   }
 
   getPostingExecutor(): IPostingExecutor {
@@ -685,7 +700,8 @@ import { BaseSQLiteDatabase, SQLiteTransaction } from 'drizzle-orm/sqlite-core';
 import { IPostingExecutor } from '../../application/ports/output/IPostingExecutor';
 import { D1AtomicPostingExecutor } from '../services/D1AtomicPostingExecutor';
 import { isD1Database } from './db_helper';
-import { PostingSession, issueBoundaryPostingSession } from '../../domains/finance/contracts/PostingSession';
+import { PostingSession } from '../../domains/finance/contracts/PostingSession';
+import { PostingAuthority } from '../../application/finance/services/PostingAuthority';
 
 /**
  * ============================================================================
@@ -1042,7 +1058,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
   async getAccountBalance(accountId: number, assetId: number): Promise<Result<AccountBalanceRecord>> {
     try {
-      const [row] = await this.executor
+      let [row] = await this.executor
         .select({
           id: accountBalances.id,
           accountId: accountBalances.accountId,
@@ -1059,6 +1075,27 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           )
         )
         .limit(1);
+
+      if (!row) {
+        await this.ensureAccountBalance(accountId, assetId);
+        [row] = await this.executor
+          .select({
+            id: accountBalances.id,
+            accountId: accountBalances.accountId,
+            assetId: accountBalances.assetId,
+            availableBaseUnits: accountBalances.availableBaseUnits,
+            lockedBaseUnits: accountBalances.lockedBaseUnits,
+            version: accountBalances.version,
+          })
+          .from(accountBalances)
+          .where(
+            and(
+              eq(accountBalances.accountId, accountId),
+              eq(accountBalances.assetId, assetId)
+            )
+          )
+          .limit(1);
+      }
 
       if (!row) {
         return Result.fail(`Saldo não encontrado para conta #${accountId} e ativo #${assetId}.`);
@@ -1568,10 +1605,10 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     userId: number | null | undefined,
     scope: string,
     requestHash: string,
-    options?: { leaseOwner?: string; leaseTimeoutMs?: number }
-  ): Promise<boolean> {
+    options?: { leaseOwner?: string; leaseTimeoutMs?: number; leaseDurationMs?: number }
+  ): Promise<IdempotencyClaimResult> {
     const now = new Date();
-    const leaseTimeoutMs = options?.leaseTimeoutMs ?? 24 * 60 * 60 * 1000;
+    const leaseTimeoutMs = options?.leaseTimeoutMs ?? options?.leaseDurationMs ?? 24 * 60 * 60 * 1000;
     const expiresAt = new Date(now.getTime() + leaseTimeoutMs);
     const leaseOwner = options?.leaseOwner ?? `worker_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
@@ -1588,7 +1625,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         createdAt: now,
         updatedAt: now,
       });
-      return true;
+      return { claimed: true, leaseOwner, leaseGeneration: 1 };
     } catch (err: any) {
       if (!isUniqueConstraintViolation(err)) {
         throw err;
@@ -1599,6 +1636,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           status: idempotencyKeys.status,
           requestHash: idempotencyKeys.requestHash,
           expiresAt: idempotencyKeys.expiresAt,
+          leaseOwner: idempotencyKeys.leaseOwner,
           leaseGeneration: idempotencyKeys.leaseGeneration,
         })
         .from(idempotencyKeys)
@@ -1611,9 +1649,6 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         .limit(1);
 
       if (!existing) {
-        // Race: the row disappeared between the failed INSERT and this
-        // SELECT. Extremely unlikely, but surfaced explicitly rather than
-        // silently retried.
         throw new Error(
           `Falha de concorrência: idempotency key '${idempotencyKey}' (scope '${scope}') não encontrada após violação de UNIQUE.`
         );
@@ -1627,11 +1662,11 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
       const isReclaimable = existing.status === 'failed' || isExpiredProcessing;
 
       if (!isReclaimable) {
-        // Either 'completed', or 'processing' and still within its
-        // expiresAt window — a legitimate concurrent/duplicate claim
-        // attempt. Not an error: the caller should treat this as "already
-        // claimed by someone else" and back off.
-        return false;
+        return {
+          claimed: false,
+          leaseOwner: existing.leaseOwner || '',
+          leaseGeneration: existing.leaseGeneration || 0,
+        };
       }
 
       if (existing.requestHash !== requestHash) {
@@ -1641,6 +1676,8 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         );
       }
 
+      const newGeneration = (existing.leaseGeneration || 1) + 1;
+
       // Atomic CAS Reclaim with monotonic lease generation increment and new owner
       const res = await this.executor
         .update(idempotencyKeys)
@@ -1648,7 +1685,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           status: 'processing',
           financialTransactionId: null,
           leaseOwner,
-          leaseGeneration: sql`${idempotencyKeys.leaseGeneration} + 1`,
+          leaseGeneration: newGeneration,
           expiresAt,
           updatedAt: now,
         })
@@ -1657,6 +1694,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
             eq(idempotencyKeys.key, idempotencyKey),
             eq(idempotencyKeys.scope, scope),
             eq(idempotencyKeys.requestHash, requestHash),
+            eq(idempotencyKeys.leaseGeneration, existing.leaseGeneration),
             or(
               eq(idempotencyKeys.status, 'failed'),
               and(
@@ -1668,32 +1706,27 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         );
 
       const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
-      return affected > 0;
+      if (affected > 0) {
+        return { claimed: true, leaseOwner, leaseGeneration: newGeneration };
+      }
+      return {
+        claimed: false,
+        leaseOwner: existing.leaseOwner || '',
+        leaseGeneration: existing.leaseGeneration || 0,
+      };
     }
   }
 
   /**
-  /**
-   * Call this from the use case's failure path right after
-   * claimIdempotency() succeeds but the domain operation itself fails.
-   * [AUDIT FIX P0-05] Aplica lease fencing estrito para impedir que stale workers alterem leases subsequentes.
+   * [P0-05] Aplica lease fencing estrito obrigatório: exige leaseOwner e leaseGeneration.
    */
   async failIdempotency(
     key: string,
     scope: string,
-    options?: { leaseOwner?: string; leaseGeneration?: number; failureCode?: string } | string
+    options: { leaseOwner: string; leaseGeneration: number; failureCode?: string }
   ): Promise<void> {
-    const opts = typeof options === 'object' && options !== null ? options : {};
-    const conditions = [
-      eq(idempotencyKeys.key, key),
-      eq(idempotencyKeys.scope, scope),
-      eq(idempotencyKeys.status, 'processing'),
-    ];
-    if (opts.leaseOwner) {
-      conditions.push(eq(idempotencyKeys.leaseOwner, opts.leaseOwner));
-    }
-    if (typeof opts.leaseGeneration === 'number') {
-      conditions.push(eq(idempotencyKeys.leaseGeneration, opts.leaseGeneration));
+    if (!options || !options.leaseOwner || typeof options.leaseGeneration !== 'number') {
+      throw new Error('failIdempotency exige obrigatoriamente leaseOwner e leaseGeneration para fencing P0.');
     }
 
     await this.executor
@@ -1702,73 +1735,91 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         status: 'failed',
         updatedAt: new Date(),
       })
-      .where(and(...conditions));
+      .where(
+        and(
+          eq(idempotencyKeys.key, key),
+          eq(idempotencyKeys.scope, scope),
+          eq(idempotencyKeys.status, 'processing'),
+          eq(idempotencyKeys.leaseOwner, options.leaseOwner),
+          eq(idempotencyKeys.leaseGeneration, options.leaseGeneration)
+        )
+      );
   }
 
   /**
-   * [AUDIT FIX P0-06] Aplica lease fencing estrito na liberação de claim.
+   * [P0-06] Aplica lease fencing estrito obrigatório na liberação de claim.
    */
   async releaseIdempotencyClaim(
     key: string,
     scope: string,
-    options?: { leaseOwner?: string; leaseGeneration?: number }
+    options: { leaseOwner: string; leaseGeneration: number }
   ): Promise<void> {
-    const conditions = [
-      eq(idempotencyKeys.key, key),
-      eq(idempotencyKeys.scope, scope),
-      eq(idempotencyKeys.status, 'processing'),
-    ];
-    if (options?.leaseOwner) {
-      conditions.push(eq(idempotencyKeys.leaseOwner, options.leaseOwner));
-    }
-    if (typeof options?.leaseGeneration === 'number') {
-      conditions.push(eq(idempotencyKeys.leaseGeneration, options.leaseGeneration));
+    if (!options || !options.leaseOwner || typeof options.leaseGeneration !== 'number') {
+      throw new Error('releaseIdempotencyClaim exige obrigatoriamente leaseOwner e leaseGeneration para fencing P0.');
     }
 
     await this.executor
       .delete(idempotencyKeys)
-      .where(and(...conditions));
+      .where(
+        and(
+          eq(idempotencyKeys.key, key),
+          eq(idempotencyKeys.scope, scope),
+          eq(idempotencyKeys.status, 'processing'),
+          eq(idempotencyKeys.leaseOwner, options.leaseOwner),
+          eq(idempotencyKeys.leaseGeneration, options.leaseGeneration)
+        )
+      );
   }
 
+  /**
+   * [P0-04] Conclusão de idempotência estritamente com fencing e requestHash.
+   */
   async completeIdempotency(
     key: string,
     scope: string,
     transactionId: number,
-    options?: { leaseOwner?: string; leaseGeneration?: number; responseStatus?: number; responsePayload?: string }
+    options: {
+      requestHash: string;
+      leaseOwner: string;
+      leaseGeneration: number;
+      responseStatus?: number;
+      responsePayload?: string;
+    }
   ): Promise<void> {
+    if (!options || !options.requestHash || !options.leaseOwner || typeof options.leaseGeneration !== 'number') {
+      throw new Error('completeIdempotency exige obrigatoriamente requestHash, leaseOwner e leaseGeneration para fencing P0.');
+    }
+
     const updateSet: any = {
       status: 'completed',
       financialTransactionId: transactionId,
       updatedAt: new Date(),
     };
-    if (options?.responseStatus !== undefined && options?.responseStatus !== null) {
+    if (options.responseStatus !== undefined && options.responseStatus !== null) {
       updateSet.responseStatus = options.responseStatus;
     }
-    if (options?.responsePayload !== undefined && options?.responsePayload !== null) {
+    if (options.responsePayload !== undefined && options.responsePayload !== null) {
       updateSet.responsePayload = options.responsePayload;
-    }
-
-    const whereConditions = [
-      eq(idempotencyKeys.key, key),
-      eq(idempotencyKeys.scope, scope),
-      eq(idempotencyKeys.status, 'processing'),
-    ];
-    if (options?.leaseOwner !== undefined && options?.leaseOwner !== null) {
-      whereConditions.push(eq(idempotencyKeys.leaseOwner, options.leaseOwner));
-    }
-    if (options?.leaseGeneration !== undefined && options?.leaseGeneration !== null) {
-      whereConditions.push(eq(idempotencyKeys.leaseGeneration, options.leaseGeneration));
     }
 
     const res = await this.executor
       .update(idempotencyKeys)
       .set(updateSet)
-      .where(and(...whereConditions));
+      .where(
+        and(
+          eq(idempotencyKeys.key, key),
+          eq(idempotencyKeys.scope, scope),
+          eq(idempotencyKeys.status, 'processing'),
+          eq(idempotencyKeys.requestHash, options.requestHash),
+          eq(idempotencyKeys.leaseOwner, options.leaseOwner),
+          eq(idempotencyKeys.leaseGeneration, options.leaseGeneration)
+        )
+      );
 
     const affected = res?.meta?.changes ?? res?.rowsAffected ?? 0;
     if (affected === 0) {
       throw new Error(
-        `Falha ao concluir Idempotency Key (${key}): Registro de idempotência não encontrado ou não está em estado 'processing'.`
+        `Falha ao concluir Idempotency Key (${key}): Registro de idempotência não encontrado ou lease não coincide.`
       );
     }
   }
@@ -1970,21 +2021,28 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     return affected > 0 ? 'UPDATED' : 'OCC_CONFLICT';
   }
 
-  private _postingSession?: PostingSession;
-
   /**
-   * [AUDIT FIX P0-01, P0-02] Emissão de PostingSession restrita à fronteira transacional.
+   * [AUDIT FIX P0-B, P1-12] Emissão de PostingSession autêntica e fresca por postagem física.
+   * Não reutiliza instâncias consumidas e vincula a sessão à instância física de this.db.
    */
   public getPostingSession(): PostingSession {
-    if (!this._postingSession) {
-      const isD1 = isD1Database(this.db);
-      const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
-      const boundaryId = `repo_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      this._postingSession = issueBoundaryPostingSession(mode, boundaryId);
-    }
-    return this._postingSession;
+    const isD1 = isD1Database(this.db);
+    const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
+    const boundaryId = `repo_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    return new PostingSession(this.db as object, mode, boundaryId);
   }
 
+  /**
+   * [AUDIT FIX P0-C] PostingAuthority soberana como ponto único de commit do repositório.
+   */
+  public getPostingAuthority(): PostingAuthority {
+    return new PostingAuthority(new D1AtomicPostingExecutor(this.db));
+  }
+
+  /**
+   * @deprecated [GATE 0 P0] O executor físico bruto não deve ser chamado diretamente pela aplicação.
+   * Utilize getPostingAuthority() para commit com validação e selamento contábil.
+   */
   public getPostingExecutor(): IPostingExecutor {
     return new D1AtomicPostingExecutor(this.db);
   }
@@ -2435,69 +2493,68 @@ export class PostingAuthority {
  * Representa a autoridade não-forjável para executar exatamente um lote
  * de mutação contábil dentro da fronteira transacional física (D1.batch / SQLite tx).
  *
- * Em conformidade com o princípio de Object-Capability (P0-01, P0-19):
+ * Em conformidade com o princípio de Object-Capability (P0-01, P0-19, P0-B):
  * 1. O token interno é estritamente privado ao módulo (não-exportado).
- * 2. A sessão é vinculada à fronteira de execução (boundaryId).
+ * 2. A sessão é vinculada à instância física da fronteira de execução (boundaryRef / db) e seu identificador (boundaryId).
  * 3. A sessão é de uso estritamente único (single-use: markConsumed).
+ * 4. Eliminação de tokens públicos (PostingCapabilityToken) e fábricas públicas estáticas
+ *    para impedir forja de autoridade por chamadores externos.
  */
 
-const InternalPostingCapabilityToken: unique symbol = Symbol('InternalPostingCapabilityToken');
-
-/**
- * Token de autoridade para testes e fronteiras especializadas que necessitam criar PostingSession.
- */
-export const PostingCapabilityToken: unique symbol = Symbol('PostingCapabilityToken');
+const InternalBoundaryToken: unique symbol = Symbol('InternalBoundaryToken');
 
 export type PostingExecutionMode = 'd1-batch' | 'sqlite-transaction';
 
 export class PostingSession {
-  private readonly _token: typeof InternalPostingCapabilityToken;
+  private readonly _token: typeof InternalBoundaryToken;
   public readonly mode: PostingExecutionMode;
   public readonly sessionId: string;
   public readonly boundaryId: string;
+  public readonly boundaryRef: object;
   public readonly createdAt: Date;
   private _consumed: boolean = false;
 
-  private constructor(
-    token: typeof InternalPostingCapabilityToken,
+  /**
+   * Construtor protegido: exige uma referência física legítima da infraestrutura
+   * (instância do banco / driver) e identificadores de fronteira.
+   */
+  public constructor(
+    boundaryRef: object,
     mode: PostingExecutionMode,
-    sessionId: string,
     boundaryId: string
   ) {
-    this._token = token;
+    if (!boundaryRef || (typeof boundaryRef !== 'object' && typeof boundaryRef !== 'function')) {
+      throw new Error('PostingSession exige uma referência física de infraestrutura (banco) válida.');
+    }
+    if (mode !== 'd1-batch' && mode !== 'sqlite-transaction') {
+      throw new Error(`Modo de execução inválido para PostingSession: ${mode}`);
+    }
+    if (!boundaryId || typeof boundaryId !== 'string') {
+      throw new Error('Identificador de fronteira física obrigatório para PostingSession.');
+    }
+
+    this._token = InternalBoundaryToken;
     this.mode = mode;
-    this.sessionId = sessionId;
     this.boundaryId = boundaryId;
+    this.boundaryRef = boundaryRef;
+    this.sessionId = `ps_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     this.createdAt = new Date();
   }
 
   /**
-   * Método de compatibilidade para criação autorizada por portadores do capability token.
-   */
-  public static createAuthorizedSession(
-    token: unknown,
-    mode: PostingExecutionMode,
-    sessionId: string,
-    boundaryId: string = 'authorized-boundary'
-  ): PostingSession {
-    if (token !== PostingCapabilityToken && token !== InternalPostingCapabilityToken) {
-      throw new Error('Token de capability inválido para criar PostingSession.');
-    }
-    return new PostingSession(InternalPostingCapabilityToken, mode, sessionId, boundaryId);
-  }
-
-  /**
-   * Valida em runtime se esta instância foi criada legitimamente pela fronteira
-   * e ainda não foi consumida (invariante de uso único).
+   * Valida em runtime se esta instância foi criada legitimamente pela fronteira,
+   * retém a autoridade e ainda não foi consumida (invariante de uso único).
    */
   public isValid(): boolean {
     return (
-      this._token === InternalPostingCapabilityToken &&
+      this._token === InternalBoundaryToken &&
       !this._consumed &&
       typeof this.sessionId === 'string' &&
       this.sessionId.length > 0 &&
       typeof this.boundaryId === 'string' &&
       this.boundaryId.length > 0 &&
+      this.boundaryRef !== null &&
+      (typeof this.boundaryRef === 'object' || typeof this.boundaryRef === 'function') &&
       (this.mode === 'd1-batch' || this.mode === 'sqlite-transaction')
     );
   }
@@ -2508,33 +2565,6 @@ export class PostingSession {
   public markConsumed(): void {
     this._consumed = true;
   }
-
-  /**
-   * @internal Fábrica de emissão exclusiva da fronteira transacional física (Unit of Work).
-   */
-  public static _mintFromBoundary(
-    mode: PostingExecutionMode,
-    boundaryId: string
-  ): PostingSession {
-    if (!boundaryId || typeof boundaryId !== 'string') {
-      throw new Error('Identificador de fronteira física obrigatório para emitir PostingSession.');
-    }
-    if (mode !== 'd1-batch' && mode !== 'sqlite-transaction') {
-      throw new Error(`Modo de execução inválido para PostingSession: ${mode}`);
-    }
-    const sessionId = `ps_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    return new PostingSession(InternalPostingCapabilityToken, mode, sessionId, boundaryId);
-  }
-}
-
-/**
- * Função de emissão restrita à fronteira transacional da infraestrutura (Unit of Work / Repository).
- */
-export function issueBoundaryPostingSession(
-  mode: PostingExecutionMode,
-  boundaryId: string
-): PostingSession {
-  return PostingSession._mintFromBoundary(mode, boundaryId);
 }
 
 ```
@@ -2969,9 +2999,9 @@ export class FinancialTransactionOrchestrator {
   private readonly session?: PostingSession;
 
   /**
-   * O FinancialTransactionOrchestrator atua como a Autoridade Física Central de escrita no ledger financeiro.
+   * O FinancialTransactionOrchestrator atua como a Autoridade Central de escrita no ledger financeiro.
    * Ele compila a intenção contábil via PostingPlanBuilder e despacha a mutação física
-   * atômica através da PostingAuthority soberana (Gate 0 / IPostingExecutor).
+   * atômica através da PostingAuthority soberana (Gate 0).
    */
   constructor(
     private readonly financeRepo: IFinanceRepository,
@@ -2985,14 +3015,21 @@ export class FinancialTransactionOrchestrator {
     if (postingAuthority) {
       this.authority = postingAuthority;
     } else {
-      const executor: IPostingExecutor =
-        (this.financeRepo as any).getPostingExecutor?.() ||
-        (this.outboxRepo as any).getPostingExecutor?.() ||
-        (this.financeRepo as any).executor;
-      if (executor) {
-        this.authority = new PostingAuthority(executor);
+      const auth =
+        (this.financeRepo as any).getPostingAuthority?.() ||
+        (this.outboxRepo as any).getPostingAuthority?.();
+      if (auth) {
+        this.authority = auth;
       } else {
-        throw new Error('PostingAuthority ou IPostingExecutor é obrigatório para FinancialTransactionOrchestrator.');
+        const executor: IPostingExecutor =
+          (this.financeRepo as any).getPostingExecutor?.() ||
+          (this.outboxRepo as any).getPostingExecutor?.() ||
+          (this.financeRepo as any).executor;
+        if (executor) {
+          this.authority = new PostingAuthority(executor);
+        } else {
+          throw new Error('PostingAuthority ou IPostingExecutor é obrigatório para FinancialTransactionOrchestrator.');
+        }
       }
     }
     this.session =
@@ -3005,7 +3042,9 @@ export class FinancialTransactionOrchestrator {
     if (this.session && typeof this.session.isValid === 'function' && this.session.isValid()) {
       return this.session;
     }
-    const sessionFromRepo = (this.financeRepo as any).getPostingSession?.();
+    const sessionFromRepo =
+      (this.financeRepo as any).getPostingSession?.() ||
+      (this.outboxRepo as any).getPostingSession?.();
     if (sessionFromRepo && typeof sessionFromRepo.isValid === 'function' && sessionFromRepo.isValid()) {
       return sessionFromRepo;
     }
@@ -3092,17 +3131,37 @@ export class FinancialTransactionOrchestrator {
   /**
    * Executa o fluxo soberano de escrita no ledger através da fronteira de commit (Gate 0):
    * 1. Invariante FIN-001 e validações sintáticas.
-   * 2. Cálculo do Hash Canônico Soberano do Servidor.
-   * 3. Reivindicação atômica de Idempotência com fencing token (leaseOwner, leaseGeneration).
+   * 2. Cálculo do Hash Canônico Soberano do Servidor (CanonicalRequestHashService).
+   * 3. Reivindicação atômica de Idempotência com fencing token retido imutavelmente (P0-01 / P0-A).
    * 4. PRE-POSTING GATE: Pré-validação de entidades ativas.
    * 5. Coleta atômica dos saldos e versões correntes das contas participantes.
-   * 6. Avaliação Soberana de Custódia via CustodyAuthorizationPolicy (P0-10).
+   * 6. Avaliação Soberana de Custódia via CustodyAuthorizationPolicy (P0-10, P0-H).
    * 7. Compilação do PostingPlan imutável e autenticado via PostingPlanBuilder.
-   * 8. Commit atômico soberano via PostingAuthority (batch único com guardas físicas _sql_assertions).
+   * 8. Commit atômico soberano via PostingAuthority (batch único com outbox e guardas físicas _sql_assertions).
    */
   public async executePosting(
     transaction: LedgerTransaction,
-    requestHashOverride?: string
+    authContext?: AuthorizationContext
+  ): Promise<OrchestratorResult> {
+    return this._executePostingInternal(transaction, undefined, authContext);
+  }
+
+  /**
+   * @internal Test Seam exclusivamente para testes que injetam hash divergente para validação de conflito 409.
+   * Não faz parte da assinatura operacional de produção (P0-F).
+   */
+  public async executePostingForTesting(
+    transaction: LedgerTransaction,
+    testRequestHashOverride?: string,
+    authContext?: AuthorizationContext
+  ): Promise<OrchestratorResult> {
+    return this._executePostingInternal(transaction, testRequestHashOverride, authContext);
+  }
+
+  private async _executePostingInternal(
+    transaction: LedgerTransaction,
+    testRequestHashOverride?: string,
+    authContext?: AuthorizationContext
   ): Promise<OrchestratorResult> {
     if (!transaction.entries || transaction.entries.length < 2) {
       throw new InvalidLedgerTransactionError(
@@ -3128,14 +3187,14 @@ export class FinancialTransactionOrchestrator {
 
     this.validateDoubleEntry(transaction);
 
-    // Hash Canônico Soberano do Servidor
-    const computedHash = requestHashOverride || CanonicalRequestHashService.calculateHash(transaction);
+    // Hash Canônico Soberano do Servidor (P0-F)
+    const computedHash = testRequestHashOverride || CanonicalRequestHashService.calculateHash(transaction);
     const scope = transaction.scope || 'finance';
 
     // Fencing P0: Gera leaseOwner único para o trabalhador atual
     const leaseOwner = `worker_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-    const claimed = await this.financeRepo.claimIdempotency(
+    const claimRes = await this.financeRepo.claimIdempotency(
       transaction.idempotencyKey,
       transaction.userId,
       scope,
@@ -3143,7 +3202,7 @@ export class FinancialTransactionOrchestrator {
       { leaseOwner }
     );
 
-    if (!claimed) {
+    if (!claimRes.claimed) {
       const existing = await this.financeRepo.getIdempotencyRecord(transaction.idempotencyKey, scope);
       if (!existing) {
         throw new IdempotencyInProgressError('Conflito de concorrência ao verificar chave de idempotência.');
@@ -3159,19 +3218,14 @@ export class FinancialTransactionOrchestrator {
       }
     }
 
-    let activeLeaseOwner = leaseOwner;
-    let leaseGeneration = 1;
+    // Fencing Token Imutável conquistado legitimamente pelo CAS:
+    // O worker guarda este valor para sempre nesta execução e NUNCA relê o banco para adotar a identidade de terceiros (P0-01 / P0-A).
+    const activeLeaseOwner = claimRes.leaseOwner;
+    const leaseGeneration = claimRes.leaseGeneration;
 
     try {
       // PRE-POSTING GATE: Pré-validação obrigatória de contas e ativos participantes
       await this.preValidateEntities(transaction);
-
-      // Captura o registro de idempotência ativo para extrair a geração do lease garantida pelo CAS
-      const idempRecord = await this.financeRepo.getIdempotencyRecord(transaction.idempotencyKey, scope);
-      if (idempRecord) {
-        leaseGeneration = idempRecord.leaseGeneration ?? 1;
-        activeLeaseOwner = idempRecord.leaseOwner ?? leaseOwner;
-      }
 
       // Coleta o estado de contas e saldos para alimentar o compilador do PostingPlan
       const accountMap = new Map<number, { accountClass: any; status: AccountStatus; userId: number | null }>();
@@ -3194,40 +3248,33 @@ export class FinancialTransactionOrchestrator {
 
         const balKey = `${parsedAccId}:${entry.amount.assetId}`;
         if (!balanceMap.has(balKey)) {
-          // Garante a existência materializada do saldo zerado com version 1 antes da leitura OCC
-          await (this.financeRepo as any).ensureAccountBalance?.(parsedAccId, entry.amount.assetId);
-
           const balRes = await this.financeRepo.getAccountBalance(parsedAccId, entry.amount.assetId);
-          if (balRes.isSuccess) {
-            const bal = balRes.getValue();
-            balanceMap.set(balKey, {
-              availableBaseUnits: BigInt(bal.availableBaseUnits || '0'),
-              version: bal.version,
-            });
-          } else {
-            balanceMap.set(balKey, {
-              availableBaseUnits: 0n,
-              version: 1,
-            });
+          if (balRes.isFailure) {
+            throw new Error(
+              balRes.error || `Saldo não encontrado para conta #${parsedAccId} e ativo #${entry.amount.assetId}.`
+            );
           }
+          const bal = balRes.getValue();
+          balanceMap.set(balKey, {
+            availableBaseUnits: BigInt(bal.availableBaseUnits),
+            version: bal.version,
+          });
         }
       }
 
-      // Constrói os lançamentos de entrada para o PostingPlanBuilder
+      // Preparação das pernas para o builder
       const legInputs: PostingLegEntryInput[] = transaction.entries.map((entry) => {
         const parsedAccId = parsePositiveSafeIntegerId(entry.accountId, 'entry.accountId');
         const acc = accountMap.get(parsedAccId)!;
-        const bal = balanceMap.get(`${parsedAccId}:${entry.amount.assetId}`) || {
-          availableBaseUnits: 0n,
-          version: 1,
-        };
+        const balKey = `${parsedAccId}:${entry.amount.assetId}`;
+        const bal = balanceMap.get(balKey)!;
 
         return {
           accountId: parsedAccId,
           assetId: entry.amount.assetId,
           accountClass: acc.accountClass,
           accountStatus: acc.status,
-          direction: entry.type,
+          direction: entry.type as 'debit' | 'credit',
           amount: entry.amount.amount,
           description: entry.description || transaction.description,
           currentAvailableBaseUnits: bal.availableBaseUnits,
@@ -3235,7 +3282,7 @@ export class FinancialTransactionOrchestrator {
         };
       });
 
-      // Avaliação Soberana de Custódia (P0-10)
+      // Avaliação Soberana de Custódia (P0-10, P0-H)
       const debitEntries = transaction.entries.filter((e) => e.type === 'debit');
       let authorizationDecision: AuthorizationDecision;
 
@@ -3256,7 +3303,7 @@ export class FinancialTransactionOrchestrator {
           transaction.category === 'fee' ||
           transaction.category === 'system';
 
-        const authCtx: AuthorizationContext = {
+        const effectiveAuthCtx: AuthorizationContext = authContext || {
           principalId: actorId,
           principalType: (isSystemAccount || isOperational || actorId === 0 ? 'system' : 'user') as any,
           capabilities: [
@@ -3277,23 +3324,18 @@ export class FinancialTransactionOrchestrator {
           amountBaseUnits: firstDebit.amount.amount,
         };
 
-        authorizationDecision = CustodyAuthorizationPolicy.canDebitSourceAccount(authCtx, spec);
+        authorizationDecision = CustodyAuthorizationPolicy.canDebitSourceAccount(effectiveAuthCtx, spec);
       } else {
         authorizationDecision = {
           allowed: true,
-          type: 'SYSTEM',
-          actorUserId: null,
-          authorizedByUserId: transaction.authorizedByUserId ?? null,
+          reason: 'Operação sem lançamentos a débito (isenta de custódia).',
         };
       }
 
       if (!authorizationDecision.allowed) {
-        throw new InvalidLedgerTransactionError(
-          `Transação rejeitada pela CustodyAuthorizationPolicy: ${authorizationDecision.reason}`
-        );
+        throw new Error(`Custody Authorization Denied: ${authorizationDecision.reason}`);
       }
 
-      // Response snapshot
       const responseStatus = 200;
       const responsePayload = JSON.stringify({
         success: true,
@@ -3301,12 +3343,12 @@ export class FinancialTransactionOrchestrator {
         scope,
       });
 
-      // Compilação do PostingPlan soberano autenticado (P0-07)
+      // Compila o PostingPlan imutável, selado e com ordinais canônicos 1..N
       const plan = PostingPlanBuilder.build({
         scope,
         idempotencyKey: transaction.idempotencyKey,
         requestHash: computedHash,
-        transactionType: transaction.transactionType ?? 'adjustment',
+        transactionType: transaction.transactionType || 'transfer',
         category: transaction.category || 'operational',
         description: transaction.description,
         actorUserId: transaction.actorUserId ?? transaction.userId ?? null,
@@ -3324,31 +3366,8 @@ export class FinancialTransactionOrchestrator {
         responsePayload,
       });
 
-      // Injeção de hook do outbox se customizado pelo teste para falha deliberada (P0-12)
-      if (
-        this.outboxRepo &&
-        typeof (this.outboxRepo as any).saveEvent === 'function' &&
-        ((this.outboxRepo as any).constructor?.name !== 'DrizzleOutboxRepository' ||
-          Object.prototype.hasOwnProperty.call(this.outboxRepo, 'saveEvent'))
-      ) {
-        const domainEvent = new LedgerTransactionPostedEvent(
-          plan.transactionId,
-          transaction.idempotencyKey,
-          computedHash,
-          new Date()
-        );
-        const outboxResult = await this.outboxRepo.saveEvent(
-          domainEvent,
-          plan.transactionId,
-          'LedgerTransaction',
-          1
-        );
-        if (outboxResult && outboxResult.isFailure) {
-          throw new Error(String(outboxResult.error));
-        }
-      }
-
       // Commit atômico físico via PostingAuthority soberana (Gate 0)
+      // NOTE (P0-G): Eliminação completa de outboxRepo.saveEvent() prévio. O outbox é persistido no batch do commit.
       const session = this.resolvePostingSession();
       const commitResult = await this.authority.commit(plan, session);
 
@@ -3365,7 +3384,7 @@ export class FinancialTransactionOrchestrator {
         isReplayed: false,
       };
     } catch (err: any) {
-      // Falha após o claim: libera ou falha o lease de idempotência com fencing estrito (P0-05)
+      // Falha após o claim: registra falha no lease de idempotência com fencing estrito (P0-05 / P0-E)
       await this.financeRepo
         .failIdempotency(transaction.idempotencyKey, scope, {
           leaseOwner: activeLeaseOwner,
@@ -7153,6 +7172,14 @@ SET entry_ordinal = (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_entry_ordinal ON financial_ledger_entries (transaction_id, entry_ordinal);--> statement-breakpoint
 
+CREATE TRIGGER IF NOT EXISTS trg_ledger_entry_ordinal_not_null
+BEFORE INSERT ON financial_ledger_entries
+FOR EACH ROW
+WHEN NEW.entry_ordinal IS NULL
+BEGIN
+  SELECT RAISE(ABORT, 'ORDINAL_REQUIRED: entry_ordinal não pode ser NULL.');
+END;--> statement-breakpoint
+
 -- 3. SQL Mutation-Count Assertion Guard Table (Gate 11 / PLAN-02)
 CREATE TABLE IF NOT EXISTS _sql_assertions (
   id integer PRIMARY KEY CHECK (id = 1),
@@ -7210,8 +7237,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_treasury_active_singleton
 ON financial_accounts (account_type) WHERE account_type = 'treasury' AND status = 'active';--> statement-breakpoint
 
 -- 3. Forensic Lineage & Audit Columns on financial_transactions
-ALTER TABLE financial_transactions ADD COLUMN actor_user_id integer;--> statement-breakpoint
-ALTER TABLE financial_transactions ADD COLUMN authorized_by_user_id integer;
+ALTER TABLE financial_transactions ADD COLUMN actor_user_id integer REFERENCES users(id);--> statement-breakpoint
+ALTER TABLE financial_transactions ADD COLUMN authorized_by_user_id integer REFERENCES users(id);
 
 ```
 
