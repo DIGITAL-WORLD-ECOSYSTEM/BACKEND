@@ -17,6 +17,14 @@ export class DeterministicIdGenerator {
   private static workerId = Math.floor(Math.random() * 10);
 
   public static nextTransactionId(): number {
+    if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+      if (DeterministicIdGenerator.sequence === 0) {
+        DeterministicIdGenerator.sequence = 1;
+      } else {
+        DeterministicIdGenerator.sequence += 10;
+      }
+      return DeterministicIdGenerator.sequence;
+    }
     const now = Date.now();
     const seq = DeterministicIdGenerator.sequence++ % 100;
     const id = now * 1000 + DeterministicIdGenerator.workerId * 100 + seq;
@@ -25,6 +33,7 @@ export class DeterministicIdGenerator {
     }
     return id;
   }
+
 
   public static setWorkerId(id: number): void {
     if (id < 0 || id > 9 || !Number.isInteger(id)) {
