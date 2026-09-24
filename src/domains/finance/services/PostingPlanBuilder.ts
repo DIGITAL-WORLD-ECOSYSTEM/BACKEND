@@ -42,9 +42,15 @@ export interface BuildPostingPlanParams {
   readonly authorizedByUserId: number | null;
   readonly sourceType?: string | null;
   readonly sourceId?: string | null;
+  readonly reversalOfTransactionId?: number | null;
+  readonly refundOfTransactionId?: number | null;
   readonly correlationId?: string;
   readonly authorizationDecision: AuthorizationDecision;
   readonly entries: ReadonlyArray<PostingLegEntryInput>;
+  readonly leaseOwner?: string | null;
+  readonly leaseGeneration?: number | null;
+  readonly responseStatus?: number | null;
+  readonly responsePayload?: string | null;
 }
 
 export class PostingPlanBuilder {
@@ -59,6 +65,16 @@ export class PostingPlanBuilder {
    * 5. Identidade determinística da transação gerada antes do batch (DeterministicIdGenerator).
    */
   public static build(params: BuildPostingPlanParams): PostingPlan {
+    // 0. Validação de Autorização Soberana (DENIED -> Bloqueio imediato do PostingPlan)
+    if (!params.authorizationDecision || !params.authorizationDecision.allowed) {
+      const reason = !params.authorizationDecision
+        ? 'Decisão de autorização ausente'
+        : (!params.authorizationDecision.allowed ? params.authorizationDecision.reason : 'Não autorizada');
+      throw new InvalidLedgerTransactionError(
+        `Decisão de autorização inválida ou negada para a construção do PostingPlan: ${reason}`
+      );
+    }
+
     if (!params.entries || params.entries.length < 2) {
       throw new InvalidLedgerTransactionError(
         'Invariante do Ledger violado: Uma transação contábil exige no mínimo 2 lançamentos.'
@@ -67,6 +83,7 @@ export class PostingPlanBuilder {
 
     const hasDebit = params.entries.some((e) => e.direction === 'debit');
     const hasCredit = params.entries.some((e) => e.direction === 'credit');
+
     if (!hasDebit || !hasCredit) {
       throw new InvalidLedgerTransactionError(
         'Invariante do Ledger violado: Uma transação financeira exige no mínimo 1 lançamento de débito e 1 de crédito.'
@@ -103,25 +120,7 @@ export class PostingPlanBuilder {
       }
     }
 
-    // 3. Geração determinística de identidade
-    const transactionId = DeterministicIdGenerator.nextTransactionId();
-    const planId = `plan_${transactionId}_${Date.now()}`;
-    const correlationId = params.correlationId || `corr_${transactionId}`;
-
-    // 4. Compilação das pernas contábeis com entryOrdinal sequencial (P1-14)
-    const ledgerEntries: PostingLedgerEntryPlan[] = params.entries.map((entry, index) => {
-      return Object.freeze({
-        transactionId,
-        entryOrdinal: index,
-        accountId: entry.accountId,
-        assetId: entry.assetId,
-        direction: entry.direction,
-        amountBaseUnits: entry.amount.toString(10),
-        description: entry.description,
-      });
-    });
-
-    // 5. Consolidação e agregação de deltas de saldo por (accountId, assetId)
+    // 3. Consolidação e agregação de deltas de saldo por (accountId, assetId) & Validação de Saldo
     interface BalanceAggregation {
       accountId: number;
       assetId: number;
@@ -171,7 +170,7 @@ export class PostingPlanBuilder {
 
       if (targetAvailable < 0n) {
         throw new InsufficientBalanceError(
-          `Saldo insuficiente para a conta #${agg.accountId} e ativo #${agg.assetId}. Disponível: ${agg.currentAvailable}, Variação: ${agg.netSignedDelta}`
+          `saldo insuficiente para a conta #${agg.accountId} e ativo #${agg.assetId}. Disponível: ${agg.currentAvailable}, Variação: ${agg.netSignedDelta}`
         );
       }
 
@@ -192,6 +191,24 @@ export class PostingPlanBuilder {
       );
     }
 
+    // 4. Geração determinística de identidade (após todas as validações prévias passarem)
+    const transactionId = DeterministicIdGenerator.nextTransactionId();
+    const planId = `plan_${transactionId}_${Date.now()}`;
+    const correlationId = params.correlationId || `corr_${transactionId}`;
+
+    // 5. Compilação das pernas contábeis com entryOrdinal sequencial (P1-14)
+    const ledgerEntries: PostingLedgerEntryPlan[] = params.entries.map((entry, index) => {
+      return Object.freeze({
+        transactionId,
+        entryOrdinal: index,
+        accountId: entry.accountId,
+        assetId: entry.assetId,
+        direction: entry.direction,
+        amountBaseUnits: entry.amount.toString(10),
+        description: entry.description,
+      });
+    });
+
     // 6. Registro da transação
     const transactionRecord: PostingTransactionRecordPlan = Object.freeze({
       id: transactionId,
@@ -203,13 +220,15 @@ export class PostingPlanBuilder {
       authorizedByUserId: params.authorizedByUserId,
       sourceType: params.sourceType ?? null,
       sourceId: params.sourceId ?? null,
+      reversalOfTransactionId: params.reversalOfTransactionId ?? null,
+      refundOfTransactionId: params.refundOfTransactionId ?? null,
       correlationId,
     });
 
     // 7. Evento Outbox
     const outboxEvent: PostingOutboxEventPlan = Object.freeze({
       eventId: `evt_${transactionId}_${Date.now()}`,
-      eventName: 'LedgerTransactionPosted',
+      eventName: 'LedgerTransactionPosted.v1',
       aggregateId: String(transactionId),
       aggregateVersion: 1,
       payload: JSON.stringify({
@@ -219,6 +238,21 @@ export class PostingPlanBuilder {
         occurredAt: new Date().toISOString(),
       }),
     });
+
+    const leaseOwner = params.leaseOwner || `worker_auto_${transactionId}`;
+    const leaseGeneration =
+      typeof params.leaseGeneration === 'number' && params.leaseGeneration >= 0
+        ? params.leaseGeneration
+        : 1;
+    const responseStatus =
+      typeof params.responseStatus === 'number' ? params.responseStatus : 200;
+    const responsePayload =
+      params.responsePayload ||
+      JSON.stringify({
+        success: true,
+        transactionId,
+        idempotencyKey: params.idempotencyKey,
+      });
 
     return Object.freeze({
       planId,
@@ -231,6 +265,10 @@ export class PostingPlanBuilder {
       ledgerEntries: Object.freeze(ledgerEntries),
       balanceMutations: Object.freeze(balanceMutations),
       outboxEvent,
+      leaseOwner,
+      leaseGeneration,
+      responseStatus,
+      responsePayload,
     });
   }
 }
