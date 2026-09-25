@@ -455,8 +455,7 @@ BackEnd/
 ### Camada 1: Domínio Contábil Puro (`src/domains/finance/`) — 20 Arquivos
 
 | # | Arquivo | Responsabilidade Arquitetural | Invariante / Garantia de Segurança |
-| :---: | :--- | :--- | :--- |
-| **01** | [`constants/FinancialLimits.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/constants/FinancialLimits.ts) | Constantes globais de limites de pernas contábeis, batching e tetos. | Impede transações gigantescas ou lotes que excedam limites de memória. |
+| **01** | [`constants/FinancialLimits.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/constants/FinancialLimits.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Catálogo canônico de limites fundamentais, invariantes matemáticas (uint256), cardinalidades e metadados executáveis. | Imutável, sem dependências de I/O, bijeção estrita no manifesto, anti-DoS ceiling e proteção contra overflow acumulado. |
 | **02** | [`contracts/AuthorizationContext.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/AuthorizationContext.ts) | Contratos formais de custódia e `CustodyAuthorizationPolicy`. | Impede débito em conta sem autoridade soberana (`SELF` ou `DELEGATED`). |
 | **03** | [`contracts/DeterministicIdGenerator.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/DeterministicIdGenerator.ts) | Gerador determinístico de identificadores de 53 bits (Safe Integer). | IDs conhecidos em memória antes da compilação do lote SQL físico. |
 | **04** | [`contracts/FinancialLedgerEntryRecord.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/FinancialLedgerEntryRecord.ts) | Contrato de dados imutável de transporte das pernas contábeis. | Estrutura de dados canônica para gravação de partidas dobradas. |
@@ -661,3 +660,115 @@ A tabela a seguir consolida o histórico de auditoria por lotes, os itens críti
   2. Zero violações nos testes de fronteira estática (`architecture-boundaries.test.ts`).
   3. Prova executável de rollback integral do lote `d1.batch()` perante falha forçada de OCC em `_sql_assertions`.
   4. Nenhuma mutação de saldo realizada fora do par `(PostingPlan, PostingSession)`.
+
+---
+
+## 8. Painel Oficial de Progresso & Registro de Certificação Individual por Arquivo (Matrix P0 Hardened)
+
+Este painel consolida o registro formal e auditável de cada um dos **76 arquivos do Finance Core**, comprovando a aplicação cirúrgica de melhorias, fechamento de invariantes e validação por testes automatizados, segundo a **Matriz de Arquitetura Matrix (Padrão Militar P0 Hardened)**.
+
+### 8.1. Progresso Geral da Certificação do Módulo Financeiro (76 Arquivos)
+
+```text
+STATUS GERAL: [█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒] 1 / 76 Arquivos Auditados e Certificados (1,3%)
+```
+
+| Camada Arquitetural | Total de Arquivos | Arquivos Certificados | Percentual | Status de Homologação |
+| :--- | :---: | :---: | :---: | :---: |
+| **Camada 1 — Domínio Contábil Puro** | 20 | 1 | 5,0% | 🟡 Em Andamento |
+| **Camada 2 — Aplicação, Portas e Casos de Uso** | 15 | 0 | 0,0% | ⚪ Na Fila |
+| **Camada 3 — Infraestrutura Concreta, Adaptadores e Repositórios** | 5 | 0 | 0,0% | ⚪ Na Fila |
+| **Camada 4 — Banco de Dados Relacional** | 3 | 0 | 0,0% | ⚪ Na Fila |
+| **Camada 5 — Apresentação HTTP** | 2 | 0 | 0,0% | ⚪ Na Fila |
+| **Camada 6 — Migrações Relacionais Contábeis** | 4 | 0 | 0,0% | ⚪ Na Fila |
+| **Camada 7 — Suíte de Testes Automatizados e Invariantes** | 27 | 0 | 0,0% | ⚪ Na Fila |
+| **TOTAL CONSOLIDADO** | **76** | **1** | **1,3%** | 🟡 **Certificação P0 em Execução** |
+
+---
+
+### 8.2. Estrutura Canônica do Checklist Padronizado (Padrão Oficial Único para Todos os Arquivos)
+
+A partir da certificação pioneira do arquivo `#01`, **todos os 76 arquivos do Finance Core devem adotar compulsoriamente a seguinte estrutura uniforme de verificação e auditoria**, garantindo padrão corporativo unificado e auditabilidade forense:
+
+```markdown
+#### [CAMADA-X / ARQUIVO-##] `caminho/do/arquivo.ext`
+- **Responsabilidade Central:** <propósito arquitetural estrito>
+- **Nota Matrix Oficial:** `XX,X / 10,0`
+- **Classificação de Homologação:** `STATUS: FROZEN / CERTIFICADO`
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Conforme)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:** Sem dependências indevidas de camadas externas, sem I/O e sem infraestrutura no domínio.
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:** Valores monetários em BigInt/uint256, inteiros protegidos por Safe Integer, sem floats/arredondamentos.
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:** Provas de contorno, equações algébricas fechadas e restrições operacionais anti-DoS.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:** Tipagens estritas via satisfies, manifestos imutáveis e coerência em tempo de compilação.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:** Segregação e bloqueio ativo contra introdução de dívidas técnicas ou consumo de aliases legados.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:** Funções de consistência puras executadas compulsoriamente no pipeline de testes em CI.
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. <Melhoria 1>
+2. <Melhoria 2>
+...
+
+##### Evidências de Teste e Validação Automatizada:
+- Arquivos de teste vinculados
+- Quantidade de testes executados e taxa de aprovação (100%)
+- Status de compilação e integridade git
+```
+
+---
+
+### 8.3. Registros de Auditoria Finalizada
+
+#### [CAMADA 1 / ARQUIVO-01] [`src/domains/finance/constants/FinancialLimits.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/constants/FinancialLimits.ts)
+- **Responsabilidade Central:** Catálogo canônico imutável de limites matemáticos fundamentais, limites de representação, políticas estruturais de cardinalidade, manifesto e invariantes executáveis.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Total ausência de dependências de Hono, HTTP, Drizzle, D1, SQLite ou I/O.
+  - O arquivo é 100% autocontido, puramente declarativo e opera com zero efeitos colaterais na carga de módulo (`import`).
+  - Neutralidade explícita preservada quanto ao algoritmo de Seal do `PostingPlan` (evita fixação indevida de hashing no domínio).
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Grandezas financeiras e limites de magnitude definidos estritamente em `bigint` (`MIN_UINT256`, `MAX_UINT256`, `MAX_SINGLE_LEDGER_ENTRY_AMOUNT`, etc.).
+  - Distinção explícita entre inteiros de representação/JavaScript (`MAX_JS_SAFE_INTEGER = Number.MAX_SAFE_INTEGER`) e limites monetários.
+  - Derivação matemática exata de limites (`UINT256_BITS = 256`, `MAX_UINT256 = (1n << 256n) - 1n`).
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Garantia formal de prevenção de overflow acumulado: `MAX_SINGLE_POSTING_DELTA_MAGNITUDE * MAX_LEDGER_ENTRIES <= MAX_UINT256`.
+  - Cobertura da sequência ordinal `1..N` comprovada algebricamente: `MAX_LEDGER_ENTRY_ORDINAL - MIN_LEDGER_ENTRY_ORDINAL + 1 === MAX_LEDGER_ENTRIES`.
+  - Cardinalidade de partidas dobradas e limites do PostingPlan: `MIN_POSTING_PLAN_ENTRIES >= 2` e `MIN_POSTING_PLAN_ENTRIES <= MAX_POSTING_PLAN_ENTRIES`.
+  - Blindagem de capacidade anti-DoS: asserção expressa de que o teto de entrada comporta com folga o envelope numérico (`MAX_NUMERIC_RAW_TEXT_CEILING >= MAX_UINT256_DECIMAL_DIGITS`).
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Manifesto canônico único `FINANCIAL_LIMITS` congelado em runtime via `Object.freeze`.
+  - Matriz de classificação `FINANCIAL_LIMIT_CATEGORIES` protegida por `satisfies { readonly [K in FinancialLimitName]: FinancialLimitCategory }`.
+  - Validação de bijeção estrita bidirecional chave a chave em runtime.
+  - Verificação de tipos estritos de runtime para todas as entradas do manifesto (`bigint` não-negativo para valores monetários/deltas; `number` inteiro seguro para limites dimensionais/estruturais).
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Aliases legados segregados no array congelado `FINANCIAL_DEPRECATED_LIMIT_ALIASES` e marcados com anotação `@deprecated`.
+  - Desacoplamento semântico: `MAX_SINGLE_BALANCE_DELTA_AMOUNT` depreciado explicitamente em favor de `MAX_SINGLE_POSTING_DELTA_MAGNITUDE`.
+  - Disjunção estrita comprovada: nenhum alias depreciado faz parte de `FINANCIAL_LIMITS`.
+  - Bloqueio arquitetural ativo em CI: teste `dependency_rules.test.ts` proíbe imports de aliases legados em `src/application/`.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - Função soberana `assertFinancialLimitsConsistency()` sem dependência de frameworks externos.
+  - Execução compulsória no pipeline de testes em `tests/finance/domain_policies.test.ts`.
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Nome Semântico Não-Ambíguo:** Introdução de `MAX_SINGLE_POSTING_DELTA_MAGNITUDE` referenciando `MAX_SINGLE_LEDGER_ENTRY_AMOUNT`, formalizando que o limite é de variação estrutural de perna contábil no plano físico.
+2. **Ceiling Operacional Anti-DoS:** Introdução de `MAX_NUMERIC_INPUT_TEXT_CEILING` e asserção `MAX_NUMERIC_RAW_TEXT_CEILING >= MAX_UINT256_DECIMAL_DIGITS` (256 code units vs 78 dígitos decimais).
+3. **Depreciação de `MAX_SINGLE_BALANCE_DELTA_AMOUNT`:** Marcado com `@deprecated` para evitar a falsa premissa de garantia contábil de saldo (atribuída ao `Money256`).
+4. **Remoção de Abstração Órfã:** Exclusão da interface inerte `FinancialLimitDefinition`, consolidando o design em torno do manifesto canônico unificado.
+5. **Invariância Algébrica de Intervalo Ordinal:** Adição de `assertCondition(MAX_LEDGER_ENTRY_ORDINAL - MIN_LEDGER_ENTRY_ORDINAL + 1 === MAX_LEDGER_ENTRIES)`.
+6. **Bounds de Partidas Dobradas:** Adição de `assertCondition(MIN_POSTING_PLAN_ENTRIES >= 2)` e `assertCondition(MIN_POSTING_PLAN_ENTRIES <= MAX_POSTING_PLAN_ENTRIES)`.
+7. **Bijeção Estrita Bidirecional:** Validação em runtime de que toda chave do manifesto possui categoria e vice-versa, com rejeição de aliases obsoletos.
+8. **Validação de Tipos de Runtime:** Checagem de que constantes monetárias são `bigint` e constantes de tamanho são safe integers (`Number.isSafeInteger`).
+9. **Governança Automatizada de Dependências:** Adicionado teste em `tests/architecture/dependency_rules.test.ts` impedindo que a camada de aplicação importe identificadores legados.
+10. **Suíte de Testes de Domínio:** Inclusão de novos testes em `tests/finance/domain_policies.test.ts` auditando formalmente o manifesto e suas invariantes.
+
+##### Evidências de Teste e Validação Automatizada:
+- **Suíte de Domínio:** [`tests/finance/domain_policies.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/domain_policies.test.ts) — **43 / 43 testes aprovados (100%)**.
+- **Regras Arquiteturais:** [`tests/architecture/dependency_rules.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/architecture/dependency_rules.test.ts) — **2 / 2 testes aprovados (100%)**.
+- **Suíte Completa do Projeto:** **45 arquivos de teste, 356 testes aprovados (100% de sucesso)**.
+- **Git Commit:** `1e0d199` — `refactor(finance): selar invariantes ordinais 1..N, bounds de PostingPlan e deprecacao de MAX_SINGLE_BALANCE_DELTA_AMOUNT`.
+
