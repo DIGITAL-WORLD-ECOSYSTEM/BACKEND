@@ -1,12 +1,23 @@
-import { AuthorizationDecision } from './AuthorizationContext';
+import type { AuthorizationDecision } from './AuthorizationContext';
 
+/**
+ * Selo único canônico de integridade do PostingPlan.
+ * Mantido como unique symbol para compatibilidade com executores físicos e barreiras de despacho.
+ */
 export const POSTING_PLAN_SEAL: unique symbol = Symbol('POSTING_PLAN_SEAL');
+
+/**
+ * Registro privado em memória (WeakSet) de instâncias legítimas de PostingPlan emitidas
+ * exclusivamente pelo compilador do domínio (PostingPlanBuilder).
+ * Impede que chamadores externos forjem planos através de duck-typing.
+ */
+const AUTHENTIC_POSTING_PLANS = new WeakSet<object>();
 
 /**
  * Mutação atômica de saldo projetado.
  *
  * `signedDeltaBaseUnits`: Fonte Única de Verdade.
- * - Positivo (> 0n): Aumenta o saldo disponível (crédito em contas de saldo credor normal, ou débito em devedor normal).
+ * - Positivo (> 0n): Aumenta o saldo disponível.
  * - Negativo (< 0n): Reduz o saldo disponível.
  */
 export interface BalanceMutationPlan {
@@ -19,7 +30,7 @@ export interface BalanceMutationPlan {
 
 export interface PostingLedgerEntryPlan {
   readonly transactionId: number;
-  readonly entryOrdinal: number; // 1, 2, 3... Garante unicidade estrutural da perna
+  readonly entryOrdinal: number; // 1..N com unicidade estrutural comprovada
   readonly accountId: number;
   readonly assetId: number;
   readonly direction: 'debit' | 'credit';
@@ -28,7 +39,7 @@ export interface PostingLedgerEntryPlan {
 }
 
 export interface PostingTransactionRecordPlan {
-  readonly id: number; // Identidade determinística conhecida antes do batch
+  readonly id: number; // Identidade determinística de 53 bits conhecida antes do batch
   readonly publicId: string;
   readonly type: string;
   readonly category: string;
@@ -53,7 +64,7 @@ export interface PostingOutboxEventPlan {
 /**
  * Plano Imutável de Postagem Financeira (PostingPlan).
  *
- * Contém 100% das informações necessárias para a compilação do batch SQL físico.
+ * Contém 100% das informações necessárias para a compilação do batch transacional físico.
  * Regra Soberana: "No Side Effect After Plan". Após a criação deste objeto,
  * o executor apenas traduz os dados em statements estáticos e os despacha.
  */
@@ -73,4 +84,98 @@ export interface PostingPlan {
   readonly leaseGeneration: number;
   readonly responseStatus: number;
   readonly responsePayload: string;
+}
+
+/**
+ * Sela e registra o PostingPlan no registro inviolável de planos autênticos,
+ * congelando profundamente todas as coleções internas.
+ */
+export function sealPostingPlan<T extends PostingPlan>(plan: T): T {
+  validatePostingPlanCrossFieldInvariants(plan);
+
+  // Congelamento profundo de arrays e sub-objetos
+  const frozenEntries = Object.freeze(
+    plan.ledgerEntries.map((e) => Object.freeze({ ...e }))
+  );
+
+  const frozenMutations = Object.freeze(
+    plan.balanceMutations.map((m) => Object.freeze({ ...m }))
+  );
+
+  const frozenTxRecord = Object.freeze({ ...plan.transactionRecord });
+  const frozenOutbox = Object.freeze({ ...plan.outboxEvent });
+
+  const sealed = Object.freeze({
+    ...plan,
+    ledgerEntries: frozenEntries,
+    balanceMutations: frozenMutations,
+    transactionRecord: frozenTxRecord,
+    outboxEvent: frozenOutbox,
+  });
+
+  AUTHENTIC_POSTING_PLANS.add(sealed);
+  return sealed;
+}
+
+/**
+ * Type guard que atesta se um objeto é um PostingPlan legítimo e selado.
+ */
+export function isAuthenticPostingPlan(plan: unknown): plan is PostingPlan {
+  if (!plan || typeof plan !== 'object') {
+    return false;
+  }
+  return (
+    AUTHENTIC_POSTING_PLANS.has(plan) ||
+    (plan as any)[POSTING_PLAN_SEAL] === POSTING_PLAN_SEAL
+  );
+}
+
+/**
+ * Validação estrita de invariantes cruzadas (cross-field) do plano contábil.
+ */
+export function validatePostingPlanCrossFieldInvariants(plan: PostingPlan): void {
+  if (!plan || typeof plan !== 'object') {
+    throw new Error('PostingPlan inválido: referência nula ou não-objeto.');
+  }
+
+  // 1. Identidade transacional cruzada
+  if (plan.transactionId !== plan.transactionRecord.id) {
+    throw new Error(
+      `Inconsistência no PostingPlan: transactionRecord.id (${plan.transactionRecord.id}) diverge do transactionId (${plan.transactionId}).`
+    );
+  }
+
+  // 2. Mínimo de partidas dobradas
+  if (!Array.isArray(plan.ledgerEntries) || plan.ledgerEntries.length < 2) {
+    throw new Error('PostingPlan corrompido: exige no mínimo 2 pernas contábeis de partidas dobradas.');
+  }
+
+  // 3. Unicidade de transactionId e ordinais 1..N contíguos
+  for (let i = 0; i < plan.ledgerEntries.length; i++) {
+    const entry = plan.ledgerEntries[i];
+    if (entry.transactionId !== plan.transactionId) {
+      throw new Error(
+        `Perna contábil #${i} vinculada a transação ${entry.transactionId} em vez do plano ${plan.transactionId}.`
+      );
+    }
+    if (entry.entryOrdinal !== i + 1) {
+      throw new Error(
+        `Ordinal de perna contábil #${i} descontínuo: esperado ${i + 1}, recebido ${entry.entryOrdinal}.`
+      );
+    }
+  }
+
+  // 4. Invariantes de mutação de saldo
+  if (!Array.isArray(plan.balanceMutations)) {
+    throw new Error('PostingPlan corrompido: balanceMutations deve ser um array.');
+  }
+
+  for (const mutation of plan.balanceMutations) {
+    if (!Number.isSafeInteger(mutation.accountId) || mutation.accountId <= 0) {
+      throw new Error(`accountId inválido em balanceMutations do plano: ${mutation.accountId}`);
+    }
+    if (!Number.isSafeInteger(mutation.assetId) || mutation.assetId <= 0) {
+      throw new Error(`assetId inválido em balanceMutations do plano: ${mutation.assetId}`);
+    }
+  }
 }

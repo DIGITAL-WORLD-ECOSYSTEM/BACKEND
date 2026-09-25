@@ -2,32 +2,34 @@
  * Capability de Sessão de Postagem Financeira (PostingSession).
  *
  * Representa a autoridade não-forjável para executar exatamente um lote
- * de mutação contábil dentro da fronteira transacional física (D1.batch / SQLite tx).
+ * de mutação contábil dentro da fronteira transacional física.
  *
- * Em conformidade com o princípio de Object-Capability (P0-01, P0-19, P0-B):
- * 1. O token interno é estritamente privado ao módulo (não-exportado).
+ * Em conformidade com o princípio de Object-Capability (OCaps - P0-01, P0-19, P0-B):
+ * 1. O estado de consumo é protegido em escopo estritamente privado de módulo (WeakSet).
  * 2. A sessão é vinculada à instância física da fronteira de execução (boundaryRef / db) e seu identificador (boundaryId).
- * 3. A sessão é de uso estritamente único (single-use: markConsumed).
- * 4. Eliminação de tokens públicos (PostingCapabilityToken) e fábricas públicas estáticas
- *    para impedir forja de autoridade por chamadores externos.
+ * 3. A sessão é de uso estritamente único (single-use: markConsumed / tryConsume com semântica atômica).
+ * 4. Imutabilidade absoluta em runtime via Object.freeze(this).
+ * 5. Aleatoriedade criptográfica segura via crypto.randomUUID().
  */
-
-const InternalBoundaryToken: unique symbol = Symbol('InternalBoundaryToken');
 
 export type PostingExecutionMode = 'd1-batch' | 'sqlite-transaction';
 
+/**
+ * Registros soberanos em escopo de módulo (inacessíveis por código externo).
+ */
+const VALID_POSTING_SESSIONS = new WeakSet<PostingSession>();
+const CONSUMED_POSTING_SESSIONS = new WeakSet<PostingSession>();
+
 export class PostingSession {
-  private readonly _token: typeof InternalBoundaryToken;
   public readonly mode: PostingExecutionMode;
   public readonly sessionId: string;
   public readonly boundaryId: string;
   public readonly boundaryRef: object;
-  public readonly createdAt: Date;
-  private _consumed: boolean = false;
+  public readonly createdAtEpochMs: number;
 
   /**
-   * Construtor protegido: exige uma referência física legítima da infraestrutura
-   * (instância do banco / driver) e identificadores de fronteira.
+   * Construtor soberano: exige referência legítima da fronteira transacional,
+   * identificadores não-vazios e validação de modo de despacho.
    */
   public constructor(
     boundaryRef: object,
@@ -35,21 +37,38 @@ export class PostingSession {
     boundaryId: string
   ) {
     if (!boundaryRef || (typeof boundaryRef !== 'object' && typeof boundaryRef !== 'function')) {
-      throw new Error('PostingSession exige uma referência física de infraestrutura (banco) válida.');
+      throw new Error('PostingSession exige uma referência física de fronteira transacional válida.');
     }
     if (mode !== 'd1-batch' && mode !== 'sqlite-transaction') {
       throw new Error(`Modo de execução inválido para PostingSession: ${mode}`);
     }
-    if (!boundaryId || typeof boundaryId !== 'string') {
-      throw new Error('Identificador de fronteira física obrigatório para PostingSession.');
+    if (!boundaryId || typeof boundaryId !== 'string' || boundaryId.trim().length === 0) {
+      throw new Error('Identificador de fronteira física não-vazio obrigatório para PostingSession.');
     }
 
-    this._token = InternalBoundaryToken;
     this.mode = mode;
-    this.boundaryId = boundaryId;
+    this.boundaryId = boundaryId.trim();
     this.boundaryRef = boundaryRef;
-    this.sessionId = `ps_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    this.createdAt = new Date();
+    this.createdAtEpochMs = Date.now();
+
+    // Geração de ID com entropia criptográfica segura
+    const uuid =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    this.sessionId = `ps_${uuid}`;
+
+    // Registra a sessão como válida e congela a instância contra adulteração externa
+    VALID_POSTING_SESSIONS.add(this);
+    Object.freeze(this);
+  }
+
+  /**
+   * Getter imutável para retrocompatibilidade com chamadores legados.
+   * Retorna sempre uma nova instância de Date para evitar mutação do estado interno via .setTime().
+   */
+  public get createdAt(): Date {
+    return new Date(this.createdAtEpochMs);
   }
 
   /**
@@ -58,8 +77,8 @@ export class PostingSession {
    */
   public isValid(): boolean {
     return (
-      this._token === InternalBoundaryToken &&
-      !this._consumed &&
+      VALID_POSTING_SESSIONS.has(this) &&
+      !CONSUMED_POSTING_SESSIONS.has(this) &&
       typeof this.sessionId === 'string' &&
       this.sessionId.length > 0 &&
       typeof this.boundaryId === 'string' &&
@@ -71,9 +90,30 @@ export class PostingSession {
   }
 
   /**
+   * Tenta adquirir e consumir a sessão de forma atômica.
+   * Retorna true se a sessão estava válida e foi consumida com sucesso;
+   * retorna false se já havia sido consumida ou não pertencia ao registro autêntico.
+   */
+  public tryConsume(): boolean {
+    if (!this.isValid()) {
+      return false;
+    }
+    CONSUMED_POSTING_SESSIONS.add(this);
+    return true;
+  }
+
+  /**
    * Marca a sessão como consumida após a execução bem-sucedida do lote físico.
+   * Operação irreversível que invalida permanentemente a sessão.
    */
   public markConsumed(): void {
-    this._consumed = true;
+    CONSUMED_POSTING_SESSIONS.add(this);
+  }
+
+  /**
+   * Consulta se a sessão já foi consumida.
+   */
+  public isConsumed(): boolean {
+    return CONSUMED_POSTING_SESSIONS.has(this);
   }
 }
