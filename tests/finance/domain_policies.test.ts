@@ -24,7 +24,11 @@ import {
   MAX_LEDGER_ENTRIES,
   MAX_SINGLE_POSTING_DELTA_MAGNITUDE,
   POSTING_PLAN_DELTA_BOUND_IS_UINT256_SAFE,
+  MAX_NUMERIC_RAW_TEXT_CEILING,
+  MAX_NUMERIC_INPUT_TEXT_CEILING,
+  MAX_UINT256_DECIMAL_DIGITS,
 } from '../../src/domains/finance/constants/FinancialLimits';
+
 
 describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-12)', () => {
   describe('DOD-12: FinancialTransactionStateMachine', () => {
@@ -468,6 +472,41 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
     it('deve validar integridade dos aliases legados marcados em FINANCIAL_DEPRECATED_LIMIT_ALIASES', () => {
       expect(FINANCIAL_DEPRECATED_LIMIT_ALIASES.length).toBeGreaterThan(0);
       expect(Array.isArray(FINANCIAL_DEPRECATED_LIMIT_ALIASES)).toBe(true);
+    });
+
+    it('deve garantir disjunção estrita entre aliases legados depreciados e o manifesto canônico', () => {
+      const canonicalKeySet = new Set(Object.keys(FINANCIAL_LIMITS));
+      for (const deprecatedAlias of FINANCIAL_DEPRECATED_LIMIT_ALIASES) {
+        expect(canonicalKeySet.has(deprecatedAlias)).toBe(false);
+      }
+    });
+
+    it('deve validar tipo estrito em runtime (bigint vs safe integer) para cada entrada do manifesto', () => {
+      const bigintLimits = new Set([
+        'MIN_UINT256',
+        'MAX_UINT256',
+        'MAX_SINGLE_LEDGER_ENTRY_AMOUNT',
+        'MAX_SINGLE_BALANCE_DELTA_AMOUNT',
+        'MAX_SINGLE_POSTING_DELTA_MAGNITUDE',
+        'MAX_POSTING_PLAN_ABSOLUTE_DELTA_SUM',
+        'ACCUMULATED_OVERFLOW_SAFE_ENTRY_AMOUNT_MAX',
+      ]);
+
+      for (const [key, value] of Object.entries(FINANCIAL_LIMITS)) {
+        if (bigintLimits.has(key)) {
+          expect(typeof value).toBe('bigint');
+          expect(value).toBeGreaterThanOrEqual(0n);
+        } else {
+          expect(typeof value).toBe('number');
+          expect(Number.isSafeInteger(value)).toBe(true);
+          expect(value).toBeGreaterThanOrEqual(0);
+        }
+      }
+    });
+
+    it('deve comprovar que o teto operacional anti-DoS comporta com folga os dígitos matemáticos de uint256', () => {
+      expect(MAX_NUMERIC_RAW_TEXT_CEILING).toBeGreaterThanOrEqual(MAX_UINT256_DECIMAL_DIGITS);
+      expect(MAX_NUMERIC_INPUT_TEXT_CEILING).toBe(MAX_NUMERIC_RAW_TEXT_CEILING);
     });
   });
 });

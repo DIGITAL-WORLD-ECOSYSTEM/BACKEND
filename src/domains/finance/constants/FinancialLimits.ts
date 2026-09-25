@@ -152,18 +152,7 @@ export type FinancialLimitCategory =
     | 'REPRESENTATION'
     | 'DOMAIN_STRUCTURAL_POLICY';
 
-/**
- * Definição formal de uma política de limite.
- *
- * Esse tipo existe para que a classificação semântica do Finance Core possa
- * ser tratada como metadado verificável, e não somente como comentário.
- */
-export interface FinancialLimitDefinition<
-    T extends number | bigint,
-> {
-    readonly value: T;
-    readonly category: FinancialLimitCategory;
-}
+
 
 /**
  * Unidade de comprimento textual usada pelo domínio.
@@ -1548,10 +1537,53 @@ export function assertFinancialLimitsConsistency(): void {
     );
 
     assertCondition(
-        Object.keys(FINANCIAL_LIMITS).length ===
-        Object.keys(FINANCIAL_LIMIT_CATEGORIES).length,
-        'FINANCIAL_LIMITS and FINANCIAL_LIMIT_CATEGORIES must be strictly bijective.',
+        MAX_NUMERIC_RAW_TEXT_CEILING >=
+        MAX_UINT256_DECIMAL_DIGITS,
+        'MAX_NUMERIC_RAW_TEXT_CEILING must accommodate MAX_UINT256_DECIMAL_DIGITS with buffer.',
     );
+
+    assertCondition(
+        MAX_NUMERIC_INPUT_TEXT_CEILING >=
+        MAX_UINT256_DECIMAL_DIGITS,
+        'MAX_NUMERIC_INPUT_TEXT_CEILING must accommodate MAX_UINT256_DECIMAL_DIGITS with buffer.',
+    );
+
+    const limitKeys = Object.keys(FINANCIAL_LIMITS);
+    const categoryKeys = Object.keys(FINANCIAL_LIMIT_CATEGORIES);
+
+    assertCondition(
+        limitKeys.length === categoryKeys.length,
+        'FINANCIAL_LIMITS and FINANCIAL_LIMIT_CATEGORIES must have identical length.',
+    );
+
+    for (const key of limitKeys) {
+        assertCondition(
+            key in FINANCIAL_LIMIT_CATEGORIES,
+            `Limit key "${key}" missing in FINANCIAL_LIMIT_CATEGORIES.`,
+        );
+    }
+
+    for (const key of categoryKeys) {
+        assertCondition(
+            key in FINANCIAL_LIMITS,
+            `Category key "${key}" missing in FINANCIAL_LIMITS.`,
+        );
+    }
+
+    for (const deprecated of FINANCIAL_DEPRECATED_LIMIT_ALIASES) {
+        assertCondition(
+            !(deprecated in FINANCIAL_LIMITS),
+            `Deprecated alias "${deprecated}" must not be part of canonical FINANCIAL_LIMITS manifest.`,
+        );
+    }
+
+    for (const [key, value] of Object.entries(FINANCIAL_LIMITS)) {
+        assertCondition(
+            (typeof value === 'bigint' && value >= 0n) ||
+            (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0),
+            `Canonical limit "${key}" must be a non-negative safe integer or bigint.`,
+        );
+    }
 }
 
 /**
