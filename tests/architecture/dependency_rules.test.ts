@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { describe, it, expect } from 'vitest';
+import { FINANCIAL_DEPRECATED_LIMIT_ALIASES } from '../../src/domains/finance/constants/FinancialLimits';
 
 const SRC_DIR = path.resolve(__dirname, '../../src');
 
@@ -62,4 +63,35 @@ describe('Architecture Dependency Rules', () => {
 
     expect(violatingFiles, `Domain files violating dependency rules by importing from infrastructure/interfaces: \n${violatingFiles.join('\n')}`).toEqual([]);
   });
+
+  it('Application layer must NOT import deprecated aliases from FINANCIAL_DEPRECATED_LIMIT_ALIASES', () => {
+    const appDir = path.join(SRC_DIR, 'application');
+    const appFiles = getAllFiles(appDir);
+    const violatingFiles: { file: string; deprecatedIdentifier: string }[] = [];
+
+    const importBlockRegex = /import\s+[\s\S]*?from\s+['"][^'"]+['"]/g;
+
+    appFiles.forEach((file) => {
+      const content = fs.readFileSync(file, 'utf-8');
+      const importBlocks = content.match(importBlockRegex) || [];
+
+      for (const block of importBlocks) {
+        for (const alias of FINANCIAL_DEPRECATED_LIMIT_ALIASES) {
+          const aliasWordRegex = new RegExp(`\\b${alias}\\b`);
+          if (aliasWordRegex.test(block)) {
+            violatingFiles.push({
+              file: file.replace(SRC_DIR, ''),
+              deprecatedIdentifier: alias,
+            });
+          }
+        }
+      }
+    });
+
+    expect(
+      violatingFiles,
+      `Application files violating governance rules by importing deprecated FinancialLimits aliases: \n${JSON.stringify(violatingFiles, null, 2)}`
+    ).toEqual([]);
+  });
 });
+

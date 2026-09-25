@@ -14,6 +14,17 @@ import {
   AssetInactiveError,
   InvalidIdentifierError,
 } from '../../src/domains/finance/errors/FinancialError';
+import {
+  FINANCIAL_LIMITS,
+  FINANCIAL_LIMIT_CATEGORIES,
+  FINANCIAL_DEPRECATED_LIMIT_ALIASES,
+  assertFinancialLimitsConsistency,
+  MAX_UINT256,
+  MAX_SINGLE_LEDGER_ENTRY_AMOUNT,
+  MAX_LEDGER_ENTRIES,
+  MAX_SINGLE_POSTING_DELTA_MAGNITUDE,
+  POSTING_PLAN_DELTA_BOUND_IS_UINT256_SAFE,
+} from '../../src/domains/finance/constants/FinancialLimits';
 
 describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-12)', () => {
   describe('DOD-12: FinancialTransactionStateMachine', () => {
@@ -434,4 +445,30 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
       })).toThrow('(desconhecido)');
     });
   });
+
+  describe('DOD-Matrix: FinancialLimits Invariantes e Manifesto Canônico', () => {
+    it('deve executar assertFinancialLimitsConsistency() comprovando todas as invariantes internas', () => {
+      expect(() => assertFinancialLimitsConsistency()).not.toThrow();
+    });
+
+    it('deve garantir integridade estritamente bijetiva entre FINANCIAL_LIMITS e FINANCIAL_LIMIT_CATEGORIES', () => {
+      const limitsKeys = Object.keys(FINANCIAL_LIMITS).sort();
+      const categoriesKeys = Object.keys(FINANCIAL_LIMIT_CATEGORIES).sort();
+      expect(limitsKeys).toEqual(categoriesKeys);
+      expect(limitsKeys.length).toBeGreaterThan(0);
+    });
+
+    it('deve comprovar invariante de limite de magnitude de delta individual e proteção contra overflow acumulado', () => {
+      expect(MAX_SINGLE_POSTING_DELTA_MAGNITUDE).toBe(MAX_SINGLE_LEDGER_ENTRY_AMOUNT);
+      const theoreticalMaxAccumulated = MAX_SINGLE_POSTING_DELTA_MAGNITUDE * BigInt(MAX_LEDGER_ENTRIES);
+      expect(theoreticalMaxAccumulated <= MAX_UINT256).toBe(true);
+      expect(POSTING_PLAN_DELTA_BOUND_IS_UINT256_SAFE).toBe(true);
+    });
+
+    it('deve validar integridade dos aliases legados marcados em FINANCIAL_DEPRECATED_LIMIT_ALIASES', () => {
+      expect(FINANCIAL_DEPRECATED_LIMIT_ALIASES.length).toBeGreaterThan(0);
+      expect(Array.isArray(FINANCIAL_DEPRECATED_LIMIT_ALIASES)).toBe(true);
+    });
+  });
 });
+
