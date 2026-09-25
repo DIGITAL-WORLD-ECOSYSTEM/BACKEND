@@ -18,13 +18,19 @@ import {
 
 /**
  * @deprecated Importe diretamente de './LedgerEntryDirection'.
- * Re-exportação mantida exclusivamente para compatibilidade com o razão contábil.
+ * Re-exportação mantida exclusivamente para compatibilidade retroativa com o razão contábil.
  */
 export {
   LEDGER_ENTRY_DIRECTIONS,
   type LedgerEntryDirection,
   isLedgerEntryDirection,
 };
+
+/**
+ * Padrões de expressões regulares pré-compiladas no escopo do módulo.
+ */
+const CANONICAL_BASE_UNITS_PATTERN = /^(0|[1-9]\d*)$/;
+const CANONICAL_HUMAN_DECIMAL_PATTERN = /^\d+(?:\.\d+)?$/;
 
 /**
  * Contexto imutável de precisão de um ativo utilizado exclusivamente
@@ -36,7 +42,7 @@ export interface AssetPrecisionContext {
 }
 
 /**
- * Type guard de runtime para AssetPrecisionContext.
+ * Type guard de runtime para AssetPrecisionContext com proteção contra duck-typing.
  */
 export function isAssetPrecisionContext(
   value: unknown
@@ -69,7 +75,7 @@ export function isAssetPrecisionContext(
 }
 
 /**
- * Valida a precisão decimal suportada pelo domínio.
+ * Valida a precisão decimal suportada pelo domínio financeiro (0 a 18 casas).
  */
 function assertValidDecimals(decimals: unknown): asserts decimals is number {
   if (
@@ -88,15 +94,26 @@ function assertValidDecimals(decimals: unknown): asserts decimals is number {
  * FIN-AMT-001: Canonical Base Unit Range
  * Valida se um valor de base units é uma string decimal canônica e respeita o teto de 256 bits.
  * Permite zero ("0") para saldos, limites e projeções.
- * Impõe teto lexical pré-parser de 78 dígitos.
+ *
+ * Ordem estrita de validação defensiva:
+ * 1º Tipo primitivo string
+ * 2º Verificação de string não-vazia
+ * 3º Teto de tamanho textual bruto (MAX_NUMERIC_RAW_TEXT_CEILING = 256)
+ * 4º Teto lexical de capacidade uint256 (MAX_UINT256_DECIMAL_DIGITS = 78)
+ * 5º Validação por regex ancorada (^ e $)
+ * 6º Conversão para BigInt e validação de intervalo (0n a MAX_UINT256).
  */
 export function parseCanonicalBaseUnits(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new InvalidMoneyFormatError('O valor de unidades base deve ser fornecido como string decimal canônica.');
+    throw new InvalidMoneyFormatError(
+      'O valor de unidades base deve ser fornecido como string decimal canônica.'
+    );
   }
 
   if (value.length === 0) {
-    throw new InvalidMoneyFormatError('O valor de unidades base não pode ser vazio.');
+    throw new InvalidMoneyFormatError(
+      'O valor de unidades base não pode ser vazio.'
+    );
   }
 
   if (value.length > MAX_NUMERIC_RAW_TEXT_CEILING) {
@@ -106,10 +123,12 @@ export function parseCanonicalBaseUnits(value: unknown): string {
   }
 
   if (value.length > MAX_UINT256_DECIMAL_DIGITS) {
-    throw new Money256OverflowError('O valor de unidades base excede o limite máximo de 78 dígitos decimais (uint256).');
+    throw new Money256OverflowError(
+      'O valor de unidades base excede o limite máximo de 78 dígitos decimais (uint256).'
+    );
   }
 
-  if (!/^(0|[1-9]\d*)$/.test(value)) {
+  if (!CANONICAL_BASE_UNITS_PATTERN.test(value)) {
     throw new InvalidMoneyFormatError(
       'Formato de unidades base inválido. Deve ser uma string de inteiros sem sinal, sem decimais, sem espaços e sem zeros à esquerda.'
     );
@@ -129,18 +148,31 @@ export function parseCanonicalBaseUnits(value: unknown): string {
 export function parsePositiveCanonicalBaseUnits(value: unknown): string {
   const canonical = parseCanonicalBaseUnits(value);
   if (canonical === '0') {
-    throw new InvalidMoneyFormatError('Lançamentos no ledger contábil exigem montante estritamente positivo (> 0).');
+    throw new InvalidMoneyFormatError(
+      'Lançamentos no ledger contábil exigem montante estritamente positivo (> 0).'
+    );
   }
   return canonical;
 }
 
+/**
+ * Conversor estático puro de escala entre representação decimal humana e unidades atômicas inteiras (Money256).
+ */
 export class BaseUnits {
   private constructor() {}
 
   /**
    * Converte uma quantia decimal humana em unidades base (Money256).
-   * Exige representação em string para evitar imprecisões de ponto flutuante IEEE 754.
-   * Aplica teto de dígitos no valor escalado efetivo antes de invocar BigInt().
+   *
+   * Ordem estrita de sanitização e validação defensiva:
+   * 1º Tipo primitivo string
+   * 2º Sanitização com .trim()
+   * 3º Verificação de string não-vazia
+   * 4º Checagem de teto de tamanho bruto (MAX_NUMERIC_RAW_TEXT_CEILING)
+   * 5º Validação de precisão de casas decimais do ativo
+   * 6º Validação por regex ancorada (^ e $)
+   * 7º Composição e escalonamento puramente textual (sem float IEEE-754)
+   * 8º Barreira de dígitos uint256 e conversão segura para BigInt.
    */
   public static toBaseUnits(
     humanAmount: string,
@@ -148,13 +180,17 @@ export class BaseUnits {
     decimals: number
   ): Money256 {
     if (typeof humanAmount !== 'string') {
-      throw new InvalidMoneyFormatError('humanAmount must be provided as a string to preserve decimal precision.');
+      throw new InvalidMoneyFormatError(
+        'humanAmount must be provided as a string to preserve decimal precision.'
+      );
     }
 
     const trimmed = humanAmount.trim();
 
     if (trimmed.length === 0) {
-      throw new InvalidMoneyFormatError('humanAmount cannot be empty or contain only whitespace.');
+      throw new InvalidMoneyFormatError(
+        'humanAmount cannot be empty or contain only whitespace.'
+      );
     }
 
     if (trimmed.length > MAX_NUMERIC_RAW_TEXT_CEILING) {
@@ -165,11 +201,23 @@ export class BaseUnits {
 
     assertValidDecimals(decimals);
 
-    if (!/^\d+(\.\d+)?$/.test(trimmed)) {
-      throw new InvalidMoneyFormatError('Invalid amount format.');
+    if (!CANONICAL_HUMAN_DECIMAL_PATTERN.test(trimmed)) {
+      throw new InvalidMoneyFormatError(
+        'Invalid amount format. Use a non-negative decimal string without signs or exponent notation.'
+      );
     }
 
-    const [integerPart, fractionalPart = ''] = trimmed.split('.');
+    const separatorIndex = trimmed.indexOf('.');
+
+    const integerPart =
+      separatorIndex === -1
+        ? trimmed
+        : trimmed.slice(0, separatorIndex);
+
+    const fractionalPart =
+      separatorIndex === -1
+        ? ''
+        : trimmed.slice(separatorIndex + 1);
 
     if (fractionalPart.length > decimals) {
       throw new InvalidMoneyFormatError(
@@ -179,18 +227,24 @@ export class BaseUnits {
 
     const paddedFraction = fractionalPart.padEnd(decimals, '0');
     const normalizedInteger = integerPart.replace(/^0+(?=\d)/, '');
-    const scaled = `${normalizedInteger}${paddedFraction}`;
+    const scaled =
+      normalizedInteger === '0'
+        ? paddedFraction
+        : `${normalizedInteger}${paddedFraction}`;
     const canonicalScaled = scaled.replace(/^0+(?=\d)/, '') || '0';
 
-    // Limite lexical sobre o valor escalado efetivo antes de invocar BigInt()
     if (canonicalScaled.length > MAX_UINT256_DECIMAL_DIGITS) {
-      throw new Money256OverflowError('Scaled base units amount exceeds uint256 maximum capacity.');
+      throw new Money256OverflowError(
+        'Scaled base units amount exceeds uint256 maximum capacity.'
+      );
     }
 
     const combinedBigInt = BigInt(canonicalScaled);
 
     if (combinedBigInt > MAX_UINT256) {
-      throw new Money256OverflowError('Scaled base units amount exceeds uint256 maximum capacity.');
+      throw new Money256OverflowError(
+        'Scaled base units amount exceeds uint256 maximum capacity.'
+      );
     }
 
     return new Money256(combinedBigInt, assetId);
@@ -207,21 +261,28 @@ export class BaseUnits {
     explicitDecimals?: number
   ): string {
     if (!(baseUnits instanceof Money256)) {
-      throw new InvalidMoneyFormatError('Expected baseUnits to be an instance of Money256.');
+      throw new InvalidMoneyFormatError(
+        'Expected baseUnits to be an instance of Money256.'
+      );
     }
 
     let decimals: number;
 
     if (typeof decimalsOrAsset === 'object' && decimalsOrAsset !== null) {
       if (!isAssetPrecisionContext(decimalsOrAsset)) {
-        throw new FinancialValidationError('Invalid asset precision context.');
+        throw new FinancialValidationError(
+          'Invalid asset precision context.'
+        );
       }
       if (baseUnits.assetId !== decimalsOrAsset.id) {
         throw new CurrencyMismatchError(
           `Asset mismatch during toHumanAmount: expected asset ${decimalsOrAsset.id}, got ${baseUnits.assetId}`
         );
       }
-      if (explicitDecimals !== undefined && explicitDecimals !== decimalsOrAsset.decimals) {
+      if (
+        explicitDecimals !== undefined &&
+        explicitDecimals !== decimalsOrAsset.decimals
+      ) {
         throw new FinancialValidationError(
           `Supplied decimals (${explicitDecimals}) does not match asset decimals (${decimalsOrAsset.decimals}).`
         );
@@ -232,7 +293,10 @@ export class BaseUnits {
 
       assertValidDecimals(decimals);
 
-      if (explicitDecimals !== undefined && explicitDecimals !== decimals) {
+      if (
+        explicitDecimals !== undefined &&
+        explicitDecimals !== decimals
+      ) {
         throw new FinancialValidationError(
           `Supplied decimals (${explicitDecimals}) does not match conversion decimals (${decimals}).`
         );
@@ -241,11 +305,12 @@ export class BaseUnits {
 
     assertValidDecimals(decimals);
 
-    const str = baseUnits.toBigInt().toString().padStart(decimals + 1, '0');
+    const str = baseUnits.toBigInt().toString(10);
     if (decimals === 0) return str;
 
-    const integerPart = str.slice(0, -decimals);
-    const fractionalPart = str.slice(-decimals).replace(/0+$/, '');
+    const normalized = str.padStart(decimals + 1, '0');
+    const integerPart = normalized.slice(0, -decimals);
+    const fractionalPart = normalized.slice(-decimals).replace(/0+$/, '');
 
     return fractionalPart ? `${integerPart}.${fractionalPart}` : integerPart;
   }

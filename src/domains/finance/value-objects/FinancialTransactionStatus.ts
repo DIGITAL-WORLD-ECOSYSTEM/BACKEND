@@ -1,8 +1,8 @@
 /**
  * Catálogo canônico dos estados de ciclo de vida
- * de uma transação financeira.
+ * de uma transação financeira no domínio.
  *
- * A definição pertence exclusivamente ao domínio financeiro.
+ * Fonte única semântica da verdade para todos os tipos e coleções.
  */
 export const FinancialTransactionStatusConstant = Object.freeze({
   PENDING: 'pending',
@@ -18,10 +18,7 @@ export type FinancialTransactionStatus =
   (typeof FinancialTransactionStatusConstant)[keyof typeof FinancialTransactionStatusConstant];
 
 /**
- * Catálogo runtime imutável utilizado pelos parsers e type guards.
- *
- * Todos os valores são derivados da única fonte semântica
- * FinancialTransactionStatusConstant.
+ * Coleção enumerada imutável em runtime para verificações e type guards.
  */
 export const FINANCIAL_TRANSACTION_STATUSES = Object.freeze([
   FinancialTransactionStatusConstant.PENDING,
@@ -46,4 +43,3 @@ export function isFinancialTransactionStatus(
     )
   );
 }
-

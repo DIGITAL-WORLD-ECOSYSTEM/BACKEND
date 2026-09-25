@@ -6,12 +6,20 @@ import {
 } from '../errors/FinancialError';
 
 /**
+ * Padrão estrito para inteiros decimais positivos sem zeros à esquerda ou caracteres de sinal.
+ * Pré-compilado em escopo de módulo para eliminar alocações recorrentes em V8.
+ */
+const POSITIVE_DECIMAL_INTEGER_PATTERN = /^[1-9]\d*$/;
+
+/**
  * Valida e normaliza um identificador inteiro positivo representável
- * com segurança pela semântica numérica do JavaScript.
+ * com segurança pela semântica numérica do JavaScript (IEEE-754 53-bit safe integer).
  *
- * O identificador não é um montante monetário e, portanto, sua
- * representação física pode utilizar number após a validação de
- * Number.isSafeInteger().
+ * Invariantes:
+ * - Aceita number seguro estritamente positivo (> 0).
+ * - Aceita string decimal canônica sem espaços, sem sinais e sem zeros à esquerda.
+ * - Impõe teto lexical pré-conversão de 16 dígitos decimais.
+ * - Rejeita floats, NaN, Infinity, strings vazias e valores >= 2^53.
  */
 export function parsePositiveSafeIntegerId(
   id: unknown,
@@ -31,7 +39,7 @@ export function parsePositiveSafeIntegerId(
     if (
       id.length === 0 ||
       id.length > MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS ||
-      !/^[1-9]\d*$/.test(id)
+      !POSITIVE_DECIMAL_INTEGER_PATTERN.test(id)
     ) {
       throw new InvalidIdentifierError(
         `Invalid physical ${name}.`
@@ -58,10 +66,10 @@ export function parsePositiveSafeIntegerId(
 }
 
 /**
- * Value Object para um identificador financeiro físico inteiro positivo.
+ * Value Object para identificador físico inteiro positivo de 53 bits.
  *
- * A identidade é normalizada para um inteiro seguro do JavaScript.
- * O objeto é imutável em TypeScript e em runtime.
+ * Encapsula identificadores de entidades financeiras (como assetId, accountId),
+ * garantindo imutabilidade profunda e integridade de serialização.
  */
 export class FinancialIdentifier {
   public readonly value: number;
@@ -71,9 +79,6 @@ export class FinancialIdentifier {
     Object.freeze(this);
   }
 
-  /**
-   * Cria um identificador a partir de sua representação aceita.
-   */
   public static from(
     id: number | string
   ): FinancialIdentifier {
@@ -82,9 +87,6 @@ export class FinancialIdentifier {
     );
   }
 
-  /**
-   * Cria um identificador a partir de number validado.
-   */
   public static fromNumber(
     id: number
   ): FinancialIdentifier {
@@ -93,9 +95,6 @@ export class FinancialIdentifier {
     );
   }
 
-  /**
-   * Cria um identificador a partir de string decimal canônica.
-   */
   public static fromString(
     id: string
   ): FinancialIdentifier {
@@ -104,9 +103,6 @@ export class FinancialIdentifier {
     );
   }
 
-  /**
-   * Compara dois identificadores por valor.
-   */
   public equals(
     other: unknown
   ): boolean {
@@ -117,17 +113,19 @@ export class FinancialIdentifier {
     return this.value === other.value;
   }
 
-  /**
-   * Retorna o identificador como number seguro.
-   */
   public toNumber(): number {
     return this.value;
   }
 
-  /**
-   * Retorna a representação decimal canônica.
-   */
   public toString(): string {
     return this.value.toString(10);
+  }
+
+  public toJSON(): number {
+    return this.value;
+  }
+
+  public valueOf(): number {
+    return this.value;
   }
 }
