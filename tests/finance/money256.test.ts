@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Money256, MAX_UINT256 } from '../../src/domains/finance/value-objects/Money256';
+import { Money256 } from '../../src/domains/finance/value-objects/Money256';
+import { MAX_UINT256 } from '../../src/domains/finance/constants/FinancialLimits';
 import {
   InvalidMoneyFormatError,
   Money256OverflowError,

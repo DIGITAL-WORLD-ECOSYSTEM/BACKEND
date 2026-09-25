@@ -1,7 +1,7 @@
 import {
   MAX_UINT256,
   MAX_UINT256_DECIMAL_DIGITS,
-  MAX_SAFE_INTEGER_DIGITS,
+  MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS,
   MAX_NUMERIC_RAW_TEXT_CEILING,
 } from '../constants/FinancialLimits';
 import {
@@ -12,12 +12,19 @@ import {
   InvalidIdentifierError,
 } from '../errors/FinancialError';
 
+/**
+ * @deprecated Importe diretamente de '../constants/FinancialLimits'.
+ * Re-exportação preservada exclusivamente para compatibilidade retroativa com suítes de testes e consumidores existentes.
+ */
 export {
   MAX_UINT256,
   MAX_UINT256_DECIMAL_DIGITS,
-  MAX_SAFE_INTEGER_DIGITS,
+  MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS,
   MAX_NUMERIC_RAW_TEXT_CEILING,
 };
+
+/** @deprecated Use MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS diretamente de '../constants/FinancialLimits'. */
+export const MAX_SAFE_INTEGER_DIGITS = MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS;
 
 /**
  * Validador canônico estrito para IDs físicos inteiros positivos.
@@ -33,7 +40,11 @@ export function parsePositiveSafeIntegerId(id: unknown, name = 'id'): number {
   }
 
   if (typeof id === 'string') {
-    if (id.length === 0 || id.length > MAX_SAFE_INTEGER_DIGITS || !/^[1-9]\d*$/.test(id)) {
+    if (
+      id.length === 0 ||
+      id.length > MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS ||
+      !/^[1-9]\d*$/.test(id)
+    ) {
       throw new InvalidIdentifierError(`Invalid physical ${name}.`);
     }
     const numericId = Number(id);
