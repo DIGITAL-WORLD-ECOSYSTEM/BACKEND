@@ -655,6 +655,7 @@ A tabela a seguir consolida o histórico de auditoria por lotes, os itens críti
 | :--- | :--- | :---: | :---: | :--- | :--- |
 | **G0 — Auditoria Inicial** | Fronteira HTTP, autenticação, injeção e isolamento | 6,1 / 10 | 🔴 Não Aprovado | Falha no isolamento de rotas, dependência de tipos primitivos sem safe integer, falta de barreira de postagem. | Superado com a introdução do `sessionGuard`, `requireAal(2, 15)` e DTOs tipados. |
 | **G0 — Reauditoria Lote 1 (v2.5.0)** | Endurecimento de rota, safe integer, context RBAC | 7,4 / 10 | 🟠 Condicional | Validação de identificadores de 53 bits, injeção de `userId` pelo contexto físico de sessão, isolamento de repositórios. | Pendente de resolução: contenção OCC sob concorrência e guarda de asserção de lote. |
+| **G0 — Lote 1B (Concluído)** | Value Objects & Limites (`FinancialLimits`, `Money256`, `BaseUnits`, `FinancialIdentifier`, `LedgerEntryDirection`, `FinancialTransactionStatus`) | **10,0 / 10** | 🟢 **Aprovado / 100% Frozen** | Imutabilidade profunda (`Object.freeze`), proscrição total de IEEE-754, precisão arbitrária uint256 pura, isolamento de IDs (53 bits), regexes em escopo de módulo, serialização `toJSON` segura. | 45 suítes de testes, 356 testes aprovados (100% de sucesso absoluto), zero regressões. |
 | **G0 — Lote 2 (Em Andamento)** | Contratos, portas, custódia, `PostingAuthority` e `_sql_assertions` | *Em Análise* | ⏳ Em Análise | Imutabilidade do `PostingPlan`, não-forjabilidade do `PostingCapabilityToken`, prova física de falha em `_sql_assertions`. | 100% dos testes de `adversarial_certification.test.ts` e `posting_authority_hardening.test.ts` aprovados. |
 | **G0 — Lote 3 (A Seguir)** | Casos de uso (`RecordTreasury`, `RecordTransfer`, Orchestrator) | *Pendente* | ⏳ Na Fila | Orquestração com deadlock avoidance (`accountId ASC`), replay de idempotência com payload completo e estorno forense. | Validação E2E com banco D1 real local (`finance_real_db_e2e.test.ts`) sem drift contábil. |
 
@@ -671,22 +672,22 @@ A tabela a seguir consolida o histórico de auditoria por lotes, os itens críti
 
 Este painel consolida o registro formal e auditável de cada um dos **76 arquivos do Finance Core**, comprovando a aplicação cirúrgica de melhorias, fechamento de invariantes e validação por testes automatizados, segundo a **Matriz de Arquitetura Matrix (Padrão Militar P0 Hardened)**.
 
-### 8.1. Progresso Geral da Certificação do Módulo Financeiro (76 Arquivos)
+### 8.1. Progresso Geral da Certificação do Módulo Financeiro (78 Arquivos)
 
 ```text
-STATUS GERAL: [█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒] 1 / 76 Arquivos Auditados e Certificados (1,3%)
+STATUS GERAL: [██▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒] 6 / 78 Arquivos Auditados e Certificados (7,7%)
 ```
 
 | Camada Arquitetural | Total de Arquivos | Arquivos Certificados | Percentual | Status de Homologação |
 | :--- | :---: | :---: | :---: | :---: |
-| **Camada 1 — Domínio Contábil Puro** | 20 | 1 | 5,0% | 🟡 Em Andamento |
+| **Camada 1 — Domínio Contábil Puro** | 22 | 6 | 27,3% | 🟡 Em Andamento (27,3% Frozen) |
 | **Camada 2 — Aplicação, Portas e Casos de Uso** | 15 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 3 — Infraestrutura Concreta, Adaptadores e Repositórios** | 5 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 4 — Banco de Dados Relacional** | 3 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 5 — Apresentação HTTP** | 2 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 6 — Migrações Relacionais Contábeis** | 4 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 7 — Suíte de Testes Automatizados e Invariantes** | 27 | 0 | 0,0% | ⚪ Na Fila |
-| **TOTAL CONSOLIDADO** | **76** | **1** | **1,3%** | 🟡 **Certificação P0 em Execução** |
+| **TOTAL CONSOLIDADO** | **78** | **6** | **7,7%** | 🟡 **Certificação P0 em Execução** |
 
 ---
 
@@ -807,43 +808,45 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 76 arquivos do 
   - 100% de cobertura nos testes de invariantes de escala, precisão e rejeição de entradas inválidas.
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
-1. **Sanitização Pre-Parsing:** Inclusão de `humanAmount.trim()` com validação de string não-vazia antes da verificação de tamanho de envelope.
-2. **Contrato de Precisão:** Criação da interface imutável `AssetPrecisionContext` e guarda de tipo `isAssetPrecisionContext(value)`.
-3. **Validação de Precisão Decimal:** Centralização em função auxiliar tipada `assertValidDecimals(decimals: unknown)`.
-4. **Fechamento de Instanciação:** `private constructor() {}` na classe `BaseUnits`.
-5. **Isolamento de Direção:** Extração de `LedgerEntryDirection` e delegação retrocompatível.
+1. **Sanitização e Validação Defensiva Estrita:** `humanAmount.trim()`, checagem de string não-vazia, teto bruto (`MAX_NUMERIC_RAW_TEXT_CEILING`), validação de decimais e escalonamento estritamente textual.
+2. **Cache de Padrões no Módulo:** Expressões regulares `CANONICAL_BASE_UNITS_PATTERN` e `CANONICAL_HUMAN_DECIMAL_PATTERN` pré-compiladas no escopo do módulo para alta performance V8.
+3. **Contrato de Precisão:** Interface imutável `AssetPrecisionContext` com `readonly` e type guard `isAssetPrecisionContext(value)` resistente a duck-typing.
+4. **Validação de Precisão Decimal:** Centralização em função auxiliar tipada `assertValidDecimals(decimals: unknown)`.
+5. **Fechamento de Instanciação:** `private constructor() {}` na classe `BaseUnits`.
+6. **Isolamento de Direção:** Extração de `LedgerEntryDirection` e delegação retrocompatível com `@deprecated`.
 
 ---
 
 #### [CAMADA 1 / ARQUIVO-19] [`src/domains/finance/value-objects/FinancialTransactionStatus.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/FinancialTransactionStatus.ts)
-- **Responsabilidade Central:** Catálogo canônico, fechamento e guards de runtime para os estados de ciclo de vida das transações financeiras.
+- **Responsabilidade Central:** Catálogo canônico, fechamento e guards de runtime para os estados de ciclo de vida das transações financeiras no domínio.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
 ##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
 - [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
-  - Domínio puro: sanitização dos comentários JSDoc com remoção de menções a tecnologias de persistência ("SQLite/Cloudflare D1").
+  - Domínio 100% puro: remoção total de menções a bancos de dados físicos, SQLite ou Cloudflare D1.
   - Ausência completa de dependências externas.
 - [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
   - Tipagem estrita baseada em `(typeof FinancialTransactionStatusConstant)[keyof typeof FinancialTransactionStatusConstant]`.
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
   - Conjunto fechado de 7 estados: `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, `CANCELLED`, `REVERSED`, `REFUNDED`.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
-  - Imutabilidade profunda em runtime assegurada via `Object.freeze` tanto no dicionário `FinancialTransactionStatusConstant` quanto na tupla `FINANCIAL_TRANSACTION_STATUSES`.
+  - Imutabilidade profunda em runtime assegurada via `Object.freeze` no dicionário constante e na coleção de verificação.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
   - Type guard `isFinancialTransactionStatus(value: unknown): value is FinancialTransactionStatus` determinístico e seguro contra protótipos forjados.
 - [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
   - Validado contra todas as transições da máquina de estados contábil.
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
-1. **Imutabilidade em Runtime:** Aplicação de `Object.freeze` em `FinancialTransactionStatusConstant` e `FINANCIAL_TRANSACTION_STATUSES`.
-2. **Higienização de Vocabulário:** Eliminação de referências de infraestrutura física nos blocos de documentação.
+1. **Fonte Única Semântica:** Derivação direta do tipo e da lista de runtime a partir de `FinancialTransactionStatusConstant`.
+2. **Imutabilidade em Runtime:** Aplicação de `Object.freeze` em `FinancialTransactionStatusConstant` e `FINANCIAL_TRANSACTION_STATUSES`.
+3. **Higienização de Vocabulário:** Eliminação de referências de infraestrutura física nos blocos de documentação.
 
 ---
 
 #### [CAMADA 1 / ARQUIVO-20] [`src/domains/finance/value-objects/Money256.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/Money256.ts)
-- **Responsabilidade Central:** Value Object imutável de alta precisão que encapsula montantes inteiros de 256 bits (`BigInt`) atrelados a um ativo específico, com validação de IDs de 53 bits e operações aritméticas à prova de overflow e underflow.
+- **Responsabilidade Central:** Value Object imutável de alta precisão que encapsula montantes inteiros de 256 bits (`BigInt`) atrelados a um ativo específico, com aritmética inteira pura à prova de overflow e underflow.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
@@ -851,30 +854,35 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 76 arquivos do 
 ##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
 - [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
   - Domínio 100% puro, sem dependências de infraestrutura ou frameworks.
-  - Re-exportações de limites canônicos mantidas com tag `@deprecated` para suporte não-disruptivo a suítes de teste legadas.
+  - Delegação canônica de identificadores para [`FinancialIdentifier.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/FinancialIdentifier.ts).
+  - Re-exportações de compatibilidade declarada marcadas com `@deprecated` para suporte não-disruptivo aos consumidores existentes.
 - [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
   - Operações aritméticas exclusivamente em `BigInt` de 256 bits em memória V8.
+  - Proscrição total de números fracionários IEEE-754 em montantes monetários.
   - Blindagem formal contra overflow (`> MAX_UINT256`) e underflow (`< 0n`).
+  - Omissão correta da operação de divisão no Value Object (rateio e sobras contábeis são responsabilidade de políticas de alocação).
   - Imutabilidade profunda do objeto garantida por `Object.freeze(this)` no construtor.
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
-  - Atualização do validador canônico `parsePositiveSafeIntegerId` para utilizar a constante canônica `MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS` (16 dígitos decimais), substituindo o identificador depreciado.
-  - Prevenção contra estouro de representação numérica e coerção espúria em identificadores físicos.
+  - Ordem defensiva em `parseCanonicalString`: tipo string -> não-vazia -> teto bruto (256) -> teto uint256 (78 dígitos) -> regex ancorada -> range check.
+  - Prevenção contra estouro de representação numérica e coerção espúria.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
-  - Métodos `add`, `subtract`, `equals`, `isZero`, `toBigInt`, `toString` e factories `fromBigInt` e `fromString` estritamente tipados e invariantes quanto ao `assetId`.
+  - Métodos `add`, `subtract`, `multiply`, `equals`, `isZero`, `toBigInt`, `toString` e factories `fromBigInt`, `fromString`, `zero`, `max` estritamente tipados e invariantes quanto ao `assetId`.
+  - Método `.toJSON()` com serialização decimal canônica protegendo contra crash nativo do V8 (`TypeError: Do not know how to serialize a BigInt`).
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
   - Re-exportação retrocompatível de `MAX_SAFE_INTEGER_DIGITS` apontando para `MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS`.
 - [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
   - Cobertura integral com 71 testes dedicados de hardening na suíte de domínio freeze e testes de precisão EVM.
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
-1. **Alinhamento Canônico de Limites:** Substituição de `MAX_SAFE_INTEGER_DIGITS` por `MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS`.
-2. **Camada de Compatibilidade Retroativa:** Preservação de exports compatíveis com anotação `@deprecated`.
-3. **Preservação de Estabilidade:** Validador `parsePositiveSafeIntegerId` mantido íntegro e rigoroso.
+1. **Serialização Segura (.toJSON):** Implementado método `.toJSON(): { amount: string; assetId: number }` para imunizar o sistema contra crashes de serialização JSON.
+2. **Cache de Padrão Lexical:** Regex `CANONICAL_MONETARY_DECIMAL_PATTERN = /^(0|[1-9]\d*)$/` alocada no topo do módulo.
+3. **Desacoplamento de Identificadores:** Importação de `parsePositiveSafeIntegerId` de `FinancialIdentifier.ts` com fachada `@deprecated`.
+4. **Alinhamento Canônico de Limites:** Substituição de `MAX_SAFE_INTEGER_DIGITS` por `MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS`.
 
 ---
 
 #### [CAMADA 1 / ARQUIVO-21] [`src/domains/finance/value-objects/LedgerEntryDirection.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/LedgerEntryDirection.ts)
-- **Responsabilidade Central:** Catálogo canônico, tipo estrito e guard de runtime da direção contábil de pernas de lançamento no razão (`debit` / `credit`).
+- **Responsabilidade Central:** Catálogo canônico, tipo estrito e guard de runtime da direção contábil de pernas de escrituração no livro-razão (`debit` / `credit`).
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
@@ -884,8 +892,9 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 76 arquivos do 
   - Arquivo novo extraído seguindo SRP (Princípio da Responsabilidade Única), isolando o conceito contábil de direção de lançamento.
 - [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
   - Tipo discriminado canônico: `'debit' | 'credit'`.
+  - Agnosticismo explícito quanto a sinais matemáticos (+ ou -), cuja interpretação depende exclusivamente da natureza contábil da conta.
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
-  - Conjunto fechado e congelado: `LEDGER_ENTRY_DIRECTIONS = Object.freeze(['debit', 'credit'] as const)`.
+  - Conjunto fechado derivado de fonte única: `LEDGER_ENTRY_DIRECTIONS = Object.freeze([LedgerEntryDirectionConstant.DEBIT, LedgerEntryDirectionConstant.CREDIT] as const)`.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
   - Dicionário constante congelado: `LedgerEntryDirectionConstant = Object.freeze({ DEBIT: 'debit', CREDIT: 'credit' } as const)`.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
@@ -894,13 +903,14 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 76 arquivos do 
   - 100% compatível com as regras de partidas dobradas e validação contábil do `PostingPlan`.
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
-1. **Criação do Value Object Dedicado:** Implementado em conformidade com as diretrizes do Matrix P0 Hardened.
-2. **Congelamento em Runtime:** Todos os arrays e mapas congelados com `Object.freeze`.
+1. **Unificação da Fonte Única:** Derivação direta do array `LEDGER_ENTRY_DIRECTIONS` a partir de `LedgerEntryDirectionConstant`.
+2. **Neutralidade Algébrica:** Documentação e contrato estabelecendo a pureza semântica de `debit`/`credit` sem associação estática de sinais (+/-).
+3. **Congelamento em Runtime:** Todos os arrays e mapas congelados com `Object.freeze`.
 
 ---
 
 #### [CAMADA 1 / ARQUIVO-22] [`src/domains/finance/value-objects/FinancialIdentifier.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/FinancialIdentifier.ts)
-- **Responsabilidade Central:** Value Object soberano e validador canônico para identificadores físicos inteiros positivos (53 bits, seguros em JavaScript), isolando a responsabilidade de validação de IDs de entidades e bancos do Value Object monetário `Money256`.
+- **Responsabilidade Central:** Value Object soberano e validador canônico para identificadores físicos inteiros positivos (53 bits, seguros em JavaScript), isolando a validação de IDs de entidades e bancos do Value Object monetário `Money256`.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
@@ -911,13 +921,14 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 76 arquivos do 
   - Zero dependências de persistência, drivers ou frameworks.
 - [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
   - Distinção clara: IDs físicos utilizam `number` representável com segurança por `Number.isSafeInteger() > 0`.
-  - Proibição de valores negativos, decimais, notação científica e zeros à esquerda.
+  - Proibição de valores negativos, decimais, notação científica, espaços e zeros à esquerda.
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
   - Teto lexical estrito pré-conversão: máximo de 16 dígitos decimais (`MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS`).
   - Prevenção formal contra perda de precisão acima de $2^{53}-1$ (`Number.MAX_SAFE_INTEGER`).
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
   - Classe `FinancialIdentifier` com construtor privado e `Object.freeze(this)`.
   - Métodos utilitários de ciclo de vida: `from()`, `fromNumber()`, `fromString()`, `equals()`, `toNumber()`, `toString()`.
+  - Implementação de `toJSON(): number` e `valueOf(): number` para interoperabilidade transparente com serializadores e templates.
   - Função pura canônica `parsePositiveSafeIntegerId(id: unknown, name?: string): number`.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
   - `Money256.ts` delega a validação diretamente para `FinancialIdentifier.ts` e preserva re-exportação `@deprecated` para não quebrar os 8 arquivos consumidores estáveis do domínio e aplicação.
@@ -925,8 +936,10 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 76 arquivos do 
   - 100% testado por todas as suítes de validação de IDs em políticas contábeis e transações.
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
-1. **Extração Arquitetural do Value Object:** Criação de `FinancialIdentifier.ts` isolando a responsabilidade de identificação de `Money256.ts`.
-2. **Fachada de Não-Regressão:** `Money256.ts` reexporta `parsePositiveSafeIntegerId` com anotação `@deprecated` para suporte não-disruptivo aos consumidores existentes.
+1. **Cache de Padrão Lexical:** Expressão regular `POSITIVE_DECIMAL_INTEGER_PATTERN = /^[1-9]\d*$/` pré-compilada em escopo de módulo.
+2. **Interoperabilidade Primitiva:** Métodos `.toJSON(): number` e `.valueOf(): number` implementados.
+3. **Extração Arquitetural do Value Object:** Criação de `FinancialIdentifier.ts` isolando a responsabilidade de identificação de `Money256.ts`.
+4. **Fachada de Não-Regressão:** `Money256.ts` reexporta `parsePositiveSafeIntegerId` com anotação `@deprecated` para suporte não-disruptivo aos consumidores existentes.
 
 ---
 
@@ -936,7 +949,11 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 76 arquivos do 
 - **Suíte de Transações Financeiras:** [`tests/finance/FinancialTransaction.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/FinancialTransaction.test.ts) — **68 / 68 testes aprovados (100%)**.
 - **Regras Arquiteturais:** [`tests/architecture/dependency_rules.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/architecture/dependency_rules.test.ts) — **2 / 2 testes aprovados (100%)**.
 - **Suíte Geral Completa do Sistema:** **45 arquivos de teste, 356 testes aprovados (100% de sucesso absoluto)**.
-- **Git Commits:** `6265d51` e `4ae94df` — `feat(finance): extrair FinancialIdentifier e desacoplar Money256 com retrocompatibilidade`.
+- **Git Commits de Certificação:**
+  - `6265d51` — `refactor(finance): aplicar rigor P0 e isolamento canonico nos value objects`
+  - `4ae94df` — `feat(finance): extrair FinancialIdentifier e desacoplar Money256 com retrocompatibilidade`
+  - `44cb27c` — `docs(finance): registrar FinancialIdentifier no mapa de auditoria arquitetural`
+  - `5995cba` — `refactor(finance): reescrever integralmente os 5 value objects com rigor P0 e zero truncamento`
 
 
 
