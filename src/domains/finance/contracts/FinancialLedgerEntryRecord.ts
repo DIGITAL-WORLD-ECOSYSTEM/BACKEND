@@ -37,7 +37,8 @@ export interface FinancialLedgerEntryRecord {
  * Invariantes P0 Hardened:
  * 1. accountId e assetId: inteiros positivos de 53 bits seguros em JS (parsePositiveSafeIntegerId).
  * 2. direction: validação estrita via type guard isLedgerEntryDirection ('debit' | 'credit').
- * 3. amountBaseUnits: string não-vazia, estritamente positiva (> 0), teto bruto anti-DoS, teto de 78 dígitos e limite uint256.
+ * 3. amountBaseUnits: string não-vazia, estritamente positiva (> 0), teto bruto anti-DoS verificado
+ *    antes de operações em memória, teto de 78 dígitos decimais e limite uint256.
  * 4. Imutabilidade: congelamento profundo via Object.freeze.
  */
 export function validateCanonicalLedgerEntryRecord(record: FinancialLedgerEntryRecord): {
@@ -68,16 +69,17 @@ export function validateCanonicalLedgerEntryRecord(record: FinancialLedgerEntryR
     );
   }
 
+  // Defesa Anti-DoS: verifica tamanho bruto da string ANTES de executar trim() ou regex
+  if (record.amountBaseUnits.length > MAX_NUMERIC_RAW_TEXT_CEILING) {
+    throw new Error(
+      `amountBaseUnits excede o teto anti-DoS de ${MAX_NUMERIC_RAW_TEXT_CEILING} caracteres: tamanho ${record.amountBaseUnits.length}`
+    );
+  }
+
   const trimmedAmount = record.amountBaseUnits.trim();
 
   if (trimmedAmount.length === 0) {
     throw new Error('amountBaseUnits em FinancialLedgerEntryRecord não pode ser string vazia.');
-  }
-
-  if (trimmedAmount.length > MAX_NUMERIC_RAW_TEXT_CEILING) {
-    throw new Error(
-      `amountBaseUnits excede o teto anti-DoS de ${MAX_NUMERIC_RAW_TEXT_CEILING} caracteres: tamanho ${trimmedAmount.length}`
-    );
   }
 
   if (!CANONICAL_POSITIVE_BASE_UNITS_PATTERN.test(trimmedAmount)) {

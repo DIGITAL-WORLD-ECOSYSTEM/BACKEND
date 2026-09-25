@@ -2,7 +2,8 @@
  * Gerador Determinístico de Identificadores Financeiros (53-bit Safe Integer).
  *
  * Garante que cada transação financeira possua um ID numérico monotônico,
- * globalmente coordenado e conhecido em memória antes da compilação do lote transacional.
+ * conhecido em memória antes da compilação do lote transacional e rigorosamente
+ * contido no intervalo de inteiros seguros do JavaScript (Number.MAX_SAFE_INTEGER).
  *
  * Estrutura do Inteiro de 53 bits (Number.MAX_SAFE_INTEGER = 9.007.199.254.740.991):
  * - Epoch ms (41 bits): suporta monotonicidade até 7 de setembro de 2039 sem overflow de 41 bits
@@ -12,11 +13,17 @@
  * Invariantes P0 Hardened (OCaps / Concorrência):
  * 1. Monotonicidade Estrita: Todo ID gerado é estritamente maior que o anterior no mesmo processo.
  * 2. Zero Colisões: Quando a sequência atinge 256 no mesmo milissegundo, o relógio lógico avança.
- * 3. Proscrição Absoluta de Math.random(): Apenas CSPRNG (crypto.getRandomValues) ou coordenadas determinísticas.
- * 4. Safe Integer Guard: Asserção de que id <= Number.MAX_SAFE_INTEGER e Number.isSafeInteger(id).
- * 5. Parsing Estrito de Worker ID: Rejeição de valores parciais ou malformados de ambiente.
- * 6. Proteção de Ambiente: Métodos de reset restritos com exclusividade a ambientes de teste.
+ * 3. Proscrição Absoluta de Math.random(): Apenas CSPRNG (crypto.getRandomValues) ou coordenadas de ambiente estritas.
+ * 4. Safe Integer Guard: Asserção contínua de que id <= Number.MAX_SAFE_INTEGER e Number.isSafeInteger(id).
+ * 5. Parsing Estrito de Worker ID: Rejeição de valores parciais, negativos ou malformados de ambiente.
+ * 6. Proteção de Ambiente: Métodos de reset restritos com exclusividade a ambientes de teste certificados.
  */
+
+/**
+ * Teto de timestamp de 41 bits em milissegundos (2^41 - 1 = 2.199.023.255.551 ms),
+ * correspondente a 7 de setembro de 2039 às 15:47:35.551 UTC.
+ */
+export const MAX_EPOCH_41BIT_MS = 2199023255551;
 
 export class DeterministicIdGenerator {
   private static lastTimestamp = 0;
@@ -76,11 +83,20 @@ export class DeterministicIdGenerator {
       now = DeterministicIdGenerator.lastTimestamp;
     }
 
+    // Validação de limite de 41 bits
+    if (now > MAX_EPOCH_41BIT_MS) {
+      throw new Error(
+        `Limite de 41 bits da época excedido em DeterministicIdGenerator (${now} > ${MAX_EPOCH_41BIT_MS}).`
+      );
+    }
+
     if (now === DeterministicIdGenerator.lastTimestamp) {
-      DeterministicIdGenerator.sequence = (DeterministicIdGenerator.sequence + 1) & 0xff;
-      // Se a sequência no milissegundo sofreu overflow (> 255), avança o relógio lógico
-      if (DeterministicIdGenerator.sequence === 0) {
+      if (DeterministicIdGenerator.sequence >= 255) {
+        // Se a sequência no milissegundo sofreu saturação (255), avança o relógio lógico
+        DeterministicIdGenerator.sequence = 0;
         now = DeterministicIdGenerator.lastTimestamp + 1;
+      } else {
+        DeterministicIdGenerator.sequence += 1;
       }
     } else {
       DeterministicIdGenerator.sequence = 0;
@@ -88,7 +104,7 @@ export class DeterministicIdGenerator {
 
     DeterministicIdGenerator.lastTimestamp = now;
 
-    // Composição de 53 bits:
+    // Composição de 53 bits seguros:
     // (now * 4096) + (workerId * 256) + sequence
     const id = now * 4096 + DeterministicIdGenerator.workerId * 256 + DeterministicIdGenerator.sequence;
 
@@ -123,6 +139,9 @@ export class DeterministicIdGenerator {
       (process.env.NODE_ENV !== 'test' && !process.env.VITEST)
     ) {
       throw new Error('DeterministicIdGenerator.resetForTesting é terminantemente restrito a ambientes de teste.');
+    }
+    if (!Number.isSafeInteger(initialSeq) || initialSeq < 0) {
+      throw new Error(`initialSeq inválido para resetForTesting: ${initialSeq}`);
     }
     DeterministicIdGenerator.lastTimestamp = 0;
     DeterministicIdGenerator.sequence = initialSeq;

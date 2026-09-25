@@ -6,12 +6,14 @@
  *
  * Invariantes P0 Hardened (OCaps / Fail-Closed):
  * 1. Imutabilidade absoluta: todos os contratos, contextos e decisões são congelados em runtime (Object.freeze).
- * 2. Princípio do Menor Privilégio: ausência de superusuário implícito (eliminação de bypasses cegos por principalId === 0).
- * 3. Segregação Estrita de Escopo: operações de usuário (transfer, withdrawal, payment, deposit) exigem titularidade (SELF) ou delegação;
- *    operações de custódia sistêmica (reversal, refund, adjustment, fee, reward, yield) NÃO PODEM ser autorizadas por simples SELF
- *    e exigem autoridade sistêmica ou capabilities dedicadas.
- * 4. Validação Soberana Fail-Closed: rejeição absoluta de strings vazias, tipos espúrios ou coerções permissivas.
- * 5. Pureza de Domínio: livre de dependências de infraestrutura física, drivers ou frameworks HTTP.
+ * 2. Princípio do Menor Privilégio: eliminação de bypasses incondicionais para principalType === 'system'.
+ *    Operações de estorno contábil (reversal) e custódia sistêmica (refund, adjustment, fee, reward, yield)
+ *    exigem autoridade sistêmica genesis (principalId === 0) ou capabilities dedicadas explícitas.
+ * 3. Segregação Estrita de Escopo: operações de usuário (transfer, withdrawal, payment, deposit) sob titularidade
+ *    própria (SELF) limitam-se a transações onde o principal é o proprietário da conta debitada.
+ * 4. Não-Forjabilidade de Provenance: contextos registrados e verificados em runtime contra forjamento estrutural.
+ * 5. Validação Soberana Fail-Closed: rejeição absoluta de strings vazias, tipos espúrios ou coerções permissivas.
+ * 6. Pureza Arquitetural de Domínio: livre de dependências de infraestrutura física, drivers ou frameworks HTTP.
  */
 
 import { parsePositiveSafeIntegerId } from '../value-objects/FinancialIdentifier';
@@ -24,6 +26,16 @@ export type PrincipalType = 'user' | 'system' | 'service_account';
 export function isPrincipalType(value: unknown): value is PrincipalType {
   return value === 'user' || value === 'system' || value === 'service_account';
 }
+
+/**
+ * Catálogo Canônico de Capabilities Financeiras do Domínio.
+ */
+export const FinanceCapabilities = Object.freeze({
+  SystemOperate: 'finance.system.operate',
+  SystemReversal: 'finance.system.reversal',
+  TransferDelegate: 'finance.transfer.delegate',
+  DelegateOperate: 'finance.delegate.operate',
+} as const);
 
 /**
  * Brand nominal opaco para Capabilities de Domínio em conformidade com OCaps.
@@ -50,6 +62,24 @@ export type CustodyOperationType =
   | 'fee'
   | 'reward'
   | 'yield';
+
+/**
+ * Type guard para validação de runtime do tipo de operação de custódia.
+ */
+export function isCustodyOperationType(value: unknown): value is CustodyOperationType {
+  return (
+    value === 'transfer' ||
+    value === 'withdrawal' ||
+    value === 'payment' ||
+    value === 'deposit' ||
+    value === 'refund' ||
+    value === 'adjustment' ||
+    value === 'reversal' ||
+    value === 'fee' ||
+    value === 'reward' ||
+    value === 'yield'
+  );
+}
 
 export interface CustodyOperationSpec {
   readonly operationType: CustodyOperationType;
@@ -89,6 +119,12 @@ export type AuthorizationDecision =
         | 'INACTIVE_ACCOUNT'
         | 'INVALID_ARGUMENT';
     };
+
+/**
+ * Registro soberano em memória (WeakSet) de instâncias autênticas e congeladas de AuthorizationContext.
+ * Garante provenance e impede que contextos fabricados contornem o processo soberano de emissão.
+ */
+const AUTHENTIC_CONTEXTS = new WeakSet<object>();
 
 /**
  * Normalizador e validador defensivo de AuthorizationContext.
@@ -141,13 +177,23 @@ export function freezeAuthorizationContext(context: AuthorizationContext): Autho
       ? parsePositiveSafeIntegerId(context.delegatedForUserId, 'context.delegatedForUserId')
       : null;
 
-  return Object.freeze({
+  const frozenContext: AuthorizationContext = Object.freeze({
     principalId,
     principalType: context.principalType,
     capabilities,
     delegatedForUserId,
     correlationId: cleanCorrelationId,
   });
+
+  AUTHENTIC_CONTEXTS.add(frozenContext);
+  return frozenContext;
+}
+
+/**
+ * Type guard que atesta se o contexto de autorização foi legitimamente normalizado e emitido.
+ */
+export function isAuthenticAuthorizationContext(context: unknown): context is AuthorizationContext {
+  return typeof context === 'object' && context !== null && AUTHENTIC_CONTEXTS.has(context);
 }
 
 export class CustodyAuthorizationPolicy {
@@ -156,10 +202,11 @@ export class CustodyAuthorizationPolicy {
    * para debitar a conta de origem especificada.
    *
    * Regras de Avaliação Soberana:
-   * 1. Segregação de Operações: Operações sistêmicas (reversal, refund, adjustment, fee, reward, yield)
+   * 1. Segregação de Operações: Operações contábeis e de custódia sistêmica (reversal, refund, adjustment, fee, reward, yield)
    *    NUNCA podem ser aprovadas por titularidade simples (SELF).
-   * 2. Menor Privilégio: Mesmo para principal 'system', exige-se a capability adequada ou processo genesis.
-   * 3. Imutabilidade: Retorno compulsoriamente congelado (Object.freeze).
+   * 2. Menor Privilégio Estrito: Principal 'system' não possui bypass cego.
+   *    Exige autoridade genesis (principalId === 0) ou capabilities dedicadas ('finance.system.operate' / 'finance.system.reversal').
+   * 3. Imutabilidade e Fail-Closed: Todo retorno é compulsoriamente congelado (Object.freeze).
    */
   public static canDebitSourceAccount(
     context: AuthorizationContext,
@@ -186,6 +233,14 @@ export class CustodyAuthorizationPolicy {
       return Object.freeze({
         allowed: false,
         reason: `Tipo de principal inválido: '${String(context.principalType)}'.`,
+        errorCode: 'INVALID_ARGUMENT',
+      });
+    }
+
+    if (!isCustodyOperationType(spec.operationType)) {
+      return Object.freeze({
+        allowed: false,
+        reason: `Tipo de operação de custódia inválido: '${String(spec.operationType)}'.`,
         errorCode: 'INVALID_ARGUMENT',
       });
     }
@@ -218,10 +273,10 @@ export class CustodyAuthorizationPolicy {
 
     // 1. Operações em Contas Sistêmicas (sourceAccountOwnerId === null: clearing, tesouro, taxas)
     if (spec.sourceAccountOwnerId === null) {
-      // 1.1 Processo operacional do sistema
+      // 1.1 Processo operacional do sistema (genesis ou com capability explícita)
       if (
         context.principalType === 'system' &&
-        (context.principalId === 0 || capabilities.includes('finance.system.operate'))
+        (context.principalId === 0 || capabilities.includes(FinanceCapabilities.SystemOperate))
       ) {
         return Object.freeze({
           allowed: true,
@@ -234,7 +289,7 @@ export class CustodyAuthorizationPolicy {
       // 1.2 Service Account ou Usuário Operador com capability explícita
       if (
         (context.principalType === 'service_account' || context.principalType === 'user') &&
-        capabilities.includes('finance.system.operate')
+        capabilities.includes(FinanceCapabilities.SystemOperate)
       ) {
         return Object.freeze({
           allowed: true,
@@ -252,13 +307,14 @@ export class CustodyAuthorizationPolicy {
     }
 
     // 2. Operações de Estorno / Reversão Contábil Específica
-    // Nota P0: Reversões NUNCA caem em SELF. Exigem capability explícita de reversão contábil.
+    // Nota P0: Reversões NUNCA caem em SELF. Exigem autoridade genesis ou capability explícita de reversão.
     if (spec.operationType === 'reversal') {
-      if (
-        context.principalType === 'system' ||
-        capabilities.includes('finance.system.operate') ||
-        capabilities.includes('finance.system.reversal')
-      ) {
+      const isGenesis = context.principalType === 'system' && context.principalId === 0;
+      const hasReversalCapability =
+        capabilities.includes(FinanceCapabilities.SystemOperate) ||
+        capabilities.includes(FinanceCapabilities.SystemReversal);
+
+      if (isGenesis || hasReversalCapability) {
         return Object.freeze({
           allowed: true,
           type: 'SYSTEM',
@@ -269,13 +325,14 @@ export class CustodyAuthorizationPolicy {
 
       return Object.freeze({
         allowed: false,
-        reason: 'Operação de estorno (reversal) exige privilégio sistêmico ou capability finance.system.reversal.',
+        reason: 'Operação de estorno (reversal) exige privilégio sistêmico genesis ou capability finance.system.reversal.',
         errorCode: 'FORBIDDEN_OPERATION',
       });
     }
 
     // 3. Operações Administrativas / Contábeis Especiais (refund, adjustment, fee, reward, yield)
     // Nota P0: Usuários regulares NÃO podem autorizar ajustes, taxas ou recompensas por simples titularidade.
+    // Menor privilégio estrito: Principal 'system' exige genesis (principalId === 0) ou capability dedicada.
     if (
       spec.operationType === 'refund' ||
       spec.operationType === 'adjustment' ||
@@ -283,7 +340,10 @@ export class CustodyAuthorizationPolicy {
       spec.operationType === 'reward' ||
       spec.operationType === 'yield'
     ) {
-      if (context.principalType === 'system' || capabilities.includes('finance.system.operate')) {
+      const isGenesis = context.principalType === 'system' && context.principalId === 0;
+      const hasSystemOperate = capabilities.includes(FinanceCapabilities.SystemOperate);
+
+      if (isGenesis || hasSystemOperate) {
         return Object.freeze({
           allowed: true,
           type: 'SYSTEM',
@@ -294,7 +354,7 @@ export class CustodyAuthorizationPolicy {
 
       return Object.freeze({
         allowed: false,
-        reason: `Operação de ${spec.operationType} exige privilégio de custódia sistêmica ou capability finance.system.operate.`,
+        reason: `Operação de ${spec.operationType} exige privilégio de custódia sistêmica genesis ou capability finance.system.operate.`,
         errorCode: 'FORBIDDEN_OPERATION',
       });
     }
@@ -319,10 +379,10 @@ export class CustodyAuthorizationPolicy {
     // 5. Operação Delegada autorizada para o titular da conta
     if (
       context.delegatedForUserId === spec.sourceAccountOwnerId &&
-      (context.capabilities.includes('finance.delegate.operate') ||
-        context.capabilities.includes('finance.system.operate') ||
+      (capabilities.includes(FinanceCapabilities.DelegateOperate) ||
+        capabilities.includes(FinanceCapabilities.SystemOperate) ||
         ((spec.operationType === 'transfer' || spec.operationType === 'deposit') &&
-          context.capabilities.includes('finance.transfer.delegate')))
+          capabilities.includes(FinanceCapabilities.TransferDelegate)))
     ) {
       return Object.freeze({
         allowed: true,

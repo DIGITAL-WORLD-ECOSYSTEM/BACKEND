@@ -64,7 +64,7 @@ function validateScopeSegment(segment: string, segmentName: string): string {
  * 1. Codificação Injetiva Simétrica: Todos os componentes passam pela mesma validação estrita anti-colisão.
  * 2. Tetos Anti-DoS: Segmentos limitados a 128 chars e chave total limitada a 512 chars.
  * 3. Validação de Identificadores: IDs numéricos de usuários e provedores passam por Safe Integer (> 0).
- * 4. Sanitização Defensiva: .trim().toLowerCase() e rejeição de strings vazias, operações nulas ou namespaces malformados.
+ * 4. Ausência de Coerção Silenciosa: Proíbe fallbacks implícitos via '||'; exige tipagem estrita fail-closed.
  * 5. Imutabilidade: todas as estruturas e retornos de claim congelados em runtime.
  */
 export class IdempotencyScope {
@@ -76,9 +76,14 @@ export class IdempotencyScope {
     principalScope: string,
     businessContext: string = 'default'
   ): string {
+    const rawContext = businessContext === undefined ? 'default' : businessContext;
+    if (rawContext === null || typeof rawContext !== 'string') {
+      throw new Error('businessContext deve ser uma string ou omitido.');
+    }
+
     const cleanNamespace = validateScopeSegment(operationNamespace, 'operationNamespace');
     const cleanScope = validateScopeSegment(principalScope, 'principalScope');
-    const cleanContext = validateScopeSegment(businessContext || 'default', 'businessContext');
+    const cleanContext = validateScopeSegment(rawContext, 'businessContext');
 
     const composedKey = `${cleanNamespace}:${cleanScope}:${cleanContext}`;
 
@@ -113,8 +118,12 @@ export class IdempotencyScope {
     if (typeof operation !== 'string' || operation.trim().length === 0) {
       throw new Error('IdempotencyScope.forSystem exige um nome de operação não-vazio.');
     }
+    const rawCtx = context === undefined ? 'genesis' : context;
+    if (rawCtx === null || typeof rawCtx !== 'string') {
+      throw new Error('context para forSystem deve ser uma string ou omitido.');
+    }
     const cleanOp = validateScopeSegment(operation, 'operation');
-    const cleanCtx = validateScopeSegment(context || 'genesis', 'context');
+    const cleanCtx = validateScopeSegment(rawCtx, 'context');
     return IdempotencyScope.create(`finance.${cleanOp}`, 'system', cleanCtx);
   }
 }
@@ -160,3 +169,98 @@ export type IdempotencyClaimResult =
       readonly leaseGeneration?: number | null;
       readonly leaseExpiresAtEpochMs?: number | null;
     };
+
+/**
+ * Validador e normalizador soberano de runtime para IdempotencyClaimResult.
+ */
+export function parseIdempotencyClaimResult(value: unknown): IdempotencyClaimResult {
+  if (!value || typeof value !== 'object') {
+    throw new Error('IdempotencyClaimResult deve ser um objeto válido.');
+  }
+
+  const raw = value as Record<string, unknown>;
+
+  switch (raw.status) {
+    case 'CLAIMED': {
+      if (
+        typeof raw.leaseGeneration !== 'number' ||
+        !Number.isSafeInteger(raw.leaseGeneration) ||
+        raw.leaseGeneration <= 0
+      ) {
+        throw new Error('leaseGeneration em CLAIMED deve ser um inteiro seguro estritamente positivo.');
+      }
+      return Object.freeze({
+        status: 'CLAIMED',
+        leaseGeneration: raw.leaseGeneration,
+        leaseOwner: typeof raw.leaseOwner === 'string' ? raw.leaseOwner : null,
+        leaseExpiresAtEpochMs:
+          typeof raw.leaseExpiresAtEpochMs === 'number' && Number.isSafeInteger(raw.leaseExpiresAtEpochMs)
+            ? raw.leaseExpiresAtEpochMs
+            : null,
+      });
+    }
+
+    case 'COMPLETED': {
+      return Object.freeze({
+        status: 'COMPLETED',
+        transactionId: parsePositiveSafeIntegerId(raw.transactionId, 'transactionId'),
+      });
+    }
+
+    case 'RETRYABLE_BUSINESS': {
+      if (typeof raw.failureCode !== 'string' || typeof raw.reason !== 'string') {
+        throw new Error('RETRYABLE_BUSINESS exige failureCode e reason válidos em formato string.');
+      }
+      return Object.freeze({
+        status: 'RETRYABLE_BUSINESS',
+        failureCode: raw.failureCode.trim(),
+        reason: raw.reason.trim(),
+      });
+    }
+
+    case 'NON_RETRYABLE': {
+      if (typeof raw.failureCode !== 'string' || typeof raw.reason !== 'string') {
+        throw new Error('NON_RETRYABLE exige failureCode e reason válidos em formato string.');
+      }
+      const transactionId =
+        raw.transactionId !== undefined && raw.transactionId !== null
+          ? parsePositiveSafeIntegerId(raw.transactionId, 'transactionId')
+          : null;
+
+      return Object.freeze({
+        status: 'NON_RETRYABLE',
+        failureCode: raw.failureCode.trim(),
+        transactionId,
+        reason: raw.reason.trim(),
+      });
+    }
+
+    case 'CONFLICT': {
+      if (typeof raw.reason !== 'string') {
+        throw new Error('CONFLICT exige reason válido em formato string.');
+      }
+      return Object.freeze({
+        status: 'CONFLICT',
+        reason: raw.reason.trim(),
+      });
+    }
+
+    case 'IN_PROGRESS': {
+      return Object.freeze({
+        status: 'IN_PROGRESS',
+        leaseOwner: typeof raw.leaseOwner === 'string' ? raw.leaseOwner : null,
+        leaseGeneration:
+          typeof raw.leaseGeneration === 'number' && Number.isSafeInteger(raw.leaseGeneration)
+            ? raw.leaseGeneration
+            : null,
+        leaseExpiresAtEpochMs:
+          typeof raw.leaseExpiresAtEpochMs === 'number' && Number.isSafeInteger(raw.leaseExpiresAtEpochMs)
+            ? raw.leaseExpiresAtEpochMs
+            : null,
+      });
+    }
+
+    default:
+      throw new Error(`Status de IdempotencyClaimResult desconhecido ou inválido: '${String(raw.status)}'`);
+  }
+}

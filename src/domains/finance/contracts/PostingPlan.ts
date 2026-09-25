@@ -1,6 +1,10 @@
 import type { AuthorizationDecision } from './AuthorizationContext';
 import { parsePositiveSafeIntegerId } from '../value-objects/FinancialIdentifier';
-import { MAX_NUMERIC_RAW_TEXT_CEILING, MAX_UINT256 } from '../constants/FinancialLimits';
+import {
+  MAX_NUMERIC_RAW_TEXT_CEILING,
+  MAX_UINT256_DECIMAL_DIGITS,
+  MAX_UINT256,
+} from '../constants/FinancialLimits';
 
 /**
  * Selo único canônico de integridade do PostingPlan.
@@ -10,10 +14,20 @@ export const POSTING_PLAN_SEAL: unique symbol = Symbol('POSTING_PLAN_SEAL');
 
 /**
  * Registro privado em memória (WeakSet) de instâncias legítimas de PostingPlan emitidas
- * exclusivamente pelo compilador do domínio (PostingPlanBuilder).
+ * exclusivamente pelo compilador do domínio (PostingPlanBuilder / sealPostingPlan).
  * Impede que chamadores externos forjem planos através de duck-typing ou duplicação de símbolos.
  */
 const AUTHENTIC_POSTING_PLANS = new WeakSet<object>();
+
+/**
+ * Padrão canônico decimal para base units positivas em pernas contábeis.
+ */
+const CANONICAL_POSITIVE_BASE_UNITS_PATTERN = /^[1-9]\d*$/;
+
+/**
+ * Padrão canônico decimal para novos saldos disponíveis (inteiros não-negativos).
+ */
+const CANONICAL_NON_NEGATIVE_BASE_UNITS_PATTERN = /^(0|[1-9]\d*)$/;
 
 /**
  * Mutação atômica de saldo projetado.
@@ -141,8 +155,10 @@ export function isAuthenticPostingPlan(plan: unknown): plan is PostingPlan {
  * 2. Correspondência de IDs transacionais entre raiz e registro contábil.
  * 3. Mínimo de 2 pernas de partidas dobradas com ordinais contíguos 1..N.
  * 4. Validação FIN-001: Balanceamento exato de débitos e créditos (SUM(debit) === SUM(credit)) por ativo.
- * 5. Consistência Contábil: Toda mutação de saldo em balanceMutations deve corresponder a contas/ativos
- *    efetivamente movimentados nas ledgerEntries, com unicidade estrita do par (accountId, assetId).
+ * 5. Confrontação Matemática Estrita: Para toda conta mutada, o delta projetado (signedDeltaBaseUnits)
+ *    deve coincidir exatamente em magnitude com o fluxo líquido das pernas contábeis correspondentes.
+ * 6. Cobertura Bidirecional: Toda mutação de saldo deve ter perna contábil ativa e vice-versa.
+ * 7. Limites Canônicos: Defesa anti-DoS e tetos uint256 em montantes e saldos projetados.
  */
 export function validatePostingPlanCrossFieldInvariants(plan: PostingPlan): void {
   if (!plan || typeof plan !== 'object') {
@@ -167,9 +183,11 @@ export function validatePostingPlanCrossFieldInvariants(plan: PostingPlan): void
     throw new Error('PostingPlan corrompido: exige no mínimo 2 pernas contábeis de partidas dobradas.');
   }
 
-  // 4. Unicidade de transactionId e ordinais 1..N contíguos
+  // 4. Unicidade de transactionId, ordinais 1..N contíguos e consolidação de fluxo
   const assetBalance = new Map<number, bigint>();
   const activeLegAccounts = new Set<string>();
+  const accountDebits = new Map<string, bigint>();
+  const accountCredits = new Map<string, bigint>();
 
   for (let i = 0; i < plan.ledgerEntries.length; i++) {
     const entry = plan.ledgerEntries[i];
@@ -191,26 +209,43 @@ export function validatePostingPlanCrossFieldInvariants(plan: PostingPlan): void
 
     const validEntryAccId = parsePositiveSafeIntegerId(entry.accountId, `ledgerEntries[${i}].accountId`);
     const validEntryAssetId = parsePositiveSafeIntegerId(entry.assetId, `ledgerEntries[${i}].assetId`);
-    activeLegAccounts.add(`${validEntryAccId}:${validEntryAssetId}`);
+    const legKey = `${validEntryAccId}:${validEntryAssetId}`;
+    activeLegAccounts.add(legKey);
 
     if (
       typeof entry.amountBaseUnits !== 'string' ||
-      entry.amountBaseUnits.trim().length === 0 ||
       entry.amountBaseUnits.length > MAX_NUMERIC_RAW_TEXT_CEILING
     ) {
       throw new Error(`Perna contábil #${i} possui montante em base units malformado ou excessivo.`);
     }
 
-    const amount = BigInt(entry.amountBaseUnits.trim());
+    const trimmedAmount = entry.amountBaseUnits.trim();
+    if (!CANONICAL_POSITIVE_BASE_UNITS_PATTERN.test(trimmedAmount)) {
+      throw new Error(`Perna contábil #${i} possui montante em formato não-canônico: '${trimmedAmount}'.`);
+    }
+
+    if (trimmedAmount.length > MAX_UINT256_DECIMAL_DIGITS) {
+      throw new Error(`Perna contábil #${i} excede o teto decimal de 256 bits.`);
+    }
+
+    const amount = BigInt(trimmedAmount);
     if (amount <= 0n || amount > MAX_UINT256) {
       throw new Error(
         `Perna contábil #${i} possui montante fora dos limites válidos [1..MAX_UINT256]: '${entry.amountBaseUnits}'.`
       );
     }
 
+    // Acumulação para verificação de partidas dobradas (por ativo)
     const currentNet = assetBalance.get(validEntryAssetId) ?? 0n;
     const delta = entry.direction === 'debit' ? amount : -amount;
     assetBalance.set(validEntryAssetId, currentNet + delta);
+
+    // Acumulação para confrontação com balanceMutations (por conta e ativo)
+    if (entry.direction === 'debit') {
+      accountDebits.set(legKey, (accountDebits.get(legKey) ?? 0n) + amount);
+    } else {
+      accountCredits.set(legKey, (accountCredits.get(legKey) ?? 0n) + amount);
+    }
   }
 
   // 5. Validação FIN-001: SUM(debits) === SUM(credits) para todo ativo movimentado
@@ -254,18 +289,61 @@ export function validatePostingPlanCrossFieldInvariants(plan: PostingPlan): void
       throw new Error(`signedDeltaBaseUnits em balanceMutations[${i}] deve ser bigint.`);
     }
 
+    // Confrontação Matemática do Delta: O valor absoluto da mutação deve coincidir com o fluxo das pernas
+    const debits = accountDebits.get(mutationKey) ?? 0n;
+    const credits = accountCredits.get(mutationKey) ?? 0n;
+    const legDiff = debits > credits ? debits - credits : credits - debits;
+    const absMutationDelta =
+      mutation.signedDeltaBaseUnits < 0n
+        ? -mutation.signedDeltaBaseUnits
+        : mutation.signedDeltaBaseUnits;
+
+    if (absMutationDelta !== legDiff) {
+      throw new Error(
+        `Inconsistência matemática: mutação de saldo (${mutation.signedDeltaBaseUnits}) na conta #${mutationAccId} (ativo #${mutationAssetId}) diverge do montante líquido das pernas contábeis (${legDiff}).`
+      );
+    }
+
+    if (absMutationDelta > MAX_UINT256) {
+      throw new Error(`signedDeltaBaseUnits na mutação #${i} excede a amplitude permitida de 256 bits.`);
+    }
+
     if (!Number.isSafeInteger(mutation.expectedVersion) || mutation.expectedVersion < 0) {
       throw new Error(
         `expectedVersion inválida em balanceMutations[${i}]: ${mutation.expectedVersion}. Deve ser inteiro seguro >= 0.`
       );
     }
 
-    if (
-      typeof mutation.newAvailableBaseUnits !== 'string' ||
-      !/^(0|[1-9]\d*)$/.test(mutation.newAvailableBaseUnits.trim())
-    ) {
+    if (typeof mutation.newAvailableBaseUnits !== 'string') {
+      throw new Error(`newAvailableBaseUnits em balanceMutations[${i}] deve ser string.`);
+    }
+
+    if (mutation.newAvailableBaseUnits.length > MAX_NUMERIC_RAW_TEXT_CEILING) {
+      throw new Error(`newAvailableBaseUnits em balanceMutations[${i}] excede o teto anti-DoS.`);
+    }
+
+    const trimmedNewAvailable = mutation.newAvailableBaseUnits.trim();
+    if (!CANONICAL_NON_NEGATIVE_BASE_UNITS_PATTERN.test(trimmedNewAvailable)) {
       throw new Error(
         `newAvailableBaseUnits em balanceMutations[${i}] deve ser um inteiro decimal canônico não-negativo.`
+      );
+    }
+
+    if (trimmedNewAvailable.length > MAX_UINT256_DECIMAL_DIGITS) {
+      throw new Error(`newAvailableBaseUnits em balanceMutations[${i}] excede o teto decimal de 256 bits.`);
+    }
+
+    const bigintNewAvailable = BigInt(trimmedNewAvailable);
+    if (bigintNewAvailable < 0n || bigintNewAvailable > MAX_UINT256) {
+      throw new Error(`newAvailableBaseUnits em balanceMutations[${i}] fora dos limites uint256.`);
+    }
+  }
+
+  // 7. Cobertura bidirecional: toda conta movimentada nas pernas deve possuir mutação de saldo correspondente
+  for (const legKey of activeLegAccounts) {
+    if (!mutationAccountSet.has(legKey)) {
+      throw new Error(
+        `Inconsistência de cobertura: perna contábil para '${legKey}' não possui mutação de saldo projetada em balanceMutations.`
       );
     }
   }

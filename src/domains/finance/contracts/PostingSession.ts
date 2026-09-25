@@ -2,16 +2,23 @@
  * Capability de Sessão de Postagem Financeira (PostingSession).
  *
  * Representa a autoridade não-forjável para executar exatamente um lote
- * de mutação contábil dentro da fronteira transacional física.
+ * de mutação contábil dentro da fronteira transacional da Unit of Work.
  *
  * Em conformidade com o princípio de Object-Capability (OCaps - P0-01, P0-19, P0-B):
  * 1. O estado de consumo é protegido em escopo estritamente privado de módulo (WeakSet).
- * 2. A sessão é vinculada à instância física da fronteira de execução (boundaryRef / db) e seu identificador (boundaryId).
+ * 2. A sessão é vinculada à instância física da fronteira de execução (boundaryRef) e seu identificador (boundaryId).
  * 3. A sessão é de uso estritamente único (single-use: markConsumed / tryConsume com semântica atômica).
  * 4. Imutabilidade absoluta em runtime via Object.freeze(this).
  * 5. Proscrição total de Math.random(): aleatoriedade criptograficamente segura via CSPRNG do runtime.
+ * 6. Isolamento Arquitetural: foco na semântica de autoridade transacional e ciclo de vida do lote.
  */
 
+/**
+ * Modos Canônicos de Execução Transacional.
+ * - 'atomic-batch': Execução atômica agregada sob barreira transacional.
+ * - 'serial-transaction': Execução serializada com controle estrito de concorrência.
+ * - 'd1-batch' / 'sqlite-transaction': Modos de adaptadores físicos mapeados para atomicidade.
+ */
 export type PostingExecutionMode =
   | 'atomic-batch'
   | 'serial-transaction'
@@ -141,6 +148,9 @@ export class PostingSession {
    * Operação irreversível que invalida permanentemente a sessão.
    */
   public markConsumed(): void {
+    if (!VALID_POSTING_SESSIONS.has(this)) {
+      throw new Error('Tentativa de consumir PostingSession não-autêntica.');
+    }
     CONSUMED_POSTING_SESSIONS.add(this);
   }
 
