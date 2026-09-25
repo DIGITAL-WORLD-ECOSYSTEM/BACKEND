@@ -16,13 +16,13 @@ import {
 const CANONICAL_POSITIVE_BASE_UNITS_PATTERN = /^[1-9]\d*$/;
 
 /**
- * Raw persistence record de infraestrutura/transporte serializado para o livro-razão.
+ * Registro Canônico de Entrada Contábil no Livro-Razão (FinancialLedgerEntryRecord).
  *
  * ATENÇÃO ARQUITETURAL:
- * Este contrato reflete o transporte serializado da camada de persistência.
- * Todo dado contábil transportado por este record DEVE ser validado através
- * dos Value Objects (BaseUnits, Money256) e Aggregate (LedgerTransaction)
- * antes de qualquer operação financeira de negócio.
+ * Este contrato define o formato canônico serializado para pernas contábeis no livro-razão.
+ * Toda informação contábil que transita por este record deve ser validada e convertida
+ * pelos Value Objects (BaseUnits, Money256) e Aggregate (LedgerTransaction) antes de
+ * qualquer mutação de estado financeiro.
  */
 export interface FinancialLedgerEntryRecord {
   readonly accountId: number;

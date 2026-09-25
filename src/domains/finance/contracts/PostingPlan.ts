@@ -1,8 +1,10 @@
 import type { AuthorizationDecision } from './AuthorizationContext';
+import { parsePositiveSafeIntegerId } from '../value-objects/FinancialIdentifier';
+import { MAX_NUMERIC_RAW_TEXT_CEILING, MAX_UINT256 } from '../constants/FinancialLimits';
 
 /**
  * Selo único canônico de integridade do PostingPlan.
- * Mantido como unique symbol para compatibilidade com executores físicos e barreiras de despacho.
+ * Mantido como unique symbol para verificação nominal com executores físicos e barreiras de despacho.
  */
 export const POSTING_PLAN_SEAL: unique symbol = Symbol('POSTING_PLAN_SEAL');
 
@@ -90,7 +92,7 @@ export interface PostingPlan {
  * Sela e registra o PostingPlan no registro inviolável de planos autênticos,
  * congelando profundamente todas as coleções internas e a decisão de autorização.
  */
-export function sealPostingPlan<T extends PostingPlan>(plan: T): T {
+export function sealPostingPlan<T extends PostingPlan>(plan: T): PostingPlan {
   validatePostingPlanCrossFieldInvariants(plan);
 
   // Congelamento profundo de sub-objetos e coleções
@@ -106,7 +108,7 @@ export function sealPostingPlan<T extends PostingPlan>(plan: T): T {
   const frozenOutbox = Object.freeze({ ...plan.outboxEvent });
   const frozenAuthDecision = Object.freeze({ ...plan.authorizationDecision });
 
-  const sealed = Object.freeze({
+  const sealed: PostingPlan = Object.freeze({
     ...plan,
     authorizationDecision: frozenAuthDecision,
     ledgerEntries: frozenEntries,
@@ -135,36 +137,45 @@ export function isAuthenticPostingPlan(plan: unknown): plan is PostingPlan {
 
 /**
  * Validação estrita de invariantes cruzadas (cross-field) do plano contábil:
- * 1. Correspondência de IDs transacionais entre raiz e registro contábil.
- * 2. Mínimo de 2 pernas de partidas dobradas com ordinais contíguos 1..N.
- * 3. Validação FIN-001: Balanceamento exato de débitos e créditos (SUM(debit) === SUM(credit)) por ativo.
- * 4. Validação de segurança de inteiros para contas e ativos em mutações de saldo.
+ * 1. Autoridade Válida: authorizationDecision.allowed deve ser estritamente true.
+ * 2. Correspondência de IDs transacionais entre raiz e registro contábil.
+ * 3. Mínimo de 2 pernas de partidas dobradas com ordinais contíguos 1..N.
+ * 4. Validação FIN-001: Balanceamento exato de débitos e créditos (SUM(debit) === SUM(credit)) por ativo.
+ * 5. Consistência Contábil: Toda mutação de saldo em balanceMutations deve corresponder a contas/ativos
+ *    efetivamente movimentados nas ledgerEntries, com unicidade estrita do par (accountId, assetId).
  */
 export function validatePostingPlanCrossFieldInvariants(plan: PostingPlan): void {
   if (!plan || typeof plan !== 'object') {
     throw new Error('PostingPlan inválido: referência nula ou não-objeto.');
   }
 
-  // 1. Identidade transacional cruzada
-  if (plan.transactionId !== plan.transactionRecord.id) {
+  // 1. Autorização Soberana Não-Negada
+  if (!plan.authorizationDecision || plan.authorizationDecision.allowed !== true) {
+    throw new Error('PostingPlan inválido: plano não pode ser selado com autorização recusada ou ausente.');
+  }
+
+  // 2. Identidade transacional cruzada
+  const validTxId = parsePositiveSafeIntegerId(plan.transactionId, 'plan.transactionId');
+  if (plan.transactionRecord.id !== validTxId) {
     throw new Error(
-      `Inconsistência no PostingPlan: transactionRecord.id (${plan.transactionRecord.id}) diverge do transactionId (${plan.transactionId}).`
+      `Inconsistência no PostingPlan: transactionRecord.id (${plan.transactionRecord.id}) diverge do transactionId (${validTxId}).`
     );
   }
 
-  // 2. Mínimo de partidas dobradas
+  // 3. Mínimo de partidas dobradas
   if (!Array.isArray(plan.ledgerEntries) || plan.ledgerEntries.length < 2) {
     throw new Error('PostingPlan corrompido: exige no mínimo 2 pernas contábeis de partidas dobradas.');
   }
 
-  // 3. Unicidade de transactionId e ordinais 1..N contíguos
+  // 4. Unicidade de transactionId e ordinais 1..N contíguos
   const assetBalance = new Map<number, bigint>();
+  const activeLegAccounts = new Set<string>();
 
   for (let i = 0; i < plan.ledgerEntries.length; i++) {
     const entry = plan.ledgerEntries[i];
-    if (entry.transactionId !== plan.transactionId) {
+    if (entry.transactionId !== validTxId) {
       throw new Error(
-        `Perna contábil #${i} vinculada a transação ${entry.transactionId} em vez do plano ${plan.transactionId}.`
+        `Perna contábil #${i} vinculada a transação ${entry.transactionId} em vez do plano ${validTxId}.`
       );
     }
     if (entry.entryOrdinal !== i + 1) {
@@ -178,19 +189,31 @@ export function validatePostingPlanCrossFieldInvariants(plan: PostingPlan): void
       );
     }
 
-    const amount = BigInt(entry.amountBaseUnits);
-    if (amount <= 0n) {
+    const validEntryAccId = parsePositiveSafeIntegerId(entry.accountId, `ledgerEntries[${i}].accountId`);
+    const validEntryAssetId = parsePositiveSafeIntegerId(entry.assetId, `ledgerEntries[${i}].assetId`);
+    activeLegAccounts.add(`${validEntryAccId}:${validEntryAssetId}`);
+
+    if (
+      typeof entry.amountBaseUnits !== 'string' ||
+      entry.amountBaseUnits.trim().length === 0 ||
+      entry.amountBaseUnits.length > MAX_NUMERIC_RAW_TEXT_CEILING
+    ) {
+      throw new Error(`Perna contábil #${i} possui montante em base units malformado ou excessivo.`);
+    }
+
+    const amount = BigInt(entry.amountBaseUnits.trim());
+    if (amount <= 0n || amount > MAX_UINT256) {
       throw new Error(
-        `Perna contábil #${i} possui montante não positivo em base units: '${entry.amountBaseUnits}'.`
+        `Perna contábil #${i} possui montante fora dos limites válidos [1..MAX_UINT256]: '${entry.amountBaseUnits}'.`
       );
     }
 
-    const currentNet = assetBalance.get(entry.assetId) ?? 0n;
+    const currentNet = assetBalance.get(validEntryAssetId) ?? 0n;
     const delta = entry.direction === 'debit' ? amount : -amount;
-    assetBalance.set(entry.assetId, currentNet + delta);
+    assetBalance.set(validEntryAssetId, currentNet + delta);
   }
 
-  // 4. Validação FIN-001: SUM(debits) === SUM(credits) para todo ativo movimentado
+  // 5. Validação FIN-001: SUM(debits) === SUM(credits) para todo ativo movimentado
   for (const [assetId, netBalance] of assetBalance.entries()) {
     if (netBalance !== 0n) {
       throw new Error(
@@ -199,20 +222,51 @@ export function validatePostingPlanCrossFieldInvariants(plan: PostingPlan): void
     }
   }
 
-  // 5. Invariantes de mutação de saldo
+  // 6. Invariantes de mutação de saldo e confronto estrito com as pernas contábeis
   if (!Array.isArray(plan.balanceMutations)) {
     throw new Error('PostingPlan corrompido: balanceMutations deve ser uma lista (Array).');
   }
 
-  for (const mutation of plan.balanceMutations) {
-    if (!Number.isSafeInteger(mutation.accountId) || mutation.accountId <= 0) {
-      throw new Error(`accountId inválido em balanceMutations do plano: ${mutation.accountId}`);
+  const mutationAccountSet = new Set<string>();
+
+  for (let i = 0; i < plan.balanceMutations.length; i++) {
+    const mutation = plan.balanceMutations[i];
+    const mutationAccId = parsePositiveSafeIntegerId(mutation.accountId, `balanceMutations[${i}].accountId`);
+    const mutationAssetId = parsePositiveSafeIntegerId(mutation.assetId, `balanceMutations[${i}].assetId`);
+    const mutationKey = `${mutationAccId}:${mutationAssetId}`;
+
+    // Proteção contra duplicação de mutação para a mesma conta/ativo no mesmo plano
+    if (mutationAccountSet.has(mutationKey)) {
+      throw new Error(
+        `Mutação duplicada detectada no PostingPlan para a conta #${mutationAccId} e ativo #${mutationAssetId}.`
+      );
     }
-    if (!Number.isSafeInteger(mutation.assetId) || mutation.assetId <= 0) {
-      throw new Error(`assetId inválido em balanceMutations do plano: ${mutation.assetId}`);
+    mutationAccountSet.add(mutationKey);
+
+    // Confronto contábil: a conta mutada DEVE estar presente nas pernas contábeis
+    if (!activeLegAccounts.has(mutationKey)) {
+      throw new Error(
+        `Inconsistência de projeção: mutação de saldo na conta #${mutationAccId} (ativo #${mutationAssetId}) não possui perna contábil correspondente.`
+      );
     }
+
     if (typeof mutation.signedDeltaBaseUnits !== 'bigint') {
-      throw new Error(`signedDeltaBaseUnits em balanceMutations deve ser bigint.`);
+      throw new Error(`signedDeltaBaseUnits em balanceMutations[${i}] deve ser bigint.`);
+    }
+
+    if (!Number.isSafeInteger(mutation.expectedVersion) || mutation.expectedVersion < 0) {
+      throw new Error(
+        `expectedVersion inválida em balanceMutations[${i}]: ${mutation.expectedVersion}. Deve ser inteiro seguro >= 0.`
+      );
+    }
+
+    if (
+      typeof mutation.newAvailableBaseUnits !== 'string' ||
+      !/^(0|[1-9]\d*)$/.test(mutation.newAvailableBaseUnits.trim())
+    ) {
+      throw new Error(
+        `newAvailableBaseUnits em balanceMutations[${i}] deve ser um inteiro decimal canônico não-negativo.`
+      );
     }
   }
 }

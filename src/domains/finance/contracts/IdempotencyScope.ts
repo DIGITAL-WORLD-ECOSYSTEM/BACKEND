@@ -8,16 +8,64 @@ import { parsePositiveSafeIntegerId } from '../value-objects/FinancialIdentifier
 const CANONICAL_SCOPE_SEGMENT_PATTERN = /^[a-z0-9._-]+$/;
 
 /**
+ * Limites máximos de proteção contra DoS em memória para chaves e segmentos de escopo.
+ */
+export const MAX_SCOPE_SEGMENT_LENGTH = 128;
+export const MAX_SCOPE_KEY_LENGTH = 512;
+
+/**
+ * Validador canônico defensivo e simétrico para segmentos individuais de escopo.
+ */
+function validateScopeSegment(segment: string, segmentName: string): string {
+  if (typeof segment !== 'string') {
+    throw new Error(`Segmento de IdempotencyScope '${segmentName}' deve ser uma string.`);
+  }
+
+  const clean = segment.trim().toLowerCase();
+
+  if (clean.length === 0) {
+    throw new Error(`Segmento de IdempotencyScope '${segmentName}' não pode ser vazio.`);
+  }
+
+  if (clean.length > MAX_SCOPE_SEGMENT_LENGTH) {
+    throw new Error(
+      `Segmento de IdempotencyScope '${segmentName}' excede o limite máximo de ${MAX_SCOPE_SEGMENT_LENGTH} caracteres (tamanho: ${clean.length}).`
+    );
+  }
+
+  if (clean.includes(':')) {
+    throw new Error(
+      `Segmento de IdempotencyScope '${segmentName}' não pode conter o delimitador dois-pontos (:).`
+    );
+  }
+
+  if (clean.startsWith('.') || clean.endsWith('.') || clean.includes('..')) {
+    throw new Error(
+      `Segmento de IdempotencyScope '${segmentName}' contém formato de pontos espúrio ou inválido: '${clean}'.`
+    );
+  }
+
+  if (!CANONICAL_SCOPE_SEGMENT_PATTERN.test(clean)) {
+    throw new Error(
+      `Segmento de IdempotencyScope '${segmentName}' contém caracteres inválidos: '${clean}'. Permitido apenas [a-z0-9._-].`
+    );
+  }
+
+  return clean;
+}
+
+/**
  * Escopo Composto e Taxonomia Soberana de Idempotência Financeira.
  *
  * Formato canônico:
  * operation_namespace:principal_scope:business_context
  *
  * Invariantes P0 Hardened (Anti-Colisão / Fail-Closed):
- * 1. Codificação Injetiva: Cada componente é validado contra proibição estrita de delimitadores (:) e pontos espúrios.
- * 2. Validação de Identificadores: IDs numéricos de usuários e provedores passam por Safe Integer (> 0).
- * 3. Sanitização Defensiva: .trim().toLowerCase() e rejeição de strings vazias, operações nulas ou namespaces malformados.
- * 4. Imutabilidade: todas as estruturas e retornos de claim congelados em runtime.
+ * 1. Codificação Injetiva Simétrica: Todos os componentes passam pela mesma validação estrita anti-colisão.
+ * 2. Tetos Anti-DoS: Segmentos limitados a 128 chars e chave total limitada a 512 chars.
+ * 3. Validação de Identificadores: IDs numéricos de usuários e provedores passam por Safe Integer (> 0).
+ * 4. Sanitização Defensiva: .trim().toLowerCase() e rejeição de strings vazias, operações nulas ou namespaces malformados.
+ * 5. Imutabilidade: todas as estruturas e retornos de claim congelados em runtime.
  */
 export class IdempotencyScope {
   /**
@@ -28,45 +76,19 @@ export class IdempotencyScope {
     principalScope: string,
     businessContext: string = 'default'
   ): string {
-    if (typeof operationNamespace !== 'string' || typeof principalScope !== 'string') {
-      throw new Error('IdempotencyScope exige namespace e principalScope em formato string.');
-    }
+    const cleanNamespace = validateScopeSegment(operationNamespace, 'operationNamespace');
+    const cleanScope = validateScopeSegment(principalScope, 'principalScope');
+    const cleanContext = validateScopeSegment(businessContext || 'default', 'businessContext');
 
-    const cleanNamespace = operationNamespace.trim().toLowerCase();
-    const cleanScope = principalScope.trim().toLowerCase();
-    const cleanContext = (businessContext || 'default').trim().toLowerCase();
+    const composedKey = `${cleanNamespace}:${cleanScope}:${cleanContext}`;
 
-    if (!cleanNamespace || !cleanScope || !cleanContext) {
-      throw new Error('IdempotencyScope exige namespace, principalScope e context não-vazios.');
-    }
-
-    if (
-      cleanNamespace.includes(':') ||
-      cleanScope.includes(':') ||
-      cleanContext.includes(':')
-    ) {
-      throw new Error('Segmentos de IdempotencyScope não podem conter o delimitador dois-pontos (:).');
-    }
-
-    if (
-      cleanNamespace.startsWith('.') ||
-      cleanNamespace.endsWith('.') ||
-      cleanNamespace.includes('..')
-    ) {
-      throw new Error(`Namespace de IdempotencyScope contém formato de pontos inválido: '${cleanNamespace}'.`);
-    }
-
-    if (
-      !CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanNamespace) ||
-      !CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanScope) ||
-      !CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanContext)
-    ) {
+    if (composedKey.length > MAX_SCOPE_KEY_LENGTH) {
       throw new Error(
-        `Segmento de IdempotencyScope inválido. Caracteres permitidos: [a-z0-9._-]. Delimitadores (:) são proibidos.`
+        `Chave de IdempotencyScope excede o limite máximo de ${MAX_SCOPE_KEY_LENGTH} caracteres (tamanho: ${composedKey.length}).`
       );
     }
 
-    return `${cleanNamespace}:${cleanScope}:${cleanContext}`;
+    return composedKey;
   }
 
   public static forUser(operation: string, userId: number): string {
@@ -74,10 +96,7 @@ export class IdempotencyScope {
     if (typeof operation !== 'string' || operation.trim().length === 0) {
       throw new Error('IdempotencyScope.forUser exige um nome de operação não-vazio.');
     }
-    const cleanOp = operation.trim().toLowerCase();
-    if (!CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanOp) || cleanOp.includes(':')) {
-      throw new Error(`Nome de operação inválido para IdempotencyScope.forUser: '${operation}'`);
-    }
+    const cleanOp = validateScopeSegment(operation, 'operation');
     return IdempotencyScope.create(`finance.${cleanOp}`, 'user', String(validUserId));
   }
 
@@ -86,10 +105,7 @@ export class IdempotencyScope {
     if (typeof operation !== 'string' || operation.trim().length === 0) {
       throw new Error('IdempotencyScope.forProvider exige um nome de operação não-vazio.');
     }
-    const cleanOp = operation.trim().toLowerCase();
-    if (!CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanOp) || cleanOp.includes(':')) {
-      throw new Error(`Nome de operação inválido para IdempotencyScope.forProvider: '${operation}'`);
-    }
+    const cleanOp = validateScopeSegment(operation, 'operation');
     return IdempotencyScope.create(`finance.${cleanOp}`, 'provider', String(validProviderId));
   }
 
@@ -97,18 +113,15 @@ export class IdempotencyScope {
     if (typeof operation !== 'string' || operation.trim().length === 0) {
       throw new Error('IdempotencyScope.forSystem exige um nome de operação não-vazio.');
     }
-    const cleanOp = operation.trim().toLowerCase();
-    if (!CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanOp) || cleanOp.includes(':')) {
-      throw new Error(`Nome de operação inválido para IdempotencyScope.forSystem: '${operation}'`);
-    }
-    const cleanCtx = (context || 'genesis').trim().toLowerCase();
+    const cleanOp = validateScopeSegment(operation, 'operation');
+    const cleanCtx = validateScopeSegment(context || 'genesis', 'context');
     return IdempotencyScope.create(`finance.${cleanOp}`, 'system', cleanCtx);
   }
 }
 
 /**
  * Taxonomia Sextupla de Idempotência:
- * - CLAIMED: Chave reservada com sucesso para este worker transacional.
+ * - CLAIMED: Chave reservada com sucesso para este worker transacional com lease generation ativo.
  * - COMPLETED: Operação já concluída; replay determinístico autorizado.
  * - RETRYABLE_BUSINESS: Falha de negócio estado-dependente (ex: saldo insuficiente); não queima chave.
  * - NON_RETRYABLE: Falha permanente/terminal (ex: requisição malformada); replay da falha.

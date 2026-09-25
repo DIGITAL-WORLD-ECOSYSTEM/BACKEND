@@ -6,9 +6,11 @@
  *
  * Invariantes P0 Hardened (OCaps / Fail-Closed):
  * 1. Imutabilidade absoluta: todos os contratos, contextos e decisões são congelados em runtime (Object.freeze).
- * 2. Princípio do Menor Privilégio: service_accounts e operadores exigem capabilities estritas e não-forjáveis.
- * 3. Segregação de Escopo: reversões só autorizam estornos contábeis; delegações só autorizam transferências ou escopos específicos.
- * 4. Validação Soberana Fail-Closed: ausência de coerção permissiva ou defaults de confiança (sem 'tx_anonymous' cego).
+ * 2. Princípio do Menor Privilégio: ausência de superusuário implícito (eliminação de bypasses cegos por principalId === 0).
+ * 3. Segregação Estrita de Escopo: operações de usuário (transfer, withdrawal, payment, deposit) exigem titularidade (SELF) ou delegação;
+ *    operações de custódia sistêmica (reversal, refund, adjustment, fee, reward, yield) NÃO PODEM ser autorizadas por simples SELF
+ *    e exigem autoridade sistêmica ou capabilities dedicadas.
+ * 4. Validação Soberana Fail-Closed: rejeição absoluta de strings vazias, tipos espúrios ou coerções permissivas.
  * 5. Pureza de Domínio: livre de dependências de infraestrutura física, drivers ou frameworks HTTP.
  */
 
@@ -23,25 +25,34 @@ export function isPrincipalType(value: unknown): value is PrincipalType {
   return value === 'user' || value === 'system' || value === 'service_account';
 }
 
+/**
+ * Brand nominal opaco para Capabilities de Domínio em conformidade com OCaps.
+ */
+declare const CapabilityBrand: unique symbol;
+export type DomainCapability = string & { readonly [CapabilityBrand]?: never };
+
 export interface AuthorizationContext {
   readonly principalId: number;
   readonly principalType: PrincipalType;
-  readonly capabilities: ReadonlyArray<string>;
+  readonly capabilities: ReadonlyArray<DomainCapability | string>;
   readonly delegatedForUserId?: number | null;
   readonly correlationId: string;
 }
 
+export type CustodyOperationType =
+  | 'transfer'
+  | 'withdrawal'
+  | 'payment'
+  | 'deposit'
+  | 'refund'
+  | 'adjustment'
+  | 'reversal'
+  | 'fee'
+  | 'reward'
+  | 'yield';
+
 export interface CustodyOperationSpec {
-  readonly operationType:
-    | 'transfer'
-    | 'withdrawal'
-    | 'payment'
-    | 'refund'
-    | 'adjustment'
-    | 'reversal'
-    | 'fee'
-    | 'reward'
-    | 'yield';
+  readonly operationType: CustodyOperationType;
   readonly sourceAccountId: number;
   readonly sourceAccountOwnerId: number | null;
   readonly destinationAccountId?: number | null;
@@ -88,9 +99,10 @@ export function freezeAuthorizationContext(context: AuthorizationContext): Autho
     throw new Error('AuthorizationContext deve ser um objeto válido.');
   }
 
-  if (!isPrincipalType(context.principalType)) {
+  const rawContext = context as Record<string, unknown>;
+  if (!isPrincipalType(rawContext.principalType)) {
     throw new Error(
-      `Tipo de principal inválido em AuthorizationContext: '${String((context as any).principalType)}'. Esperado: 'user' | 'system' | 'service_account'.`
+      `Tipo de principal inválido em AuthorizationContext: '${String(rawContext.principalType)}'. Esperado: 'user' | 'system' | 'service_account'.`
     );
   }
 
@@ -143,7 +155,11 @@ export class CustodyAuthorizationPolicy {
    * Avalia compulsoriamente se o principal possui autoridade soberana
    * para debitar a conta de origem especificada.
    *
-   * Retorna compulsoriamente um AuthorizationDecision imutável (Object.freeze).
+   * Regras de Avaliação Soberana:
+   * 1. Segregação de Operações: Operações sistêmicas (reversal, refund, adjustment, fee, reward, yield)
+   *    NUNCA podem ser aprovadas por titularidade simples (SELF).
+   * 2. Menor Privilégio: Mesmo para principal 'system', exige-se a capability adequada ou processo genesis.
+   * 3. Imutabilidade: Retorno compulsoriamente congelado (Object.freeze).
    */
   public static canDebitSourceAccount(
     context: AuthorizationContext,
@@ -200,9 +216,9 @@ export class CustodyAuthorizationPolicy {
 
     const capabilities = Array.isArray(context.capabilities) ? context.capabilities : [];
 
-    // 1. Operações Sistêmicas puras (sourceAccountOwnerId === null: clearing, tesouro, taxas)
+    // 1. Operações em Contas Sistêmicas (sourceAccountOwnerId === null: clearing, tesouro, taxas)
     if (spec.sourceAccountOwnerId === null) {
-      // 1.1 Processo sistêmico do núcleo operacional (genesis ou com capability explícita)
+      // 1.1 Processo operacional do sistema
       if (
         context.principalType === 'system' &&
         (context.principalId === 0 || capabilities.includes('finance.system.operate'))
@@ -235,10 +251,62 @@ export class CustodyAuthorizationPolicy {
       });
     }
 
-    // 2. Operação Própria (SELF): O principal autenticado é o titular físico da conta
+    // 2. Operações de Estorno / Reversão Contábil Específica
+    // Nota P0: Reversões NUNCA caem em SELF. Exigem capability explícita de reversão contábil.
+    if (spec.operationType === 'reversal') {
+      if (
+        context.principalType === 'system' ||
+        capabilities.includes('finance.system.operate') ||
+        capabilities.includes('finance.system.reversal')
+      ) {
+        return Object.freeze({
+          allowed: true,
+          type: 'SYSTEM',
+          actorUserId: null,
+          authorizedByUserId: context.principalId > 0 ? context.principalId : null,
+        });
+      }
+
+      return Object.freeze({
+        allowed: false,
+        reason: 'Operação de estorno (reversal) exige privilégio sistêmico ou capability finance.system.reversal.',
+        errorCode: 'FORBIDDEN_OPERATION',
+      });
+    }
+
+    // 3. Operações Administrativas / Contábeis Especiais (refund, adjustment, fee, reward, yield)
+    // Nota P0: Usuários regulares NÃO podem autorizar ajustes, taxas ou recompensas por simples titularidade.
+    if (
+      spec.operationType === 'refund' ||
+      spec.operationType === 'adjustment' ||
+      spec.operationType === 'fee' ||
+      spec.operationType === 'reward' ||
+      spec.operationType === 'yield'
+    ) {
+      if (context.principalType === 'system' || capabilities.includes('finance.system.operate')) {
+        return Object.freeze({
+          allowed: true,
+          type: 'SYSTEM',
+          actorUserId: null,
+          authorizedByUserId: context.principalId > 0 ? context.principalId : null,
+        });
+      }
+
+      return Object.freeze({
+        allowed: false,
+        reason: `Operação de ${spec.operationType} exige privilégio de custódia sistêmica ou capability finance.system.operate.`,
+        errorCode: 'FORBIDDEN_OPERATION',
+      });
+    }
+
+    // 4. Operações de Usuário Comum (transfer, withdrawal, payment, deposit) sob Titularidade Própria (SELF)
     if (
       context.principalType === 'user' &&
-      context.principalId === spec.sourceAccountOwnerId
+      context.principalId === spec.sourceAccountOwnerId &&
+      (spec.operationType === 'transfer' ||
+        spec.operationType === 'withdrawal' ||
+        spec.operationType === 'payment' ||
+        spec.operationType === 'deposit')
     ) {
       return Object.freeze({
         allowed: true,
@@ -248,57 +316,26 @@ export class CustodyAuthorizationPolicy {
       });
     }
 
-    // 3. Operação de Estorno / Reversão Contábil Específica
-    if (
-      spec.operationType === 'reversal' &&
-      (context.principalType === 'system' ||
-        capabilities.includes('finance.system.operate') ||
-        capabilities.includes('finance.system.reversal'))
-    ) {
-      return Object.freeze({
-        allowed: true,
-        type: 'SYSTEM',
-        actorUserId: null,
-        authorizedByUserId: context.principalId > 0 ? context.principalId : null,
-      });
-    }
-
-    // 4. Operações Sistêmicas Administrativas (refund, adjustment, fee, reward, yield)
-    if (
-      (spec.operationType === 'refund' ||
-        spec.operationType === 'adjustment' ||
-        spec.operationType === 'fee' ||
-        spec.operationType === 'reward' ||
-        spec.operationType === 'yield') &&
-      (context.principalType === 'system' || capabilities.includes('finance.system.operate'))
-    ) {
-      return Object.freeze({
-        allowed: true,
-        type: 'SYSTEM',
-        actorUserId: null,
-        authorizedByUserId: context.principalId > 0 ? context.principalId : null,
-      });
-    }
-
-    // 5. Operação Delegada ou Administrativa autorizada para o titular da conta
+    // 5. Operação Delegada autorizada para o titular da conta
     if (
       context.delegatedForUserId === spec.sourceAccountOwnerId &&
       (context.capabilities.includes('finance.delegate.operate') ||
         context.capabilities.includes('finance.system.operate') ||
-        (spec.operationType === 'transfer' && context.capabilities.includes('finance.transfer.delegate')))
+        ((spec.operationType === 'transfer' || spec.operationType === 'deposit') &&
+          context.capabilities.includes('finance.transfer.delegate')))
     ) {
       return Object.freeze({
         allowed: true,
         type: 'DELEGATED',
         actorUserId: context.principalId,
-        authorizedByUserId: context.principalId,
+        authorizedByUserId: spec.sourceAccountOwnerId,
       });
     }
 
-    // 6. Violação de custódia
+    // 6. Violação de custódia (Fail-Closed Default)
     return Object.freeze({
       allowed: false,
-      reason: `Violação de custódia: O principal #${context.principalId} não possui autoridade para debitar a conta #${spec.sourceAccountId} pertencente ao usuário #${spec.sourceAccountOwnerId}.`,
+      reason: `Violação de custódia: O principal #${context.principalId} não possui autoridade para debitar a conta #${spec.sourceAccountId} pertencente ao usuário #${spec.sourceAccountOwnerId} na operação '${spec.operationType}'.`,
       errorCode: 'UNAUTHORIZED_CUSTODY',
     });
   }

@@ -5,16 +5,17 @@
  * globalmente coordenado e conhecido em memória antes da compilação do lote transacional.
  *
  * Estrutura do Inteiro de 53 bits (Number.MAX_SAFE_INTEGER = 9.007.199.254.740.991):
- * - Epoch ms (41 bits): até o ano ~2088 sem overflow
- * - Worker ID (4 bits): 0..15 particionamento de instâncias/processos
+ * - Epoch ms (41 bits): suporta monotonicidade até 7 de setembro de 2039 sem overflow de 41 bits
+ * - Worker ID (4 bits): 0..15 particionamento de instâncias/processos coordenados
  * - Sequence Counter (8 bits): 0..255 por milissegundo com avanço de relógio lógico
  *
  * Invariantes P0 Hardened (OCaps / Concorrência):
- * 1. Monotonicidade Estrita: Todo ID gerado é estritamente maior que o anterior.
+ * 1. Monotonicidade Estrita: Todo ID gerado é estritamente maior que o anterior no mesmo processo.
  * 2. Zero Colisões: Quando a sequência atinge 256 no mesmo milissegundo, o relógio lógico avança.
  * 3. Proscrição Absoluta de Math.random(): Apenas CSPRNG (crypto.getRandomValues) ou coordenadas determinísticas.
  * 4. Safe Integer Guard: Asserção de que id <= Number.MAX_SAFE_INTEGER e Number.isSafeInteger(id).
  * 5. Parsing Estrito de Worker ID: Rejeição de valores parciais ou malformados de ambiente.
+ * 6. Proteção de Ambiente: Métodos de reset restritos com exclusividade a ambientes de teste.
  */
 
 export class DeterministicIdGenerator {
@@ -113,8 +114,16 @@ export class DeterministicIdGenerator {
 
   /**
    * Reset explícito de estado para isolamento de suítes de teste unitário.
+   * Lança erro se invocado fora de ambiente de teste.
    */
   public static resetForTesting(initialSeq: number = 0): void {
+    if (
+      typeof process === 'undefined' ||
+      !process.env ||
+      (process.env.NODE_ENV !== 'test' && !process.env.VITEST)
+    ) {
+      throw new Error('DeterministicIdGenerator.resetForTesting é terminantemente restrito a ambientes de teste.');
+    }
     DeterministicIdGenerator.lastTimestamp = 0;
     DeterministicIdGenerator.sequence = initialSeq;
     DeterministicIdGenerator.workerIdLocked = false;

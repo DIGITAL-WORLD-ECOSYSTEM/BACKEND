@@ -12,7 +12,11 @@
  * 5. Proscrição total de Math.random(): aleatoriedade criptograficamente segura via CSPRNG do runtime.
  */
 
-export type PostingExecutionMode = 'd1-batch' | 'sqlite-transaction';
+export type PostingExecutionMode =
+  | 'atomic-batch'
+  | 'serial-transaction'
+  | 'd1-batch'
+  | 'sqlite-transaction';
 
 /**
  * Registros soberanos em escopo de módulo (inacessíveis por código externo).
@@ -39,7 +43,12 @@ export class PostingSession {
     if (!boundaryRef || (typeof boundaryRef !== 'object' && typeof boundaryRef !== 'function')) {
       throw new Error('PostingSession exige uma referência física de fronteira transacional válida.');
     }
-    if (mode !== 'd1-batch' && mode !== 'sqlite-transaction') {
+    if (
+      mode !== 'atomic-batch' &&
+      mode !== 'serial-transaction' &&
+      mode !== 'd1-batch' &&
+      mode !== 'sqlite-transaction'
+    ) {
       throw new Error(`Modo de execução inválido para PostingSession: ${mode}`);
     }
     if (!boundaryId || typeof boundaryId !== 'string' || boundaryId.trim().length === 0) {
@@ -87,6 +96,13 @@ export class PostingSession {
   }
 
   /**
+   * Verifica a identidade da fronteira física sem amplificação de autoridade.
+   */
+  public verifyBoundary(expectedBoundary: object): boolean {
+    return this.boundaryRef === expectedBoundary;
+  }
+
+  /**
    * Valida em runtime se esta instância foi criada legitimamente pela fronteira,
    * retém a autoridade e ainda não foi consumida (invariante de uso único).
    */
@@ -100,7 +116,10 @@ export class PostingSession {
       this.boundaryId.length > 0 &&
       this.boundaryRef !== null &&
       (typeof this.boundaryRef === 'object' || typeof this.boundaryRef === 'function') &&
-      (this.mode === 'd1-batch' || this.mode === 'sqlite-transaction')
+      (this.mode === 'atomic-batch' ||
+        this.mode === 'serial-transaction' ||
+        this.mode === 'd1-batch' ||
+        this.mode === 'sqlite-transaction')
     );
   }
 

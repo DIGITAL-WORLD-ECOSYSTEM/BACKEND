@@ -6,7 +6,10 @@ import {
 } from '../../src/domains/finance/contracts/AuthorizationContext';
 import { DeterministicIdGenerator } from '../../src/domains/finance/contracts/DeterministicIdGenerator';
 import { validateCanonicalLedgerEntryRecord } from '../../src/domains/finance/contracts/FinancialLedgerEntryRecord';
-import { IdempotencyScope } from '../../src/domains/finance/contracts/IdempotencyScope';
+import {
+  IdempotencyScope,
+  MAX_SCOPE_SEGMENT_LENGTH,
+} from '../../src/domains/finance/contracts/IdempotencyScope';
 import {
   sealPostingPlan,
   isAuthenticPostingPlan,
@@ -14,7 +17,6 @@ import {
   PostingPlan,
 } from '../../src/domains/finance/contracts/PostingPlan';
 import { PostingSession } from '../../src/domains/finance/contracts/PostingSession';
-import { InvalidIdentifierError } from '../../src/domains/finance/errors/FinancialErrors';
 
 describe('Gate 0 / Lote 1B: Contracts P0 Hardening & OCaps Certification', () => {
   describe('1. AuthorizationContext & CustodyAuthorizationPolicy', () => {
@@ -79,6 +81,37 @@ describe('Gate 0 / Lote 1B: Contracts P0 Hardening & OCaps Certification', () =>
       expect(decisionBadAmount.allowed).toBe(false);
       expect(Object.isFrozen(decisionBadAmount)).toBe(true);
       expect(decisionBadAmount.errorCode).toBe('FORBIDDEN_OPERATION');
+    });
+
+    it('deve PROIBIR que titular da conta autorize operações privilegiadas via SELF (reversal, refund, adjustment, fee, etc.)', () => {
+      const userCtx = freezeAuthorizationContext({
+        principalId: 10,
+        principalType: 'user',
+        capabilities: [],
+        correlationId: 'tx_priv_01',
+      });
+
+      // Tentativa de reversal por titular comum
+      const reversalDecision = CustodyAuthorizationPolicy.canDebitSourceAccount(userCtx, {
+        operationType: 'reversal',
+        sourceAccountId: 100,
+        sourceAccountOwnerId: 10,
+        assetId: 1,
+        amountBaseUnits: 500n,
+      });
+      expect(reversalDecision.allowed).toBe(false);
+      expect(reversalDecision.errorCode).toBe('FORBIDDEN_OPERATION');
+
+      // Tentativa de refund por titular comum
+      const refundDecision = CustodyAuthorizationPolicy.canDebitSourceAccount(userCtx, {
+        operationType: 'refund',
+        sourceAccountId: 100,
+        sourceAccountOwnerId: 10,
+        assetId: 1,
+        amountBaseUnits: 500n,
+      });
+      expect(refundDecision.allowed).toBe(false);
+      expect(refundDecision.errorCode).toBe('FORBIDDEN_OPERATION');
     });
   });
 
@@ -149,15 +182,30 @@ describe('Gate 0 / Lote 1B: Contracts P0 Hardening & OCaps Certification', () =>
   describe('4. IdempotencyScope', () => {
     it('deve proibir delimitadores (:) e formatações espúrias de namespace', () => {
       expect(() => IdempotencyScope.create('finance:core', 'user', 'ctx')).toThrow(
-        /Segmentos de IdempotencyScope não podem conter o delimitador dois-pontos/
+        /não pode conter o delimitador dois-pontos/
       );
 
       expect(() => IdempotencyScope.create('.finance', 'user', 'ctx')).toThrow(
-        /Namespace de IdempotencyScope contém formato de pontos inválido/
+        /contém formato de pontos espúrio ou inválido/
       );
 
       expect(() => IdempotencyScope.create('finance..core', 'user', 'ctx')).toThrow(
-        /Namespace de IdempotencyScope contém formato de pontos inválido/
+        /contém formato de pontos espúrio ou inválido/
+      );
+    });
+
+    it('deve aplicar validação simétrica a todos os 3 segmentos e impor limite de tamanho', () => {
+      expect(() => IdempotencyScope.create('finance.transfer', 'user:attack', 'ctx')).toThrow(
+        /não pode conter o delimitador dois-pontos/
+      );
+
+      expect(() => IdempotencyScope.create('finance.transfer', 'user', 'ctx..bad')).toThrow(
+        /contém formato de pontos espúrio ou inválido/
+      );
+
+      const hugeSegment = 'a'.repeat(MAX_SCOPE_SEGMENT_LENGTH + 1);
+      expect(() => IdempotencyScope.create(hugeSegment, 'user', 'ctx')).toThrow(
+        /excede o limite máximo/
       );
     });
 
@@ -260,6 +308,41 @@ describe('Gate 0 / Lote 1B: Contracts P0 Hardening & OCaps Certification', () =>
       expect(Object.isFrozen(sealed.authorizationDecision)).toBe(true);
     });
 
+    it('deve rejeitar plano com autorização negada (allowed === false)', () => {
+      const deniedPlan: PostingPlan = {
+        ...validPlanSample,
+        authorizationDecision: {
+          allowed: false,
+          reason: 'Custody violation',
+          errorCode: 'UNAUTHORIZED_CUSTODY',
+        },
+      };
+
+      expect(() => sealPostingPlan(deniedPlan)).toThrow(
+        /plano não pode ser selado com autorização recusada ou ausente/
+      );
+    });
+
+    it('deve rejeitar plano com mutação de saldo em conta que não consta nas pernas contábeis', () => {
+      const ghostAccountPlan: PostingPlan = {
+        ...validPlanSample,
+        balanceMutations: [
+          ...validPlanSample.balanceMutations,
+          {
+            accountId: 999, // Conta fantasma não presente em ledgerEntries
+            assetId: 1,
+            signedDeltaBaseUnits: 1000n,
+            expectedVersion: 0,
+            newAvailableBaseUnits: '1000',
+          },
+        ],
+      };
+
+      expect(() => sealPostingPlan(ghostAccountPlan)).toThrow(
+        /não possui perna contábil correspondente/
+      );
+    });
+
     it('deve rejeitar plano com desbalanceamento contábil (FIN-001)', () => {
       const imbalancedPlan: PostingPlan = {
         ...validPlanSample,
@@ -304,10 +387,12 @@ describe('Gate 0 / Lote 1B: Contracts P0 Hardening & OCaps Certification', () =>
   describe('6. PostingSession (OCaps Single-Use & Concurrency Guard)', () => {
     it('deve assegurar uso único (single-use) via tryConsume()', () => {
       const fakeDb = {};
-      const session = new PostingSession(fakeDb, 'd1-batch', 'bound_01');
+      const session = new PostingSession(fakeDb, 'atomic-batch', 'bound_01');
 
       expect(session.isValid()).toBe(true);
       expect(session.isConsumed()).toBe(false);
+      expect(session.verifyBoundary(fakeDb)).toBe(true);
+      expect(session.verifyBoundary({})).toBe(false);
       expect(Object.isFrozen(session)).toBe(true);
 
       // Primeiro consumo: sucesso
@@ -322,7 +407,7 @@ describe('Gate 0 / Lote 1B: Contracts P0 Hardening & OCaps Certification', () =>
     });
 
     it('deve rejeitar referências de fronteira física nulas ou modos inválidos', () => {
-      expect(() => new PostingSession(null as any, 'd1-batch', 'b1')).toThrow(
+      expect(() => new PostingSession(null as any, 'atomic-batch', 'b1')).toThrow(
         /fronteira transacional válida/
       );
 
@@ -330,7 +415,7 @@ describe('Gate 0 / Lote 1B: Contracts P0 Hardening & OCaps Certification', () =>
         /Modo de execução inválido/
       );
 
-      expect(() => new PostingSession({}, 'd1-batch', '   ')).toThrow(
+      expect(() => new PostingSession({}, 'atomic-batch', '   ')).toThrow(
         /Identificador de fronteira física não-vazio/
       );
     });
