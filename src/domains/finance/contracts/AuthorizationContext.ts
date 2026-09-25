@@ -4,16 +4,24 @@
  * Garante que nenhuma operação contábil ou financeira possa ser despachada sem
  * a comprovação explícita e soberana da autoridade do ator sobre a conta debitada.
  *
- * Invariantes P0 Hardened:
- * 1. Imutabilidade absoluta: todos os contratos e decisões são congelados em runtime.
- * 2. Princípio do Menor Privilégio: service_accounts e operadores exigem capabilities estritas.
- * 3. Segregação de Escopo: reversões só autorizam estornos contábeis; delegações só autorizam transferências.
- * 4. Pureza de Domínio: livre de dependências de infraestrutura física, drivers ou frameworks HTTP.
+ * Invariantes P0 Hardened (OCaps / Fail-Closed):
+ * 1. Imutabilidade absoluta: todos os contratos, contextos e decisões são congelados em runtime (Object.freeze).
+ * 2. Princípio do Menor Privilégio: service_accounts e operadores exigem capabilities estritas e não-forjáveis.
+ * 3. Segregação de Escopo: reversões só autorizam estornos contábeis; delegações só autorizam transferências ou escopos específicos.
+ * 4. Validação Soberana Fail-Closed: ausência de coerção permissiva ou defaults de confiança (sem 'tx_anonymous' cego).
+ * 5. Pureza de Domínio: livre de dependências de infraestrutura física, drivers ou frameworks HTTP.
  */
 
 import { parsePositiveSafeIntegerId } from '../value-objects/FinancialIdentifier';
 
 export type PrincipalType = 'user' | 'system' | 'service_account';
+
+/**
+ * Type guard soberano para validação de runtime do tipo de principal.
+ */
+export function isPrincipalType(value: unknown): value is PrincipalType {
+  return value === 'user' || value === 'system' || value === 'service_account';
+}
 
 export interface AuthorizationContext {
   readonly principalId: number;
@@ -73,29 +81,49 @@ export type AuthorizationDecision =
 
 /**
  * Normalizador e validador defensivo de AuthorizationContext.
- * Garante congelamento profundo e tipos estritos em runtime.
+ * Garante congelamento profundo, verificação rigorosa de integridade e fail-closed absoluto.
  */
 export function freezeAuthorizationContext(context: AuthorizationContext): AuthorizationContext {
   if (!context || typeof context !== 'object') {
     throw new Error('AuthorizationContext deve ser um objeto válido.');
   }
 
-  const principalId =
-    context.principalId === 0 && context.principalType === 'system'
-      ? 0
-      : parsePositiveSafeIntegerId(context.principalId, 'context.principalId');
+  if (!isPrincipalType(context.principalType)) {
+    throw new Error(
+      `Tipo de principal inválido em AuthorizationContext: '${String((context as any).principalType)}'. Esperado: 'user' | 'system' | 'service_account'.`
+    );
+  }
 
-  const cleanCorrelationId =
-    typeof context.correlationId === 'string' && context.correlationId.trim().length > 0
-      ? context.correlationId.trim()
-      : 'tx_anonymous';
+  // Validação estrita de principalId (53-bit safe integer; 0 é restrito a principalType === 'system')
+  let principalId: number;
+  if (context.principalType === 'system' && context.principalId === 0) {
+    principalId = 0;
+  } else {
+    principalId = parsePositiveSafeIntegerId(context.principalId, 'context.principalId');
+  }
 
-  const capabilities = Object.freeze(
-    Array.isArray(context.capabilities)
-      ? context.capabilities.map((c) => String(c).trim())
-      : []
-  );
+  // Validação estrita de correlationId: não permite strings vazias ou coerção permissiva silenciosa
+  if (typeof context.correlationId !== 'string' || context.correlationId.trim().length === 0) {
+    throw new Error('context.correlationId deve ser uma string não-vazia.');
+  }
+  const cleanCorrelationId = context.correlationId.trim();
 
+  // Validação estrita de capabilities
+  if (!Array.isArray(context.capabilities)) {
+    throw new Error('context.capabilities deve ser uma lista (Array).');
+  }
+
+  const sanitizedCapabilities: string[] = [];
+  for (let i = 0; i < context.capabilities.length; i++) {
+    const cap = context.capabilities[i];
+    if (typeof cap !== 'string' || cap.trim().length === 0) {
+      throw new Error(`Capability no índice #${i} deve ser uma string não-vazia.`);
+    }
+    sanitizedCapabilities.push(cap.trim());
+  }
+  const capabilities = Object.freeze(sanitizedCapabilities);
+
+  // Validação de delegação
   const delegatedForUserId =
     context.delegatedForUserId !== undefined && context.delegatedForUserId !== null
       ? parsePositiveSafeIntegerId(context.delegatedForUserId, 'context.delegatedForUserId')
@@ -138,6 +166,14 @@ export class CustodyAuthorizationPolicy {
       });
     }
 
+    if (!isPrincipalType(context.principalType)) {
+      return Object.freeze({
+        allowed: false,
+        reason: `Tipo de principal inválido: '${String(context.principalType)}'.`,
+        errorCode: 'INVALID_ARGUMENT',
+      });
+    }
+
     if (typeof spec.amountBaseUnits !== 'bigint' || spec.amountBaseUnits <= 0n) {
       return Object.freeze({
         allowed: false,
@@ -146,12 +182,31 @@ export class CustodyAuthorizationPolicy {
       });
     }
 
+    if (!Number.isSafeInteger(spec.sourceAccountId) || spec.sourceAccountId <= 0) {
+      return Object.freeze({
+        allowed: false,
+        reason: `sourceAccountId inválido na especificação: ${spec.sourceAccountId}`,
+        errorCode: 'INVALID_ARGUMENT',
+      });
+    }
+
+    if (!Number.isSafeInteger(spec.assetId) || spec.assetId <= 0) {
+      return Object.freeze({
+        allowed: false,
+        reason: `assetId inválido na especificação: ${spec.assetId}`,
+        errorCode: 'INVALID_ARGUMENT',
+      });
+    }
+
     const capabilities = Array.isArray(context.capabilities) ? context.capabilities : [];
 
     // 1. Operações Sistêmicas puras (sourceAccountOwnerId === null: clearing, tesouro, taxas)
     if (spec.sourceAccountOwnerId === null) {
-      // 1.1 Processo sistêmico do núcleo operacional
-      if (context.principalType === 'system') {
+      // 1.1 Processo sistêmico do núcleo operacional (genesis ou com capability explícita)
+      if (
+        context.principalType === 'system' &&
+        (context.principalId === 0 || capabilities.includes('finance.system.operate'))
+      ) {
         return Object.freeze({
           allowed: true,
           type: 'SYSTEM',
@@ -180,7 +235,7 @@ export class CustodyAuthorizationPolicy {
       });
     }
 
-    // 2. Operação Própria (SELF): O principal autenticado é o dono físico da conta
+    // 2. Operação Própria (SELF): O principal autenticado é o titular físico da conta
     if (
       context.principalType === 'user' &&
       context.principalId === spec.sourceAccountOwnerId

@@ -9,11 +9,12 @@
  * - Worker ID (4 bits): 0..15 particionamento de instâncias/processos
  * - Sequence Counter (8 bits): 0..255 por milissegundo com avanço de relógio lógico
  *
- * Invariantes P0 Hardened:
+ * Invariantes P0 Hardened (OCaps / Concorrência):
  * 1. Monotonicidade Estrita: Todo ID gerado é estritamente maior que o anterior.
  * 2. Zero Colisões: Quando a sequência atinge 256 no mesmo milissegundo, o relógio lógico avança.
- * 3. Ausência de Aleatoriedade Insegura: Proscrição total de Math.random().
+ * 3. Proscrição Absoluta de Math.random(): Apenas CSPRNG (crypto.getRandomValues) ou coordenadas determinísticas.
  * 4. Safe Integer Guard: Asserção de que id <= Number.MAX_SAFE_INTEGER e Number.isSafeInteger(id).
+ * 5. Parsing Estrito de Worker ID: Rejeição de valores parciais ou malformados de ambiente.
  */
 
 export class DeterministicIdGenerator {
@@ -24,15 +25,18 @@ export class DeterministicIdGenerator {
 
   /**
    * Inicializa o workerId sem uso de Math.random(), buscando variáveis de ambiente
-   * ou entropia criptográfica segura do runtime.
+   * com parsing estrito ou entropia criptográfica segura do runtime.
    */
   private static initializeWorkerId(): number {
     if (typeof process !== 'undefined' && process.env) {
       const envWorker = process.env.PROCESS_WORKER_ID || process.env.WORKER_ID;
       if (envWorker !== undefined) {
-        const parsed = parseInt(envWorker, 10);
-        if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 15) {
-          return parsed;
+        const trimmed = envWorker.trim();
+        if (/^(0|[1-9]\d*)$/.test(trimmed)) {
+          const parsed = Number(trimmed);
+          if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 15) {
+            return parsed;
+          }
         }
       }
     }
@@ -48,7 +52,7 @@ export class DeterministicIdGenerator {
 
   /**
    * Emite o próximo identificador soberano para uma transação contábil.
-   * Garante que o retorno seja um Safe Integer estritamente positivo.
+   * Garante que o retorno seja um Safe Integer estritamente positivo e monotônico.
    */
   public static nextTransactionId(): number {
     // Trava o workerId após a primeira geração para impedir deriva em runtime

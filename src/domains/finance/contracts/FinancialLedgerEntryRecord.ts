@@ -10,9 +10,10 @@ import {
 } from '../constants/FinancialLimits';
 
 /**
- * Padrão canônico decimal estrito para montantes de base units em formato string.
+ * Padrão canônico decimal estrito para montantes positivos de base units em formato string.
+ * Rejeita valores zero, negativos, sinais explícitos e zeros à esquerda.
  */
-const CANONICAL_BASE_UNITS_PATTERN = /^(0|[1-9]\d*)$/;
+const CANONICAL_POSITIVE_BASE_UNITS_PATTERN = /^[1-9]\d*$/;
 
 /**
  * Raw persistence record de infraestrutura/transporte serializado para o livro-razão.
@@ -36,7 +37,7 @@ export interface FinancialLedgerEntryRecord {
  * Invariantes P0 Hardened:
  * 1. accountId e assetId: inteiros positivos de 53 bits seguros em JS (parsePositiveSafeIntegerId).
  * 2. direction: validação estrita via type guard isLedgerEntryDirection ('debit' | 'credit').
- * 3. amountBaseUnits: string não-vazia, teto bruto anti-DoS, teto de 78 dígitos decimais e limite uint256.
+ * 3. amountBaseUnits: string não-vazia, estritamente positiva (> 0), teto bruto anti-DoS, teto de 78 dígitos e limite uint256.
  * 4. Imutabilidade: congelamento profundo via Object.freeze.
  */
 export function validateCanonicalLedgerEntryRecord(record: FinancialLedgerEntryRecord): {
@@ -79,9 +80,9 @@ export function validateCanonicalLedgerEntryRecord(record: FinancialLedgerEntryR
     );
   }
 
-  if (!CANONICAL_BASE_UNITS_PATTERN.test(trimmedAmount)) {
+  if (!CANONICAL_POSITIVE_BASE_UNITS_PATTERN.test(trimmedAmount)) {
     throw new Error(
-      `amountBaseUnits contém formato não-canônico: '${trimmedAmount}'. Permitido apenas inteiros sem sinal e sem zeros à esquerda.`
+      `amountBaseUnits contém formato não-canônico: '${trimmedAmount}'. Permitido apenas inteiros estritamente positivos sem zeros à esquerda.`
     );
   }
 
@@ -92,6 +93,10 @@ export function validateCanonicalLedgerEntryRecord(record: FinancialLedgerEntryR
   }
 
   const bigintValue = BigInt(trimmedAmount);
+  if (bigintValue <= 0n) {
+    throw new Error('amountBaseUnits em FinancialLedgerEntryRecord deve ser estritamente maior que zero.');
+  }
+
   if (bigintValue > MAX_UINT256) {
     throw new Error('amountBaseUnits excede o limite máximo unsigned de 256 bits (MAX_UINT256).');
   }

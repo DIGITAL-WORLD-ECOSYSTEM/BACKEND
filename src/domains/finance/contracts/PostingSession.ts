@@ -9,7 +9,7 @@
  * 2. A sessão é vinculada à instância física da fronteira de execução (boundaryRef / db) e seu identificador (boundaryId).
  * 3. A sessão é de uso estritamente único (single-use: markConsumed / tryConsume com semântica atômica).
  * 4. Imutabilidade absoluta em runtime via Object.freeze(this).
- * 5. Aleatoriedade criptográfica segura via crypto.randomUUID().
+ * 5. Proscrição total de Math.random(): aleatoriedade criptograficamente segura via CSPRNG do runtime.
  */
 
 export type PostingExecutionMode = 'd1-batch' | 'sqlite-transaction';
@@ -51,16 +51,31 @@ export class PostingSession {
     this.boundaryRef = boundaryRef;
     this.createdAtEpochMs = Date.now();
 
-    // Geração de ID com entropia criptográfica segura
-    const uuid =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-    this.sessionId = `ps_${uuid}`;
+    // Geração de ID com CSPRNG estrito (sem Math.random())
+    this.sessionId = PostingSession.generateSecureSessionId();
 
     // Registra a sessão como válida e congela a instância contra adulteração externa
     VALID_POSTING_SESSIONS.add(this);
     Object.freeze(this);
+  }
+
+  /**
+   * Emissor seguro de ID de sessão com CSPRNG do runtime.
+   * Lança erro explícito (fail-closed) se o ambiente não possuir suporte criptográfico seguro.
+   */
+  private static generateSecureSessionId(): string {
+    if (typeof crypto !== 'undefined') {
+      if (typeof crypto.randomUUID === 'function') {
+        return `ps_${crypto.randomUUID()}`;
+      }
+      if (typeof crypto.getRandomValues === 'function') {
+        const buffer = new Uint8Array(16);
+        crypto.getRandomValues(buffer);
+        const hex = Array.from(buffer, (b) => b.toString(16).padStart(2, '0')).join('');
+        return `ps_${hex}`;
+      }
+    }
+    throw new Error('Ambiente inseguro: CSPRNG indisponível para geração segura de PostingSession.');
   }
 
   /**

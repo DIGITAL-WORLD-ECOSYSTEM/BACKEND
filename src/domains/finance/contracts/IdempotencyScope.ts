@@ -13,10 +13,10 @@ const CANONICAL_SCOPE_SEGMENT_PATTERN = /^[a-z0-9._-]+$/;
  * Formato canônico:
  * operation_namespace:principal_scope:business_context
  *
- * Invariantes P0 Hardened:
- * 1. Codificação Injetiva: Cada componente é validado contra proibição estrita de delimitadores (:).
+ * Invariantes P0 Hardened (Anti-Colisão / Fail-Closed):
+ * 1. Codificação Injetiva: Cada componente é validado contra proibição estrita de delimitadores (:) e pontos espúrios.
  * 2. Validação de Identificadores: IDs numéricos de usuários e provedores passam por Safe Integer (> 0).
- * 3. Sanitização Defensiva: .trim().toLowerCase() e rejeição de strings vazias ou nulas.
+ * 3. Sanitização Defensiva: .trim().toLowerCase() e rejeição de strings vazias, operações nulas ou namespaces malformados.
  * 4. Imutabilidade: todas as estruturas e retornos de claim congelados em runtime.
  */
 export class IdempotencyScope {
@@ -41,6 +41,22 @@ export class IdempotencyScope {
     }
 
     if (
+      cleanNamespace.includes(':') ||
+      cleanScope.includes(':') ||
+      cleanContext.includes(':')
+    ) {
+      throw new Error('Segmentos de IdempotencyScope não podem conter o delimitador dois-pontos (:).');
+    }
+
+    if (
+      cleanNamespace.startsWith('.') ||
+      cleanNamespace.endsWith('.') ||
+      cleanNamespace.includes('..')
+    ) {
+      throw new Error(`Namespace de IdempotencyScope contém formato de pontos inválido: '${cleanNamespace}'.`);
+    }
+
+    if (
       !CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanNamespace) ||
       !CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanScope) ||
       !CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanContext)
@@ -55,19 +71,38 @@ export class IdempotencyScope {
 
   public static forUser(operation: string, userId: number): string {
     const validUserId = parsePositiveSafeIntegerId(userId, 'userId');
-    const cleanOp = (operation || '').trim().toLowerCase();
+    if (typeof operation !== 'string' || operation.trim().length === 0) {
+      throw new Error('IdempotencyScope.forUser exige um nome de operação não-vazio.');
+    }
+    const cleanOp = operation.trim().toLowerCase();
+    if (!CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanOp) || cleanOp.includes(':')) {
+      throw new Error(`Nome de operação inválido para IdempotencyScope.forUser: '${operation}'`);
+    }
     return IdempotencyScope.create(`finance.${cleanOp}`, 'user', String(validUserId));
   }
 
   public static forProvider(operation: string, providerId: number): string {
     const validProviderId = parsePositiveSafeIntegerId(providerId, 'providerId');
-    const cleanOp = (operation || '').trim().toLowerCase();
+    if (typeof operation !== 'string' || operation.trim().length === 0) {
+      throw new Error('IdempotencyScope.forProvider exige um nome de operação não-vazio.');
+    }
+    const cleanOp = operation.trim().toLowerCase();
+    if (!CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanOp) || cleanOp.includes(':')) {
+      throw new Error(`Nome de operação inválido para IdempotencyScope.forProvider: '${operation}'`);
+    }
     return IdempotencyScope.create(`finance.${cleanOp}`, 'provider', String(validProviderId));
   }
 
   public static forSystem(operation: string, context: string = 'genesis'): string {
-    const cleanOp = (operation || '').trim().toLowerCase();
-    return IdempotencyScope.create(`finance.${cleanOp}`, 'system', context);
+    if (typeof operation !== 'string' || operation.trim().length === 0) {
+      throw new Error('IdempotencyScope.forSystem exige um nome de operação não-vazio.');
+    }
+    const cleanOp = operation.trim().toLowerCase();
+    if (!CANONICAL_SCOPE_SEGMENT_PATTERN.test(cleanOp) || cleanOp.includes(':')) {
+      throw new Error(`Nome de operação inválido para IdempotencyScope.forSystem: '${operation}'`);
+    }
+    const cleanCtx = (context || 'genesis').trim().toLowerCase();
+    return IdempotencyScope.create(`finance.${cleanOp}`, 'system', cleanCtx);
   }
 }
 
@@ -84,6 +119,8 @@ export type IdempotencyClaimResult =
   | {
       readonly status: 'CLAIMED';
       readonly leaseGeneration: number;
+      readonly leaseOwner?: string | null;
+      readonly leaseExpiresAtEpochMs?: number | null;
     }
   | {
       readonly status: 'COMPLETED';
@@ -107,4 +144,6 @@ export type IdempotencyClaimResult =
   | {
       readonly status: 'IN_PROGRESS';
       readonly leaseOwner?: string | null;
+      readonly leaseGeneration?: number | null;
+      readonly leaseExpiresAtEpochMs?: number | null;
     };
