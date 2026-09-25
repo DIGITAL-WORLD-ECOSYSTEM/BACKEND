@@ -365,11 +365,13 @@ export const MAX_SINGLE_LEDGER_ENTRY_AMOUNT: bigint =
 /**
  * CATEGORY: DOMAIN_STRUCTURAL_POLICY
  *
- * Nome semântico para o mesmo bound quando consumido pelo mecanismo
- * de projeção de saldo.
+ * @deprecated Utilize `MAX_SINGLE_POSTING_DELTA_MAGNITUDE`.
+ * Nome semântico mantido exclusivamente para compatibilidade de transição.
+ * A adição/subtração contra o saldo continua sendo governada por `Money256`.
  */
 export const MAX_SINGLE_BALANCE_DELTA_AMOUNT: bigint =
     MAX_SINGLE_LEDGER_ENTRY_AMOUNT;
+
 
 /**
  * CATEGORY: DOMAIN_STRUCTURAL_POLICY
@@ -1257,9 +1259,25 @@ export function assertFinancialLimitsConsistency(): void {
     );
 
     assertCondition(
+        MAX_LEDGER_ENTRY_ORDINAL - MIN_LEDGER_ENTRY_ORDINAL + 1 ===
+        MAX_LEDGER_ENTRIES,
+        'Ordinal sequence span 1..N must strictly match total allowed entries.',
+    );
+
+    assertCondition(
         MIN_POSTING_PLAN_ENTRIES ===
         MIN_LEDGER_ENTRIES,
         'MIN_POSTING_PLAN_ENTRIES must derive from MIN_LEDGER_ENTRIES.',
+    );
+
+    assertCondition(
+        MIN_POSTING_PLAN_ENTRIES >= 2,
+        'Posting plan must contain at least 2 entries (double-entry requirement).',
+    );
+
+    assertCondition(
+        MIN_POSTING_PLAN_ENTRIES <= MAX_POSTING_PLAN_ENTRIES,
+        'MIN_POSTING_PLAN_ENTRIES must not exceed MAX_POSTING_PLAN_ENTRIES.',
     );
 
     assertCondition(

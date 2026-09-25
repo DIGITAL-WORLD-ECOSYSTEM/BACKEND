@@ -27,6 +27,10 @@ import {
   MAX_NUMERIC_RAW_TEXT_CEILING,
   MAX_NUMERIC_INPUT_TEXT_CEILING,
   MAX_UINT256_DECIMAL_DIGITS,
+  MIN_LEDGER_ENTRY_ORDINAL,
+  MAX_LEDGER_ENTRY_ORDINAL,
+  MIN_POSTING_PLAN_ENTRIES,
+  MAX_POSTING_PLAN_ENTRIES,
 } from '../../src/domains/finance/constants/FinancialLimits';
 
 
@@ -507,6 +511,12 @@ describe('Políticas de Domínio Financeiro & Máquina de Estados (DOD-10, DOD-1
     it('deve comprovar que o teto operacional anti-DoS comporta com folga os dígitos matemáticos de uint256', () => {
       expect(MAX_NUMERIC_RAW_TEXT_CEILING).toBeGreaterThanOrEqual(MAX_UINT256_DECIMAL_DIGITS);
       expect(MAX_NUMERIC_INPUT_TEXT_CEILING).toBe(MAX_NUMERIC_RAW_TEXT_CEILING);
+    });
+
+    it('deve comprovar que a sequência ordinal 1..N cobre exatamente MAX_LEDGER_ENTRIES e bounds de PostingPlan', () => {
+      expect(MAX_LEDGER_ENTRY_ORDINAL - MIN_LEDGER_ENTRY_ORDINAL + 1).toBe(MAX_LEDGER_ENTRIES);
+      expect(MIN_POSTING_PLAN_ENTRIES).toBeGreaterThanOrEqual(2);
+      expect(MIN_POSTING_PLAN_ENTRIES).toBeLessThanOrEqual(MAX_POSTING_PLAN_ENTRIES);
     });
   });
 });
