@@ -9,11 +9,11 @@ import {
   Money256OverflowError,
   CurrencyMismatchError,
   MoneyUnderflowError,
-  InvalidIdentifierError,
 } from '../errors/FinancialError';
+import { parsePositiveSafeIntegerId } from './FinancialIdentifier';
 
 /**
- * @deprecated Importe diretamente de '../constants/FinancialLimits'.
+ * @deprecated Importe diretamente de '../constants/FinancialLimits' ou './FinancialIdentifier'.
  * Re-exportação preservada exclusivamente para compatibilidade retroativa com suítes de testes e consumidores existentes.
  */
 export {
@@ -26,36 +26,8 @@ export {
 /** @deprecated Use MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS diretamente de '../constants/FinancialLimits'. */
 export const MAX_SAFE_INTEGER_DIGITS = MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS;
 
-/**
- * Validador canônico estrito para IDs físicos inteiros positivos.
- * Rejeita representações com sinais, decimais, espaços, notação exponencial ou hexadecimal.
- * Impõe teto lexical de 16 dígitos decimais antes de qualquer conversão numérica.
- */
-export function parsePositiveSafeIntegerId(id: unknown, name = 'id'): number {
-  if (typeof id === 'number') {
-    if (!Number.isSafeInteger(id) || id <= 0) {
-      throw new InvalidIdentifierError(`Invalid physical ${name}.`);
-    }
-    return id;
-  }
-
-  if (typeof id === 'string') {
-    if (
-      id.length === 0 ||
-      id.length > MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS ||
-      !/^[1-9]\d*$/.test(id)
-    ) {
-      throw new InvalidIdentifierError(`Invalid physical ${name}.`);
-    }
-    const numericId = Number(id);
-    if (!Number.isSafeInteger(numericId) || numericId <= 0) {
-      throw new InvalidIdentifierError(`Invalid physical ${name}.`);
-    }
-    return numericId;
-  }
-
-  throw new InvalidIdentifierError(`Invalid physical ${name}.`);
-}
+/** @deprecated Importe diretamente de './FinancialIdentifier'. */
+export { parsePositiveSafeIntegerId };
 
 /**
  * Value Object de alta precisão monetária (256-bit unsigned integer).
