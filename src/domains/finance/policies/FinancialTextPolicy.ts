@@ -171,46 +171,88 @@ export class FinancialTextPolicy {
    */
   public static formatReversalDescription(
     reason: string,
-    originalDescription: string,
+    originalDescription?: string | null,
     maxLength: number = MAX_LEDGER_DESCRIPTION_LENGTH
   ): string {
-    if (typeof reason !== 'string' || reason.length > MAX_RAW_TEXT_CEILING) {
-      throw new FinancialValidationError('Reversal reason must be a string within raw size limit.');
-    }
     if (
-      originalDescription !== undefined &&
-      originalDescription !== null &&
-      (typeof originalDescription !== 'string' || originalDescription.length > MAX_RAW_TEXT_CEILING)
+      !Number.isSafeInteger(maxLength) ||
+      maxLength <= 0 ||
+      maxLength > MAX_RAW_TEXT_CEILING
     ) {
-      throw new FinancialValidationError('Original description must be a string within raw size limit.');
+      throw new FinancialValidationError(
+        `maxLength must be a positive safe integer up to ${MAX_RAW_TEXT_CEILING}.`
+      );
     }
 
-    const cleanReason = (reason || '').normalize('NFC').trim();
-    const cleanOriginal = (originalDescription || '').normalize('NFC').trim();
+    if (typeof reason !== 'string') {
+      throw new FinancialValidationError('Reversal reason must be a string.');
+    }
+
+    if (reason.length > MAX_RAW_TEXT_CEILING) {
+      throw new FinancialValidationError('Reversal reason exceeds raw size limit.');
+    }
+
+    const cleanReason = reason.normalize('NFC').trim();
+    if (cleanReason.length === 0) {
+      throw new FinancialValidationError('Reversal reason cannot be empty.');
+    }
 
     if (DANGEROUS_TEXT_CHARACTERS_REGEX.test(cleanReason)) {
       throw new InvalidLedgerTransactionError('Reversal reason contains forbidden characters.');
     }
 
+    let cleanOriginal = '';
+    if (originalDescription !== undefined && originalDescription !== null) {
+      if (typeof originalDescription !== 'string') {
+        throw new FinancialValidationError('Original description must be a string.');
+      }
+      if (originalDescription.length > MAX_RAW_TEXT_CEILING) {
+        throw new FinancialValidationError('Original description exceeds raw size limit.');
+      }
+      const candidate = originalDescription.normalize('NFC').trim();
+      if (DANGEROUS_TEXT_CHARACTERS_REGEX.test(candidate)) {
+        throw new InvalidLedgerTransactionError('Original description contains forbidden characters.');
+      }
+      cleanOriginal = candidate;
+    }
+
     const prefixStart = 'Reversal (';
     const prefixEnd = '): ';
-    const maxReasonLen = maxLength - prefixStart.length - prefixEnd.length - 4;
+    const suffixReserve = 4;
+    const reasonCodePointLength = Array.from(cleanReason).length;
 
-    if (cleanReason.length > maxReasonLen) {
+    const maxReasonLen = maxLength - prefixStart.length - prefixEnd.length - suffixReserve;
+
+    if (maxReasonLen <= 0) {
+      throw new FinancialValidationError(
+        'Reversal description maximum length is too small for the canonical format.'
+      );
+    }
+
+    if (reasonCodePointLength > maxReasonLen) {
       throw new FinancialValidationError(
         `Reversal reason is too long to fit into maximum description length of ${maxLength}.`
       );
     }
 
     const prefix = `${prefixStart}${cleanReason}${prefixEnd}`;
-    const maxOriginalLen = maxLength - prefix.length;
+    const maxOriginalLen = maxLength - Array.from(prefix).length;
+
+    if (maxOriginalLen < 0) {
+      throw new FinancialValidationError('Reversal description exceeds maximum length.');
+    }
+
     const origChars = Array.from(cleanOriginal);
 
-    const finalOriginal =
-      origChars.length > maxOriginalLen
-        ? `${origChars.slice(0, Math.max(0, maxOriginalLen - 3)).join('')}...`
-        : cleanOriginal;
+    if (origChars.length <= maxOriginalLen) {
+      return `${prefix}${cleanOriginal}`;
+    }
 
-    return `${prefix}${finalOriginal}`;
+    if (maxOriginalLen <= 3) {
+      return `${prefix}${origChars.slice(0, maxOriginalLen).join('')}`;
+    }
+
+    const kept = origChars.slice(0, maxOriginalLen - 3).join('');
+    return `${prefix}${kept}...`;
   }
 }

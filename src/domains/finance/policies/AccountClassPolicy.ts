@@ -22,6 +22,18 @@ export type FinancialAccountClass =
   | 'expense'
   | 'equity';
 
+export type FinancialNormalBalance = 'debit' | 'credit';
+
+export const NORMAL_BALANCE_BY_CLASS: Readonly<
+  Record<FinancialAccountClass, FinancialNormalBalance>
+> = Object.freeze({
+  asset: 'debit',
+  liability: 'credit',
+  revenue: 'credit',
+  expense: 'debit',
+  equity: 'credit',
+});
+
 export const PERMITTED_CLASSES: Readonly<
   Record<FinancialAccountType, readonly FinancialAccountClass[]>
 > = Object.freeze({
@@ -112,6 +124,39 @@ export class AccountClassPolicy {
     ) {
       throw new InvalidAccountClassError(safeType, safeClass);
     }
+  }
+
+  /**
+   * Retorna o saldo normal soberano da classe contábil.
+   *
+   * Esta função é a única autoridade de domínio para a relação:
+   * asset/expense -> debit
+   * liability/revenue/equity -> credit
+   */
+  public static getNormalBalance(
+    accountClass: unknown
+  ): FinancialNormalBalance {
+    if (!AccountClassPolicy.isFinancialAccountClass(accountClass)) {
+      const safeClass = AccountClassPolicy.sanitizeForError(accountClass);
+      throw new InvalidAccountClassError(
+        'normal_balance',
+        safeClass || 'unknown'
+      );
+    }
+
+    return NORMAL_BALANCE_BY_CLASS[accountClass];
+  }
+
+  public static isNormalDebitClass(
+    accountClass: unknown
+  ): accountClass is Extract<
+    FinancialAccountClass,
+    'asset' | 'expense'
+  > {
+    return (
+      AccountClassPolicy.isFinancialAccountClass(accountClass) &&
+      NORMAL_BALANCE_BY_CLASS[accountClass] === 'debit'
+    );
   }
 
   /**

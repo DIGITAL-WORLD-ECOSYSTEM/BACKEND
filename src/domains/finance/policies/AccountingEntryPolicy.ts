@@ -15,6 +15,10 @@ import {
 } from '../value-objects/BaseUnits';
 
 import { FinancialTextPolicy } from './FinancialTextPolicy';
+import {
+  AccountClassPolicy,
+  type FinancialAccountClass,
+} from './AccountClassPolicy';
 
 import { FinancialError } from '../errors/FinancialError';
 
@@ -975,6 +979,15 @@ export class AccountingEntryPolicy {
       }
     }
 
+    if (params.accountNature !== undefined && params.normalBalance !== undefined) {
+      const expectedNormalBalance = params.accountNature === 'asset' ? 'debit' : 'credit';
+      if (params.normalBalance !== expectedNormalBalance) {
+        throw new AccountingMatrixValidationError(
+          `normalBalance incompatível com a natureza contábil '${params.accountNature}'.`
+        );
+      }
+    }
+
     if (params.accountNature === 'liability') {
       return AccountingEntryPolicy.createLiabilityOpeningBalanceEntries(params);
     }
@@ -1203,6 +1216,12 @@ export class AccountingEntryPolicy {
             `Total Débitos (${totalDebits}) !== ` +
             `Total Créditos (${totalCredits})`
         );
+      }
+    }
+
+    for (const entry of entries) {
+      if (entry && typeof entry === 'object') {
+        Object.freeze(entry);
       }
     }
 
@@ -1571,15 +1590,44 @@ export class AccountingEntryPolicy {
    *   debit  => -amount
    */
   public static calculateNormalDelta(
-    accountClass: 'asset' | 'expense' | 'liability' | 'equity' | 'revenue',
-    direction: 'debit' | 'credit',
+    accountClass: FinancialAccountClass | unknown,
+    direction: LedgerEntryDirection | unknown,
     amount: bigint
   ): bigint {
-    const isDebit = direction === 'debit';
-    if (accountClass === 'asset' || accountClass === 'expense') {
-      return isDebit ? amount : -amount;
+    if (
+      typeof amount !== 'bigint' ||
+      amount <= 0n ||
+      amount > MAX_UINT256
+    ) {
+      throw new AccountingMatrixValidationError(
+        'O amount do delta contábil deve ser um bigint positivo dentro do domínio uint256.'
+      );
     }
-    return isDebit ? -amount : amount;
+
+    if (!AccountClassPolicy.isFinancialAccountClass(accountClass)) {
+      throw new AccountingMatrixValidationError(
+        'Classe contábil inválida para cálculo do delta normal.'
+      );
+    }
+
+    if (!isLedgerEntryDirection(direction)) {
+      throw new AccountingMatrixValidationError(
+        'Direção contábil inválida para cálculo do delta normal.'
+      );
+    }
+
+    const normalBalance = AccountClassPolicy.getNormalBalance(accountClass);
+
+    switch (direction) {
+      case 'debit':
+        return normalBalance === 'debit' ? amount : -amount;
+      case 'credit':
+        return normalBalance === 'credit' ? amount : -amount;
+      default:
+        throw new AccountingMatrixValidationError(
+          'Direção contábil inválida para cálculo do delta normal.'
+        );
+    }
   }
 }
 

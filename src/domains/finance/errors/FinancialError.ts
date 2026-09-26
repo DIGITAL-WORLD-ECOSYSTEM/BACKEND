@@ -11,26 +11,41 @@
 function sanitizeErrorDetails(
   raw?: Record<string, unknown>
 ): Readonly<Record<string, unknown>> | undefined {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+  if (
+    raw === undefined ||
+    raw === null ||
+    typeof raw !== 'object' ||
+    Array.isArray(raw)
+  ) {
     return undefined;
   }
+
   const sanitized: Record<string, unknown> = Object.create(null);
-  for (const [key, val] of Object.entries(raw)) {
-    if (val === null || val === undefined) {
-      sanitized[key] = val;
+
+  for (const key of Object.getOwnPropertyNames(raw)) {
+    const descriptor = Object.getOwnPropertyDescriptor(raw, key);
+
+    if (!descriptor || !('value' in descriptor)) {
+      continue;
+    }
+
+    const value = descriptor.value;
+
+    if (value === null || value === undefined) {
+      sanitized[key] = value;
     } else if (
-      typeof val === 'string' ||
-      typeof val === 'number' ||
-      typeof val === 'boolean'
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
     ) {
-      sanitized[key] = val;
-    } else if (typeof val === 'bigint') {
-      sanitized[key] = val.toString(10);
+      sanitized[key] = value;
+    } else if (typeof value === 'bigint') {
+      sanitized[key] = value.toString(10);
     } else {
-      // Isola referências e objetos complexos sem executar getters ou toString() arbitrários
       sanitized[key] = '[non-serializable]';
     }
   }
+
   return Object.freeze(sanitized);
 }
 

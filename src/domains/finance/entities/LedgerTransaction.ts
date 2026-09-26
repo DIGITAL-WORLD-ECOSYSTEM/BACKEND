@@ -334,6 +334,57 @@ function normalizeOptionalOpaqueIdentifier(
   return value;
 }
 
+function normalizeOptionalText(
+  value: unknown,
+  fieldName: string,
+  maxLength: number = MAX_LEDGER_DESCRIPTION_LENGTH
+): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value !== 'string') {
+    throw new InvalidLedgerTransactionError(`${fieldName} must be a string.`);
+  }
+
+  if (value.length > MAX_RAW_TEXT_CEILING) {
+    throw new InvalidLedgerTransactionError(
+      `${fieldName} length exceeds raw ceiling of ${MAX_RAW_TEXT_CEILING}.`
+    );
+  }
+
+  const normalized = value.trim().normalize('NFC');
+
+  if (normalized.length === 0) {
+    throw new InvalidLedgerTransactionError(`${fieldName} must not be empty.`);
+  }
+
+  if (normalized.length > maxLength) {
+    throw new InvalidLedgerTransactionError(
+      `${fieldName} exceeds maximum length of ${maxLength} characters.`
+    );
+  }
+
+  if (DANGEROUS_TEXT_CHARACTERS_REGEX.test(normalized)) {
+    throw new InvalidLedgerTransactionError(
+      `${fieldName} contains forbidden control characters.`
+    );
+  }
+
+  return normalized;
+}
+
+function normalizeOptionalPositiveId(
+  value: unknown,
+  fieldName: string
+): number | null | undefined {
+  if (value === undefined || value === null) {
+    return value === null ? null : undefined;
+  }
+
+  return parsePositiveSafeIntegerId(value, fieldName);
+}
+
 /**
  * ============================================================
  * LEDGER ENTRY
@@ -816,15 +867,10 @@ export class LedgerTransaction {
     );
 
     // Invariante relacional: businessReason (undefined -> ausência, '' -> inválido)
-    let businessReason: string | undefined = undefined;
-    if (props.businessReason !== undefined) {
-      if (typeof props.businessReason !== 'string' || props.businessReason.trim().length === 0) {
-        throw new InvalidLedgerTransactionError(
-          'businessReason when provided must be a non-empty string.'
-        );
-      }
-      businessReason = props.businessReason.trim();
-    }
+    const businessReason = normalizeOptionalText(
+      props.businessReason,
+      'businessReason'
+    );
 
     if (transactionType === 'adjustment' && businessReason === undefined) {
       throw new InvalidLedgerTransactionError(
@@ -832,35 +878,79 @@ export class LedgerTransaction {
       );
     }
 
-    // Invariante de paridade entre providerId e externalEventId
-    let providerId: string | undefined = undefined;
-    if (props.providerId !== undefined) {
-      if (typeof props.providerId !== 'string' || props.providerId.trim().length === 0) {
-        throw new InvalidLedgerTransactionError(
-          'providerId when provided must be a non-empty string.'
-        );
-      }
-      providerId = props.providerId.trim();
-    }
+    const providerId = normalizeOptionalText(
+      props.providerId,
+      'providerId',
+      MAX_IDEMPOTENCY_KEY_LENGTH
+    );
 
-    let externalEventId: string | undefined = undefined;
-    if (props.externalEventId !== undefined) {
-      if (typeof props.externalEventId !== 'string' || props.externalEventId.trim().length === 0) {
-        throw new InvalidLedgerTransactionError(
-          'externalEventId when provided must be a non-empty string.'
-        );
-      }
-      externalEventId = props.externalEventId.trim();
-    }
+    const externalEventId = normalizeOptionalText(
+      props.externalEventId,
+      'externalEventId',
+      MAX_IDEMPOTENCY_KEY_LENGTH
+    );
 
     const hasProviderId = providerId !== undefined;
     const hasExternalEventId = externalEventId !== undefined;
 
-    if ((hasProviderId && !hasExternalEventId) || (!hasProviderId && hasExternalEventId)) {
+    if (hasProviderId !== hasExternalEventId) {
       throw new InvalidLedgerTransactionError(
         'providerId and externalEventId must either both be provided or both be omitted.'
       );
     }
+
+    const auditRef = normalizeOptionalText(
+      props.auditRef,
+      'auditRef'
+    );
+
+    const source = normalizeOptionalText(
+      props.source,
+      'source'
+    );
+
+    const destination = normalizeOptionalText(
+      props.destination,
+      'destination'
+    );
+
+    const feeType = normalizeOptionalText(
+      props.feeType,
+      'feeType'
+    );
+
+    const sourceType = normalizeOptionalText(
+      props.sourceType,
+      'sourceType'
+    );
+
+    const sourceId = normalizeOptionalText(
+      props.sourceId,
+      'sourceId',
+      MAX_IDEMPOTENCY_KEY_LENGTH
+    );
+
+    const correlationId = normalizeOptionalText(
+      props.correlationId,
+      'correlationId',
+      MAX_IDEMPOTENCY_KEY_LENGTH
+    );
+
+    const scope = normalizeOptionalText(
+      props.scope,
+      'scope',
+      MAX_IDEMPOTENCY_KEY_LENGTH
+    );
+
+    const actorUserId = normalizeOptionalPositiveId(
+      props.actorUserId,
+      'actorUserId'
+    );
+
+    const authorizedByUserId = normalizeOptionalPositiveId(
+      props.authorizedByUserId,
+      'authorizedByUserId'
+    );
 
     return new LedgerTransaction({
       publicId,
@@ -875,18 +965,18 @@ export class LedgerTransaction {
       reversalOfTransactionId: reversalId,
       refundOfTransactionId: refundId,
       businessReason,
-      auditRef: props.auditRef,
-      source: props.source,
-      destination: props.destination,
+      auditRef,
+      source,
+      destination,
       providerId,
       externalEventId,
-      feeType: props.feeType,
-      actorUserId: props.actorUserId,
-      authorizedByUserId: props.authorizedByUserId,
-      sourceType: props.sourceType,
-      sourceId: props.sourceId,
-      correlationId: props.correlationId,
-      scope: props.scope,
+      feeType,
+      actorUserId,
+      authorizedByUserId,
+      sourceType,
+      sourceId,
+      correlationId,
+      scope,
     });
   }
 
@@ -1005,7 +1095,7 @@ export class LedgerTransaction {
      */
     if (
       reversalId !== undefined &&
-      (reversalId === databaseId || snapshot.publicId === reversalId.toString(10) || (snapshot as any).id === reversalId)
+      (reversalId === databaseId || snapshot.publicId === reversalId.toString(10))
     ) {
       throw new InvalidLedgerTransactionError(
         'A transaction cannot reverse itself.'
@@ -1014,7 +1104,7 @@ export class LedgerTransaction {
 
     if (
       refundId !== undefined &&
-      (refundId === databaseId || snapshot.publicId === refundId.toString(10) || (snapshot as any).id === refundId)
+      (refundId === databaseId || snapshot.publicId === refundId.toString(10))
     ) {
       throw new InvalidLedgerTransactionError(
         'A transaction cannot refund itself.'
@@ -1035,6 +1125,70 @@ export class LedgerTransaction {
       snapshot.entries
     );
 
+    const rehydratedBusinessReason = normalizeOptionalText(
+      snapshot.businessReason,
+      'snapshot.businessReason'
+    );
+
+    const rehydratedAuditRef = normalizeOptionalText(
+      snapshot.auditRef,
+      'snapshot.auditRef'
+    );
+    const rehydratedSource = normalizeOptionalText(
+      snapshot.source,
+      'snapshot.source'
+    );
+    const rehydratedDestination = normalizeOptionalText(
+      snapshot.destination,
+      'snapshot.destination'
+    );
+    const rehydratedProviderId = normalizeOptionalText(
+      snapshot.providerId,
+      'snapshot.providerId',
+      MAX_IDEMPOTENCY_KEY_LENGTH
+    );
+    const rehydratedExternalEventId = normalizeOptionalText(
+      snapshot.externalEventId,
+      'snapshot.externalEventId',
+      MAX_IDEMPOTENCY_KEY_LENGTH
+    );
+    if ((rehydratedProviderId === undefined) !== (rehydratedExternalEventId === undefined)) {
+      throw new InvalidLedgerTransactionError(
+        'snapshot.providerId and snapshot.externalEventId must either both be provided or both be omitted.'
+      );
+    }
+    const rehydratedFeeType = normalizeOptionalText(
+      snapshot.feeType,
+      'snapshot.feeType'
+    );
+    const rehydratedSourceType = normalizeOptionalText(
+      snapshot.sourceType,
+      'snapshot.sourceType'
+    );
+    const rehydratedSourceId = normalizeOptionalText(
+      snapshot.sourceId,
+      'snapshot.sourceId',
+      MAX_IDEMPOTENCY_KEY_LENGTH
+    );
+    const rehydratedCorrelationId = normalizeOptionalText(
+      snapshot.correlationId,
+      'snapshot.correlationId',
+      MAX_IDEMPOTENCY_KEY_LENGTH
+    );
+    const rehydratedScope = normalizeOptionalText(
+      snapshot.scope,
+      'snapshot.scope',
+      MAX_IDEMPOTENCY_KEY_LENGTH
+    );
+    const rehydratedActorUserId = normalizeOptionalPositiveId(
+      snapshot.actorUserId,
+      'snapshot.actorUserId'
+    );
+    const rehydratedAuthorizedByUserId = normalizeOptionalPositiveId(
+      snapshot.authorizedByUserId,
+      'snapshot.authorizedByUserId'
+    );
+
     return new LedgerTransaction({
       publicId,
       databaseId,
@@ -1048,19 +1202,19 @@ export class LedgerTransaction {
       createdAtEpochMs: snapshot.createdAtEpochMs,
       reversalOfTransactionId: reversalId,
       refundOfTransactionId: refundId,
-      businessReason: snapshot.businessReason,
-      auditRef: snapshot.auditRef,
-      source: snapshot.source,
-      destination: snapshot.destination,
-      providerId: snapshot.providerId,
-      externalEventId: snapshot.externalEventId,
-      feeType: snapshot.feeType,
-      actorUserId: snapshot.actorUserId,
-      authorizedByUserId: snapshot.authorizedByUserId,
-      sourceType: snapshot.sourceType,
-      sourceId: snapshot.sourceId,
-      correlationId: snapshot.correlationId,
-      scope: snapshot.scope,
+      businessReason: rehydratedBusinessReason,
+      auditRef: rehydratedAuditRef,
+      source: rehydratedSource,
+      destination: rehydratedDestination,
+      providerId: rehydratedProviderId,
+      externalEventId: rehydratedExternalEventId,
+      feeType: rehydratedFeeType,
+      actorUserId: rehydratedActorUserId,
+      authorizedByUserId: rehydratedAuthorizedByUserId,
+      sourceType: rehydratedSourceType,
+      sourceId: rehydratedSourceId,
+      correlationId: rehydratedCorrelationId,
+      scope: rehydratedScope,
     });
   }
 
@@ -1094,9 +1248,9 @@ export class LedgerTransaction {
       );
     }
 
-    if (entries.length > 100) {
+    if (entries.length > MAX_LEDGER_ENTRIES) {
       throw new InvalidLedgerTransactionError(
-        'Transaction exceeds maximum limit of 100 entries.'
+        `Transaction exceeds maximum limit of ${MAX_LEDGER_ENTRIES} entries.`
       );
     }
 

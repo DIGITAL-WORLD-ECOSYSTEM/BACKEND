@@ -1,20 +1,23 @@
 import { AccountInactiveError } from '../errors/FinancialError';
 import { parsePositiveSafeIntegerId } from '../value-objects/Money256';
 import { Result } from '../../../shared/kernel/Result';
-import { DANGEROUS_TEXT_CHARACTERS_REGEX } from './FinancialTextPolicy';
+import {
+  DANGEROUS_TEXT_CHARACTERS_REGEX,
+  MAX_RAW_TEXT_CEILING,
+} from './FinancialTextPolicy';
 
 /**
  * Catálogo canônico de status de contas financeiras.
  * Preserva integralmente os 6 estados conhecidos na arquitetura.
  */
-export const ACCOUNT_STATUSES = [
+export const ACCOUNT_STATUSES = Object.freeze([
   'active',
   'inactive',
   'suspended',
   'blocked',
   'closed',
   'pending',
-] as const;
+] as const);
 
 export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
 
@@ -23,9 +26,14 @@ export function isAccountStatus(value: unknown): value is AccountStatus {
 }
 
 function normalizeDisplayName(name?: string): string {
-  if (!name || typeof name !== 'string') {
+  if (name === undefined || name === null) {
     return 'desconhecida';
   }
+
+  if (typeof name !== 'string' || name.length > MAX_RAW_TEXT_CEILING) {
+    return 'desconhecida';
+  }
+
   const normalized = name.normalize('NFC').trim();
   if (!normalized || DANGEROUS_TEXT_CHARACTERS_REGEX.test(normalized)) {
     return 'desconhecida';
@@ -58,7 +66,7 @@ export class AccountStatusPolicy {
       throw new AccountInactiveError('Identificador de conta inválido.');
     }
 
-    if (account.status !== 'active') {
+    if (!isAccountStatus(account.status) || account.status !== 'active') {
       const displayName = normalizeDisplayName(account.name);
       throw new AccountInactiveError(
         `Conta financeira #${numericId} (${displayName}) está com status "${account.status}". Movimentações somente são permitidas em contas ativas.`

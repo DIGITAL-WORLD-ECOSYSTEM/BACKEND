@@ -1,20 +1,23 @@
-import { AssetInactiveError, InvalidIdentifierError } from '../errors/FinancialError';
+import { AssetInactiveError } from '../errors/FinancialError';
 import { parsePositiveSafeIntegerId } from '../value-objects/Money256';
 import { Result } from '../../../shared/kernel/Result';
-import { DANGEROUS_TEXT_CHARACTERS_REGEX } from './FinancialTextPolicy';
+import {
+  DANGEROUS_TEXT_CHARACTERS_REGEX,
+  MAX_RAW_TEXT_CEILING,
+} from './FinancialTextPolicy';
 
 /**
  * Catálogo canônico de status de ativos financeiros.
  * Preserva integralmente os 6 estados conhecidos na arquitetura.
  */
-export const ASSET_STATUSES = [
+export const ASSET_STATUSES = Object.freeze([
   'active',
   'inactive',
   'suspended',
   'blocked',
   'retired',
   'pending',
-] as const;
+] as const);
 
 export type AssetStatus = (typeof ASSET_STATUSES)[number];
 
@@ -23,9 +26,14 @@ export function isAssetStatus(value: unknown): value is AssetStatus {
 }
 
 function normalizeDisplayCode(code?: string): string {
-  if (!code || typeof code !== 'string') {
+  if (code === undefined || code === null) {
     return 'desconhecido';
   }
+
+  if (typeof code !== 'string' || code.length > MAX_RAW_TEXT_CEILING) {
+    return 'desconhecido';
+  }
+
   const normalized = code.normalize('NFC').trim();
   if (!normalized || DANGEROUS_TEXT_CHARACTERS_REGEX.test(normalized)) {
     return 'desconhecido';
@@ -63,12 +71,17 @@ export class AssetStatusPolicy {
       code = assetInput.code;
     } else {
       assetId = assetInput;
-      assetStatus = status || '';
+      if (status === undefined) {
+        throw new AssetInactiveError(
+          'Status do ativo é obrigatório para validação de transação.'
+        );
+      }
+      assetStatus = status;
     }
 
     const numericId = parsePositiveSafeIntegerId(assetId, 'assetId');
 
-    if (assetStatus !== 'active') {
+    if (!isAssetStatus(assetStatus) || assetStatus !== 'active') {
       const displayCode = normalizeDisplayCode(code);
       throw new AssetInactiveError(
         `Ativo financeiro #${numericId} (${displayCode}) está com status "${assetStatus}". Operações financeiras exigem que o ativo esteja ativo.`
