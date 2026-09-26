@@ -83,8 +83,9 @@ export class AssetStatusPolicy {
 
     if (!isAssetStatus(assetStatus) || assetStatus !== 'active') {
       const displayCode = normalizeDisplayCode(code);
+      const safeStatus = typeof assetStatus === 'string' ? assetStatus.replace(/[^\w-]/g, '').slice(0, 32) : 'invalid';
       throw new AssetInactiveError(
-        `Ativo financeiro #${numericId} (${displayCode}) está com status "${assetStatus}". Operações financeiras exigem que o ativo esteja ativo.`
+        `Ativo financeiro #${numericId} (${displayCode}) está com status "${safeStatus}". Operações financeiras exigem que o ativo esteja ativo.`
       );
     }
   }
@@ -101,14 +102,16 @@ export class AssetStatusPolicy {
     }
 
     if (!isAssetStatus(status)) {
+      const safeStatus = typeof status === 'string' ? status.replace(/[^\w-]/g, '').slice(0, 32) : 'invalid';
       return Result.fail(
-        `Operação bloqueada por política de domínio: Ativo ${numericId} possui status inválido: '${status}'.`
+        `Operação bloqueada por política de domínio: Ativo ${numericId} possui status inválido: '${safeStatus}'.`
       );
     }
 
     if (status !== 'active') {
+      const safeStatus = typeof status === 'string' ? status.replace(/[^\w-]/g, '').slice(0, 32) : 'invalid';
       return Result.fail(
-        `Operação bloqueada por política de domínio: Ativo ${numericId} está com status '${status}' (esperado: 'active').`
+        `Operação bloqueada por política de domínio: Ativo ${numericId} está com status '${safeStatus}' (esperado: 'active').`
       );
     }
 
@@ -121,8 +124,9 @@ export class AssetStatusPolicy {
   public static assertCanTransact(status: string | AssetStatus, assetId: number | string): void {
     const numericId = parsePositiveSafeIntegerId(assetId, 'assetId');
     if (!this.isTradeable(status)) {
+      const safeStatus = typeof status === 'string' ? status.replace(/[^\w-]/g, '').slice(0, 32) : 'invalid';
       throw new AssetInactiveError(
-        `Asset #${numericId} is not active (status: ${status}) and cannot be transacted.`
+        `Asset #${numericId} is not active (status: ${safeStatus}) and cannot be transacted.`
       );
     }
   }

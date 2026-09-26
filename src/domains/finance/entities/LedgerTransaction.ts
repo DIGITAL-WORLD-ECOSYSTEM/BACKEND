@@ -559,6 +559,8 @@ export interface CreateLedgerTransactionProps {
   sourceId?: string | null;
   correlationId?: string | null;
   scope?: string | null;
+  databaseId?: number;
+  id?: number | string;
 }
 
 /**
@@ -819,7 +821,7 @@ export class LedgerTransaction {
     );
 
     // Invariante relacional: Bloqueia auto-referência explícita se o ID for conhecido
-    const explicitId = (props as any).id ?? (props as any).databaseId;
+    const explicitId = props.id ?? props.databaseId;
     if (explicitId !== undefined && explicitId !== null) {
       const explicitStr =
         typeof explicitId === 'number'

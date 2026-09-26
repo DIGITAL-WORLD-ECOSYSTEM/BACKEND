@@ -62,6 +62,11 @@ export abstract class FinancialError extends Error {
     this.name = this.constructor.name;
     this.details = sanitizeErrorDetails(details);
     Object.setPrototypeOf(this, new.target.prototype);
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, new.target);
+    }
+    void this.stack;
+    Object.freeze(this);
   }
 }
 

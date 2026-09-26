@@ -136,10 +136,12 @@ export class PostingPlanBuilder {
     }
 
     // 0. Validação de Autorização Soberana (DENIED -> Bloqueio imediato do PostingPlan)
-    if (!params.authorizationDecision || !params.authorizationDecision.allowed) {
+    if (!params.authorizationDecision || (params.authorizationDecision.allowed as unknown) !== true) {
       const reason = !params.authorizationDecision
         ? 'Decisão de autorização ausente'
-        : (!params.authorizationDecision.allowed ? params.authorizationDecision.reason : 'Não autorizada');
+        : ('reason' in params.authorizationDecision && typeof params.authorizationDecision.reason === 'string'
+            ? params.authorizationDecision.reason
+            : 'Não autorizada');
       throw new InvalidLedgerTransactionError(
         `Decisão de autorização inválida ou negada para a construção do PostingPlan: ${reason}`
       );
@@ -371,10 +373,18 @@ export class PostingPlanBuilder {
           )
         : `evt_${transactionId}`;
 
-    const occurredAtEpochMs =
-      params.occurredAtEpochMs !== undefined
-        ? assertPositiveSafeInteger(params.occurredAtEpochMs, 'occurredAtEpochMs')
-        : Date.now();
+    const MAX_VALID_DATE_EPOCH_MS = 8640000000000000;
+    let occurredAtEpochMs: number;
+    if (params.occurredAtEpochMs !== undefined) {
+      occurredAtEpochMs = assertPositiveSafeInteger(params.occurredAtEpochMs, 'occurredAtEpochMs');
+      if (occurredAtEpochMs > MAX_VALID_DATE_EPOCH_MS) {
+        throw new InvalidLedgerTransactionError(
+          `occurredAtEpochMs exceeds maximum valid Date ceiling (${occurredAtEpochMs} > ${MAX_VALID_DATE_EPOCH_MS}).`
+        );
+      }
+    } else {
+      occurredAtEpochMs = Date.now();
+    }
 
     const occurredAt = new Date(occurredAtEpochMs).toISOString();
 
@@ -387,8 +397,15 @@ export class PostingPlanBuilder {
           )
         : `corr_${transactionId}`;
 
-    // 5. Compilação das pernas contábeis com entryOrdinal sequencial canônico 1..N (P0-18)
-    const ledgerEntries: PostingLedgerEntryPlan[] = params.entries.map((entry, index) => {
+    // 5. Compilação das pernas contábeis com ordenação canônica determinística (accountId ASC, assetId ASC, direction ASC) e entryOrdinal sequencial 1..N
+    const sortedEntries = [...params.entries].sort((a, b) => {
+      if (a.accountId !== b.accountId) return a.accountId - b.accountId;
+      if (a.assetId !== b.assetId) return a.assetId - b.assetId;
+      if (a.direction !== b.direction) return a.direction.localeCompare(b.direction);
+      return 0;
+    });
+
+    const ledgerEntries: PostingLedgerEntryPlan[] = sortedEntries.map((entry, index) => {
       return Object.freeze({
         transactionId,
         entryOrdinal: index + 1,
@@ -443,20 +460,27 @@ export class PostingPlanBuilder {
           )
         : `worker_auto_${transactionId}`;
 
-    const leaseGeneration =
-      typeof params.leaseGeneration === 'number' &&
-      Number.isSafeInteger(params.leaseGeneration) &&
-      params.leaseGeneration >= 0
-        ? params.leaseGeneration
-        : 1;
+    let leaseGeneration = 1;
+    if (params.leaseGeneration !== undefined && params.leaseGeneration !== null) {
+      if (!Number.isSafeInteger(params.leaseGeneration) || params.leaseGeneration < 0) {
+        throw new InvalidLedgerTransactionError(`Invalid leaseGeneration (${params.leaseGeneration}).`);
+      }
+      leaseGeneration = params.leaseGeneration;
+    }
 
-    const responseStatus =
-      typeof params.responseStatus === 'number' &&
-      Number.isSafeInteger(params.responseStatus) &&
-      params.responseStatus >= 100 &&
-      params.responseStatus <= 599
-        ? params.responseStatus
-        : 200;
+    let responseStatus = 200;
+    if (params.responseStatus !== undefined && params.responseStatus !== null) {
+      if (
+        !Number.isSafeInteger(params.responseStatus) ||
+        params.responseStatus < 100 ||
+        params.responseStatus > 599
+      ) {
+        throw new InvalidLedgerTransactionError(
+          `Invalid responseStatus (${params.responseStatus}). Must be between 100 and 599.`
+        );
+      }
+      responseStatus = params.responseStatus;
+    }
 
     const responsePayload =
       params.responsePayload ||

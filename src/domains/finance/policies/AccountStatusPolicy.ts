@@ -68,8 +68,9 @@ export class AccountStatusPolicy {
 
     if (!isAccountStatus(account.status) || account.status !== 'active') {
       const displayName = normalizeDisplayName(account.name);
+      const safeStatus = typeof account.status === 'string' ? account.status.replace(/[^\w-]/g, '').slice(0, 32) : 'invalid';
       throw new AccountInactiveError(
-        `Conta financeira #${numericId} (${displayName}) está com status "${account.status}". Movimentações somente são permitidas em contas ativas.`
+        `Conta financeira #${numericId} (${displayName}) está com status "${safeStatus}". Movimentações somente são permitidas em contas ativas.`
       );
     }
   }
@@ -86,14 +87,16 @@ export class AccountStatusPolicy {
     }
 
     if (!isAccountStatus(status)) {
+      const safeStatus = typeof status === 'string' ? status.replace(/[^\w-]/g, '').slice(0, 32) : 'invalid';
       return Result.fail(
-        `Operação bloqueada por política de domínio: Conta ${numericId} possui status inválido: '${status}'.`
+        `Operação bloqueada por política de domínio: Conta ${numericId} possui status inválido: '${safeStatus}'.`
       );
     }
 
     if (status !== 'active') {
+      const safeStatus = typeof status === 'string' ? status.replace(/[^\w-]/g, '').slice(0, 32) : 'invalid';
       return Result.fail(
-        `Operação bloqueada por política de domínio: Conta ${numericId} está com status '${status}' (esperado: 'active').`
+        `Operação bloqueada por política de domínio: Conta ${numericId} está com status '${safeStatus}' (esperado: 'active').`
       );
     }
 
@@ -103,8 +106,9 @@ export class AccountStatusPolicy {
   public static assertCanDebit(status: string | AccountStatus, accountId: number | string): void {
     const validId = parsePositiveSafeIntegerId(accountId, 'accountId');
     if (!this.isOperable(status)) {
+      const safeStatus = typeof status === 'string' ? status.replace(/[^\w-]/g, '').slice(0, 32) : 'invalid';
       throw new AccountInactiveError(
-        `Account #${validId} is not active (status: ${status}) and cannot be debited.`
+        `Account #${validId} is not active (status: ${safeStatus}) and cannot be debited.`
       );
     }
   }
@@ -112,8 +116,9 @@ export class AccountStatusPolicy {
   public static assertCanCredit(status: string | AccountStatus, accountId: number | string): void {
     const validId = parsePositiveSafeIntegerId(accountId, 'accountId');
     if (!this.isOperable(status)) {
+      const safeStatus = typeof status === 'string' ? status.replace(/[^\w-]/g, '').slice(0, 32) : 'invalid';
       throw new AccountInactiveError(
-        `Account #${validId} is not active (status: ${status}) and cannot be credited.`
+        `Account #${validId} is not active (status: ${safeStatus}) and cannot be credited.`
       );
     }
   }

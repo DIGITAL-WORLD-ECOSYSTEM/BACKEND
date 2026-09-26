@@ -52,7 +52,7 @@ export type TransitionResult =
  * 3. 'completed -> completed' é rejeitado como reposting proibido.
  * 4. Apenas 'pending -> pending' e 'processing -> processing' são admitidos como NO_OP seguro (sem side effects nem outbox).
  */
-const ALLOWED_TRANSITIONS: Readonly<
+export const ALLOWED_TRANSITIONS: Readonly<
   Record<
     FinancialTransactionStatus,
     readonly FinancialTransactionStatus[]
@@ -171,9 +171,9 @@ export class FinancialTransactionStateMachine {
       throw new InvalidStateTransitionError(
         res.error || 'Transição de estado inválida para a transação financeira.',
         {
+          ...context,
           currentStatus,
           targetStatus,
-          ...context,
         }
       );
     }

@@ -135,7 +135,7 @@ export function freezeAuthorizationContext(context: AuthorizationContext): Autho
     throw new Error('AuthorizationContext deve ser um objeto válido.');
   }
 
-  const rawContext = context as Record<string, unknown>;
+  const rawContext = context as unknown as Record<string, unknown>;
   if (!isPrincipalType(rawContext.principalType)) {
     throw new Error(
       `Tipo de principal inválido em AuthorizationContext: '${String(rawContext.principalType)}'. Esperado: 'user' | 'system' | 'service_account'.`

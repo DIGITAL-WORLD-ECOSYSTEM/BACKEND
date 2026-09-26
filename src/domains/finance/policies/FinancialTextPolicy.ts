@@ -66,6 +66,12 @@ export class FinancialTextPolicy {
    * 5. Garante limite semântico de code points sem quebras de linha
    */
   public static sanitizeSingleLine(raw: unknown, maxLength: number, fieldName: string): string {
+    if (!Number.isSafeInteger(maxLength) || maxLength <= 0 || maxLength > MAX_RAW_TEXT_CEILING) {
+      throw new InvalidLedgerTransactionError(
+        `Invalid maxLength for ${fieldName}. Must be a positive safe integer up to ${MAX_RAW_TEXT_CEILING}.`
+      );
+    }
+
     if (typeof raw !== 'string') {
       throw new InvalidLedgerTransactionError(`${fieldName} must be a string.`);
     }
@@ -121,6 +127,9 @@ export class FinancialTextPolicy {
    * NOTA DE PRECISÃO: é code-point safe, mas NÃO garante preservação de grapheme clusters complexos.
    */
   public static truncateCodePoints(text: string, maxCodePoints: number): string {
+    if (!Number.isSafeInteger(maxCodePoints) || maxCodePoints <= 0) {
+      return '';
+    }
     const chars = Array.from(text);
     if (chars.length <= maxCodePoints) {
       return text;
@@ -160,7 +169,8 @@ export class FinancialTextPolicy {
    * Validação canônica estrita para chaves de idempotência.
    */
   public static canonicalizeIdempotencyKey(raw: unknown): string {
-    return this.assertSafeIdentifierText(raw, 'idempotencyKey');
+    const input = typeof raw === 'string' ? raw.normalize('NFC') : raw;
+    return this.assertSafeIdentifierText(input, 'idempotencyKey');
   }
 
   /**
