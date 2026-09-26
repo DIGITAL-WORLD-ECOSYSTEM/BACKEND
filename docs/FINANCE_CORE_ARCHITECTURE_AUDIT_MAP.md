@@ -457,13 +457,13 @@ BackEnd/
 ### Camada 1: Domínio Contábil Puro (`src/domains/finance/`) — 22 Arquivos
 
 | # | Arquivo | Responsabilidade Arquitetural | Invariante / Garantia de Segurança |
-| **01** | [`constants/FinancialLimits.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/constants/FinancialLimits.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Catálogo canônico de limites fundamentais, invariantes matemáticas (uint256), cardinalidades e metadados executáveis. | Imutável, sem dependências de I/O, bijeção estrita no manifesto, anti-DoS ceiling e proteção contra overflow acumulado. |
-| **02** | [`contracts/AuthorizationContext.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/AuthorizationContext.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Contratos formais de custódia e `CustodyAuthorizationPolicy`. | Contexto autêntico (`WeakSet`), menor privilégio estrito sem bypass cego de `system`, catálogo canônico `FinanceCapabilities`, imutabilidade com `Object.freeze`. |
-| **03** | [`contracts/DeterministicIdGenerator.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/DeterministicIdGenerator.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Gerador determinístico de identificadores de 53 bits (Safe Integer). | Zero `Math.random()`, horizonte de 41 bits (`MAX_EPOCH_41BIT_MS`), avanço de relógio lógico, skew defensivo e lock de workerId. |
-| **04** | [`contracts/FinancialLedgerEntryRecord.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/FinancialLedgerEntryRecord.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Contrato de dados imutável de transporte das pernas contábeis. | Defesa anti-DoS pré-trim (`MAX_NUMERIC_RAW_TEXT_CEILING`), regex canônica `/^[1-9]\d*$/`, limite uint256 e `Object.freeze`. |
-| **05** | [`contracts/IdempotencyScope.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/IdempotencyScope.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Taxonomia canônica de escopos compostos e resultados de claim. | Segmentos simétricos sem `:`, ausência de coerção permissiva `||`, parser soberano `parseIdempotencyClaimResult` com runtime deep freeze. |
-| **06** | [`contracts/PostingPlan.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/PostingPlan.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | DTO imutável contendo todas as mutações físicas de uma transação. | Selo `POSTING_PLAN_SEAL`, registro autêntico `WeakSet`, confrontação matemática estrita `ledgerEntries` ↔ `balanceMutations` e cobertura bidirecional. |
-| **07** | [`contracts/PostingSession.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/PostingSession.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | *Capability Token* não-forjável de uso único (*Single-Use Capability*). | Single-use atômico via `tryConsume()`, CSPRNG puro (zero `Math.random()`), consumo irreversível protegido por `WeakSet` e isolamento arquitetural de domínio. |
+| **01** | [`constants/FinancialLimits.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/constants/FinancialLimits.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`1e0d199`)* | Catálogo canônico de limites fundamentais, invariantes matemáticas (uint256), cardinalidades e metadados executáveis. | Imutável, sem dependências de I/O, bijeção estrita no manifesto, anti-DoS ceiling e proteção contra overflow acumulado. |
+| **02** | [`contracts/AuthorizationContext.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/AuthorizationContext.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`8380e6c`)* | Contratos formais de custódia e `CustodyAuthorizationPolicy`. | Contexto autêntico (`WeakSet`), menor privilégio estrito sem bypass cego de `system`, catálogo canônico `FinanceCapabilities`, imutabilidade com `Object.freeze`. |
+| **03** | [`contracts/DeterministicIdGenerator.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/DeterministicIdGenerator.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`8380e6c`)* | Gerador determinístico de identificadores de 53 bits (Safe Integer). | Zero `Math.random()`, horizonte de 41 bits (`MAX_EPOCH_41BIT_MS`), avanço de relógio lógico, skew defensivo e lock de workerId. |
+| **04** | [`contracts/FinancialLedgerEntryRecord.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/FinancialLedgerEntryRecord.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`8380e6c`)* | Contrato de dados imutável de transporte das pernas contábeis. | Defesa anti-DoS pré-trim (`MAX_NUMERIC_RAW_TEXT_CEILING`), regex canônica `/^[1-9]\d*$/`, limite uint256 e `Object.freeze`. |
+| **05** | [`contracts/IdempotencyScope.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/IdempotencyScope.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`8380e6c`)* | Taxonomia canônica de escopos compostos e resultados de claim. | Segmentos simétricos sem `:`, ausência de coerção permissiva `||`, parser soberano `parseIdempotencyClaimResult` com runtime deep freeze. |
+| **06** | [`contracts/PostingPlan.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/PostingPlan.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`8380e6c`)* | DTO imutável contendo todas as mutações físicas de uma transação. | Selo `POSTING_PLAN_SEAL`, registro autêntico `WeakSet`, confrontação matemática estrita `ledgerEntries` ↔ `balanceMutations` e cobertura bidirecional. |
+| **07** | [`contracts/PostingSession.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/PostingSession.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`8380e6c`)* | *Capability Token* não-forjável de uso único (*Single-Use Capability*). | Single-use atômico via `tryConsume()`, CSPRNG puro (zero `Math.random()`), consumo irreversível protegido por `WeakSet` e isolamento arquitetural de domínio. |
 | **08** | [`entities/LedgerTransaction.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/LedgerTransaction.ts) | Raiz de Agregação Contábil (Aggregate Root). | Impõe a Equação Fundamental: $\sum Débito = \sum Crédito$ por ativo. |
 | **09** | [`errors/FinancialError.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/FinancialError.ts) | Hierarquia completa de exceções e erros tipados de domínio. | Erros sem acoplamento HTTP com códigos canônicos determinísticos. |
 | **10** | [`errors/LedgerImbalanceError.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/LedgerImbalanceError.ts) | Erro específico de desbalanceamento contábil. | Disparado imediatamente se uma perna contábil for desbalanceada. |
@@ -474,11 +474,11 @@ BackEnd/
 | **15** | [`policies/FinancialTextPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/FinancialTextPolicy.ts) | Sanitização e validação de textos, descrições e motivos de negócio. | Previne injeção de caracteres de controle e descrições vazias. |
 | **16** | [`services/FinancialTransactionStateMachine.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/FinancialTransactionStateMachine.ts) | Máquina de estados determinística para o ciclo da transação. | Impede transições ilegais (ex: de `failed` direto para `completed`). |
 | **17** | [`services/PostingPlanBuilder.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/PostingPlanBuilder.ts) | Compilador que converte intenções de domínio em um `PostingPlan`. | Prepara a ordem determinística de atualização de contas (`accountId ASC`). |
-| **18** | [`value-objects/BaseUnits.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/BaseUnits.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Conversão de representação decimal humana para unidades base canônicas e formatação determinística. | Pre-parsing trim, validação estrita de precisão (0-18), limite lexical uint256 e validação forte de `AssetPrecisionContext`. |
-| **19** | [`value-objects/FinancialTransactionStatus.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/FinancialTransactionStatus.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Catálogo canônico dos estados do ciclo de vida transacional. | `Object.freeze` em dicionário e tupla, sanitização de JSDoc sem vazamento de infraestrutura, type guard seguro. |
-| **20** | [`value-objects/Money256.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/Money256.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Value Object imutável de precisão arbitrária de 256 bits (`BigInt`). | Imune a estouros de ponto flutuante, delega validação de IDs para `FinancialIdentifier.ts`, aritmética pura em `BigInt`. |
-| **21** | [`value-objects/LedgerEntryDirection.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/LedgerEntryDirection.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Catálogo canônico da direção contábil de pernas do razão (`debit` / `credit`). | Domínio puro isolado, imutabilidade com `Object.freeze`, type guard `isLedgerEntryDirection` estrito. |
-| **22** | [`value-objects/FinancialIdentifier.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/FinancialIdentifier.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`** | Value Object e validador canônico de identificadores físicos inteiros positivos (53 bits). | Teto lexical de 16 dígitos (`MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS`), validação de `Number.isSafeInteger() > 0`, imutabilidade com `Object.freeze`. |
+| **18** | [`value-objects/BaseUnits.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/BaseUnits.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`5995cba`)* | Conversão de representação decimal humana para unidades base canônicas e formatação determinística. | Pre-parsing trim, validação estrita de precisão (0-18), limite lexical uint256 e validação forte de `AssetPrecisionContext`. |
+| **19** | [`value-objects/FinancialTransactionStatus.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/FinancialTransactionStatus.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`5995cba`)* | Catálogo canônico dos estados do ciclo de vida transacional. | `Object.freeze` em dicionário e tupla, sanitização de JSDoc sem vazamento de infraestrutura, type guard seguro. |
+| **20** | [`value-objects/Money256.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/Money256.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`5995cba`)* | Value Object imutável de precisão arbitrária de 256 bits (`BigInt`). | Imune a estouros de ponto flutuante, delega validação de IDs para `FinancialIdentifier.ts`, aritmética pura em `BigInt`. |
+| **21** | [`value-objects/LedgerEntryDirection.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/LedgerEntryDirection.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`5995cba`)* | Catálogo canônico da direção contábil de pernas do razão (`debit` / `credit`). | Domínio puro isolado, imutabilidade com `Object.freeze`, type guard `isLedgerEntryDirection` estrito. |
+| **22** | [`value-objects/FinancialIdentifier.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/FinancialIdentifier.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`5995cba`)* | Value Object e validador canônico de identificadores físicos inteiros positivos (53 bits). | Teto lexical de 16 dígitos (`MAX_JS_SAFE_INTEGER_DECIMAL_DIGITS`), validação de `Number.isSafeInteger() > 0`, imutabilidade com `Object.freeze`. |
 
 ---
 
@@ -700,6 +700,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA-X / ARQUIVO-##] `caminho/do/arquivo.ext`
 - **Responsabilidade Central:** <propósito arquitetural estrito>
 - **Nota Matrix Oficial:** `XX,X / 10,0`
+- **Data da Última Atualização / Auditoria:** `AAAA-MM-DD` (Commit: `<hash>`)
 - **Classificação de Homologação:** `STATUS: FROZEN / CERTIFICADO`
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Conforme)`
 
@@ -729,6 +730,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-01] [`src/domains/finance/constants/FinancialLimits.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/constants/FinancialLimits.ts)
 - **Responsabilidade Central:** Catálogo canônico imutável de limites matemáticos fundamentais, limites de representação, políticas estruturais de cardinalidade, manifesto e invariantes executáveis.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `1e0d199`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -783,6 +785,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-02] [`src/domains/finance/contracts/AuthorizationContext.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/AuthorizationContext.ts)
 - **Responsabilidade Central:** Contratos formais de custódia, especificação da operação de débito e política soberana `CustodyAuthorizationPolicy`, garantindo controle de acesso estrito sob o modelo Object-Capabilities (OCaps).
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `8380e6c`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -819,6 +822,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-03] [`src/domains/finance/contracts/DeterministicIdGenerator.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/DeterministicIdGenerator.ts)
 - **Responsabilidade Central:** Gerador determinístico de identificadores transacionais numéricos de 53 bits (Safe Integer), monotonicamente crescentes e conhecidos em memória antes da persistência física.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `8380e6c`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -852,6 +856,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-04] [`src/domains/finance/contracts/FinancialLedgerEntryRecord.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/FinancialLedgerEntryRecord.ts)
 - **Responsabilidade Central:** Contrato de dados canônico serializado para transporte imutável das pernas contábeis no livro-razão (`FinancialLedgerEntryRecord`), com validação defensiva e normalização canônica.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `8380e6c`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -883,6 +888,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-05] [`src/domains/finance/contracts/IdempotencyScope.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/IdempotencyScope.ts)
 - **Responsabilidade Central:** Taxonomia canônica de escopos compostos, construtor de chaves soberanas e normalizador da taxonomia sêxtupla de resultados de claim de idempotência financeira.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `8380e6c`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -914,6 +920,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-06] [`src/domains/finance/contracts/PostingPlan.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/PostingPlan.ts)
 - **Responsabilidade Central:** DTO imutável e soberano contendo 100% dos dados para despacho do lote transacional contábil, aplicando partidas dobradas (FIN-001) e confrontação matemática estrita com as mutações de saldo.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `8380e6c`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -949,6 +956,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-07] [`src/domains/finance/contracts/PostingSession.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/PostingSession.ts)
 - **Responsabilidade Central:** *Capability Token* não-forjável e de uso único (*Single-Use Capability*) que confere autoridade soberana para execução atômica de um lote contábil sob a fronteira transacional da Unit of Work.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `8380e6c`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -991,6 +999,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-18] [`src/domains/finance/value-objects/BaseUnits.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/BaseUnits.ts)
 - **Responsabilidade Central:** Conversão determinística e bidirecional entre representação decimal humana e unidades atômicas inteiras canônicas (`Money256`), com validação rigorosa de precisão e contexto de ativo.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `5995cba`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1029,6 +1038,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-19] [`src/domains/finance/value-objects/FinancialTransactionStatus.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/FinancialTransactionStatus.ts)
 - **Responsabilidade Central:** Catálogo canônico, fechamento e guards de runtime para os estados de ciclo de vida das transações financeiras no domínio.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `5995cba`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1057,6 +1067,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-20] [`src/domains/finance/value-objects/Money256.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/Money256.ts)
 - **Responsabilidade Central:** Value Object imutável de alta precisão que encapsula montantes inteiros de 256 bits (`BigInt`) atrelados a um ativo específico, com aritmética inteira pura à prova de overflow e underflow.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `5995cba`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1093,6 +1104,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-21] [`src/domains/finance/value-objects/LedgerEntryDirection.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/LedgerEntryDirection.ts)
 - **Responsabilidade Central:** Catálogo canônico, tipo estrito e guard de runtime da direção contábil de pernas de escrituração no livro-razão (`debit` / `credit`).
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `5995cba`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1121,6 +1133,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-22] [`src/domains/finance/value-objects/FinancialIdentifier.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/FinancialIdentifier.ts)
 - **Responsabilidade Central:** Value Object soberano e validador canônico para identificadores físicos inteiros positivos (53 bits, seguros em JavaScript), isolando a validação de IDs de entidades e bancos do Value Object monetário `Money256`.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-25` (Commit: `5995cba`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
