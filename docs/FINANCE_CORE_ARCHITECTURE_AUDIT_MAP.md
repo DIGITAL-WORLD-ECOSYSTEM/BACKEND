@@ -1,7 +1,7 @@
 # Finance Core — Mapeamento Arquitetural, Diagramas & Checklist Unificado de Auditoria
 
 > **Documento Oficial de Engenharia & Auditoria de Fronteira (Gate 0 / P0 Hardened)**  
-> **Versão:** 2.8.0 (P0 Hardened Post-Audit — Camada 1 Domínio Contábil Puro 100% Frozen)  
+> **Versão:** 2.8.1 (P0 Hardened Post-Audit — Camada 1 Domínio Contábil Puro 100% Frozen & Cadeia Probatória Consolidada)  
 > **Ambiente de Execução:** Cloudflare Workers (D1 SQLite) + Drizzle ORM + Hono Framework  
 > **Padrão Arquitetural:** Clean Architecture + Domain-Driven Design (DDD) + Append-Only Double-Entry Ledger com Balanços Materializados Síncronos (State-Based OCC) + Transactional Outbox Pattern  
 > **Aritmética & Armazenamento:** Precisão Arbitrária de 256 bits (`Money256` / `BigInt` em Memória V8) + Persistência em Texto Canônico (`TEXT`) no Cloudflare D1 SQLite
@@ -464,16 +464,16 @@ BackEnd/
 | **05** | [`contracts/IdempotencyScope.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/IdempotencyScope.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`8380e6c`)* | Taxonomia canônica de escopos compostos e resultados de claim. | Segmentos simétricos sem `:`, ausência de coerção permissiva `||`, parser soberano `parseIdempotencyClaimResult` com runtime deep freeze. |
 | **06** | [`contracts/PostingPlan.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/PostingPlan.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`8380e6c`)* | DTO imutável contendo todas as mutações físicas de uma transação. | Selo `POSTING_PLAN_SEAL`, registro autêntico `WeakSet`, confrontação matemática estrita `ledgerEntries` ↔ `balanceMutations` e cobertura bidirecional. |
 | **07** | [`contracts/PostingSession.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/PostingSession.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`8380e6c`)* | *Capability Token* não-forjável de uso único (*Single-Use Capability*). | Single-use atômico via `tryConsume()`, CSPRNG puro (zero `Math.random()`), consumo irreversível protegido por `WeakSet` e isolamento arquitetural de domínio. |
-| **08** | [`entities/LedgerTransaction.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/LedgerTransaction.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`7c40554`)* | Raiz de Agregação Contábil (Aggregate Root). | Impõe a Equação Fundamental: $\sum Débito = \sum Crédito$ por ativo, pernas limitadas por `MAX_LEDGER_ENTRIES`, `actorUserId` seguro e retrocompatibilidade de `databaseId`. |
-| **09** | [`errors/FinancialError.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/FinancialError.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`7c40554`)* | Hierarquia completa de exceções e erros tipados de domínio. | Erros sem acoplamento HTTP, sanitização de `details` blindada contra getters e prototype pollution, imutabilidade profunda. |
-| **10** | [`errors/LedgerImbalanceError.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/LedgerImbalanceError.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`7c40554`)* | Erro específico de desbalanceamento contábil. | Disparado imediatamente se uma perna contábil for desbalanceada, com rastreabilidade formal de somas e deltas. |
-| **11** | [`policies/AccountClassPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountClassPolicy.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`7c40554`)* | Regras das 5 naturezas contábeis (Ativo, Passivo, PL, Receita, Despesa). | Tabela canônica soberana `NORMAL_BALANCE_BY_CLASS` congelada, com funções fail-closed `getNormalBalance()` e `isNormalDebitClass()`. |
-| **12** | [`policies/AccountStatusPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountStatusPolicy.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`7c40554`)* | Regras de ciclo de vida e permissões operacionais de contas. | Bloqueia lançamentos em contas inativas, suspensas ou encerradas; `ACCOUNT_STATUSES` congelado e bounds anti-DoS pré-NFC. |
-| **13** | [`policies/AccountingEntryPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountingEntryPolicy.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`7c40554`)* | Políticas de geração de pernas contábeis para depósitos, saques, etc. | Cálculo algébrico de saldo normal delegando para `AccountClassPolicy`, deep-freeze defensivo em `validateEntriesBalance` e partidas dobradas estritas. |
-| **14** | [`policies/AssetStatusPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AssetStatusPolicy.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`7c40554`)* | Regras de validação e estados de ativos transacionáveis. | Impede operações em moedas e tokens congelados ou não homologados; `ASSET_STATUSES` congelado e eliminação de fallbacks permissivos. |
-| **15** | [`policies/FinancialTextPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/FinancialTextPolicy.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`7c40554`)* | Sanitização e validação de textos, descrições e motivos de negócio. | Previne injeção de caracteres de controle e bidirecionais perigosos; `formatReversalDescription` blindado e teto anti-DoS pré-NFC. |
-| **16** | [`services/FinancialTransactionStateMachine.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/FinancialTransactionStateMachine.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`7c40554`)* | Máquina de estados determinística para o ciclo da transação. | Impede transições ilegais (ex: de `failed` direto para `completed`), estados terminais irreversíveis e freeze no grafo. |
-| **17** | [`services/PostingPlanBuilder.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/PostingPlanBuilder.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`7c40554`)* | Compilador que converte intenções de domínio em um `PostingPlan`. | Prepara a ordem determinística de contas (`accountId ASC`), derivação determinística de IDs/timestamps sem relógio de parede e selagem autêntica via `sealPostingPlan`. |
+| **08** | [`entities/LedgerTransaction.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/LedgerTransaction.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`9aa5c15`)* | Raiz de Agregação Contábil (Aggregate Root). | Impõe partidas dobradas por ativo ($\sum D = \sum C$), unicidade de `entry.id` no agregado, tipagem estrita de `databaseId` e `id` em `CreateLedgerTransactionProps`, pernas limitadas por `MAX_LEDGER_ENTRIES`. |
+| **09** | [`errors/FinancialError.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/FinancialError.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`9aa5c15`)* | Hierarquia completa de exceções e erros tipados de domínio. | Erros sem acoplamento HTTP, `Object.freeze(this)` na instância com materialização prévia de stack V8, barreira OCap em `details` (conversão de `bigint` e mascaramento `[non-serializable]`). |
+| **10** | [`errors/LedgerImbalanceError.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/LedgerImbalanceError.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`9aa5c15`)* | Erro específico de desbalanceamento contábil. | Disparado imediatamente se uma perna contábil for desbalanceada, com rastreabilidade formal de somas e deltas em strings canônicas de `Money256`. |
+| **11** | [`policies/AccountClassPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountClassPolicy.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`9aa5c15`)* | Regras das 5 naturezas contábeis (Ativo, Passivo, PL, Receita, Despesa). | Tabela canônica soberana `NORMAL_BALANCE_BY_CLASS` congelada, com funções fail-closed `getNormalBalance()` e `isNormalDebitClass()` para as 5 classes contábeis. |
+| **12** | [`policies/AccountStatusPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountStatusPolicy.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`9aa5c15`)* | Regras de ciclo de vida e permissões operacionais de contas. | Bloqueia lançamentos em contas inativas, suspensas ou encerradas; sanitização de status em mensagens de erro contra log injection; bounds anti-DoS pré-NFC. |
+| **13** | [`policies/AccountingEntryPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountingEntryPolicy.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`9aa5c15`)* | Políticas de geração de pernas contábeis para depósitos, saques, etc. | Cálculo algébrico de saldo normal via `AccountClassPolicy`; convenção explícita de saldo de abertura; congelamento defensivo (`Object.freeze`) em `validateEntriesBalance`; partidas dobradas estritas. |
+| **14** | [`policies/AssetStatusPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AssetStatusPolicy.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`9aa5c15`)* | Regras de validação e estados de ativos transacionáveis. | Impede operações em ativos/tokens congelados ou suspensos; sanitização de status interpolado em erros contra log injection; type guard estrito `isAssetStatus`. |
+| **15** | [`policies/FinancialTextPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/FinancialTextPolicy.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`9aa5c15`)* | Sanitização e validação de textos, descrições e motivos de negócio. | Normalização Unicode NFC em chaves de idempotência; sanitização contra caracteres de controle; validação de safe integer positivo em `maxLength` e `maxCodePoints`; `formatReversalDescription` blindado. |
+| **16** | [`services/FinancialTransactionStateMachine.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/FinancialTransactionStateMachine.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`9aa5c15`)* | Máquina de estados determinística para o ciclo da transação. | Máquina de estados finitos; exportação formal de `ALLOWED_TRANSITIONS`; ordem de spread `{...context, currentStatus, targetStatus}` impedindo sobrescrita de status canônicos. |
+| **17** | [`services/PostingPlanBuilder.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/PostingPlanBuilder.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-26` (`9aa5c15`)* | Compilador que converte intenções de domínio em um `PostingPlan`. | Compilador de plano com ordenação canônica determinística de pernas (`accountId ASC`, `assetId ASC`, `direction ASC`) e `entryOrdinal` sequencial 1..N; autorização estrita (`allowed === true`); teto de Date (`MAX_VALID_DATE_EPOCH_MS`); validação fail-closed de lease e responseStatus; selagem autêntica via `WeakSet`. |
 | **18** | [`value-objects/BaseUnits.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/BaseUnits.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`5995cba`)* | Conversão de representação decimal humana para unidades base canônicas e formatação determinística. | Pre-parsing trim, validação estrita de precisão (0-18), limite lexical uint256 e validação forte de `AssetPrecisionContext`. |
 | **19** | [`value-objects/FinancialTransactionStatus.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/FinancialTransactionStatus.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`5995cba`)* | Catálogo canônico dos estados do ciclo de vida transacional. | `Object.freeze` em dicionário e tupla, sanitização de JSDoc sem vazamento de infraestrutura, type guard seguro. |
 | **20** | [`value-objects/Money256.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/value-objects/Money256.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-25` (`5995cba`)* | Value Object imutável de precisão arbitrária de 256 bits (`BigInt`). | Imune a estouros de ponto flutuante, delega validação de IDs para `FinancialIdentifier.ts`, aritmética pura em `BigInt`. |
@@ -1000,7 +1000,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-08] [`src/domains/finance/entities/LedgerTransaction.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/entities/LedgerTransaction.ts)
 - **Responsabilidade Central:** Aggregate Root contábil puro, garantindo a validade estrutural da transação, equações de partidas dobradas por ativo ($\sum D = \sum C$), integridade imutável das pernas e proteção de ciclo de vida.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `7c40554`)
+- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `9aa5c15`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1011,12 +1011,14 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
   - Impõe a Equação Fundamental: $\sum Débito = \sum Crédito$ por ativo em `BigInt` (Money256) sem ponto flutuante.
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
   - Limite estrito de pernas via constante canônica `MAX_LEDGER_ENTRIES` (eliminando o número mágico literal `100`).
+  - Unicidade estrita de identificadores das pernas contábeis no agregado (`seenEntryIds`).
   - Identificadores de atores (`actorUserId`, `authorizedByUserId`) validados com `parsePositiveSafeIntegerId`.
+  - Invariante antirreflexiva: `sourceId !== this.id` e `correlationId !== this.id`.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
   - Sanitização de metadados (`businessReason`, `description`) via `FinancialTextPolicy.normalizeText`.
   - Imutabilidade profunda com `Object.freeze` no agregado e nas pernas.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
-  - Preservação de compatibilidade retroativa: `databaseId` mantido na classe como propriedade `@deprecated` para reidratação/snapshots de repositório, garantindo estabilidade absoluta.
+  - Tipagem estrita de `databaseId?: number; id?: number | string;` em `CreateLedgerTransactionProps`, eliminando type casts inseguros `(props as any)` e preservando compatibilidade retroativa para reidratação/snapshots de repositório.
 - [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
   - 100% testado por `FinancialTransaction.test.ts` (52/52) e `domain_freeze_hardening.test.ts`.
 
@@ -1024,14 +1026,15 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 1. **Substituição do Literal Mágico:** Uso estrito de `MAX_LEDGER_ENTRIES` para teto de pernas contábeis.
 2. **Validação Safe Integer dos Atores:** `actorUserId` e `authorizedByUserId` passam por validação estrita de inteiro de 53 bits.
 3. **Normalização Prévia de Metadados:** `businessReason` e descrições sanitizadas contra caracteres de controle proibidos.
-4. **Preservação de `databaseId`:** Manutenção da retrocompatibilidade para leitura contábil e auditoria forense.
+4. **Tipagem Estrita de Identificadores Opcionais:** Inclusão de `databaseId?: number; id?: number | string;` em `CreateLedgerTransactionProps`, eliminando `(props as any).id ?? (props as any).databaseId`.
+5. **Esclarecimento de Invariante de Unicidade:** Garantia formal de que `LedgerTransaction` impõe unicidade de `entry.id`, pertencendo a atribuição e ordenação de `entryOrdinal` ao manifesto `PostingPlan`.
 
 ---
 
 #### [CAMADA 1 / ARQUIVO-09] [`src/domains/finance/errors/FinancialError.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/FinancialError.ts)
 - **Responsabilidade Central:** Hierarquia canônica de erros tipados do domínio contábil, provendo códigos padronizados determinísticos sem acoplamento a protocolos web.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `7c40554`)
+- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `9aa5c15`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1041,25 +1044,25 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 - [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
   - Códigos canônicos estritos e imutabilidade estrutural.
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
-  - Sanitização de `details` blindada contra execução de getters/accessors maliciosos e prototype pollution (`Object.getOwnPropertyDescriptor` + extração segura de `value`).
+  - Barreira OCap em `sanitizeErrorDetails`: inspeciona descritores de propriedade diretamente via `Object.getOwnPropertyDescriptor`, preserva escalares (com `bigint` convertido para string decimal) e mascara objetos e arrays complexos como `'[non-serializable]'`, prevenindo retenção de referências mutáveis externas e prototype pollution.
   - Bounds anti-DoS com teto de payload em serializações diagnósticas.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
-  - `Object.freeze(this)` com congelamento profundo recursivo do payload de detalhes sanitizado.
+  - `Object.freeze(this)` compulsório na instância com materialização prévia de stack (`void this.stack`) para compatibilidade e segurança em runtimes V8.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
   - Herança robusta de `Error`, garantindo preservação de stack trace, `name` e protótipo canônico.
 - [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
   - 100% coberto pelas suítes de teste de infraestrutura, orquestração e domínio.
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
-1. **Blindagem contra Getters Maliciosos:** `sanitizeErrorDetails` inspeciona descritores de propriedade diretamente antes de acessar valores, prevenindo side-effects e protótipo poluição.
-2. **Congelamento Defensivo:** Detalhes sanitizados congelados recursivamente em runtime.
+1. **Blindagem OCap & Sanitização Escalar:** `sanitizeErrorDetails` inspeciona descritores de propriedade diretamente antes de acessar valores, converte BigInts para string e substitui objetos/arrays por `'[non-serializable]'`, garantindo isolamento total de referências externas.
+2. **Congelamento da Instância e Materialização V8:** Construtor executa `void this.stack; Object.freeze(this);`, assegurando imutabilidade formal da instância sem risco de quebra de runtime V8 na computação de stack lazy.
 
 ---
 
 #### [CAMADA 1 / ARQUIVO-10] [`src/domains/finance/errors/LedgerImbalanceError.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/errors/LedgerImbalanceError.ts)
 - **Responsabilidade Central:** Erro especializado de desbalanceamento contábil que interrompe imediatamente qualquer tentativa de violar as partidas dobradas.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `7c40554`)
+- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `9aa5c15`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1071,7 +1074,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
   - Mensagem diagnóstica estruturada sem exposição de dados sensíveis ou vazamento de escopo.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
-  - `Object.freeze(this)` compulsório na instanciação.
+  - `Object.freeze(this)` compulsório na instanciação herdado de `FinancialError`.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
   - Subclasse de `FinancialError` perfeitamente integrada ao mapeador da aplicação.
 - [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
@@ -1082,7 +1085,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-11] [`src/domains/finance/policies/AccountClassPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountClassPolicy.ts)
 - **Responsabilidade Central:** Catálogo e regras das 5 naturezas contábeis clássicas (Ativo, Passivo, PL, Receita, Despesa) e política soberana de saldo normal (devedor vs credor).
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `7c40554`)
+- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `9aa5c15`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1110,7 +1113,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 #### [CAMADA 1 / ARQUIVO-12] [`src/domains/finance/policies/AccountStatusPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountStatusPolicy.ts)
 - **Responsabilidade Central:** Governança do ciclo de vida operacional de contas contábeis, impedindo lançamentos em contas inativas, suspensas ou bloqueadas.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `7c40554`)
+- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `9aa5c15`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1122,6 +1125,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
   - Teto lexical anti-DoS (`MAX_RAW_TEXT_CEILING`) antes de normalização Unicode NFC.
   - Bloqueio fail-closed de operações em contas não ativas.
+  - Sanitização de status de contas em mensagens de erro (`replace(/[^\w-]/g, '').slice(0, 32)`) para mitigar log injection.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
   - Predicados e validadores determinísticos: `isAccountActive`, `assertAccountActive`, `canAccountTransact`.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
@@ -1132,13 +1136,14 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
 1. **Proteção Anti-DoS Lexical:** Aplicação de `MAX_RAW_TEXT_CEILING` antes do parsing NFC.
 2. **Congelamento em Runtime:** Tuplas de status e arrays de transição congelados com `Object.freeze`.
+3. **Defesa contra Log Injection:** Sanitização de strings de status interpoladas em `AccountInactiveError`.
 
 ---
 
 #### [CAMADA 1 / ARQUIVO-13] [`src/domains/finance/policies/AccountingEntryPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AccountingEntryPolicy.ts)
 - **Responsabilidade Central:** Regras de negócio contábeis para geração, cálculo de saldo normal e balanceamento de pernas de partidas dobradas.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `7c40554`)
+- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `9aa5c15`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1149,25 +1154,25 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
   - Cálculo algébrico de impacto normal `calculateNormalDelta()` delegando para `AccountClassPolicy` com guarda fail-closed contra direções inválidas.
   - Aritmética puramente executada em `BigInt` (Money256).
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
-  - Validação estrita de equilíbrio em `validateEntriesBalance()`, aplicando `Object.freeze` defensivo no array e nos registros retornados.
+  - Validação estrita de equilíbrio em `validateEntriesBalance()`, atuando intencionalmente como barreira de segurança ao aplicar `Object.freeze` defensivo no array e nos registros validados para impedir mutação externa posterior.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
   - Definição estruturada de pernas com direção, conta, ativo e valor positivo.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
-  - Retrocompatibilidade estrita em `createOpeningBalanceEntries()`, suportando chamadas sem `accountNature` explícito mantendo 100% dos testes existentes verdes.
+  - Convenção estrita e documentada em `createOpeningBalanceEntries()`: quando `accountNature` e `normalBalance` não são informados, adota-se por convenção de domínio a carga patrimonial ativa contra Capital/Patrimônio Líquido (`EQUITY`), mantendo 100% dos testes existentes verdes.
 - [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
   - 100% testado por `domain_policies.test.ts` e `domain_freeze_hardening.test.ts`.
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
 1. **Integração Soberana com `AccountClassPolicy`:** `calculateNormalDelta` elimina redundâncias e adota a fonte única da verdade contábil.
-2. **Deep-Freeze Defensivo:** `validateEntriesBalance` congela profundamente o array validado.
-3. **Retrocompatibilidade Robusta:** Parâmetro `accountNature` opcional com default seguro para compatibilidade plena.
+2. **Deep-Freeze Defensivo:** `validateEntriesBalance` congela o array e as pernas validadas como portão de segurança contábil.
+3. **Convenção Padronizada de Saldo de Abertura:** Documentação explícita da convenção de carga patrimonial ativa para chamadas sem natureza pré-definida.
 
 ---
 
 #### [CAMADA 1 / ARQUIVO-14] [`src/domains/finance/policies/AssetStatusPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/AssetStatusPolicy.ts)
 - **Responsabilidade Central:** Validação de estado e autorização transacional de ativos contábeis (moedas fiduciárias, tokens e commodities).
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `7c40554`)
+- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `9aa5c15`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1179,6 +1184,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
   - Teto lexical anti-DoS (`MAX_RAW_TEXT_CEILING`) antes de normalização Unicode NFC.
   - Bloqueio fail-closed de operações em ativos inativos, suspensos ou deslistados.
+  - Sanitização de status de ativos em mensagens de erro para prevenir log injection.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
   - Eliminação de fallbacks permissivos e imports não utilizados.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
@@ -1189,13 +1195,14 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
 1. **Prevenção Anti-DoS Lexical:** Validação com `MAX_RAW_TEXT_CEILING` antes do parsing.
 2. **Remoção de Dead Code:** Eliminação de importações não utilizadas e fallbacks frouxos.
+3. **Defesa contra Log Injection:** Sanitização de strings de status interpoladas em `AssetInactiveError`.
 
 ---
 
 #### [CAMADA 1 / ARQUIVO-15] [`src/domains/finance/policies/FinancialTextPolicy.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/FinancialTextPolicy.ts)
 - **Responsabilidade Central:** Sanitização defensiva, canônica e anti-DoS de descrições contábeis, motivos de negócio e textos do razão.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `7c40554`)
+- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `9aa5c15`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1206,6 +1213,8 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
   - Regexes canônicas pré-compiladas em nível de módulo (`DANGEROUS_TEXT_CHARACTERS_REGEX`).
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
   - Teto lexical estrito pré-trim (`MAX_RAW_TEXT_CEILING`), normalização Unicode NFC e sanitização de caracteres de controle e bidirecionais perigosos.
+  - Normalização canônica Unicode NFC em chaves de idempotência (`canonicalizeIdempotencyKey`).
+  - Validação estrita de safe integer positivo em `maxLength` (`sanitizeSingleLine`) e `maxCodePoints` (`truncateCodePoints`).
   - `formatReversalDescription()` blindado: validação de `reason` não-vazia, sanitização de caracteres proibidos e conformidade de `maxLength` como safe integer positivo.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
   - Validador `validateNormalizedText()` com mensagens diagnósticas determinísticas.
@@ -1215,15 +1224,17 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
   - 100% testado por `FinancialTransaction.test.ts` e `domain_policies.test.ts`.
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
-1. **Blindagem de Estorno:** `formatReversalDescription` valida limites de safe integer e higieniza `reason` sem crashar com strings vazias originais.
-2. **Defesa Pré-Parsing:** Teto lexical de entrada aplicado antes de qualquer processamento regex ou Unicode NFC.
+1. **Normalização Canônica de Idempotência:** `canonicalizeIdempotencyKey` normaliza Unicode NFC antes de validar conformidade lexical.
+2. **Validação Estrita de Bounds Numéricos:** `sanitizeSingleLine` e `truncateCodePoints` validam se `maxLength`/`maxCodePoints` são inteiros seguros positivos maiores que zero.
+3. **Blindagem de Estorno:** `formatReversalDescription` valida limites de safe integer e higieniza `reason` sem crashar com strings vazias originais.
+4. **Defesa Pré-Parsing:** Teto lexical de entrada aplicado antes de qualquer processamento regex ou Unicode NFC.
 
 ---
 
 #### [CAMADA 1 / ARQUIVO-16] [`src/domains/finance/services/FinancialTransactionStateMachine.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/FinancialTransactionStateMachine.ts)
 - **Responsabilidade Central:** Máquina de estados finita formal para transições de ciclo de vida da transação contábil (`pending`, `posted`, `completed`, `failed`, `reversed`).
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `7c40554`)
+- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `9aa5c15`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1231,44 +1242,55 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 - [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
   - Serviço de domínio contábil puro sem dependência de persistência ou HTTP.
 - [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
-  - Grafo formal de transições válidas mapeado e congelado (`ALLOWED_TRANSITIONS`).
+  - Grafo formal de transições válidas mapeado, exportado e congelado (`ALLOWED_TRANSITIONS`).
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
   - Estados terminais (`COMPLETED`, `FAILED`, `REVERSED`) estritamente protegidos contra mutações posteriores.
+  - Ordem de merge de detalhes de erro blindada: `{ ...context, currentStatus, targetStatus }` impede que parâmetros de `context` mascarem os status canônicos.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Exportação de `ALLOWED_TRANSITIONS: Readonly<Record<FinancialTransactionStatus, readonly FinancialTransactionStatus[]>>`.
   - Mensagens diagnósticas precisas e tipadas em caso de transição ilegal via `FinancialError`.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
   - Type guards e métodos utilitários determinísticos (`canTransitionTo`, `assertCanTransition`).
 - [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
   - 100% testado por `FinancialTransaction.test.ts`.
 
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Exportação Pública de `ALLOWED_TRANSITIONS`:** Matriz de transições disponível para validações arquiteturais e orquestradores.
+2. **Blindagem do Contexto de Erro:** Ordem de spread `{ ...context, currentStatus, targetStatus }` garante inviolabilidade dos status originais.
+
 ---
 
 #### [CAMADA 1 / ARQUIVO-17] [`src/domains/finance/services/PostingPlanBuilder.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/services/PostingPlanBuilder.ts)
 - **Responsabilidade Central:** Compilador determinístico de intenções de domínio em um `PostingPlan` canônico imutável, impondo ordenação de lock anti-deadlock e autenticidade via selo criptográfico.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `7c40554`)
+- **Data da Última Atualização / Auditoria:** `2026-09-26` (Commit: `9aa5c15`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
 ##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
 - [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
-  - Compilador de plano desacoplado de banco de dados e de I/O.
+  - Compilador de plano in-memory desacoplado de banco de dados e de I/O físico (SQL/Network).
 - [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
-  - Determinismo temporal e identitário: identificadores e timestamps determinísticos derivados monotonicamente via `DeterministicIdGenerator`, sem derivação oculta de `Date.now()`.
+  - Validação estritamente booleana da decisão de autorização: `authorizationDecision.allowed === true` (sem bypass truthy permissivo).
+  - Teto temporal e controle de timestamp: `occurredAtEpochMs` validado contra o teto máximo de data (`MAX_VALID_DATE_EPOCH_MS = 8.640.000.000.000.000 ms`), adotando `Date.now()` de forma explícita e controlada apenas quando omitido.
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
-  - Ordenação canônica determinística de contas (`accountId ASC`) para prevenção estrita de deadlocks de concorrência contábil.
+  - Ordenação canônica determinística das pernas contábeis (`accountId ASC`, `assetId ASC`, `direction ASC`) com atribuição sequencial canônica de `entryOrdinal` de 1 a N, garantindo prevenção estrita de deadlocks de concorrência.
   - Teto de pernas delimitado por `MAX_LEDGER_ENTRIES`.
+  - Validação fail-closed dos metadados de execução física: `leaseGeneration` ($\ge 0$) e `responseStatus` ($100..599$), rejeitando valores anômalos com `InvalidLedgerTransactionError`.
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
   - Selagem e autenticação compulsória via `sealPostingPlan(plan)` registrando o plano no catálogo autêntico (`WeakSet`), impedindo rejeição por `PostingAuthority`.
+  - Estruturação do `PostingPlan` como manifesto de execução atômica contendo pernas contábeis, deltas de saldo, evento de outbox transacional e lease de idempotência para despacho de 1 comando atômico no executor físico.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
-  - API flexível e retrocompatível: parâmetros opcionais de sobrescrita permitindo customização por orquestradores e testes adversariais.
+  - API flexível e retrocompatível: suporte a parâmetros opcionais de injeção de IDs (`transactionId`, `outboxEventId`, `correlationId`, `workerId`) para integração com `FinancialTransactionOrchestrator` e testes adversariais.
 - [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
-  - 100% testado por `adversarial_certification.test.ts`, `FinancialTransactionOrchestrator.ts` e suítes de concorrência.
+  - 100% testado por `adversarial_certification.test.ts`, `contracts_p0_hardening.test.ts` e suítes de concorrência.
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
-1. **Geração Determinística de Identificadores:** Eliminação de dependência direta do relógio de parede do sistema (`Date.now()`).
-2. **Selagem Autêntica de Plano:** Registro automático do plano gerado no `AUTHENTIC_POSTING_PLANS` via `sealPostingPlan()`.
-3. **Parâmetros Opcionais Retrocompatíveis:** Flexibilidade para integração com `FinancialTransactionOrchestrator.ts` e testes adversariais.
+1. **Ordenação Canônica Determinística de Pernas:** As pernas contábeis são ordenadas previamente por `(accountId ASC, assetId ASC, direction ASC)` antes da atribuição de `entryOrdinal` sequencial 1..N.
+2. **Autorização Soberana Estritamente Booleana:** Verificação estrita `authorizationDecision.allowed === true` com extração segura de `reason`.
+3. **Controle de Teto Temporal de Data:** `occurredAtEpochMs` validado contra estouro de data V8 (`MAX_VALID_DATE_EPOCH_MS`), com default seguro `Date.now()`.
+4. **Validação Fail-Closed de Metadados de Execução:** `leaseGeneration` e `responseStatus` validam safe integer e ranges válidos, lançando `InvalidLedgerTransactionError` perante valores inválidos.
+5. **Selagem Autêntica de Plano:** Registro automático do plano gerado no `AUTHENTIC_POSTING_PLANS` via `sealPostingPlan()`.
 
 ---
 
@@ -1280,6 +1302,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 - **Suíte Adversarial de Certificação:** [`tests/finance/adversarial_certification.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/adversarial_certification.test.ts) — **8 / 8 testes aprovados (100%)**.
 - **Suíte Geral Completa do Sistema:** **46 arquivos de teste, 376 testes aprovados (100% de sucesso absoluto)**.
 - **Git Commits de Certificação:**
+  - `9aa5c15` — `fix(finance): resolver pendencias probatorias da auditoria - ordenacao canonica, freeze e tipagem estrita`
   - `7c40554` — `feat(finance): aplicar melhorias P0/P1 sem quebras na Camada 1 (#08-#17) com 100% de estabilidade`
 
 ---
