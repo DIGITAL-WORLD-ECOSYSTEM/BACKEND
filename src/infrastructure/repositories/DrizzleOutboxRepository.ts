@@ -3,6 +3,7 @@ import { Result } from '../../shared/kernel/Result';
 import { IOutboxRepository, OutboxEventRecord } from '../../application/ports/output/IOutboxRepository';
 import { outboxEvents, eventConsumerReceipts } from '../../db/infrastructure/tables';
 import { eq, and, inArray, asc, sql } from 'drizzle-orm';
+import { isUniqueConstraintViolation } from './DrizzleFinanceRepository';
 
 function safeSerializeJson(data: unknown): string {
   return JSON.stringify(data, (_key, value) =>
@@ -160,7 +161,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
       });
       return Result.ok(true);
     } catch (error: any) {
-      if (error.message && (error.message.includes('UNIQUE') || error.message.includes('unique'))) {
+      if (isUniqueConstraintViolation(error)) {
         return Result.ok(false);
       }
       return Result.fail(`Failed to record consumer receipt: ${error.message}`);
