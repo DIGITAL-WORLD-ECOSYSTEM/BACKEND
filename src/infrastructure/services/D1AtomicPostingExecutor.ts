@@ -17,6 +17,8 @@ import {
   AtomicPostingExecutionError,
 } from '../../domains/finance/errors/FinancialError';
 
+import type { FinanceDbExecutor } from '../repositories/DrizzleFinanceRepository';
+
 /**
  * Limite físico máximo seguro de statements contábeis atômicos por lote no Cloudflare D1.
  * O D1 rejeita lotes com erro D1_ERROR_BATCH_TOO_LARGE acima de ~128 statements.
@@ -24,7 +26,7 @@ import {
 export const MAX_D1_BATCH_STATEMENTS = 120;
 
 export class D1AtomicPostingExecutor implements IPostingExecutor {
-  constructor(private readonly db: any) {
+  constructor(private readonly db: FinanceDbExecutor | any) {
     if (!db) {
       throw new Error('Database instance is required for D1AtomicPostingExecutor.');
     }
@@ -398,8 +400,11 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
           { behavior: 'immediate' }
         );
       } else {
-        // Already inside a transaction or single connection executor
-        committedTxId = await this.executeStatementsOnExecutor(this.db, plan, now);
+        // Fail-closed estrito: rejeita execução se nenhuma garantia física transacional for comprovada
+        throw new AtomicPostingExecutionError(
+          'Execução abortada por fail-closed: O executor contábil exige Cloudflare D1 (com batch) ou driver SQLite com suporte ativo a transações imediatas (BEGIN IMMEDIATE).',
+          'UNSUPPORTED_TRANSACTIONAL_DRIVER'
+        );
       }
 
       session.markConsumed();
