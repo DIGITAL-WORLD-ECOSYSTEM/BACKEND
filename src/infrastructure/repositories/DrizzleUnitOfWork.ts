@@ -79,7 +79,11 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
   getPostingSession(): PostingSession {
     const isD1 = isD1Database(this.db || this.tx);
     const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
-    const boundaryId = `uow_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const boundaryToken =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().replace(/-/g, '').substring(0, 12)
+        : Date.now().toString(36);
+    const boundaryId = `uow_boundary_${Date.now()}_${boundaryToken}`;
     const physicalDb = (this.tx || this.db) as object;
     return new PostingSession(physicalDb, mode, boundaryId);
   }

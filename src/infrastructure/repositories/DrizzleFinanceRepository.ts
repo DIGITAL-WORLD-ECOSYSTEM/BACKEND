@@ -951,7 +951,11 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     const now = new Date();
     const leaseTimeoutMs = options?.leaseTimeoutMs ?? options?.leaseDurationMs ?? 24 * 60 * 60 * 1000;
     const expiresAt = new Date(now.getTime() + leaseTimeoutMs);
-    const leaseOwner = options?.leaseOwner ?? `worker_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const secureToken =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().replace(/-/g, '').substring(0, 12)
+        : Date.now().toString(36);
+    const leaseOwner = options?.leaseOwner ?? `worker_${Date.now()}_${secureToken}`;
 
     try {
       await this.executor.insert(idempotencyKeys).values({
@@ -1369,7 +1373,11 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   public getPostingSession(): PostingSession {
     const isD1 = isD1Database(this.db);
     const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
-    const boundaryId = `repo_boundary_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const boundaryToken =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().replace(/-/g, '').substring(0, 12)
+        : Date.now().toString(36);
+    const boundaryId = `repo_boundary_${Date.now()}_${boundaryToken}`;
     return new PostingSession(this.db as object, mode, boundaryId);
   }
 

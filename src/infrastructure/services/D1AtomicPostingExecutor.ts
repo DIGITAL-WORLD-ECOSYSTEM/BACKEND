@@ -1,5 +1,5 @@
 import { IPostingExecutor, PostingExecutionResult } from '../../application/ports/output/IPostingExecutor';
-import { PostingPlan, POSTING_PLAN_SEAL } from '../../domains/finance/contracts/PostingPlan';
+import { PostingPlan, POSTING_PLAN_SEAL, isAuthenticPostingPlan } from '../../domains/finance/contracts/PostingPlan';
 import { PostingSession } from '../../domains/finance/contracts/PostingSession';
 import { Result } from '../../shared/kernel/Result';
 import {
@@ -33,8 +33,8 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
       return Result.fail('PostingSession não pertence à fronteira física deste executor.');
     }
 
-    if (!plan || (plan as any)[POSTING_PLAN_SEAL] !== POSTING_PLAN_SEAL) {
-      return Result.fail('PostingPlan forjado ou não-autenticado: ausência do selo POSTING_PLAN_SEAL.');
+    if (!plan || !isAuthenticPostingPlan(plan)) {
+      return Result.fail('PostingPlan forjado ou não-autenticado: ausência do selo POSTING_PLAN_SEAL ou não registrado no catálogo autêntico (WeakSet).');
     }
 
     if (!plan.authorizationDecision || !plan.authorizationDecision.allowed) {
