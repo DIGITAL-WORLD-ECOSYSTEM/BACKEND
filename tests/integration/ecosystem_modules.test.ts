@@ -227,8 +227,9 @@ describe('Ecosystem Modules Suite (Civil Identity, SSI & Treasury)', () => {
         }),
         getPostingSession: vi.fn().mockReturnValue({
           isValid: () => true,
+          tryAcquireForCommit: () => true,
           markConsumed: () => {},
-          mode: 'sqlite-transaction',
+          mode: 'in-memory',
           sessionId: 'mock-session',
           boundaryId: 'mock-boundary',
         }),

@@ -14,6 +14,7 @@ export class PostingAuthority {
     if (!executor) {
       throw new Error('IPostingExecutor é obrigatório para PostingAuthority.');
     }
+    Object.freeze(this);
   }
 
   /**
@@ -27,22 +28,23 @@ export class PostingAuthority {
     session: PostingSession
   ): Promise<Result<PostingExecutionResult>> {
     // 1. Validação estrita de autenticidade, unicidade e aquisição atômica da PostingSession (Gate 0 / Anti-TOCTOU)
-    const acquired = typeof session?.tryAcquireForCommit === 'function'
-      ? session.tryAcquireForCommit()
-      : (typeof session?.isValid === 'function' && session.isValid());
-
-    if (!session || !acquired) {
+    if (!session || typeof session.tryAcquireForCommit !== 'function' || !session.tryAcquireForCommit()) {
       return Result.fail('PostingSession obrigatória, autêntica, válida e não-consumida para commit contábil.');
     }
 
+    const failWithRelease = (message: string): Result<PostingExecutionResult> => {
+      session.releaseAcquisition?.();
+      return Result.fail(message);
+    };
+
     // 2. Validação de presença do plano
     if (!plan) {
-      return Result.fail('PostingPlan obrigatório para commit contábil.');
+      return failWithRelease('PostingPlan obrigatório para commit contábil.');
     }
 
     // 3. Validação Criptográfica de Origem do Plano (P0-07: Inviolabilidade do PostingPlan)
     if (!isAuthenticPostingPlan(plan)) {
-      return Result.fail(
+      return failWithRelease(
         'PostingPlan forjado ou não-autenticado: ausência do selo POSTING_PLAN_SEAL emitido por PostingPlanBuilder ou ausência no catálogo autêntico (WeakSet).'
       );
     }
@@ -52,25 +54,25 @@ export class PostingAuthority {
       const reason = !plan.authorizationDecision
         ? 'Decisão de autorização ausente'
         : (!plan.authorizationDecision.allowed ? plan.authorizationDecision.reason : 'Não autorizada');
-      return Result.fail(`PostingPlan rejeitado por falta de autorização de custódia: ${reason}`);
+      return failWithRelease(`PostingPlan rejeitado por falta de autorização de custódia: ${reason}`);
     }
 
     // 5. Validação de Fencing Mandatório P0 (leaseOwner, leaseGeneration e requestHash)
     if (!plan.leaseOwner || typeof plan.leaseOwner !== 'string' || plan.leaseOwner.trim().length === 0) {
-      return Result.fail('PostingPlan viola invariante P0: leaseOwner obrigatório para fencing de concorrência.');
+      return failWithRelease('PostingPlan viola invariante P0: leaseOwner obrigatório para fencing de concorrência.');
     }
 
     if (typeof plan.leaseGeneration !== 'number' || plan.leaseGeneration < 0) {
-      return Result.fail('PostingPlan viola invariante P0: leaseGeneration obrigatório para fencing de concorrência.');
+      return failWithRelease('PostingPlan viola invariante P0: leaseGeneration obrigatório para fencing de concorrência.');
     }
 
     if (!plan.requestHash || typeof plan.requestHash !== 'string' || plan.requestHash.trim().length === 0) {
-      return Result.fail('PostingPlan viola invariante P0: requestHash criptográfico soberano obrigatório.');
+      return failWithRelease('PostingPlan viola invariante P0: requestHash criptográfico soberano obrigatório.');
     }
 
     // 6. Validação estrutural de integridade do plano e vinculação de identidades
     if (!plan.transactionRecord || plan.transactionRecord.id !== plan.transactionId) {
-      return Result.fail('PostingPlan inconsistente: transactionRecord.id diverge do transactionId do plano.');
+      return failWithRelease('PostingPlan inconsistente: transactionRecord.id diverge do transactionId do plano.');
     }
 
     if (
@@ -78,11 +80,11 @@ export class PostingAuthority {
       (plan.outboxEvent.aggregateId !== String(plan.transactionId) &&
         plan.outboxEvent.aggregateId !== `tx_${plan.transactionId}`)
     ) {
-      return Result.fail('PostingPlan inconsistente: outboxEvent.aggregateId diverge do transactionId do plano.');
+      return failWithRelease('PostingPlan inconsistente: outboxEvent.aggregateId diverge do transactionId do plano.');
     }
 
     if (!plan.ledgerEntries || plan.ledgerEntries.length < 2) {
-      return Result.fail('PostingPlan inválido: exige no mínimo 2 pernas contábeis.');
+      return failWithRelease('PostingPlan inválido: exige no mínimo 2 pernas contábeis.');
     }
 
     // 7. Validação das pernas contábeis: vinculação de transactionId, ordinais 1..N e quantias
@@ -92,20 +94,20 @@ export class PostingAuthority {
       const entry = plan.ledgerEntries[i];
 
       if (entry.transactionId !== plan.transactionId) {
-        return Result.fail(`PostingPlan corrompido: perna contábil #${i} vinculada a transação ${entry.transactionId} em vez de ${plan.transactionId}.`);
+        return failWithRelease(`PostingPlan corrompido: perna contábil #${i} vinculada a transação ${entry.transactionId} em vez de ${plan.transactionId}.`);
       }
 
       if (entry.entryOrdinal !== i + 1) {
-        return Result.fail(`PostingPlan corrompido: ordinal da perna contábil #${i} inválido (${entry.entryOrdinal}, esperado ${i + 1}).`);
+        return failWithRelease(`PostingPlan corrompido: ordinal da perna contábil #${i} inválido (${entry.entryOrdinal}, esperado ${i + 1}).`);
       }
 
       if (!CANONICAL_DECIMAL_PATTERN.test(entry.amountBaseUnits)) {
-        return Result.fail(`PostingPlan com formato decimal inválido na perna #${entry.entryOrdinal}: '${entry.amountBaseUnits}'.`);
+        return failWithRelease(`PostingPlan com formato decimal inválido na perna #${entry.entryOrdinal}: '${entry.amountBaseUnits}'.`);
       }
 
       const amt = BigInt(entry.amountBaseUnits);
       if (amt <= 0n || amt > MAX_UINT256) {
-        return Result.fail(`PostingPlan com quantia fora dos limites permitidos na perna #${entry.entryOrdinal}: ${entry.amountBaseUnits}.`);
+        return failWithRelease(`PostingPlan com quantia fora dos limites permitidos na perna #${entry.entryOrdinal}: ${entry.amountBaseUnits}.`);
       }
 
       const currentNet = netByAsset.get(entry.assetId) ?? 0n;
@@ -115,24 +117,24 @@ export class PostingAuthority {
     // 8. Validação do Invariante FIN-001 de partidas dobradas por ativo
     for (const [assetId, net] of netByAsset) {
       if (net !== 0n) {
-        return Result.fail(`PostingPlan com partidas dobradas desbalanceadas no ativo #${assetId} (diferença: ${net.toString()}).`);
+        return failWithRelease(`PostingPlan com partidas dobradas desbalanceadas no ativo #${assetId} (diferença: ${net.toString()}).`);
       }
     }
 
     // 9. Validação das mutações de saldo (P0-08)
     for (const mutation of plan.balanceMutations) {
       if (!Number.isSafeInteger(mutation.accountId) || mutation.accountId <= 0) {
-        return Result.fail(`PostingPlan com mutation em accountId inválido (${mutation.accountId}).`);
+        return failWithRelease(`PostingPlan com mutation em accountId inválido (${mutation.accountId}).`);
       }
       if (!Number.isSafeInteger(mutation.assetId) || mutation.assetId <= 0) {
-        return Result.fail(`PostingPlan com mutation em assetId inválido (${mutation.assetId}).`);
+        return failWithRelease(`PostingPlan com mutation em assetId inválido (${mutation.assetId}).`);
       }
       if (!CANONICAL_DECIMAL_PATTERN.test(mutation.newAvailableBaseUnits)) {
-        return Result.fail(`PostingPlan com novo saldo em formato decimal inválido na conta #${mutation.accountId}.`);
+        return failWithRelease(`PostingPlan com novo saldo em formato decimal inválido na conta #${mutation.accountId}.`);
       }
       const newBalBigInt = BigInt(mutation.newAvailableBaseUnits);
       if (newBalBigInt < 0n || newBalBigInt > MAX_UINT256) {
-        return Result.fail(`PostingPlan com novo saldo fora dos limites uint256 na conta #${mutation.accountId}.`);
+        return failWithRelease(`PostingPlan com novo saldo fora dos limites uint256 na conta #${mutation.accountId}.`);
       }
     }
 
