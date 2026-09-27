@@ -2023,6 +2023,10 @@ Como a relação $\prec$ é assimétrica e transitiva, o grafo de dependência d
   - `bd06360` — `refactor(finance/ports): strictly type getPostingAuthority and getPostingSession on IFinanceRepository`
   - `261b8ba` — `fix(finance/executor): enforce immutable timestamps on PostingExecutionResult`
   - `c0ebee4` — `feat(finance/ports): add getPostingSession to IRepositoryFactory contract`
+  - `eb7428f` — `fix(finance/errors): centralize IdempotencyKeyReusedWithDifferentRequestError in domain catalog`
+  - `cf213a9` — `fix(finance/executor): enforce fail-closed non-transactional fallback and type db executor`
+  - `1c130ba` — `fix(finance/inbox): harden CAS reclaim with previous leaseGeneration check`
+  - `336203b` — `docs(finance/runtime): annotate Node.js/CLI runtime boundaries on HistoricalImport and Bootstrap services`
 
 
 
