@@ -15,6 +15,28 @@ export interface RecordWebhookEventInput {
   leaseDurationMs?: number;
 }
 
+function generateWorkerId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const nodeCrypto = require('node:crypto');
+    if (typeof nodeCrypto.randomUUID === 'function') {
+      return nodeCrypto.randomUUID();
+    }
+  } catch {
+    // fallback
+  }
+  throw new Error('CSPRNG unavailable for secure worker ID generation.');
+}
+
+function safeSerializePayload(payload: unknown): string {
+  return JSON.stringify(payload, (_key, value) =>
+    typeof value === 'bigint' ? value.toString() : value
+  );
+}
+
 export class EventInboxService {
   /**
    * P0: Event Inbox com claim condicional SQL atômico, leaseGeneration e verificação de payloadHash (FIN-014, FIN-015, FIN-021).
@@ -24,7 +46,12 @@ export class EventInboxService {
     input: RecordWebhookEventInput,
     handler: () => Promise<Result<T>>
   ): Promise<Result<{ isDuplicate: boolean; result?: T }>> {
-    const workerId = input.workerId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `worker-${Math.random().toString(36).substring(2)}`);
+    let workerId: string;
+    try {
+      workerId = input.workerId || generateWorkerId();
+    } catch (e: any) {
+      return Result.fail(`Falha de CSPRNG: ${e.message}`);
+    }
     const leaseDurationMs = input.leaseDurationMs || 30000; // 30s
     let computedPayloadHash: string;
     try {
@@ -32,7 +59,12 @@ export class EventInboxService {
     } catch (e: any) {
       return Result.fail(`Payload inválido para canonicalização: ${e.message}`);
     }
-    const serializedPayload = JSON.stringify(input.payload);
+    let serializedPayload: string;
+    try {
+      serializedPayload = safeSerializePayload(input.payload);
+    } catch (e: any) {
+      return Result.fail(`Falha ao serializar payload: ${e.message}`);
+    }
     const now = new Date();
     const leaseExpiresAt = new Date(now.getTime() + leaseDurationMs);
 
