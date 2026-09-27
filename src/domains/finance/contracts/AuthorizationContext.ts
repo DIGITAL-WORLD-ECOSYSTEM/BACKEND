@@ -38,10 +38,19 @@ export const FinanceCapabilities = Object.freeze({
 } as const);
 
 /**
+ * Códigos Canônicos de Erro de Autorização.
+ */
+export const AuthorizationErrorCodes = Object.freeze({
+  UNAUTHORIZED_CUSTODY: 'UNAUTHORIZED_CUSTODY',
+  INVALID_ARGUMENT: 'INVALID_ARGUMENT',
+  FORBIDDEN_OPERATION: 'FORBIDDEN_OPERATION',
+} as const);
+
+/**
  * Brand nominal opaco para Capabilities de Domínio em conformidade com OCaps.
  */
 declare const CapabilityBrand: unique symbol;
-export type DomainCapability = string & { readonly [CapabilityBrand]?: never };
+export type DomainCapability = string & { readonly [CapabilityBrand]: never };
 
 export interface AuthorizationContext {
   readonly principalId: number;
@@ -197,6 +206,7 @@ export function isAuthenticAuthorizationContext(context: unknown): context is Au
 }
 
 export class CustodyAuthorizationPolicy {
+  private constructor() {}
   /**
    * Avalia compulsoriamente se o principal possui autoridade soberana
    * para debitar a conta de origem especificada.
@@ -372,6 +382,10 @@ export class CustodyAuthorizationPolicy {
     // 4. Operações de Usuário Comum (transfer, withdrawal, payment, deposit) sob Titularidade Própria (SELF)
     if (
       effectiveContext.principalType === 'user' &&
+      typeof effectiveContext.principalId === 'number' &&
+      effectiveContext.principalId > 0 &&
+      typeof spec.sourceAccountOwnerId === 'number' &&
+      spec.sourceAccountOwnerId > 0 &&
       effectiveContext.principalId === spec.sourceAccountOwnerId &&
       (spec.operationType === 'transfer' ||
         spec.operationType === 'withdrawal' ||
@@ -388,6 +402,10 @@ export class CustodyAuthorizationPolicy {
 
     // 5. Operação Delegada autorizada para o titular da conta
     if (
+      typeof effectiveContext.delegatedForUserId === 'number' &&
+      effectiveContext.delegatedForUserId > 0 &&
+      typeof spec.sourceAccountOwnerId === 'number' &&
+      spec.sourceAccountOwnerId > 0 &&
       effectiveContext.delegatedForUserId === spec.sourceAccountOwnerId &&
       (capabilities.includes(FinanceCapabilities.DelegateOperate) ||
         capabilities.includes(FinanceCapabilities.SystemOperate) ||
