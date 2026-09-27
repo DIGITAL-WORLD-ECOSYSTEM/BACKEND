@@ -9,9 +9,12 @@ import { IPasswordResetRepository } from './IPasswordResetRepository';
 import { ISsiRepository } from './ISsiRepository';
 import { IFinanceRepository } from './IFinanceRepository';
 
+import { IAuthTransactionRepository } from './IAuthTransactionRepository';
+import { PostingSession } from '../../../domains/finance/contracts/PostingSession';
+
 export interface IRepositoryFactory {
   getUserRepository(): IUserRepository;
-  getAuthTransactionRepository(): import('./IAuthTransactionRepository').IAuthTransactionRepository;
+  getAuthTransactionRepository(): IAuthTransactionRepository;
   getAuthenticationRepository(): IAuthenticationRepository;
   getWeb3Repository(): IWeb3Repository;
   getSessionRepository(): ISessionRepository;
@@ -20,8 +23,7 @@ export interface IRepositoryFactory {
   getOutboxRepository(): IOutboxRepository;
   getPasswordResetRepository(): IPasswordResetRepository;
   getFinanceRepository(): IFinanceRepository;
-  getPostingSession(): import('../../../domains/finance/contracts/PostingSession').PostingSession;
-  getPostingAuthority(): import('../../finance/services/PostingAuthority').PostingAuthority;
+  getPostingSession(): PostingSession;
 }
 
 
