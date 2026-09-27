@@ -134,7 +134,7 @@ export class PostingPlanBuilder {
     }
 
     // 0. Validação de Autorização Soberana (DENIED -> Bloqueio imediato do PostingPlan)
-    if (!params.authorizationDecision || (params.authorizationDecision.allowed as unknown) !== true) {
+    if (!params.authorizationDecision || params.authorizationDecision.allowed !== true) {
       const reason = !params.authorizationDecision
         ? 'Decisão de autorização ausente'
         : ('reason' in params.authorizationDecision && typeof params.authorizationDecision.reason === 'string'
