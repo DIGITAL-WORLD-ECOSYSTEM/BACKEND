@@ -122,7 +122,7 @@ describe('DrizzleUnitOfWork', () => {
     expect(transactionsRun).toBe(2);
   });
 
-  it('Cloudflare D1 Mode: should execute successfully without transaction function when isD1Database is true', async () => {
+  it('Cloudflare D1 Mode: should reject execution with descriptive architectural error when isD1Database is true without transaction method', async () => {
     const mockD1Client = {
       batch: vi.fn(),
       prepare: vi.fn(),
@@ -133,20 +133,10 @@ describe('DrizzleUnitOfWork', () => {
     };
 
     const uow = new DrizzleUnitOfWork(mockD1Db as any);
-    let workExecuted = false;
-
-    const result = await uow.execute(async (factory) => {
-      workExecuted = true;
-      const userRepo = factory.getUserRepository() as any;
-      const authRepo = factory.getAuthenticationRepository() as any;
-      expect(userRepo.db).toBe(mockD1Db);
-      expect(authRepo.db).toBe(mockD1Db);
-      return Result.ok({ success: true });
-    });
-
-    expect(result.isSuccess).toBe(true);
-    expect(workExecuted).toBe(true);
-    expect(result.getValue()).toEqual({ success: true });
+    await expect(uow.execute(async () => Result.ok(1))).rejects.toThrow(
+      /DrizzleUnitOfWork exige driver com transações interativas/
+    );
   });
 });
+
 

@@ -144,20 +144,9 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
     }
 
     if (isD1Database(this.db)) {
-      // No Cloudflare D1, transações interativas multi-roundtrip (BEGIN IMMEDIATE) não são suportadas pela engine Edge.
-      // Executa o workflow sequencialmente sobre a conexão D1 preservando a fábrica de repositórios.
-      // Para transações contábeis que exigem garantia física atômica all-or-nothing no D1,
-      // deve-se utilizar o D1AtomicPostingExecutor nativo via lote D1.
-      try {
-        const factory = new DrizzleRepositoryFactory(null as any, this.db);
-        const res = await work(factory);
-        return res;
-      } catch (err: any) {
-        if (err instanceof FinancialError) {
-          return Result.fail(err);
-        }
-        return Result.fail(`Falha na execução no Cloudflare D1: ${err?.message || String(err)}`);
-      }
+      throw new Error(
+        'DrizzleUnitOfWork exige driver com transações interativas (BEGIN IMMEDIATE). O driver Cloudflare D1 não suporta transações interativas — utilize o D1AtomicPostingExecutor para lotes contábeis atômicos.'
+      );
     }
 
     // BLOCKER FIX: If there is no transaction support and not D1, we must FAIL immediately
