@@ -1994,6 +1994,10 @@ Como a relação $\prec$ é assimétrica e transitiva, o grafo de dependência d
 - **Suíte de Bootstrap de Tesouraria:** [`tests/finance/bootstrap_service.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/bootstrap_service.test.ts) e [`tests/finance/bootstrap_atomicity.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/bootstrap_atomicity.test.ts) — **6 / 6 testes aprovados (100%)**.
 - **Suíte Geral Completa do Sistema:** **47 arquivos de teste, 383 testes aprovados (100% de sucesso absoluto)**.
 - **Git Commits de Certificação de Infraestrutura e Repositórios (Camada 3):**
+  - `df79c99` — `feat(finance/repo): allow optional autoProvision control in getAccountBalance`
+  - `18c3d70` — `fix(finance/executor): guard transaction ID, stringify raw D1 binds, and handle active transactions`
+  - `4ab883c` — `fix(finance/inbox): replace raw sql lease comparison with Drizzle typed operators`
+  - `5f89fdc` — `fix(finance/outbox): replace raw sql date interpolation with Drizzle typed operators`
   - `b8151d1` — `feat(finance/bootstrap): support optional orchestrator dependency injection`
   - `5119cec` — `fix(finance/repo): eliminate TOCTOU in treasury provisioning and add deprecation guards`
   - `6884540` — `fix(finance/outbox): harden uniqueness violation detection via isUniqueConstraintViolation`
