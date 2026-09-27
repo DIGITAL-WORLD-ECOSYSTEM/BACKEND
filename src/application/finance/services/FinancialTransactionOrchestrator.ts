@@ -337,33 +337,21 @@ export class FinancialTransactionOrchestrator {
         const acc = accountMap.get(debitAccId)!;
         const actorId = transaction.actorUserId ?? transaction.userId ?? 0;
         const isSystemAccount = acc.userId === null;
-        const isOperational =
-          transaction.transactionType === 'reversal' ||
-          transaction.transactionType === 'refund' ||
-          transaction.transactionType === 'fee' ||
-          transaction.transactionType === 'reward' ||
-          transaction.transactionType === 'yield' ||
-          transaction.transactionType === 'adjustment' ||
-          transaction.category === 'operational' ||
-          transaction.category === 'fee' ||
-          transaction.category === 'system';
-
-        const rawAuthCtx: AuthorizationContext = authContext || {
-          principalId: actorId,
-          principalType: (isSystemAccount || isOperational || actorId === 0 ? 'system' : 'user') as any,
-          capabilities: [
-            ...(isSystemAccount || isOperational ? ['finance.system.operate', 'finance.system.reversal'] : []),
-            ...(transaction.authorizedByUserId || isOperational
-              ? ['finance.delegate.operate', 'finance.transfer.delegate', 'finance.system.operate']
-              : []),
-          ],
-          delegatedForUserId: acc.userId ?? null,
-          correlationId: transaction.correlationId || transaction.idempotencyKey,
-        };
-
-        const effectiveAuthCtx: AuthorizationContext = isAuthenticAuthorizationContext(rawAuthCtx)
-          ? rawAuthCtx
-          : freezeAuthorizationContext(rawAuthCtx);
+        const isSystemActor = isSystemAccount || actorId === 0;
+        const effectiveAuthCtx: AuthorizationContext = authContext
+          ? (isAuthenticAuthorizationContext(authContext) ? authContext : freezeAuthorizationContext(authContext))
+          : freezeAuthorizationContext({
+              principalId: actorId,
+              principalType: isSystemActor ? 'system' : 'user',
+              capabilities: [
+                ...(isSystemActor ? ['finance.system.operate'] : []),
+                ...(transaction.authorizedByUserId
+                  ? ['finance.delegate.operate', 'finance.transfer.delegate']
+                  : []),
+              ],
+              delegatedForUserId: acc.userId ?? null,
+              correlationId: transaction.correlationId || transaction.idempotencyKey,
+            });
 
         const spec = {
           operationType: (transaction.transactionType as any) || 'transfer',
@@ -413,6 +401,7 @@ export class FinancialTransactionOrchestrator {
         leaseGeneration,
         responseStatus,
         responsePayload,
+        occurredAtEpochMs: transaction.createdAt ? transaction.createdAt.getTime() : undefined,
       });
 
       // Commit atômico físico via PostingAuthority soberana (Gate 0)

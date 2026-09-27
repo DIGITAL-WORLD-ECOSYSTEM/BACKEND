@@ -22,11 +22,6 @@ export interface IRepositoryFactory {
   getFinanceRepository(): IFinanceRepository;
   getPostingSession(): import('../../../domains/finance/contracts/PostingSession').PostingSession;
   getPostingAuthority(): import('../../finance/services/PostingAuthority').PostingAuthority;
-  /**
-   * @deprecated Utilize exclusivamente `getPostingAuthority()` para despacho soberano de postagens.
-   * Mantido apenas para compatibilidade de adaptadores internos de persistência.
-   */
-  getPostingExecutor?(): import('./IPostingExecutor').IPostingExecutor;
 }
 
 

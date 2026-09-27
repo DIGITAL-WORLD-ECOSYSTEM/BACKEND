@@ -29,6 +29,7 @@ export type PostingExecutionMode =
  * Registros soberanos em escopo de módulo (inacessíveis por código externo).
  */
 const VALID_POSTING_SESSIONS = new WeakSet<PostingSession>();
+const IN_FLIGHT_POSTING_SESSIONS = new WeakSet<PostingSession>();
 const CONSUMED_POSTING_SESSIONS = new WeakSet<PostingSession>();
 
 export class PostingSession {
@@ -131,6 +132,28 @@ export class PostingSession {
   }
 
   /**
+   * Adquire atômica e exclusivamente a sessão para commit na PostingAuthority (Gate 0).
+   * Impede condições de corrida TOCTOU (re-entrancy) sob alta concorrência.
+   */
+  public tryAcquireForCommit(): boolean {
+    if (!this.isValid()) {
+      return false;
+    }
+    if (IN_FLIGHT_POSTING_SESSIONS.has(this)) {
+      return false;
+    }
+    IN_FLIGHT_POSTING_SESSIONS.add(this);
+    return true;
+  }
+
+  /**
+   * Libera a aquisição in-flight caso o commit falhe antes da persistência física.
+   */
+  public releaseAcquisition(): void {
+    IN_FLIGHT_POSTING_SESSIONS.delete(this);
+  }
+
+  /**
    * Tenta adquirir e consumir a sessão de forma atômica.
    * Retorna true se a sessão estava válida e foi consumida com sucesso;
    * retorna false se já havia sido consumida ou não pertencia ao registro autêntico.
@@ -139,6 +162,7 @@ export class PostingSession {
     if (!this.isValid()) {
       return false;
     }
+    IN_FLIGHT_POSTING_SESSIONS.delete(this);
     CONSUMED_POSTING_SESSIONS.add(this);
     return true;
   }
@@ -154,6 +178,7 @@ export class PostingSession {
     if (CONSUMED_POSTING_SESSIONS.has(this)) {
       throw new Error('PostingSession já consumida. Violação do invariante de uso único (single-use capability).');
     }
+    IN_FLIGHT_POSTING_SESSIONS.delete(this);
     CONSUMED_POSTING_SESSIONS.add(this);
   }
 

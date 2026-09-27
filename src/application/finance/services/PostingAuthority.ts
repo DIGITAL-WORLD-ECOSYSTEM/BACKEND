@@ -26,8 +26,12 @@ export class PostingAuthority {
     plan: PostingPlan,
     session: PostingSession
   ): Promise<Result<PostingExecutionResult>> {
-    // 1. Validação estrita de autenticidade e unicidade da PostingSession (P0-01, P0-19)
-    if (!session || typeof session.isValid !== 'function' || !session.isValid()) {
+    // 1. Validação estrita de autenticidade, unicidade e aquisição atômica da PostingSession (Gate 0 / Anti-TOCTOU)
+    const acquired = typeof session?.tryAcquireForCommit === 'function'
+      ? session.tryAcquireForCommit()
+      : (typeof session?.isValid === 'function' && session.isValid());
+
+    if (!session || !acquired) {
       return Result.fail('PostingSession obrigatória, autêntica, válida e não-consumida para commit contábil.');
     }
 
@@ -132,6 +136,15 @@ export class PostingAuthority {
       }
     }
 
-    return await this.executor.execute(plan, session);
+    try {
+      const execResult = await this.executor.execute(plan, session);
+      if (execResult.isFailure) {
+        session.releaseAcquisition?.();
+      }
+      return execResult;
+    } catch (err) {
+      session.releaseAcquisition?.();
+      throw err;
+    }
   }
 }

@@ -7,6 +7,7 @@ import { FinancialTransactionOrchestrator, OrchestratorResult } from '../service
 import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
 import { InvalidStateTransitionError } from '../../../domains/finance/errors/FinancialError';
 import { FinancialTransactionStateMachine } from '../../../domains/finance/services/FinancialTransactionStateMachine';
+import { freezeAuthorizationContext } from '../../../domains/finance/contracts/AuthorizationContext';
 
 export interface ReverseTransactionInput {
   originalTransactionId: number;
@@ -110,8 +111,15 @@ export class ReverseTransactionUseCase {
           }
         }
 
+        const reversalAuthCtx = freezeAuthorizationContext({
+          principalId: input.actorUserId,
+          principalType: input.actorUserId === 0 ? 'system' : 'service_account',
+          capabilities: ['finance.system.reversal', 'finance.system.operate'],
+          correlationId: input.idempotencyKey,
+        });
+
         const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
-        const orchestratorResult = await orchestrator.executePosting(reversalTx);
+        const orchestratorResult = await orchestrator.executePosting(reversalTx, reversalAuthCtx);
 
         // Atualizar transação original para 'reversed' dentro da mesma UoW
         await repo.updateTransactionStatus(input.originalTransactionId, 'reversed', originalTx.version);

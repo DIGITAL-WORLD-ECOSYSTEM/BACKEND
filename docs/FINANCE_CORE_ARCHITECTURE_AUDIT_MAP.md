@@ -1625,9 +1625,12 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
   - Regex canônica compilada em escopo de módulo `CANONICAL_DECIMAL_PATTERN = /^(0|[1-9][0-9]*)$/`.
   - Teto uint256 em montantes contábeis ($0 < \text{amt} \le \text{MAX\_UINT256}$) e saldos projetados ($0 \le \text{bal} \le \text{MAX\_UINT256}$).
 - [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
-  - Validação estrita da `PostingSession` via `session.isValid()`.
+  - Aquisição atômica e proteção anti-TOCTOU na `PostingSession` via `session.tryAcquireForCommit()`, com liberação `session.releaseAcquisition()` em caso de falha de execução.
+  - Eliminação completa de `getPostingExecutor?()` da fábrica `IRepositoryFactory` em `IUnitOfWork.ts`, garantindo que apenas `getPostingAuthority()` e `getPostingSession()` sejam expostos no pipeline.
   - Validação de autenticidade criptográfica do plano através de `isAuthenticPostingPlan(plan)` (verificação no `WeakSet` e selo único).
-  - Validação mandatória de autorização de custódia (`plan.authorizationDecision.allowed === true`).
+  - Validação mandatória de autorização de custódia soberana com fail-closed estrito em `CustodyAuthorizationPolicy.canDebitSourceAccount`: contextos não-autênticos são imediatamente rejeitados com `UNAUTHORIZED_CUSTODY`.
+  - Proscrição de auto-elevação de privilégios (`finance.system.operate` / `finance.system.reversal`) no `FinancialTransactionOrchestrator`, com emissão de contextos autênticos explícitos nos casos de uso administrativos (`RecordTransferUseCase`, `RecordDepositUseCase`, `ReverseTransactionUseCase`).
+  - Determinismo estrito de timestamps contábeis no `PostingPlanBuilder` através de `occurredAtEpochMs: transaction.createdAt ? transaction.createdAt.getTime() : undefined`.
   - Validação de fencing de concorrência (`leaseOwner` não-vazio, `leaseGeneration >= 0`, `requestHash` não-vazio).
   - Validação referencial cruzada de identidades: `plan.transactionRecord.id === plan.transactionId` e `outboxEvent.aggregateId`.
   - Validação contígua de ordinais das pernas: `entry.entryOrdinal === i + 1` com $N \ge 2$.
@@ -1637,11 +1640,12 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
   - Único ponto de despacho autorizado para toda a aplicação.
 - [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
-  - 100% coberto pela suíte de teste de arquitetura estática `tests/architecture/finance_posting_authority.test.ts` e testes adversariais em `adversarial_certification.test.ts`.
+  - 100% coberto pela suíte de teste de arquitetura estática `tests/architecture/finance_posting_authority.test.ts` e testes adversariais em `adversarial_certification.test.ts` e `contracts_p0_hardening.test.ts`.
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
-1. **10 Barreiras de Verificação Atômica:** Validação completa e sequencial de: (1) sessão válida, (2) plano presente, (3) plano autêntico em `WeakSet`, (4) autorização de custódia, (5) fencing de concorrência, (6) integridade de IDs, (7) ordinais contíguos 1..N e regex decimal, (8) partidas dobradas FIN-001 por ativo, (9) mutações de saldo uint256, (10) despacho ao executor físico.
+1. **10 Barreiras de Verificação Atômica:** Validação completa e sequencial de: (1) aquisição atômica anti-TOCTOU de sessão, (2) plano presente, (3) plano autêntico em `WeakSet`, (4) autorização de custódia fail-closed, (5) fencing de concorrência, (6) integridade de IDs, (7) ordinais contíguos 1..N e regex decimal, (8) partidas dobradas FIN-001 por ativo, (9) mutações de saldo uint256, (10) despacho ao executor físico com liberação de aquisição em caso de falha.
 2. **Defesa em Profundidade de Formato:** Padrão canônico decimal compilado em escopo de módulo (`CANONICAL_DECIMAL_PATTERN`).
+3. **Hardening de Interfaces & Desacoplamento OCap:** Remoção do método de escape `getPostingExecutor` de `IRepositoryFactory`, forçando todo o fluxo a utilizar `getPostingAuthority()`.
 
 ---
 
@@ -1655,10 +1659,10 @@ $$\text{Use Case} \xrightarrow{\text{Command}} \text{Orchestrator} \xrightarrow{
 #### 2. Teorema de Impossibilidade de Bypass Contábil (Prova por Exaustão de Caminhos)
 * **Teorema:** Seja $M$ uma mutação física que altere o estado das tabelas `financial_ledger_entries` ou `account_balances` no banco de dados. É matematicamente impossível executar $M$ sem que $M$ tenha sido compilada por `PostingPlanBuilder`, selada em `PostingPlan`, aprovada por `PostingAuthority` e executada sob uma `PostingSession` autêntica.
 * **Demonstração por Contradição:**
-  1. *Hipótese de Bypass 1 (Chamada direta do Use Case ao Banco):* Os Use Cases operam exclusivamente com as abstrações injetadas pela `IUnitOfWork`. A interface `IFinanceRepository` possui os métodos legados `insertLedgerEntries` e `updateBalanceWithOCC` explicitamente marcados como `@deprecated` e bloqueados pela suíte de arquitetura estática (`finance_posting_authority.test.ts`). O teste falha se qualquer Use Case fora do Orchestrator tentar mutar saldos diretamente. Contradição.
+  1. *Hipótese de Bypass 1 (Chamada direta do Use Case ao Banco):* Os Use Cases operam exclusivamente com as abstrações injetadas pela `IUnitOfWork`. A interface `IFinanceRepository` possui os métodos legados `insertLedgerEntries` e `updateBalanceWithOCC` explicitamente marcados como `@deprecated` e bloqueados pela suíte de arquitetura estática (`finance_posting_authority.test.ts`). Além disso, `IRepositoryFactory` não mais expõe `getPostingExecutor`. O teste falha se qualquer Use Case fora do Orchestrator tentar mutar saldos diretamente. Contradição.
   2. *Hipótese de Bypass 2 (Forja de Plano pelo Chamador):* Suponha que um invasor tente fabricar um objeto `PostingPlan` manual para creditar saldo sem débitos correspondentes. Para ser aceito pela `PostingAuthority`, o objeto deve satisfazer `isAuthenticPostingPlan(plan)`. Esta função exige que o objeto resida na coleção privada `AUTHENTIC_POSTING_PLANS` (`WeakSet`), inacessível fora do módulo `PostingPlan.ts`, cuja única via de inserção é a função `sealPostingPlan()`. Esta função, por sua vez, executa `validatePostingPlanCrossFieldInvariants()`, que rejeita planos desbalanceados com `LedgerImbalanceError`. Contradição.
-  3. *Hipótese de Bypass 3 (Reutilização de Sessão / Replay Attack):* Suponha que uma transação tente reutilizar uma `PostingSession` previamente utilizada. Após a primeira execução bem-sucedida, o `D1AtomicPostingExecutor` invoca `session.markConsumed()`, registrando a sessão no `CONSUMED_POSTING_SESSIONS` (`WeakSet`). Na tentativa subsequente, `session.isValid()` retorna `false`, e tanto a `PostingAuthority` quanto o `D1AtomicPostingExecutor` abortam a operação com `Result.fail('PostingSession inválida...')`. Contradição.
-  4. *Hipótese de Bypass 4 (Invocação direta de `IPostingExecutor` sem `PostingAuthority`):* O `D1AtomicPostingExecutor` realiza em sua própria fronteira de entrada a validação `if (!plan || !isAuthenticPostingPlan(plan))` e `if (!session || !session.isValid())`. Mesmo que um chamador tente bypassar a `PostingAuthority`, o plano DEVE ser autêntico (passou pelo builder) e a sessão DEVE ser válida e não-consumida. Contradição.
+  3. *Hipótese de Bypass 3 (Reutilização de Sessão / Replay Attack / Race Condition TOCTOU):* Suponha que uma transação tente reutilizar uma `PostingSession` ou disparar duas execuções simultâneas concorrentes com a mesma sessão. Na entrada do `PostingAuthority.commit()`, `session.tryAcquireForCommit()` realiza a aquisição atômica da sessão marcando-a no `IN_FLIGHT_POSTING_SESSIONS`. A chamada concorrente é rejeitada imediatamente no Gate 0 com `Result.fail('PostingSession obrigatória...')`. Após o commit físico, o `D1AtomicPostingExecutor` marca a sessão definitivamente como consumida no `CONSUMED_POSTING_SESSIONS`. Na tentativa subsequente, `session.isValid()` e `session.tryAcquireForCommit()` retornam `false`. Contradição.
+  4. *Hipótese de Bypass 4 (Invocação direta de `IPostingExecutor` sem `PostingAuthority`):* O `D1AtomicPostingExecutor` realiza em sua própria fronteira de entrada a validação `if (!plan || !isAuthenticPostingPlan(plan))` e `if (!session || !session.isValid())`. Mesmo que um chamador tente bypassar a `PostingAuthority`, o plano DEVE ser autêntico (passou pelo builder) e a sessão DEVE ser válida e não-consumida. Além disso, `getPostingExecutor` não é acessível via `IRepositoryFactory`. Contradição.
 * **Conclusão:** O conjunto de caminhos de escrita no livro-razão e saldos possui cardinalidade exatamente 1. Q.E.D.
 
 #### 3. Teorema de Conservação de Massa Contábil (Invariante FIN-001)

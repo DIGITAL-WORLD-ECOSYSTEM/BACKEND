@@ -6,6 +6,7 @@ import { AccountingEntryPolicy } from '../../../domains/finance/policies/Account
 import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
 import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
 import { AccountInactiveError } from '../../../domains/finance/errors/FinancialError';
+import { freezeAuthorizationContext } from '../../../domains/finance/contracts/AuthorizationContext';
 
 export interface DepositCommand {
   userId: number;
@@ -71,8 +72,15 @@ export class RecordDepositUseCase {
           }
         }
 
+        const depositAuthCtx = freezeAuthorizationContext({
+          principalId: 0,
+          principalType: 'system',
+          capabilities: ['finance.system.operate'],
+          correlationId: command.idempotencyKey,
+        });
+
         const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
-        const orchestratorResult = await orchestrator.executePosting(transaction);
+        const orchestratorResult = await orchestrator.executePosting(transaction, depositAuthCtx);
         return Result.ok(orchestratorResult);
       });
     } catch (err: unknown) {

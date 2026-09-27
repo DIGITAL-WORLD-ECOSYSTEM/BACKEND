@@ -221,18 +221,15 @@ export class CustodyAuthorizationPolicy {
       });
     }
 
-    let effectiveContext: AuthorizationContext;
-    try {
-      effectiveContext = isAuthenticAuthorizationContext(context)
-        ? context
-        : freezeAuthorizationContext(context);
-    } catch (err: any) {
+    if (!isAuthenticAuthorizationContext(context)) {
       return Object.freeze({
         allowed: false,
-        reason: `Contexto de autorização inválido ou não-autenticável: ${err?.message || 'erro de normalização'}`,
-        errorCode: 'INVALID_ARGUMENT',
+        reason: 'Contexto de autorização não-autenticado ou forjado (não emitido via freezeAuthorizationContext).',
+        errorCode: 'UNAUTHORIZED_CUSTODY',
       });
     }
+
+    const effectiveContext = context;
 
     if (!spec || typeof spec !== 'object') {
       return Object.freeze({

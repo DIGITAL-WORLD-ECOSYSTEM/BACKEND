@@ -9,6 +9,7 @@ import {
   CustodyAuthorizationPolicy,
   AuthorizationContext,
   CustodyOperationSpec,
+  freezeAuthorizationContext,
 } from '../../../domains/finance/contracts/AuthorizationContext';
 
 export interface TransferCommand {
@@ -71,13 +72,17 @@ export class RecordTransferUseCase {
 
         // 1. Custody & Authorization Gate (Gate 4)
         const principalId = command.actorUserId ?? command.authenticatedUserId ?? command.sourceUserId;
-        const authCtx: AuthorizationContext = {
+        const correlationToken =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID().replace(/-/g, '').substring(0, 10)
+            : Date.now().toString(36);
+        const authCtx = freezeAuthorizationContext({
           principalId,
           principalType: 'user',
           capabilities: command.capabilities ?? (command.roles?.includes('admin') ? ['admin', 'finance.custody.debit'] : []),
           delegatedForUserId: command.delegatedForUserId ?? null,
-          correlationId: command.correlationId ?? `corr_tx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        };
+          correlationId: command.correlationId ?? `corr_tx_${Date.now()}_${correlationToken}`,
+        });
 
         const opSpec: CustodyOperationSpec = {
           operationType: 'transfer',
@@ -138,7 +143,7 @@ export class RecordTransferUseCase {
         }
 
         const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
-        const orchestratorResult = await orchestrator.executePosting(transaction);
+        const orchestratorResult = await orchestrator.executePosting(transaction, authCtx);
         return Result.ok(orchestratorResult);
       });
     } catch (err: unknown) {
