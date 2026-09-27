@@ -76,6 +76,20 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
       );
     }
 
+    if (
+      !plan.transactionRecord ||
+      typeof plan.transactionRecord.id !== 'number' ||
+      !Number.isSafeInteger(plan.transactionRecord.id) ||
+      plan.transactionRecord.id <= 0
+    ) {
+      return Result.fail(
+        new AtomicPostingExecutionError(
+          'PostingPlan possui transactionRecord.id inválido ou ausente. IDs devem ser pré-alocados deterministicamente para batching atômico.',
+          'INVALID_TRANSACTION_ID'
+        )
+      );
+    }
+
     const now = new Date();
     let committedTxId = plan.transactionId;
 
@@ -259,7 +273,7 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
                   entry.accountId,
                   entry.assetId,
                   entry.direction,
-                  entry.amountBaseUnits,
+                  String(entry.amountBaseUnits),
                   now.getTime()
                 )
             );
@@ -281,7 +295,7 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
                      AND (SELECT status FROM financial_assets WHERE id = ?) = 'active'`
                 )
                 .bind(
-                  mutation.newAvailableBaseUnits,
+                  String(mutation.newAvailableBaseUnits),
                   now.getTime(),
                   mutation.accountId,
                   mutation.assetId,
@@ -312,7 +326,11 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
                 plan.outboxEvent.eventName,
                 plan.outboxEvent.aggregateId,
                 plan.outboxEvent.aggregateVersion,
-                plan.outboxEvent.payload,
+                typeof plan.outboxEvent.payload === 'string'
+                  ? plan.outboxEvent.payload
+                  : JSON.stringify(plan.outboxEvent.payload, (_key, value) =>
+                      typeof value === 'bigint' ? value.toString() : value
+                    ),
                 Math.floor(now.getTime() / 1000)
               )
           );
@@ -368,8 +386,11 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
         } else {
           throw new Error('D1 client does not support batch execution.');
         }
+      } else if (typeof (this.db as any).rollback === 'function') {
+        // Já se encontra dentro de uma transação SQLite ativa (wrapper tx provido pelo Unit of Work)
+        committedTxId = await this.executeStatementsOnExecutor(this.db, plan, now);
       } else if (typeof this.db.transaction === 'function') {
-        // SQLite Immediate Transaction
+        // SQLite Immediate Transaction na conexão raiz
         await this.db.transaction(
           async (tx: any) => {
             committedTxId = await this.executeStatementsOnExecutor(tx, plan, now);
