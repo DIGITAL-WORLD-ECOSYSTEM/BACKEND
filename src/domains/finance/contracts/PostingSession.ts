@@ -22,6 +22,7 @@
 export type PostingExecutionMode =
   | 'atomic-batch'
   | 'serial-transaction'
+  | 'in-memory'
   | 'd1-batch'
   | 'sqlite-transaction';
 
@@ -36,7 +37,7 @@ export class PostingSession {
   public readonly mode: PostingExecutionMode;
   public readonly sessionId: string;
   public readonly boundaryId: string;
-  public readonly boundaryRef: object;
+  private readonly _boundaryWeakRef: WeakRef<object>;
   public readonly createdAtEpochMs: number;
 
   /**
@@ -46,7 +47,8 @@ export class PostingSession {
   public constructor(
     boundaryRef: object,
     mode: PostingExecutionMode,
-    boundaryId: string
+    boundaryId: string,
+    createdAtEpochMs?: number
   ) {
     if (!boundaryRef || (typeof boundaryRef !== 'object' && typeof boundaryRef !== 'function')) {
       throw new Error('PostingSession exige uma referência física de fronteira transacional válida.');
@@ -54,6 +56,7 @@ export class PostingSession {
     if (
       mode !== 'atomic-batch' &&
       mode !== 'serial-transaction' &&
+      mode !== 'in-memory' &&
       mode !== 'd1-batch' &&
       mode !== 'sqlite-transaction'
     ) {
@@ -65,8 +68,10 @@ export class PostingSession {
 
     this.mode = mode;
     this.boundaryId = boundaryId.trim();
-    this.boundaryRef = boundaryRef;
-    this.createdAtEpochMs = Date.now();
+    this._boundaryWeakRef = new WeakRef(boundaryRef);
+    this.createdAtEpochMs = Number.isSafeInteger(createdAtEpochMs) && createdAtEpochMs! > 0
+      ? createdAtEpochMs!
+      : Date.now();
 
     // Geração de ID com CSPRNG estrito (sem Math.random())
     this.sessionId = PostingSession.generateSecureSessionId();
@@ -74,6 +79,13 @@ export class PostingSession {
     // Registra a sessão como válida e congela a instância contra adulteração externa
     VALID_POSTING_SESSIONS.add(this);
     Object.freeze(this);
+  }
+
+  /**
+   * Referência fraca à fronteira transacional física (evita vazamento de memória).
+   */
+  public get boundaryRef(): object | undefined {
+    return this._boundaryWeakRef.deref();
   }
 
   /**
@@ -122,10 +134,12 @@ export class PostingSession {
       this.sessionId.length > 0 &&
       typeof this.boundaryId === 'string' &&
       this.boundaryId.length > 0 &&
+      this.boundaryRef !== undefined &&
       this.boundaryRef !== null &&
       (typeof this.boundaryRef === 'object' || typeof this.boundaryRef === 'function') &&
       (this.mode === 'atomic-batch' ||
         this.mode === 'serial-transaction' ||
+        this.mode === 'in-memory' ||
         this.mode === 'd1-batch' ||
         this.mode === 'sqlite-transaction')
     );
