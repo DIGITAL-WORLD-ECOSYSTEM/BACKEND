@@ -35,6 +35,7 @@ import {
   InvalidAccountClassError,
   AccountInactiveError,
   AssetInactiveError,
+  IdempotencyKeyReusedWithDifferentRequestError,
 } from '../../domains/finance/errors/FinancialError';
 import { AccountClassPolicy } from '../../domains/finance/policies/AccountClassPolicy';
 import { BaseSQLiteDatabase, SQLiteTransaction } from 'drizzle-orm/sqlite-core';
@@ -107,16 +108,10 @@ import { PostingAuthority } from '../../application/finance/services/PostingAuth
  * substance, a different request — which must never silently overwrite the
  * original request's identity.
  *
- * TODO: move this to '../../domains/finance/errors/FinancialError' once
- * that module owns it, for consistency with the other Finance error types
- * imported above.
+ * Re-exporta a classe canônica centralizada em FinancialError para preservar
+ * retrocompatibilidade absoluta com importadores existentes deste repositório.
  */
-export class IdempotencyKeyReusedWithDifferentRequestError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'IdempotencyKeyReusedWithDifferentRequestError';
-  }
-}
+export { IdempotencyKeyReusedWithDifferentRequestError };
 
 export type FinanceDatabase = BaseSQLiteDatabase<'async', any, any>;
 export type FinanceTransaction = SQLiteTransaction<'async', any, any, any>;

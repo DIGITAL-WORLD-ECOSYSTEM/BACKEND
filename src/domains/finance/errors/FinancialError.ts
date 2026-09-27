@@ -88,6 +88,15 @@ export class IdempotencyConflictError extends FinancialError {
   }
 }
 
+export class IdempotencyKeyReusedWithDifferentRequestError extends FinancialError {
+  constructor(
+    message: string = 'Chave de idempotência reutilizada com payload ou hash divergente da requisição original.',
+    details?: Record<string, unknown>
+  ) {
+    super(message, 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST', false, details);
+  }
+}
+
 export class IdempotencyInProgressError extends FinancialError {
   constructor(message: string = 'Transação em processamento com esta chave de idempotência.', details?: Record<string, unknown>) {
     super(message, 'IDEMPOTENCY_IN_PROGRESS', true, details);
