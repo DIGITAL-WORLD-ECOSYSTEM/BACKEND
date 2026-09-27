@@ -673,6 +673,9 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
+  /**
+   * @deprecated Método legado de escrita direta. Toda mutação contábil deve utilizar PostingAuthority e D1AtomicPostingExecutor.
+   */
   async insertTransaction(data: {
     userId?: number | null;
     actorUserId?: number | null;
@@ -1166,6 +1169,9 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
+  /**
+   * @deprecated Método legado de escrita direta. Toda mutação contábil deve utilizar PostingAuthority e D1AtomicPostingExecutor.
+   */
   async insertLedgerEntries(entries: ReadonlyArray<LedgerEntry>, transactionId: number): Promise<Result<void, RepositoryError>> {
     try {
       const balanceByAsset = new Map<number, bigint>();
@@ -1227,6 +1233,9 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
+  /**
+   * @deprecated Método legado de escrita direta. Toda mutação contábil deve utilizar PostingAuthority e D1AtomicPostingExecutor.
+   */
   async updateBalanceWithOCC(
     accountId: number | string,
     assetId: number | string,
@@ -1658,7 +1667,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
 
         if (!existingBal) {
           try {
-            await this.executor.insert(accountBalances).values({
+            const insertQuery = this.executor.insert(accountBalances).values({
               accountId: accId,
               assetId,
               availableBaseUnits: '0',
@@ -1666,6 +1675,12 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
               version: 1,
               updatedAt: new Date(),
             });
+
+            if (typeof insertQuery?.onConflictDoNothing === 'function') {
+              await insertQuery.onConflictDoNothing();
+            } else {
+              await insertQuery;
+            }
           } catch (balErr: any) {
             if (!isUniqueConstraintViolation(balErr)) {
               throw balErr;
