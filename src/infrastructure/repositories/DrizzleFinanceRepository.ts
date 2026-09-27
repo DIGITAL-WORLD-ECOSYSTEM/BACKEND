@@ -638,29 +638,21 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
   }
 
   /**
-   * [AUDIT FIX P0-03]
-   * No longer inserts `createdAt`: accountBalances (tables.ts) only
-   * declares `updatedAt`, not `createdAt`. Inserting an unknown field was a
-   * direct schema/repository mismatch.
+   * [AUDIT FIX P0-03 & P1-02]
+   * Utiliza inserção atômica com .onConflictDoNothing() para eliminar race conditions TOCTOU
+   * sob alta concorrência e reduzir roundtrips ao banco físico SQLite/D1.
    */
   private async ensureAccountBalance(
     accountId: number,
     assetId: number
   ): Promise<void> {
-    const [existing] = await this.executor
-      .select({ id: accountBalances.id })
-      .from(accountBalances)
-      .where(
-        and(
-          eq(accountBalances.accountId, accountId),
-          eq(accountBalances.assetId, assetId)
-        )
-      )
-      .limit(1);
-
-    if (!existing) {
-      try {
-        await this.executor.insert(accountBalances).values({
+    if (typeof this.executor?.insert !== 'function') {
+      return;
+    }
+    try {
+      const insertQuery = this.executor
+        .insert(accountBalances)
+        .values({
           accountId,
           assetId,
           availableBaseUnits: '0',
@@ -668,10 +660,15 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
           version: 1,
           updatedAt: new Date(),
         });
-      } catch (err: any) {
-        if (!isUniqueConstraintViolation(err)) {
-          throw err;
-        }
+
+      if (typeof insertQuery?.onConflictDoNothing === 'function') {
+        await insertQuery.onConflictDoNothing();
+      } else {
+        await insertQuery;
+      }
+    } catch (err: any) {
+      if (!isUniqueConstraintViolation(err)) {
+        throw err;
       }
     }
   }
