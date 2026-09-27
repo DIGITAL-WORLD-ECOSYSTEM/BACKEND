@@ -16,7 +16,7 @@ import { LedgerImbalanceError } from '../../../domains/finance/errors/LedgerImba
 import { CanonicalRequestHashService } from './CanonicalRequestHashService';
 import { AccountStatusPolicy, AccountStatus } from '../../../domains/finance/policies/AccountStatusPolicy';
 import { AssetStatusPolicy } from '../../../domains/finance/policies/AssetStatusPolicy';
-import { AccountClassPolicy } from '../../../domains/finance/policies/AccountClassPolicy';
+import { AccountClassPolicy, type FinancialAccountClass } from '../../../domains/finance/policies/AccountClassPolicy';
 import { parsePositiveSafeIntegerId } from '../../../domains/finance/value-objects/Money256';
 import { PostingAuthority } from './PostingAuthority';
 import { PostingPlanBuilder, PostingLegEntryInput } from '../../../domains/finance/services/PostingPlanBuilder';
@@ -79,12 +79,15 @@ export class FinancialTransactionOrchestrator {
       (this.outboxRepo as any).getPostingSession?.();
   }
 
-  private resolvePostingSession(): PostingSession {
+  private resolvePostingSession(callSession?: PostingSession): PostingSession {
+    if (callSession && typeof callSession.isValid === 'function' && callSession.isValid()) {
+      return callSession;
+    }
     if (this.session && typeof this.session.isValid === 'function' && this.session.isValid()) {
       return this.session;
     }
     const sessionFromRepo =
-      (this.financeRepo as any).getPostingSession?.() ||
+      this.financeRepo.getPostingSession?.() ||
       (this.outboxRepo as any).getPostingSession?.();
     if (sessionFromRepo && typeof sessionFromRepo.isValid === 'function' && sessionFromRepo.isValid()) {
       return sessionFromRepo;
@@ -182,9 +185,10 @@ export class FinancialTransactionOrchestrator {
    */
   public async executePosting(
     transaction: LedgerTransaction,
-    authContext?: AuthorizationContext
+    authContext?: AuthorizationContext,
+    session?: PostingSession
   ): Promise<OrchestratorResult> {
-    return this._executePostingInternal(transaction, undefined, authContext);
+    return this._executePostingInternal(transaction, undefined, authContext, session);
   }
 
   /**
@@ -194,15 +198,17 @@ export class FinancialTransactionOrchestrator {
   public async executePostingForTesting(
     transaction: LedgerTransaction,
     testRequestHashOverride?: string,
-    authContext?: AuthorizationContext
+    authContext?: AuthorizationContext,
+    session?: PostingSession
   ): Promise<OrchestratorResult> {
-    return this._executePostingInternal(transaction, testRequestHashOverride, authContext);
+    return this._executePostingInternal(transaction, testRequestHashOverride, authContext, session);
   }
 
   private async _executePostingInternal(
     transaction: LedgerTransaction,
     testRequestHashOverride?: string,
-    authContext?: AuthorizationContext
+    authContext?: AuthorizationContext,
+    callSession?: PostingSession
   ): Promise<OrchestratorResult> {
     if (!transaction.entries || transaction.entries.length < 2) {
       throw new InvalidLedgerTransactionError(
@@ -232,12 +238,12 @@ export class FinancialTransactionOrchestrator {
     const computedHash = testRequestHashOverride || CanonicalRequestHashService.calculateHash(transaction);
     const scope = transaction.scope || 'finance';
 
-    // Fencing P0: Gera leaseOwner único para o trabalhador atual via CSPRNG estrito
-    const secureToken =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID().replace(/-/g, '').substring(0, 12)
-        : Date.now().toString(36);
-    const leaseOwner = `worker_${Date.now()}_${secureToken}`;
+    // Fencing P0: Gera leaseOwner único para o trabalhador atual via CSPRNG estrito (fail-closed)
+    if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
+      throw new Error('Ambiente inseguro: CSPRNG (crypto.randomUUID) é obrigatório para geração segura de leaseOwner.');
+    }
+    const secureToken = crypto.randomUUID().replace(/-/g, '');
+    const leaseOwner = `worker_${secureToken}`;
 
     const claimRes = await this.financeRepo.claimIdempotency(
       transaction.idempotencyKey,
@@ -273,7 +279,7 @@ export class FinancialTransactionOrchestrator {
       await this.preValidateEntities(transaction);
 
       // Coleta o estado de contas e saldos para alimentar o compilador do PostingPlan
-      const accountMap = new Map<number, { accountClass: any; status: AccountStatus; userId: number | null }>();
+      const accountMap = new Map<number, { accountClass: FinancialAccountClass; status: AccountStatus; userId: number | null }>();
       const balanceMap = new Map<string, { availableBaseUnits: bigint; version: number }>();
 
       for (const entry of transaction.entries) {
@@ -338,20 +344,28 @@ export class FinancialTransactionOrchestrator {
         const actorId = transaction.actorUserId ?? transaction.userId ?? 0;
         const isSystemAccount = acc.userId === null;
         const isSystemActor = isSystemAccount || actorId === 0;
-        const effectiveAuthCtx: AuthorizationContext = authContext
-          ? (isAuthenticAuthorizationContext(authContext) ? authContext : freezeAuthorizationContext(authContext))
-          : freezeAuthorizationContext({
-              principalId: actorId,
-              principalType: isSystemActor ? 'system' : 'user',
-              capabilities: [
-                ...(isSystemActor ? ['finance.system.operate'] : []),
-                ...(transaction.authorizedByUserId
-                  ? ['finance.delegate.operate', 'finance.transfer.delegate']
-                  : []),
-              ],
-              delegatedForUserId: acc.userId ?? null,
-              correlationId: transaction.correlationId || transaction.idempotencyKey,
-            });
+        let effectiveAuthCtx: AuthorizationContext;
+        if (authContext) {
+          if (!isAuthenticAuthorizationContext(authContext)) {
+            throw new Error(
+              'AuthorizationContext não-autêntico ou forjado rejeitado no Orchestrator (ausência de selo ou registro soberano).'
+            );
+          }
+          effectiveAuthCtx = authContext;
+        } else {
+          effectiveAuthCtx = freezeAuthorizationContext({
+            principalId: actorId,
+            principalType: isSystemActor ? 'system' : 'user',
+            capabilities: [
+              ...(isSystemActor ? ['finance.system.operate'] : []),
+              ...(transaction.authorizedByUserId
+                ? ['finance.delegate.operate', 'finance.transfer.delegate']
+                : []),
+            ],
+            delegatedForUserId: acc.userId ?? null,
+            correlationId: transaction.correlationId || transaction.idempotencyKey,
+          });
+        }
 
         const spec = {
           operationType: (transaction.transactionType as any) || 'transfer',
@@ -406,7 +420,7 @@ export class FinancialTransactionOrchestrator {
 
       // Commit atômico físico via PostingAuthority soberana (Gate 0)
       // NOTE (P0-G): Eliminação completa de outboxRepo.saveEvent() prévio. O outbox é persistido no batch do commit.
-      const session = this.resolvePostingSession();
+      const session = this.resolvePostingSession(callSession);
       const commitResult = await this.authority.commit(plan, session);
 
       if (commitResult.isFailure) {
