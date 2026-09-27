@@ -18,6 +18,7 @@ import {
 } from '../../../domains/finance/errors/FinancialError';
 import { FinancialTransactionCategory } from '../../ports/output/IFinanceRepository';
 import { FinancialTransactionStateMachine } from '../../../domains/finance/services/FinancialTransactionStateMachine';
+import { freezeAuthorizationContext } from '../../../domains/finance/contracts/AuthorizationContext';
 
 export interface RecordTreasuryTransactionDTO {
   userId?: number | null; // targetUserId
@@ -486,13 +487,13 @@ export class RecordTreasuryTransactionUseCase {
 
         // 10. Execute Posting via Orchestrator com Hash Canônico Soberano e contexto de autorização
         const orchestrator = new FinancialTransactionOrchestrator(financeRepo, factory.getOutboxRepository());
-        const authCtx = dto.actorUserId ? {
+        const authCtx = dto.actorUserId ? freezeAuthorizationContext({
           principalId: dto.actorUserId,
           principalType: 'user' as const,
           capabilities: ['finance.system.operate', 'finance.transfer.delegate'],
           delegatedForUserId: parsedUserId,
           correlationId: dto.idempotencyKey,
-        } : undefined;
+        }) : undefined;
         const orchestratorResult = await orchestrator.executePosting(transaction, authCtx);
 
         // Se o reembolso for integral, atualiza a transação original para 'refunded' NO MESMO UoW antes do commit
