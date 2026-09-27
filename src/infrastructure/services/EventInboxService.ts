@@ -121,6 +121,7 @@ export class EventInboxService {
           .where(
             and(
               eq(eventInbox.id, existing.id),
+              eq(eventInbox.leaseGeneration, existing.leaseGeneration),
               or(
                 inArray(eventInbox.status, ['pending', 'failed']),
                 lt(eventInbox.leaseExpiresAt, now),
