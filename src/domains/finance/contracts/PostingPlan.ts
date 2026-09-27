@@ -120,7 +120,14 @@ export function sealPostingPlan<T extends PostingPlan>(plan: T): PostingPlan {
 
   const frozenTxRecord = Object.freeze({ ...plan.transactionRecord });
   const frozenOutbox = Object.freeze({ ...plan.outboxEvent });
-  const frozenAuthDecision = Object.freeze({ ...plan.authorizationDecision });
+  const frozenAuthDecision = plan.authorizationDecision
+    ? Object.freeze({
+        ...plan.authorizationDecision,
+        ...(Array.isArray((plan.authorizationDecision as any).capabilities)
+          ? { capabilities: Object.freeze([...(plan.authorizationDecision as any).capabilities]) }
+          : {}),
+      })
+    : plan.authorizationDecision;
 
   const sealed: PostingPlan = Object.freeze({
     ...plan,
@@ -323,6 +330,15 @@ export function validatePostingPlanCrossFieldInvariants(plan: PostingPlan): void
     if (absMutationDelta !== legDiff) {
       throw new Error(
         `Inconsistência matemática: mutação de saldo (${mutation.signedDeltaBaseUnits}) na conta #${mutationAccId} (ativo #${mutationAssetId}) diverge do montante líquido das pernas contábeis (${legDiff}).`
+      );
+    }
+
+    if (
+      mutation.signedDeltaBaseUnits !== debits - credits &&
+      mutation.signedDeltaBaseUnits !== credits - debits
+    ) {
+      throw new Error(
+        `Inconsistência de sinal contábil: mutação de saldo (${mutation.signedDeltaBaseUnits}) na conta #${mutationAccId} (ativo #${mutationAssetId}) viola a direção das pernas.`
       );
     }
 
