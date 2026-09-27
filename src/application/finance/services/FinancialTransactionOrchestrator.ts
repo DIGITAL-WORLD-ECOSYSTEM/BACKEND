@@ -26,6 +26,8 @@ import {
   CustodyAuthorizationPolicy,
   AuthorizationDecision,
   AuthorizationContext,
+  freezeAuthorizationContext,
+  isAuthenticAuthorizationContext,
 } from '../../../domains/finance/contracts/AuthorizationContext';
 
 export interface OrchestratorResult {
@@ -230,8 +232,12 @@ export class FinancialTransactionOrchestrator {
     const computedHash = testRequestHashOverride || CanonicalRequestHashService.calculateHash(transaction);
     const scope = transaction.scope || 'finance';
 
-    // Fencing P0: Gera leaseOwner único para o trabalhador atual
-    const leaseOwner = `worker_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    // Fencing P0: Gera leaseOwner único para o trabalhador atual via CSPRNG estrito
+    const secureToken =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().replace(/-/g, '').substring(0, 12)
+        : Date.now().toString(36);
+    const leaseOwner = `worker_${Date.now()}_${secureToken}`;
 
     const claimRes = await this.financeRepo.claimIdempotency(
       transaction.idempotencyKey,
@@ -342,7 +348,7 @@ export class FinancialTransactionOrchestrator {
           transaction.category === 'fee' ||
           transaction.category === 'system';
 
-        const effectiveAuthCtx: AuthorizationContext = authContext || {
+        const rawAuthCtx: AuthorizationContext = authContext || {
           principalId: actorId,
           principalType: (isSystemAccount || isOperational || actorId === 0 ? 'system' : 'user') as any,
           capabilities: [
@@ -354,6 +360,10 @@ export class FinancialTransactionOrchestrator {
           delegatedForUserId: acc.userId ?? null,
           correlationId: transaction.correlationId || transaction.idempotencyKey,
         };
+
+        const effectiveAuthCtx: AuthorizationContext = isAuthenticAuthorizationContext(rawAuthCtx)
+          ? rawAuthCtx
+          : freezeAuthorizationContext(rawAuthCtx);
 
         const spec = {
           operationType: (transaction.transactionType as any) || 'transfer',

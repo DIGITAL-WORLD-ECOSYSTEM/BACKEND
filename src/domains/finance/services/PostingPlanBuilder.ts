@@ -324,10 +324,6 @@ export class PostingPlanBuilder {
     const balanceMutations: BalanceMutationPlan[] = [];
 
     for (const agg of sortedAggregations) {
-      if (agg.netSignedDelta === 0n) {
-        continue;
-      }
-
       const targetAvailable = agg.currentAvailable + agg.netSignedDelta;
 
       if (targetAvailable < 0n) {

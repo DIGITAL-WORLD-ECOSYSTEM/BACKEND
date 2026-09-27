@@ -1,8 +1,13 @@
 import { IPostingExecutor, PostingExecutionResult } from '../../ports/output/IPostingExecutor';
-import { PostingPlan, POSTING_PLAN_SEAL } from '../../../domains/finance/contracts/PostingPlan';
+import { PostingPlan, POSTING_PLAN_SEAL, isAuthenticPostingPlan } from '../../../domains/finance/contracts/PostingPlan';
 import { PostingSession } from '../../../domains/finance/contracts/PostingSession';
 import { Result } from '../../../shared/kernel/Result';
 import { MAX_UINT256 } from '../../../domains/finance/constants/FinancialLimits';
+
+/**
+ * Padrão canônico decimal para quantias e novos saldos (compilado em escopo de módulo).
+ */
+const CANONICAL_DECIMAL_PATTERN = /^(0|[1-9][0-9]*)$/;
 
 export class PostingAuthority {
   constructor(private readonly executor: IPostingExecutor) {
@@ -32,8 +37,10 @@ export class PostingAuthority {
     }
 
     // 3. Validação Criptográfica de Origem do Plano (P0-07: Inviolabilidade do PostingPlan)
-    if ((plan as any)[POSTING_PLAN_SEAL] !== POSTING_PLAN_SEAL) {
-      return Result.fail('PostingPlan forjado ou não-autenticado: ausência do selo POSTING_PLAN_SEAL emitido por PostingPlanBuilder.');
+    if (!isAuthenticPostingPlan(plan)) {
+      return Result.fail(
+        'PostingPlan forjado ou não-autenticado: ausência do selo POSTING_PLAN_SEAL emitido por PostingPlanBuilder ou ausência no catálogo autêntico (WeakSet).'
+      );
     }
 
     // 4. Validação de Decisão de Autorização Soberana de Custódia (P0-10)
@@ -62,7 +69,11 @@ export class PostingAuthority {
       return Result.fail('PostingPlan inconsistente: transactionRecord.id diverge do transactionId do plano.');
     }
 
-    if (!plan.outboxEvent || plan.outboxEvent.aggregateId !== String(plan.transactionId)) {
+    if (
+      !plan.outboxEvent ||
+      (plan.outboxEvent.aggregateId !== String(plan.transactionId) &&
+        plan.outboxEvent.aggregateId !== `tx_${plan.transactionId}`)
+    ) {
       return Result.fail('PostingPlan inconsistente: outboxEvent.aggregateId diverge do transactionId do plano.');
     }
 
@@ -72,7 +83,6 @@ export class PostingAuthority {
 
     // 7. Validação das pernas contábeis: vinculação de transactionId, ordinais 1..N e quantias
     const netByAsset = new Map<number, bigint>();
-    const canonicalDecimalRegex = /^(0|[1-9][0-9]*)$/;
 
     for (let i = 0; i < plan.ledgerEntries.length; i++) {
       const entry = plan.ledgerEntries[i];
@@ -85,7 +95,7 @@ export class PostingAuthority {
         return Result.fail(`PostingPlan corrompido: ordinal da perna contábil #${i} inválido (${entry.entryOrdinal}, esperado ${i + 1}).`);
       }
 
-      if (!canonicalDecimalRegex.test(entry.amountBaseUnits)) {
+      if (!CANONICAL_DECIMAL_PATTERN.test(entry.amountBaseUnits)) {
         return Result.fail(`PostingPlan com formato decimal inválido na perna #${entry.entryOrdinal}: '${entry.amountBaseUnits}'.`);
       }
 
@@ -113,7 +123,7 @@ export class PostingAuthority {
       if (!Number.isSafeInteger(mutation.assetId) || mutation.assetId <= 0) {
         return Result.fail(`PostingPlan com mutation em assetId inválido (${mutation.assetId}).`);
       }
-      if (!canonicalDecimalRegex.test(mutation.newAvailableBaseUnits)) {
+      if (!CANONICAL_DECIMAL_PATTERN.test(mutation.newAvailableBaseUnits)) {
         return Result.fail(`PostingPlan com novo saldo em formato decimal inválido na conta #${mutation.accountId}.`);
       }
       const newBalBigInt = BigInt(mutation.newAvailableBaseUnits);

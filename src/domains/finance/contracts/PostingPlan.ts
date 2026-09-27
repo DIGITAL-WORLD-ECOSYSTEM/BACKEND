@@ -170,12 +170,34 @@ export function validatePostingPlanCrossFieldInvariants(plan: PostingPlan): void
     throw new Error('PostingPlan inválido: plano não pode ser selado com autorização recusada ou ausente.');
   }
 
-  // 2. Identidade transacional cruzada
+  // 2. Identidade transacional cruzada e fencing soberano
   const validTxId = parsePositiveSafeIntegerId(plan.transactionId, 'plan.transactionId');
-  if (plan.transactionRecord.id !== validTxId) {
+  if (!plan.transactionRecord || plan.transactionRecord.id !== validTxId) {
     throw new Error(
-      `Inconsistência no PostingPlan: transactionRecord.id (${plan.transactionRecord.id}) diverge do transactionId (${validTxId}).`
+      `Inconsistência no PostingPlan: transactionRecord.id (${plan.transactionRecord?.id}) diverge do transactionId (${validTxId}).`
     );
+  }
+
+  if (
+    !plan.outboxEvent ||
+    (plan.outboxEvent.aggregateId !== String(validTxId) &&
+      plan.outboxEvent.aggregateId !== `tx_${validTxId}`)
+  ) {
+    throw new Error(
+      `Inconsistência no PostingPlan: outboxEvent.aggregateId (${plan.outboxEvent?.aggregateId}) diverge do transactionId (${validTxId}).`
+    );
+  }
+
+  if (!plan.leaseOwner || typeof plan.leaseOwner !== 'string' || plan.leaseOwner.trim().length === 0) {
+    throw new Error('PostingPlan viola invariante P0: leaseOwner obrigatório para fencing de concorrência.');
+  }
+
+  if (typeof plan.leaseGeneration !== 'number' || plan.leaseGeneration < 0) {
+    throw new Error('PostingPlan viola invariante P0: leaseGeneration obrigatório para fencing de concorrência.');
+  }
+
+  if (!plan.requestHash || typeof plan.requestHash !== 'string' || plan.requestHash.trim().length === 0) {
+    throw new Error('PostingPlan viola invariante P0: requestHash criptográfico soberano obrigatório.');
   }
 
   // 3. Mínimo de partidas dobradas

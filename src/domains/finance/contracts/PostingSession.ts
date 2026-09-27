@@ -151,6 +151,9 @@ export class PostingSession {
     if (!VALID_POSTING_SESSIONS.has(this)) {
       throw new Error('Tentativa de consumir PostingSession não-autêntica.');
     }
+    if (CONSUMED_POSTING_SESSIONS.has(this)) {
+      throw new Error('PostingSession já consumida. Violação do invariante de uso único (single-use capability).');
+    }
     CONSUMED_POSTING_SESSIONS.add(this);
   }
 

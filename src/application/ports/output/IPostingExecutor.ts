@@ -6,6 +6,7 @@ export interface PostingExecutionResult {
   readonly transactionId: number;
   readonly planId: string;
   readonly executedAt: Date;
+  readonly executedAtEpochMs?: number;
 }
 
 export interface IPostingExecutor {

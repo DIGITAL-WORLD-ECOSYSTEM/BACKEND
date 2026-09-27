@@ -221,6 +221,19 @@ export class CustodyAuthorizationPolicy {
       });
     }
 
+    let effectiveContext: AuthorizationContext;
+    try {
+      effectiveContext = isAuthenticAuthorizationContext(context)
+        ? context
+        : freezeAuthorizationContext(context);
+    } catch (err: any) {
+      return Object.freeze({
+        allowed: false,
+        reason: `Contexto de autorização inválido ou não-autenticável: ${err?.message || 'erro de normalização'}`,
+        errorCode: 'INVALID_ARGUMENT',
+      });
+    }
+
     if (!spec || typeof spec !== 'object') {
       return Object.freeze({
         allowed: false,
@@ -229,10 +242,10 @@ export class CustodyAuthorizationPolicy {
       });
     }
 
-    if (!isPrincipalType(context.principalType)) {
+    if (!isPrincipalType(effectiveContext.principalType)) {
       return Object.freeze({
         allowed: false,
-        reason: `Tipo de principal inválido: '${String(context.principalType)}'.`,
+        reason: `Tipo de principal inválido: '${String(effectiveContext.principalType)}'.`,
         errorCode: 'INVALID_ARGUMENT',
       });
     }
@@ -269,33 +282,33 @@ export class CustodyAuthorizationPolicy {
       });
     }
 
-    const capabilities = Array.isArray(context.capabilities) ? context.capabilities : [];
+    const capabilities = Array.isArray(effectiveContext.capabilities) ? effectiveContext.capabilities : [];
 
     // 1. Operações em Contas Sistêmicas (sourceAccountOwnerId === null: clearing, tesouro, taxas)
     if (spec.sourceAccountOwnerId === null) {
       // 1.1 Processo operacional do sistema (genesis ou com capability explícita)
       if (
-        context.principalType === 'system' &&
-        (context.principalId === 0 || capabilities.includes(FinanceCapabilities.SystemOperate))
+        effectiveContext.principalType === 'system' &&
+        (effectiveContext.principalId === 0 || capabilities.includes(FinanceCapabilities.SystemOperate))
       ) {
         return Object.freeze({
           allowed: true,
           type: 'SYSTEM',
           actorUserId: null,
-          authorizedByUserId: context.principalId > 0 ? context.principalId : null,
+          authorizedByUserId: effectiveContext.principalId > 0 ? effectiveContext.principalId : null,
         });
       }
 
       // 1.2 Service Account ou Usuário Operador com capability explícita
       if (
-        (context.principalType === 'service_account' || context.principalType === 'user') &&
+        (effectiveContext.principalType === 'service_account' || effectiveContext.principalType === 'user') &&
         capabilities.includes(FinanceCapabilities.SystemOperate)
       ) {
         return Object.freeze({
           allowed: true,
           type: 'DELEGATED',
-          actorUserId: context.principalId,
-          authorizedByUserId: context.principalId,
+          actorUserId: effectiveContext.principalId,
+          authorizedByUserId: effectiveContext.principalId,
         });
       }
 
@@ -309,7 +322,7 @@ export class CustodyAuthorizationPolicy {
     // 2. Operações de Estorno / Reversão Contábil Específica
     // Nota P0: Reversões NUNCA caem em SELF. Exigem autoridade genesis ou capability explícita de reversão.
     if (spec.operationType === 'reversal') {
-      const isGenesis = context.principalType === 'system' && context.principalId === 0;
+      const isGenesis = effectiveContext.principalType === 'system' && effectiveContext.principalId === 0;
       const hasReversalCapability =
         capabilities.includes(FinanceCapabilities.SystemOperate) ||
         capabilities.includes(FinanceCapabilities.SystemReversal);
@@ -319,7 +332,7 @@ export class CustodyAuthorizationPolicy {
           allowed: true,
           type: 'SYSTEM',
           actorUserId: null,
-          authorizedByUserId: context.principalId > 0 ? context.principalId : null,
+          authorizedByUserId: effectiveContext.principalId > 0 ? effectiveContext.principalId : null,
         });
       }
 
@@ -340,7 +353,7 @@ export class CustodyAuthorizationPolicy {
       spec.operationType === 'reward' ||
       spec.operationType === 'yield'
     ) {
-      const isGenesis = context.principalType === 'system' && context.principalId === 0;
+      const isGenesis = effectiveContext.principalType === 'system' && effectiveContext.principalId === 0;
       const hasSystemOperate = capabilities.includes(FinanceCapabilities.SystemOperate);
 
       if (isGenesis || hasSystemOperate) {
@@ -348,7 +361,7 @@ export class CustodyAuthorizationPolicy {
           allowed: true,
           type: 'SYSTEM',
           actorUserId: null,
-          authorizedByUserId: context.principalId > 0 ? context.principalId : null,
+          authorizedByUserId: effectiveContext.principalId > 0 ? effectiveContext.principalId : null,
         });
       }
 
@@ -361,8 +374,8 @@ export class CustodyAuthorizationPolicy {
 
     // 4. Operações de Usuário Comum (transfer, withdrawal, payment, deposit) sob Titularidade Própria (SELF)
     if (
-      context.principalType === 'user' &&
-      context.principalId === spec.sourceAccountOwnerId &&
+      effectiveContext.principalType === 'user' &&
+      effectiveContext.principalId === spec.sourceAccountOwnerId &&
       (spec.operationType === 'transfer' ||
         spec.operationType === 'withdrawal' ||
         spec.operationType === 'payment' ||
@@ -371,14 +384,14 @@ export class CustodyAuthorizationPolicy {
       return Object.freeze({
         allowed: true,
         type: 'SELF',
-        actorUserId: context.principalId,
+        actorUserId: effectiveContext.principalId,
         authorizedByUserId: null,
       });
     }
 
     // 5. Operação Delegada autorizada para o titular da conta
     if (
-      context.delegatedForUserId === spec.sourceAccountOwnerId &&
+      effectiveContext.delegatedForUserId === spec.sourceAccountOwnerId &&
       (capabilities.includes(FinanceCapabilities.DelegateOperate) ||
         capabilities.includes(FinanceCapabilities.SystemOperate) ||
         ((spec.operationType === 'transfer' || spec.operationType === 'deposit') &&
@@ -387,7 +400,7 @@ export class CustodyAuthorizationPolicy {
       return Object.freeze({
         allowed: true,
         type: 'DELEGATED',
-        actorUserId: context.principalId,
+        actorUserId: effectiveContext.principalId,
         authorizedByUserId: spec.sourceAccountOwnerId,
       });
     }
@@ -395,7 +408,7 @@ export class CustodyAuthorizationPolicy {
     // 6. Violação de custódia (Fail-Closed Default)
     return Object.freeze({
       allowed: false,
-      reason: `Violação de custódia: O principal #${context.principalId} não possui autoridade para debitar a conta #${spec.sourceAccountId} pertencente ao usuário #${spec.sourceAccountOwnerId} na operação '${spec.operationType}'.`,
+      reason: `Violação de custódia: O principal #${effectiveContext.principalId} não possui autoridade para debitar a conta #${spec.sourceAccountId} pertencente ao usuário #${spec.sourceAccountOwnerId} na operação '${spec.operationType}'.`,
       errorCode: 'UNAUTHORIZED_CUSTODY',
     });
   }
