@@ -17,6 +17,12 @@ import {
   AtomicPostingExecutionError,
 } from '../../domains/finance/errors/FinancialError';
 
+/**
+ * Limite físico máximo seguro de statements contábeis atômicos por lote no Cloudflare D1.
+ * O D1 rejeita lotes com erro D1_ERROR_BATCH_TOO_LARGE acima de ~128 statements.
+ */
+export const MAX_D1_BATCH_STATEMENTS = 120;
+
 export class D1AtomicPostingExecutor implements IPostingExecutor {
   constructor(private readonly db: any) {
     if (!db) {
@@ -173,6 +179,15 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
           `)
         );
 
+        if (statements.length > MAX_D1_BATCH_STATEMENTS) {
+          return Result.fail(
+            new AtomicPostingExecutionError(
+              `Plano contábil excede o limite físico seguro de statements por lote do Cloudflare D1 (${statements.length} > ${MAX_D1_BATCH_STATEMENTS}). Divida o lote ou agrupe mutações.`,
+              'D1_BATCH_OVERFLOW'
+            )
+          );
+        }
+
         await this.db.batch(statements);
       } else if (isD1Database(this.db)) {
         // Fallback for D1 client with raw batch
@@ -314,6 +329,15 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
                ON CONFLICT(id) DO UPDATE SET guard = (SELECT CASE WHEN changes() = 1 THEN 1 ELSE 0 END)`
             )
           );
+
+          if (statements.length > MAX_D1_BATCH_STATEMENTS) {
+            return Result.fail(
+              new AtomicPostingExecutionError(
+                `Plano contábil excede o limite físico seguro de statements por lote do Cloudflare D1 (${statements.length} > ${MAX_D1_BATCH_STATEMENTS}). Divida o lote ou agrupe mutações.`,
+                'D1_BATCH_OVERFLOW'
+              )
+            );
+          }
 
           await d1.batch(statements);
         } else {
