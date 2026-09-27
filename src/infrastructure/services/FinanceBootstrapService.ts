@@ -66,7 +66,8 @@ export class FinanceBootstrapService {
         });
 
         const orchestrator = new FinancialTransactionOrchestrator(financeRepo, outboxRepo);
-        await orchestrator.executePosting(openingTransaction);
+        const session = typeof factory.getPostingSession === 'function' ? factory.getPostingSession() : undefined;
+        await orchestrator.executePosting(openingTransaction, undefined, session);
       }
 
       return Result.ok<TreasuryBootstrapResult>(infra);
