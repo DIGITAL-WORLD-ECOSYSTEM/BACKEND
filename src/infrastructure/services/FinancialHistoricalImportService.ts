@@ -159,6 +159,12 @@ export function parseBankDate(val: unknown): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+function safeSerializeRawPayload(payload: unknown): string {
+  return JSON.stringify(payload, (_key, value) =>
+    typeof value === 'bigint' ? value.toString() : value
+  );
+}
+
 /**
  * Serviço de Ingestão Histórica de Extratos Bancários.
  *
@@ -370,7 +376,7 @@ export class FinancialHistoricalImportService {
       const bankDate = parseBankDate(rawDate);
       if (!bankDate) {
         // Pula linhas de totalizador ("TOTAL GERAL", "TOTAL DE ENTRADAS"), notas ou notas numeradas (1), 2), etc.)
-        const rowStr = JSON.stringify(row).toLowerCase();
+        const rowStr = safeSerializeRawPayload(row).toLowerCase();
         const rawDateStr = String(rawDate || '').trim();
         if (
           !rawDate ||
@@ -438,7 +444,7 @@ export class FinancialHistoricalImportService {
       }
 
       // 9. Montagem do payload bruto íntegro
-      const rawPayload = JSON.stringify({
+      const rawPayload = safeSerializeRawPayload({
         rowNumber,
         headers,
         cells: row,
@@ -678,7 +684,7 @@ export class FinancialHistoricalImportService {
         continue;
       }
 
-      const rawPayload = JSON.stringify({
+      const rawPayload = safeSerializeRawPayload({
         txIndex,
         accountNumber: summary.accountNumber,
         accountHolder: summary.accountHolder,
