@@ -2,7 +2,7 @@ import { IDomainEvent } from '../../shared/kernel/DomainEvent';
 import { Result } from '../../shared/kernel/Result';
 import { IOutboxRepository, OutboxEventRecord } from '../../application/ports/output/IOutboxRepository';
 import { outboxEvents, eventConsumerReceipts } from '../../db/infrastructure/tables';
-import { eq, and, inArray, asc, sql } from 'drizzle-orm';
+import { eq, and, inArray, asc, sql, or, isNull, lt, lte } from 'drizzle-orm';
 import { isUniqueConstraintViolation } from './DrizzleFinanceRepository';
 
 function safeSerializeJson(data: unknown): string {
@@ -67,8 +67,8 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         .from(outboxEvents)
         .where(
           and(
-            sql`${outboxEvents.status} IN ('pending', 'failed', 'processing')`,
-            sql`(${outboxEvents.leaseExpiresAt} IS NULL OR ${outboxEvents.leaseExpiresAt} < ${now})`
+            inArray(outboxEvents.status, ['pending', 'failed', 'processing']),
+            or(isNull(outboxEvents.leaseExpiresAt), lt(outboxEvents.leaseExpiresAt, now))
           )
         )
         .orderBy(asc(outboxEvents.createdAt))
@@ -95,7 +95,16 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
             and(
               eq(outboxEvents.id, candidate.id),
               eq(outboxEvents.leaseGeneration, candidate.leaseGeneration ?? 0),
-              sql`(${outboxEvents.status} IN ('pending', 'failed') OR (${outboxEvents.status} = 'processing' AND (${outboxEvents.leaseExpiresAt} <= ${now} OR ${outboxEvents.leaseOwner} = ${ownerId})))`
+              or(
+                inArray(outboxEvents.status, ['pending', 'failed']),
+                and(
+                  eq(outboxEvents.status, 'processing'),
+                  or(
+                    lte(outboxEvents.leaseExpiresAt, now),
+                    eq(outboxEvents.leaseOwner, ownerId)
+                  )
+                )
+              )
             )
           );
 
