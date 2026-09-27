@@ -3,6 +3,8 @@ import { RepositoryError } from '../../../shared/kernel/RepositoryError';
 import { LedgerEntry } from '../../../domains/finance/entities/LedgerTransaction';
 import { FinancialLedgerEntryRecord } from '../../../domains/finance/contracts/FinancialLedgerEntryRecord';
 import type { FinancialAccountClass } from '../../../domains/finance/policies/AccountClassPolicy';
+import type { PostingAuthority } from '../../finance/services/PostingAuthority';
+import type { PostingSession } from '../../../domains/finance/contracts/PostingSession';
 
 export type SystemAccountType =
   | 'treasury'
@@ -238,8 +240,8 @@ export interface IFinanceRepository {
   ): Promise<BalanceUpdateResult>;
 
   updateTransactionStatus(transactionId: number, status: FinancialTransactionStatus, expectedVersion?: number): Promise<void>;
-  getPostingAuthority?(): any;
-  getPostingSession?(): any;
+  getPostingAuthority?(): PostingAuthority;
+  getPostingSession?(): PostingSession;
   // NOTE: persistOutboxEvent removed — use IOutboxRepository.saveEvent() within the same UoW transaction.
 
   /**
