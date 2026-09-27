@@ -1,6 +1,6 @@
 import { Result } from '../../shared/kernel/Result';
 import { eventInbox } from '../../db/infrastructure/tables';
-import { eq, and, sql, lt } from 'drizzle-orm';
+import { eq, and, sql, lt, or, inArray } from 'drizzle-orm';
 import { CanonicalRequestHashService } from '../../application/finance/services/CanonicalRequestHashService';
 import { ExternalEventPayloadConflictError } from '../../domains/finance/errors/FinancialError';
 import { isUniqueConstraintViolation } from '../repositories/DrizzleFinanceRepository';
@@ -108,7 +108,6 @@ export class EventInboxService {
         // Claim atômico condicional de lease
         activeLeaseGeneration = (existing.leaseGeneration || 0) + 1;
 
-        const nowSec = Math.floor(now.getTime() / 1000);
         const updateRes = await db
           .update(eventInbox)
           .set({
@@ -122,7 +121,11 @@ export class EventInboxService {
           .where(
             and(
               eq(eventInbox.id, existing.id),
-              sql`(${eventInbox.status} = 'pending' OR ${eventInbox.status} = 'failed' OR ${eventInbox.leaseExpiresAt} < ${nowSec} OR ${eventInbox.leaseOwner} = ${workerId})`
+              or(
+                inArray(eventInbox.status, ['pending', 'failed']),
+                lt(eventInbox.leaseExpiresAt, now),
+                eq(eventInbox.leaseOwner, workerId)
+              )
             )
           );
 
