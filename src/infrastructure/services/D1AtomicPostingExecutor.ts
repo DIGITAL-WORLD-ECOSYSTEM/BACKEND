@@ -32,23 +32,48 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
 
   async execute(plan: PostingPlan, session: PostingSession): Promise<Result<PostingExecutionResult>> {
     if (!session || typeof session.isValid !== 'function' || !session.isValid()) {
-      return Result.fail('PostingSession inválida, forjada ou ausente. Execução contábil abortada.');
+      return Result.fail(
+        new AtomicPostingExecutionError(
+          'PostingSession inválida, forjada ou ausente. Execução contábil abortada.',
+          'INVALID_POSTING_SESSION'
+        )
+      );
     }
 
     if (session.boundaryRef !== this.db) {
-      return Result.fail('PostingSession não pertence à fronteira física deste executor.');
+      return Result.fail(
+        new AtomicPostingExecutionError(
+          'PostingSession não pertence à fronteira física deste executor.',
+          'SESSION_BOUNDARY_MISMATCH'
+        )
+      );
     }
 
     if (!plan || !isAuthenticPostingPlan(plan)) {
-      return Result.fail('PostingPlan forjado ou não-autenticado: ausência do selo POSTING_PLAN_SEAL ou não registrado no catálogo autêntico (WeakSet).');
+      return Result.fail(
+        new AtomicPostingExecutionError(
+          'PostingPlan forjado ou não-autenticado: ausência do selo POSTING_PLAN_SEAL ou não registrado no catálogo autêntico (WeakSet).',
+          'UNAUTHENTIC_POSTING_PLAN'
+        )
+      );
     }
 
     if (!plan.authorizationDecision || !plan.authorizationDecision.allowed) {
-      return Result.fail('PostingPlan rejeitado por falta de autorização de custódia.');
+      return Result.fail(
+        new AtomicPostingExecutionError(
+          'PostingPlan rejeitado por falta de autorização de custódia.',
+          'UNAUTHORIZED_CUSTODY'
+        )
+      );
     }
 
     if (!plan.leaseOwner || typeof plan.leaseOwner !== 'string' || typeof plan.leaseGeneration !== 'number') {
-      return Result.fail('Fencing de concorrência P0 violado: leaseOwner e leaseGeneration são obrigatórios no PostingPlan.');
+      return Result.fail(
+        new AtomicPostingExecutionError(
+          'Fencing de concorrência P0 violado: leaseOwner e leaseGeneration são obrigatórios no PostingPlan.',
+          'FENCING_TOKEN_VIOLATION'
+        )
+      );
     }
 
     const now = new Date();
@@ -397,7 +422,7 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
     now: Date
   ): Promise<number> {
     // 1. Financial Transaction
-    const [inserted] = await executor.insert(financialTransactions).values({
+    const txPayload: any = {
       userId: plan.transactionRecord.actorUserId ?? null,
       actorUserId: plan.transactionRecord.actorUserId,
       authorizedByUserId: plan.transactionRecord.authorizedByUserId,
@@ -413,7 +438,16 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
       createdAt: now,
       completedAt: now,
       version: 1,
-    }).returning({ id: financialTransactions.id });
+    };
+
+    if (plan.transactionRecord.id !== undefined && plan.transactionRecord.id !== null) {
+      txPayload.id = plan.transactionRecord.id;
+    }
+
+    const [inserted] = await executor
+      .insert(financialTransactions)
+      .values(txPayload)
+      .returning({ id: financialTransactions.id });
 
     const finalTxId = inserted?.id ?? plan.transactionRecord.id;
 
