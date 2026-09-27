@@ -4,20 +4,42 @@ import { IOutboxRepository, OutboxEventRecord } from '../../application/ports/ou
 import { outboxEvents, eventConsumerReceipts } from '../../db/infrastructure/tables';
 import { eq, and, inArray, asc, sql } from 'drizzle-orm';
 
+function safeSerializeJson(data: unknown): string {
+  return JSON.stringify(data, (_key, value) =>
+    typeof value === 'bigint' ? value.toString() : value
+  );
+}
+
+function generateEventId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const nodeCrypto = require('node:crypto');
+    if (typeof nodeCrypto.randomUUID === 'function') {
+      return nodeCrypto.randomUUID();
+    }
+  } catch {
+    // environment fallback
+  }
+  throw new Error('CSPRNG unavailable for secure event UUID generation.');
+}
+
 export class DrizzleOutboxRepository implements IOutboxRepository {
-  constructor(private db: any) {}
+  constructor(private readonly db: any) {}
 
   async saveEvent(event: IDomainEvent, aggregateId: number, aggregateType: string, aggregateVersion: number): Promise<Result<void>> {
     try {
-      const eventId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : (await import('crypto')).randomUUID();
+      const eventId = generateEventId();
       await this.db.insert(outboxEvents).values({
         id: eventId,
         aggregateId: String(aggregateId),
         aggregateType,
         aggregateVersion,
         eventName: event.eventName || (event.constructor.name !== 'Object' ? event.constructor.name : 'LedgerTransactionPosted.v1'),
-        payload: JSON.stringify(event),
-        metadata: JSON.stringify({ occurredOn: event.dateTimeOccurred }),
+        payload: safeSerializeJson(event),
+        metadata: safeSerializeJson({ occurredOn: event.dateTimeOccurred }),
         attempts: 0,
         status: 'pending',
         leaseGeneration: 0,
