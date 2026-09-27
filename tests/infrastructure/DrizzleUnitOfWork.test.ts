@@ -121,4 +121,32 @@ describe('DrizzleUnitOfWork', () => {
 
     expect(transactionsRun).toBe(2);
   });
+
+  it('Cloudflare D1 Mode: should execute successfully without transaction function when isD1Database is true', async () => {
+    const mockD1Client = {
+      batch: vi.fn(),
+      prepare: vi.fn(),
+    };
+    const mockD1Db = {
+      $client: mockD1Client,
+      // No transaction method (simulating D1 environment)
+    };
+
+    const uow = new DrizzleUnitOfWork(mockD1Db as any);
+    let workExecuted = false;
+
+    const result = await uow.execute(async (factory) => {
+      workExecuted = true;
+      const userRepo = factory.getUserRepository() as any;
+      const authRepo = factory.getAuthenticationRepository() as any;
+      expect(userRepo.db).toBe(mockD1Db);
+      expect(authRepo.db).toBe(mockD1Db);
+      return Result.ok({ success: true });
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(workExecuted).toBe(true);
+    expect(result.getValue()).toEqual({ success: true });
+  });
 });
+

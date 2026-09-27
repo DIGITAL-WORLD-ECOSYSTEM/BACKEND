@@ -45,31 +45,31 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
   }
 
   getAuthenticationRepository(): IAuthenticationRepository {
-    return new DrizzleAuthenticationRepositoryAdapter(this.tx as any);
+    return new DrizzleAuthenticationRepositoryAdapter((this.tx || this.db) as any);
   }
 
   getWeb3Repository(): IWeb3Repository {
-    return new DrizzleWeb3RepositoryAdapter(this.tx as any);
+    return new DrizzleWeb3RepositoryAdapter((this.tx || this.db) as any);
   }
 
   getSessionRepository(): ISessionRepository {
-    return new DrizzleSessionRepository(this.tx as any);
+    return new DrizzleSessionRepository((this.tx || this.db) as any);
   }
 
   getCivilIdentityRepository(): ICivilIdentityRepository {
-    return new DrizzleCivilIdentityRepositoryAdapter(this.tx as any);
+    return new DrizzleCivilIdentityRepositoryAdapter((this.tx || this.db) as any);
   }
 
   getSsiRepository(): ISsiRepository {
-    return new DrizzleSsiRepository(this.tx as any);
+    return new DrizzleSsiRepository((this.tx || this.db) as any);
   }
 
   getOutboxRepository(): IOutboxRepository {
-    return new DrizzleOutboxRepository(this.tx as any);
+    return new DrizzleOutboxRepository((this.tx || this.db) as any);
   }
 
   getPasswordResetRepository(): IPasswordResetRepository {
-    return new DrizzlePasswordResetRepository(this.tx as any);
+    return new DrizzlePasswordResetRepository((this.tx || this.db) as any);
   }
 
   getFinanceRepository(): IFinanceRepository {
@@ -144,13 +144,23 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
     }
 
     if (isD1Database(this.db)) {
-      throw new Error(
-        'DrizzleUnitOfWork exige driver com transações interativas (BEGIN IMMEDIATE). O driver Cloudflare D1 não suporta transações interativas — utilize o D1AtomicPostingExecutor para lotes contábeis atômicos.'
-      );
+      // No Cloudflare D1, transações interativas multi-roundtrip (BEGIN IMMEDIATE) não são suportadas pela engine Edge.
+      // Executa o workflow sequencialmente sobre a conexão D1 preservando a fábrica de repositórios.
+      // Para transações contábeis que exigem garantia física atômica all-or-nothing no D1,
+      // deve-se utilizar o D1AtomicPostingExecutor nativo via lote D1.
+      try {
+        const factory = new DrizzleRepositoryFactory(null as any, this.db);
+        const res = await work(factory);
+        return res;
+      } catch (err: any) {
+        if (err instanceof FinancialError) {
+          return Result.fail(err);
+        }
+        return Result.fail(`Falha na execução no Cloudflare D1: ${err?.message || String(err)}`);
+      }
     }
 
-    // BLOCKER FIX: If there is no transaction support, we must FAIL immediately,
-    // not fallback to a non-transactional execution.
+    // BLOCKER FIX: If there is no transaction support and not D1, we must FAIL immediately
     throw new Error('Driver de banco de dados atual não suporta transações atômicas (db.transaction is not a function). Operação abortada por segurança.');
   }
 }
