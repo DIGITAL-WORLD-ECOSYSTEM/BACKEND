@@ -5,8 +5,9 @@ import { Result } from '../../../shared/kernel/Result';
 export interface PostingExecutionResult {
   readonly transactionId: number;
   readonly planId: string;
-  readonly executedAt: Date;
-  readonly executedAtEpochMs?: number;
+  readonly executedAtIso: string;
+  readonly executedAtEpochMs: number;
+  readonly executedAt: Readonly<Date>;
 }
 
 export interface IPostingExecutor {

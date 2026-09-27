@@ -337,7 +337,9 @@ export class D1AtomicPostingExecutor implements IPostingExecutor {
       return Result.ok({
         transactionId: committedTxId,
         planId: plan.planId,
-        executedAt: now,
+        executedAt: Object.freeze(now),
+        executedAtIso: now.toISOString(),
+        executedAtEpochMs: now.getTime(),
       });
     } catch (err: any) {
       const msg = `${err?.message || ''} ${err?.cause?.message || ''}`.toLowerCase();
