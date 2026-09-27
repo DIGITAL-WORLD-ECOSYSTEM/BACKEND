@@ -1,3 +1,14 @@
+/**
+ * @file FinanceBootstrapService.ts
+ * @runtime Node.js / CLI / Local SQLite
+ *
+ * NOTA DE ARQUITETURA:
+ * Este serviço de provisionamento e Genesis contábil opera recebendo uma instância de `IUnitOfWork`
+ * (com transação interativa `BEGIN IMMEDIATE`). Como o Cloudflare D1 não suporta transações
+ * interativas (fail-closed no DrizzleUnitOfWork), o FinanceBootstrapService destina-se a scripts
+ * de migração, testes de integração e ferramentas CLI de inicialização do sistema em ambiente Node.js.
+ */
+
 import { IUnitOfWork } from '../../application/ports/output/IUnitOfWork';
 import { Result } from '../../shared/kernel/Result';
 import { LedgerTransaction, LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';

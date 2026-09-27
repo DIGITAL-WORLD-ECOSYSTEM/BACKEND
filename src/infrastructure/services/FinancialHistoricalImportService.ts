@@ -1,3 +1,15 @@
+/**
+ * @file FinancialHistoricalImportService.ts
+ * @runtime Node.js / CLI
+ *
+ * ATENÇÃO - RESTRIÇÃO DE RUNTIME:
+ * Este serviço utiliza módulos nativos de sistema de arquivos e processos do Node.js
+ * (`node:fs`, `node:path`, `node:child_process` para `pdftotext`) e a biblioteca `xlsx`.
+ * Portanto, este serviço destina-se EXCLUSIVAMENTE a scripts de importação histórica,
+ * rotinas CLI ou workers executados em ambiente Node.js.
+ * NÃO deve ser importado em rotas ou handlers compilados para o Cloudflare Workers (Edge).
+ */
+
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
