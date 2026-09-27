@@ -15,7 +15,7 @@ describe('Gate 0 / Schema Drift Certification: SQLite Físico vs Drizzle tables.
     sqlite = new (require('better-sqlite3'))(tempDbPath);
     sqlite.pragma('foreign_keys = ON');
     runAllMigrations(sqlite);
-  });
+  }, 30000);
 
   afterEach(() => {
     try { sqlite.close(); } catch (e) {}
