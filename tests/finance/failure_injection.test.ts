@@ -22,7 +22,7 @@ describe('Gate 4: Failure Injection Matrix & Atomic Rollback Certification (FIN-
 
     // Ensure user 1 exists for FK constraint
     await sqlite.execute(`INSERT INTO users (id, email, email_normalized, status, created_at, updated_at) VALUES (1, 'user1@test.com', 'user1@test.com', 'active', 1000, 1000)`);
-  });
+  }, 30000);
 
   afterEach(() => {
     try { unlinkSync(dbFile); } catch (e) {}

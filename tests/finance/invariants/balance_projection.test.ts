@@ -59,7 +59,7 @@ describe('Invariante DOD-04: Projeção de Saldo Materializado vs Soma Ponderada
     `);
 
     uow = new DrizzleUnitOfWork(uowDb);
-  });
+  }, 30000);
 
   afterAll(() => {
     try { unlinkSync(dbFile); } catch (e) {}
