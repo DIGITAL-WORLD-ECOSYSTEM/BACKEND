@@ -21,7 +21,7 @@ export class FinanceBootstrapService {
    */
   static async seedSystemAccounts(
     uow: IUnitOfWork,
-    options: TreasuryBootstrapOptions = {}
+    options: TreasuryBootstrapOptions & { orchestrator?: FinancialTransactionOrchestrator } = {}
   ): Promise<Result<TreasuryBootstrapResult>> {
     if (process.env.NODE_ENV === 'production' && !options.allowProductionBootstrap) {
       return Result.fail<TreasuryBootstrapResult>(
@@ -65,7 +65,7 @@ export class FinanceBootstrapService {
           ],
         });
 
-        const orchestrator = new FinancialTransactionOrchestrator(financeRepo, outboxRepo);
+        const orchestrator = options.orchestrator ?? new FinancialTransactionOrchestrator(financeRepo, outboxRepo);
         const session = typeof factory.getPostingSession === 'function' ? factory.getPostingSession() : undefined;
         await orchestrator.executePosting(openingTransaction, undefined, session);
       }
