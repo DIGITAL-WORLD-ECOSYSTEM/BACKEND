@@ -117,11 +117,7 @@ export class AccountClassPolicy {
 
     const allowed = PERMITTED_CLASSES[normalizedAccountType];
 
-    if (
-      !(allowed as readonly string[]).includes(
-        normalizedAccountClass
-      )
-    ) {
+    if (!allowed.includes(normalizedAccountClass)) {
       throw new InvalidAccountClassError(safeType, safeClass);
     }
   }

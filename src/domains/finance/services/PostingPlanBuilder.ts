@@ -21,7 +21,6 @@ import {
 import { AccountingEntryPolicy } from '../policies/AccountingEntryPolicy';
 import {
   FinancialTextPolicy,
-  DANGEROUS_TEXT_CHARACTERS_REGEX,
 } from '../policies/FinancialTextPolicy';
 import {
   isLedgerEntryDirection,
@@ -38,7 +37,6 @@ import {
   MAX_UINT256,
   MAX_LEDGER_ENTRIES,
   MAX_LEDGER_DESCRIPTION_LENGTH,
-  MAX_RAW_TEXT_CEILING,
 } from '../constants/FinancialLimits';
 
 export interface PostingLegEntryInput {
@@ -248,7 +246,13 @@ export class PostingPlanBuilder {
     for (const entry of params.entries) {
       const current = assetBalances.get(entry.assetId) ?? 0n;
       const delta = entry.direction === 'debit' ? entry.amount : -entry.amount;
-      assetBalances.set(entry.assetId, current + delta);
+      const nextBalance = current + delta;
+      if (nextBalance > MAX_UINT256 || nextBalance < -MAX_UINT256) {
+        throw new InvalidLedgerTransactionError(
+          `Balanço agregado do ativo #${entry.assetId} excede limites uint256.`
+        );
+      }
+      assetBalances.set(entry.assetId, nextBalance);
     }
 
     for (const [assetId, netBalance] of assetBalances.entries()) {
@@ -397,29 +401,47 @@ export class PostingPlanBuilder {
           )
         : `corr_${transactionId}`;
 
-    // 5. Compilação das pernas contábeis com ordenação canônica determinística (accountId ASC, assetId ASC, direction ASC) e entryOrdinal sequencial 1..N
-    const sortedEntries = [...params.entries].sort((a, b) => {
+    // 5. Compilação das pernas contábeis com ordenação canônica determinística total:
+    // (accountId ASC, assetId ASC, direction debit < credit, amount ASC, description ASC binary/lexical)
+    // Garantindo determinismo rigoroso independente de locale/ICU e invariância de entryOrdinal sob permutação.
+    const canonicalizedEntries = params.entries.map((entry, index) => ({
+      accountId: entry.accountId,
+      assetId: entry.assetId,
+      direction: entry.direction,
+      amount: entry.amount,
+      amountBaseUnits: entry.amount.toString(10),
+      canonicalDescription: FinancialTextPolicy.normalizeSafeDescription(
+        entry.description,
+        MAX_LEDGER_DESCRIPTION_LENGTH,
+        `entry.description[${index}]`
+      ),
+    }));
+
+    canonicalizedEntries.sort((a, b) => {
       if (a.accountId !== b.accountId) return a.accountId - b.accountId;
       if (a.assetId !== b.assetId) return a.assetId - b.assetId;
-      if (a.direction !== b.direction) return a.direction.localeCompare(b.direction);
+      const dirRankA = a.direction === 'debit' ? 0 : 1;
+      const dirRankB = b.direction === 'debit' ? 0 : 1;
+      if (dirRankA !== dirRankB) return dirRankA - dirRankB;
+      if (a.amount !== b.amount) return a.amount < b.amount ? -1 : 1;
+      if (a.canonicalDescription < b.canonicalDescription) return -1;
+      if (a.canonicalDescription > b.canonicalDescription) return 1;
       return 0;
     });
 
-    const ledgerEntries: PostingLedgerEntryPlan[] = sortedEntries.map((entry, index) => {
-      return Object.freeze({
-        transactionId,
-        entryOrdinal: index + 1,
-        accountId: entry.accountId,
-        assetId: entry.assetId,
-        direction: entry.direction,
-        amountBaseUnits: entry.amount.toString(10),
-        description: FinancialTextPolicy.normalizeSafeDescription(
-          entry.description,
-          MAX_LEDGER_DESCRIPTION_LENGTH,
-          `entry.description[${index}]`
-        ),
-      });
-    });
+    const ledgerEntries: PostingLedgerEntryPlan[] = canonicalizedEntries.map(
+      (entry, index) => {
+        return Object.freeze({
+          transactionId,
+          entryOrdinal: index + 1,
+          accountId: entry.accountId,
+          assetId: entry.assetId,
+          direction: entry.direction,
+          amountBaseUnits: entry.amountBaseUnits,
+          description: entry.canonicalDescription,
+        });
+      }
+    );
 
     // 6. Registro da transação
     const transactionRecord: PostingTransactionRecordPlan = Object.freeze({
@@ -483,12 +505,13 @@ export class PostingPlanBuilder {
     }
 
     const responsePayload =
-      params.responsePayload ||
-      JSON.stringify({
-        success: true,
-        transactionId,
-        idempotencyKey: params.idempotencyKey,
-      });
+      params.responsePayload !== undefined && params.responsePayload !== null
+        ? params.responsePayload
+        : JSON.stringify({
+            success: true,
+            transactionId,
+            idempotencyKey: params.idempotencyKey,
+          });
 
     // 8. Selamento Soberano e Imutabilidade Profunda via sealPostingPlan (P0-07, P0-20)
     const unsealedPlan: PostingPlan = {

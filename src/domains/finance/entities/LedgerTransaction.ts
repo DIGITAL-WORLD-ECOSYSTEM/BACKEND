@@ -23,7 +23,6 @@ import {
 } from '../value-objects/FinancialTransactionStatus';
 
 import {
-  FinancialTextPolicy,
   DANGEROUS_TEXT_CHARACTERS_REGEX,
 } from '../policies/FinancialTextPolicy';
 
@@ -196,7 +195,10 @@ export function normalizeUuidV4(
   value: unknown,
   fieldName: string
 ): string {
-  if (typeof value !== 'string') {
+  if (
+    typeof value !== 'string' ||
+    value.length > MAX_RAW_TEXT_CEILING
+  ) {
     throw new InvalidIdentifierError(
       `${fieldName} must be a valid UUID v4.`
     );
@@ -489,6 +491,12 @@ export class LedgerEntry {
       if (typeof props.description !== 'string') {
         throw new InvalidLedgerTransactionError(
           'LedgerEntry description must be a string.'
+        );
+      }
+
+      if (props.description.length > MAX_RAW_TEXT_CEILING) {
+        throw new InvalidLedgerTransactionError(
+          `LedgerEntry description exceeds maximum raw length ceiling (${props.description.length} > ${MAX_RAW_TEXT_CEILING}).`
         );
       }
 
@@ -836,6 +844,12 @@ export class LedgerTransaction {
         if (refundId !== undefined && refundId.toString(10) === explicitStr) {
           throw new InvalidLedgerTransactionError('A transaction cannot refund itself.');
         }
+        if (props.sourceId !== undefined && props.sourceId !== null && props.sourceId.toString().trim() === explicitStr) {
+          throw new InvalidLedgerTransactionError('A transaction cannot reference itself as sourceId.');
+        }
+        if (props.correlationId !== undefined && props.correlationId !== null && props.correlationId.toString().trim() === explicitStr) {
+          throw new InvalidLedgerTransactionError('A transaction cannot reference itself as correlationId.');
+        }
       }
     }
 
@@ -1110,6 +1124,32 @@ export class LedgerTransaction {
     ) {
       throw new InvalidLedgerTransactionError(
         'A transaction cannot refund itself.'
+      );
+    }
+
+    if (
+      snapshot.sourceId !== undefined &&
+      snapshot.sourceId !== null &&
+      typeof snapshot.sourceId === 'string' &&
+      snapshot.sourceId.length <= MAX_RAW_TEXT_CEILING &&
+      (snapshot.sourceId.trim() === databaseId?.toString(10) ||
+        snapshot.sourceId.trim() === snapshot.publicId)
+    ) {
+      throw new InvalidLedgerTransactionError(
+        'A transaction cannot reference itself as sourceId.'
+      );
+    }
+
+    if (
+      snapshot.correlationId !== undefined &&
+      snapshot.correlationId !== null &&
+      typeof snapshot.correlationId === 'string' &&
+      snapshot.correlationId.length <= MAX_RAW_TEXT_CEILING &&
+      (snapshot.correlationId.trim() === databaseId?.toString(10) ||
+        snapshot.correlationId.trim() === snapshot.publicId)
+    ) {
+      throw new InvalidLedgerTransactionError(
+        'A transaction cannot reference itself as correlationId.'
       );
     }
 
@@ -1534,6 +1574,12 @@ export class LedgerTransaction {
       } else {
         const nextBalance =
           currentBalance - amount;
+
+        if (nextBalance < -MAX_UINT256) {
+          throw new InvalidMoneyFormatError(
+            'Ledger transaction aggregate negative amount exceeds uint256 limits.'
+          );
+        }
 
         /**
          * Podemos aceitar um acumulador negativo durante

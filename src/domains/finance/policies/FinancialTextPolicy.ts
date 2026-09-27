@@ -169,7 +169,13 @@ export class FinancialTextPolicy {
    * Validação canônica estrita para chaves de idempotência.
    */
   public static canonicalizeIdempotencyKey(raw: unknown): string {
-    const input = typeof raw === 'string' ? raw.normalize('NFC') : raw;
+    if (typeof raw !== 'string') {
+      return this.assertSafeIdentifierText(raw, 'idempotencyKey');
+    }
+    if (raw.length > MAX_RAW_TEXT_CEILING) {
+      throw new InvalidIdentifierError('idempotencyKey exceeds maximum raw length ceiling.');
+    }
+    const input = raw.normalize('NFC');
     return this.assertSafeIdentifierText(input, 'idempotencyKey');
   }
 

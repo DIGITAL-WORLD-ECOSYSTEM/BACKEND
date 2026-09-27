@@ -7,6 +7,7 @@ import {
   MAX_UINT256,
   MAX_LEDGER_ENTRIES,
   MAX_LEDGER_DESCRIPTION_LENGTH,
+  MAX_RAW_TEXT_CEILING,
 } from '../constants/FinancialLimits';
 
 import {
@@ -817,61 +818,31 @@ export class AccountingEntryPolicy {
 
     const reversalEntries =
       originalEntries.map((orig, index) => {
-        if (!orig || typeof orig !== 'object') {
-          throw new AccountingMatrixValidationError(
-            `Lançamento original na posição ${index} é inválido.`
-          );
-        }
-
-        AccountingEntryPolicy.assertRawEntryShape(
-          orig
+        const validated = AccountingEntryPolicy.parseAndValidateRawEntry(
+          orig,
+          index
         );
 
-        const rawDirection = (orig as any).entryType ?? (orig as any).direction;
+        const invertedDirection: LedgerEntryDirection =
+          validated.entryType === 'debit' ? 'credit' : 'debit';
 
-        if (!isLedgerEntryDirection(rawDirection)) {
+        if (validated.amount.assetId !== validated.assetId) {
           throw new AccountingMatrixValidationError(
-            `Lançamento original na posição ${index} possui entryType inválido.`
-          );
-        }
-
-        const entryType: LedgerEntryDirection =
-          rawDirection === 'debit' ? 'credit' : 'debit';
-
-        const accountId =
-          parsePositiveSafeIntegerId(
-            orig.accountId,
-            'orig.accountId'
-          );
-
-        const assetId =
-          parsePositiveSafeIntegerId(
-            orig.assetId,
-            'orig.assetId'
-          );
-
-        const amount =
-          AccountingEntryPolicy.assertMoney256(
-            orig.amount
-          );
-
-        if (amount.assetId !== assetId) {
-          throw new AccountingMatrixValidationError(
-            `Incoerência de ativo no lançamento original: assetId (${assetId}) !== amount.assetId (${amount.assetId}).`
+            `Incoerência de ativo no lançamento original: assetId (${validated.assetId}) !== amount.assetId (${validated.amount.assetId}).`
           );
         }
 
         const reversalDescription =
           FinancialTextPolicy.formatReversalDescription(
             normalizedReason,
-            orig.description
+            validated.description
           );
 
         return AccountingEntryPolicy.createEntry({
-          accountId,
-          assetId,
-          entryType,
-          amount,
+          accountId: validated.accountId,
+          assetId: validated.assetId,
+          entryType: invertedDirection,
+          amount: validated.amount,
           description: reversalDescription,
         });
       });
@@ -1250,6 +1221,12 @@ export class AccountingEntryPolicy {
       );
     }
 
+    if (entries.length > MAX_LEDGER_ENTRIES) {
+      throw new AccountingMatrixValidationError(
+        `A lista de lançamentos não pode possuir mais de ${MAX_LEDGER_ENTRIES} itens.`
+      );
+    }
+
     if (revenueAccountId === undefined) {
       throw new AccountingMatrixValidationError(
         'revenueAccountId é obrigatório para identificar o lançamento de receita de forma segura.'
@@ -1277,10 +1254,10 @@ export class AccountingEntryPolicy {
       }
       if (
         typeof entry.amountBaseUnits !== 'string' ||
-        !/^(0|[1-9]\d*)$/.test(entry.amountBaseUnits)
+        !/^[1-9]\d*$/.test(entry.amountBaseUnits)
       ) {
         throw new AccountingMatrixValidationError(
-          'O valor-base do lançamento de receita é inválido.'
+          'O valor-base do lançamento de receita deve ser um inteiro decimal positivo e não-nulo.'
         );
       }
     }
@@ -1303,9 +1280,8 @@ export class AccountingEntryPolicy {
           entry !== null &&
           typeof entry === 'object' &&
           entry.direction === 'credit' &&
-          entry.assetId === normalizedAssetId &&
-          entry.accountId ===
-            normalizedRevenueAccountId
+          Number(entry.assetId) === normalizedAssetId &&
+          Number(entry.accountId) === normalizedRevenueAccountId
       );
 
     if (paymentCreditEntries.length === 0) {
@@ -1376,56 +1352,85 @@ export class AccountingEntryPolicy {
   }
 
   /**
-   * Valida estrutura mínima de um RawLedgerEntrySpec
-   * recebida em runtime.
+   * Valida e normaliza estruturalmente um objeto de lançamento contábil recebido em runtime.
+   * Não utiliza casts forçados (as any / as unknown as), garantindo soberania de tipos P0.
    */
-  private static assertRawEntryShape(
-    entry: unknown
-  ): asserts entry is RawLedgerEntrySpec {
+  public static parseAndValidateRawEntry(
+    entry: unknown,
+    index?: number
+  ): RawLedgerEntrySpec {
+    const pos = index !== undefined ? ` na posição ${index}` : '';
     if (
       entry === null ||
       typeof entry !== 'object' ||
       Array.isArray(entry)
     ) {
       throw new AccountingMatrixValidationError(
-        'Lançamento contábil inválido: objeto esperado.'
+        `Lançamento contábil${pos} inválido: objeto esperado.`
       );
     }
 
-    const raw =
-      entry as Partial<RawLedgerEntrySpec>;
+    const obj = entry as Record<PropertyKey, unknown>;
 
-    const direction = raw.entryType ?? (raw as any).direction;
+    // Direção contábil: aceita 'entryType' canônico ou 'direction' legado
+    const candidateDirection =
+      typeof obj.entryType === 'string'
+        ? obj.entryType
+        : typeof obj.direction === 'string'
+          ? obj.direction
+          : undefined;
 
-    if (!isLedgerEntryDirection(direction)) {
+    if (!isLedgerEntryDirection(candidateDirection)) {
       throw new AccountingMatrixValidationError(
-        'Tipo de lançamento inválido.'
+        `Lançamento original${pos} possui entryType inválido.`
       );
     }
 
-    if (
-      !Object.prototype.hasOwnProperty.call(
-        raw,
-        'amount'
-      ) ||
-      !(raw.amount instanceof Money256)
-    ) {
+    // Identificadores de conta e ativo
+    const accountId = parsePositiveSafeIntegerId(
+      obj.accountId,
+      index !== undefined ? `orig.accountId[${index}]` : 'orig.accountId'
+    );
+    const assetId = parsePositiveSafeIntegerId(
+      obj.assetId,
+      index !== undefined ? `orig.assetId[${index}]` : 'orig.assetId'
+    );
+
+    // Montante Money256
+    if (!(obj.amount instanceof Money256)) {
       throw new AccountingMatrixValidationError(
         'O lançamento contábil deve possuir um amount válido do tipo Money256.'
       );
     }
 
-    if (
-      typeof raw.description !== 'string'
-    ) {
+    // Descrição
+    if (typeof obj.description !== 'string') {
       throw new AccountingMatrixValidationError(
         'A descrição do lançamento contábil deve ser uma string.'
       );
     }
 
-    AccountingEntryPolicy.normalizeDescription(
-      raw.description
+    const normalizedDescription = AccountingEntryPolicy.normalizeDescription(
+      obj.description
     );
+
+    return Object.freeze({
+      accountId,
+      assetId,
+      entryType: candidateDirection,
+      amount: obj.amount,
+      description: normalizedDescription,
+    });
+  }
+
+  /**
+   * Valida estrutura mínima de um RawLedgerEntrySpec
+   * recebida em runtime.
+   */
+  private static assertRawEntryShape(
+    entry: unknown
+  ): asserts entry is RawLedgerEntrySpec {
+    AccountingEntryPolicy.parseAndValidateRawEntry(entry);
   }
 
   /**
@@ -1566,6 +1571,7 @@ export class AccountingEntryPolicy {
   ): string {
     if (
       typeof value !== 'string' ||
+      value.length > MAX_RAW_TEXT_CEILING ||
       value.trim().length === 0
     ) {
       throw new AccountingMatrixValidationError(

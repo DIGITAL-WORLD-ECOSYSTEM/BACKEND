@@ -17,6 +17,16 @@ import {
   PostingPlan,
 } from '../../src/domains/finance/contracts/PostingPlan';
 import { PostingSession } from '../../src/domains/finance/contracts/PostingSession';
+import {
+  PostingPlanBuilder,
+  type PostingLegEntryInput,
+} from '../../src/domains/finance/services/PostingPlanBuilder';
+import { AccountingEntryPolicy } from '../../src/domains/finance/policies/AccountingEntryPolicy';
+import {
+  LedgerTransaction,
+  LedgerEntry,
+} from '../../src/domains/finance/entities/LedgerTransaction';
+import { Money256 } from '../../src/domains/finance/value-objects/Money256';
 
 describe('Gate 0 / Lote 1B: Contracts P0 Hardening & OCaps Certification', () => {
   describe('1. AuthorizationContext & CustodyAuthorizationPolicy', () => {
@@ -418,6 +428,172 @@ describe('Gate 0 / Lote 1B: Contracts P0 Hardening & OCaps Certification', () =>
       expect(() => new PostingSession({}, 'atomic-batch', '   ')).toThrow(
         /Identificador de fronteira física não-vazio/
       );
+    });
+  });
+
+  describe('7. Hardening Audit P0: Permutation Invariance, String-Number Normalization & Anti-DoS', () => {
+    it('deve assegurar invariância estrita de entryOrdinal sob qualquer permutação da entrada em PostingPlanBuilder', () => {
+      const authDecision = {
+        allowed: true,
+        type: 'SELF' as const,
+        actorUserId: 10,
+        authorizedByUserId: null,
+      };
+
+      const entryA: PostingLegEntryInput = {
+        accountId: 10,
+        assetId: 1,
+        accountClass: 'asset',
+        accountStatus: 'active',
+        direction: 'debit',
+        amount: 50n,
+        description: 'Debit Leg A',
+        currentAvailableBaseUnits: 1000n,
+        currentVersion: 1,
+      };
+
+      const entryB: PostingLegEntryInput = {
+        accountId: 10,
+        assetId: 1,
+        accountClass: 'asset',
+        accountStatus: 'active',
+        direction: 'debit',
+        amount: 50n,
+        description: 'Debit Leg B',
+        currentAvailableBaseUnits: 1000n,
+        currentVersion: 1,
+      };
+
+      const entryC: PostingLegEntryInput = {
+        accountId: 20,
+        assetId: 1,
+        accountClass: 'liability',
+        accountStatus: 'active',
+        direction: 'credit',
+        amount: 100n,
+        description: 'Credit Leg Combined',
+        currentAvailableBaseUnits: 500n,
+        currentVersion: 2,
+      };
+
+      const plan1 = PostingPlanBuilder.build({
+        scope: 'finance.transfer:user:10',
+        idempotencyKey: 'idemp_perm_1',
+        requestHash: 'hash_perm_1',
+        transactionType: 'transfer',
+        category: 'operational',
+        description: 'Permutation Test 1',
+        actorUserId: 10,
+        authorizedByUserId: null,
+        authorizationDecision: authDecision,
+        entries: [entryA, entryB, entryC],
+      });
+
+      // Permutação inversa da coleção de entrada
+      const plan2 = PostingPlanBuilder.build({
+        scope: 'finance.transfer:user:10',
+        idempotencyKey: 'idemp_perm_2',
+        requestHash: 'hash_perm_2',
+        transactionType: 'transfer',
+        category: 'operational',
+        description: 'Permutation Test 2',
+        actorUserId: 10,
+        authorizedByUserId: null,
+        authorizationDecision: authDecision,
+        entries: [entryC, entryB, entryA],
+      });
+
+      // Os ordinais e a ordem canônica das pernas devem ser rigorosamente IDÊNTICOS
+      expect(plan1.ledgerEntries.length).toBe(3);
+      expect(plan2.ledgerEntries.length).toBe(3);
+
+      for (let i = 0; i < 3; i++) {
+        expect(plan1.ledgerEntries[i].entryOrdinal).toBe(i + 1);
+        expect(plan2.ledgerEntries[i].entryOrdinal).toBe(i + 1);
+        expect(plan1.ledgerEntries[i].accountId).toBe(plan2.ledgerEntries[i].accountId);
+        expect(plan1.ledgerEntries[i].direction).toBe(plan2.ledgerEntries[i].direction);
+        expect(plan1.ledgerEntries[i].amountBaseUnits).toBe(plan2.ledgerEntries[i].amountBaseUnits);
+        expect(plan1.ledgerEntries[i].description).toBe(plan2.ledgerEntries[i].description);
+      }
+    });
+
+    it('deve extrair valor reembolsável com accountId e assetId fornecidos como string ou número em AccountingEntryPolicy', () => {
+      const entries = [
+        {
+          accountId: '10', // String "10"
+          assetId: '1',    // String "1"
+          direction: 'debit',
+          amountBaseUnits: '500',
+        },
+        {
+          accountId: '20', // String "20"
+          assetId: '1',    // String "1"
+          direction: 'credit',
+          amountBaseUnits: '500',
+        },
+      ];
+
+      // Busca passando números (ou strings)
+      const refundable = AccountingEntryPolicy.extractRefundablePaymentAmount(
+        entries,
+        1,   // assetId number
+        20   // revenueAccountId number
+      );
+
+      expect(refundable.amount).toBe(500n);
+      expect(refundable.assetId).toBe(1);
+    });
+
+    it('deve rejeitar LedgerEntry com descrição bruta excedendo MAX_RAW_TEXT_CEILING antes de NFC', () => {
+      const hugeDescription = 'a'.repeat(4097);
+      expect(() => {
+        new LedgerEntry({
+          accountId: 1,
+          assetId: 1,
+          type: 'debit',
+          amount: new Money256(100n, 1),
+          description: hugeDescription,
+        });
+      }).toThrow(/exceeds maximum raw length ceiling/);
+    });
+
+    it('deve rejeitar auto-referência explícita em sourceId ou correlationId de LedgerTransaction', () => {
+      const entries = [
+        new LedgerEntry({
+          accountId: 1,
+          assetId: 1,
+          type: 'debit',
+          amount: new Money256(100n, 1),
+        }),
+        new LedgerEntry({
+          accountId: 2,
+          assetId: 1,
+          type: 'credit',
+          amount: new Money256(100n, 1),
+        }),
+      ];
+
+      expect(() => {
+        LedgerTransaction.create({
+          id: 'tx_self_1',
+          idempotencyKey: 'idemp_self_1',
+          description: 'Self-ref test',
+          entries,
+          transactionType: 'transfer',
+          sourceId: 'tx_self_1', // Auto-referência
+        });
+      }).toThrow(/cannot reference itself as sourceId/);
+
+      expect(() => {
+        LedgerTransaction.create({
+          id: 'tx_self_2',
+          idempotencyKey: 'idemp_self_2',
+          description: 'Self-ref test 2',
+          entries,
+          transactionType: 'transfer',
+          correlationId: 'tx_self_2', // Auto-referência
+        });
+      }).toThrow(/cannot reference itself as correlationId/);
     });
   });
 });
