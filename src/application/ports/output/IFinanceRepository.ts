@@ -153,7 +153,7 @@ export interface FinancialTransactionRecord {
 export interface IFinanceRepository {
   getAccountById(accountId: number): Promise<Result<FinancialAccountRecord>>;
   getUserAccount(userId: number): Promise<Result<FinancialAccountRecord>>;
-  getAccountBalance(accountId: number, assetId: number): Promise<Result<AccountBalanceRecord>>;
+  getAccountBalance(accountId: number, assetId: number, options?: { autoProvision?: boolean }): Promise<Result<AccountBalanceRecord>>;
   getTreasuryAccount(): Promise<Result<FinancialAccountRecord>>;
   getOrCreateUserAccount(userId: number): Promise<Result<FinancialAccountRecord>>;
   getOrCreateOperatingAccount(): Promise<Result<FinancialAccountRecord>>;

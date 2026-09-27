@@ -397,7 +397,11 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     }
   }
 
-  async getAccountBalance(accountId: number, assetId: number): Promise<Result<AccountBalanceRecord>> {
+  async getAccountBalance(
+    accountId: number,
+    assetId: number,
+    options?: { autoProvision?: boolean }
+  ): Promise<Result<AccountBalanceRecord>> {
     try {
       let [row] = await this.executor
         .select({
@@ -417,7 +421,7 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         )
         .limit(1);
 
-      if (!row) {
+      if (!row && options?.autoProvision !== false) {
         await this.ensureAccountBalance(accountId, assetId);
         [row] = await this.executor
           .select({
