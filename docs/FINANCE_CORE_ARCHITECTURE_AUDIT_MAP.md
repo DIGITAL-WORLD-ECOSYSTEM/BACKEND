@@ -2027,6 +2027,9 @@ Como a relação $\prec$ é assimétrica e transitiva, o grafo de dependência d
   - `cf213a9` — `fix(finance/executor): enforce fail-closed non-transactional fallback and type db executor`
   - `1c130ba` — `fix(finance/inbox): harden CAS reclaim with previous leaseGeneration check`
   - `336203b` — `docs(finance/runtime): annotate Node.js/CLI runtime boundaries on HistoricalImport and Bootstrap services`
+  - `3da5c75` — `fix(finance/repo): harden listTransactions filter checks against falsy zero values`
+  - `2acbb75` — `fix(finance/import): enforce strict UTC deterministic parsing in parseBankDate`
+  - `c2b0e69` — `perf(infrastructure/uow): memoize repository and session instances in DrizzleRepositoryFactory`
 
 
 
