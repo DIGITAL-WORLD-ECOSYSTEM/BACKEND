@@ -510,13 +510,13 @@ BackEnd/
 
 | # | Arquivo | Responsabilidade Arquitetural | Invariante / Garantia de Segurança |
 | :---: | :--- | :--- | :--- |
-| **39** | [`repositories/DrizzleUnitOfWork.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleUnitOfWork.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`24e2652`)* | Fábrica transacional Drizzle, emissor da `PostingSession` e portador único do token. | Detém exclusivamente o `PostingCapabilityToken`; impede forja de sessões contábeis; exige driver com transações interativas (BEGIN IMMEDIATE) e direciona D1 ao `D1AtomicPostingExecutor`. |
-| **40** | [`repositories/DrizzleFinanceRepository.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`5119cec`)* | Adaptador concreto do repositório financeiro sobre Drizzle ORM. | Inserção atômica via `.onConflictDoNothing()` eliminando TOCTOU em `ensureAccountBalance` e `provisionTreasuryInfrastructure`; advertências `@deprecated` para escritas fora do Gate 0; gerencia leases de idempotência com TTL. |
-| **41** | [`repositories/DrizzleOutboxRepository.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleOutboxRepository.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`6884540`)* | Despacho atômico e assíncrono de eventos outbox contábeis. | Serialização segura de `BigInt` com replacer tipado evitando TypeError V8; geração de IDs com CSPRNG estrito (`crypto.randomUUID()`); detecção robusta de unicidade via `isUniqueConstraintViolation` no registro de recibos de consumidores. |
-| **42** | [`services/D1AtomicPostingExecutor.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/D1AtomicPostingExecutor.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`1e92561`)* | Executor físico atômico do `PostingPlan` via `db.batch()`. | Paridade absoluta de IDs físicos entre D1 batch e SQLite local; erros tipados `AtomicPostingExecutionError`; guarda de limite seguro `MAX_D1_BATCH_STATEMENTS = 120`; asserções físicas `_sql_assertions` (`changes() = 1`), consumo atômico de sessão e emissão de `PostingExecutionResult` imutável. |
-| **43** | [`services/EventInboxService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/EventInboxService.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`7e0a46b`)* | Serviço de deduplicação e ingestão de eventos de mensageria *at-least-once*. | Erradicação de `Math.random()` com CSPRNG para `workerId`; serialização segura com replacer para `BigInt` no cálculo de hash canônico e persistência; claim atômico condicional de lease via SQL com fencing de concorrência. |
-| **44** | [`services/FinanceBootstrapService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinanceBootstrapService.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`b8151d1`)* | Inicializador idempotente do plano de contas e tesouraria. | Injeção desacoplada de `FinancialTransactionOrchestrator`; propagação de capability física `PostingSession` para abertura do razão; garante existência singleton da conta de tesouraria e ativos semente sob UoW único. |
-| **45** | [`services/FinancialHistoricalImportService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinancialHistoricalImportService.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`1dc1c91`)* | Pipeline de importação de extratos (Bradesco, Cora, Caixa, Inter). | Serialização segura de cargas brutas com `safeSerializeRawPayload` evitando falhas em valores `BigInt`; gera fingerprint SHA-256 por linha importada para evitar duplicatas sem perda de integridade forense. |
+| **39** | [`repositories/DrizzleUnitOfWork.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleUnitOfWork.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (9,5 / 10,0)`**<br/>*Auditado: `2026-09-27` (`c2b0e69`)* | Fábrica transacional Drizzle, emissor da `PostingSession` e portador único do token. | Detém exclusivamente o `PostingCapabilityToken`; impede forja de sessões contábeis; exige driver com transações interativas (BEGIN IMMEDIATE) e direciona D1 ao `D1AtomicPostingExecutor`. Memoização lazy de adaptadores na fábrica evitando alocações redundantes. |
+| **40** | [`repositories/DrizzleFinanceRepository.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (9,5 / 10,0)`**<br/>*Auditado: `2026-09-27` (`3da5c75`)* | Adaptador concreto do repositório financeiro sobre Drizzle ORM. | Inserção atômica via `.onConflictDoNothing()` eliminando TOCTOU em `ensureAccountBalance` e `provisionTreasuryInfrastructure`; advertências `@deprecated` para escritas fora do Gate 0; gerencia leases de idempotência com TTL; erro de idempotência centralizado no domínio; blindagem estrita contra falsy zero em paginação (`userId !== undefined`, `cursor !== undefined`). |
+| **41** | [`repositories/DrizzleOutboxRepository.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleOutboxRepository.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (9,5 / 10,0)`**<br/>*Auditado: `2026-09-27` (`5f89fdc`)* | Despacho atômico e assíncrono de eventos outbox contábeis. | Serialização segura de `BigInt` com replacer tipado evitando TypeError V8; geração de IDs com CSPRNG estrito (`crypto.randomUUID()`); detecção robusta de unicidade via `isUniqueConstraintViolation`; operadores tipados de data e CAS seguro de distributed leases. |
+| **42** | [`services/D1AtomicPostingExecutor.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/D1AtomicPostingExecutor.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`cf213a9`)* | Executor físico atômico do `PostingPlan` via `db.batch()`. | Padrão ouro no Cloudflare D1: guarda de limite seguro `MAX_D1_BATCH_STATEMENTS = 120`; asserções físicas `_sql_assertions` (`changes() = 1`) com rollback determinístico; binds stringificados compatíveis com D1; fail-closed imediato se driver não transacional for detectado; consumo atômico de sessão e emissão de `PostingExecutionResult` imutável. |
+| **43** | [`services/EventInboxService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/EventInboxService.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (9,5 / 10,0)`**<br/>*Auditado: `2026-09-27` (`1c130ba`)* | Serviço de deduplicação e ingestão de eventos de mensageria *at-least-once*. | CSPRNG para `workerId`; serialização segura de `BigInt`; claim atômico condicional de lease via SQL com fencing de concorrência (`leaseGeneration`); operadores Drizzle tipados; blindagem CAS com verificação de `leaseGeneration` anterior prevenindo disputas no mesmo milissegundo. |
+| **44** | [`services/FinanceBootstrapService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinanceBootstrapService.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (9,5 / 10,0)`**<br/>*Auditado: `2026-09-27` (`336203b`)* | Inicializador idempotente do plano de contas e tesouraria. | Injeção desacoplada de `FinancialTransactionOrchestrator`; propagação de capability física `PostingSession` para abertura do razão; anotação formal `@runtime Node.js / CLI / Local SQLite` delimitando o isolamento de runtime fora do Edge HTTP; partidas dobradas canônicas equilibradas (FIN-001). |
+| **45** | [`services/FinancialHistoricalImportService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinancialHistoricalImportService.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (9,5 / 10,0)`**<br/>*Auditado: `2026-09-27` (`2acbb75`)* | Pipeline de importação de extratos (Bradesco, Cora, Caixa, Inter). | Serialização segura de `BigInt` em `rawPayload`; fingerprint SHA-256 por linha importada; isolamento total da staging sem escrita no ledger contábil; anotação formal `@runtime Node.js / CLI`; parser `parseBankDate` estritamente determinístico em UTC eliminando desvios de fuso horário local. |
 
 ---
 
@@ -1736,10 +1736,24 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 
 ### 8.5. Camada 3: Infraestrutura Concreta, Adaptadores e Repositórios — Registros de Auditoria
 
+#### 📊 Resumo Consolidado de Homologação Transacional (Auditoria P1 — Camada 3: 2026-09-27)
+
+| Arquivo Auditado | Nota | Status Físico D1 | Risco Transacional | Commit de Homologação |
+| :--- | :---: | :---: | :---: | :---: |
+| [`D1AtomicPostingExecutor.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/D1AtomicPostingExecutor.ts) | **10,0 / 10** | 🛡️ Impenetrável (Batch Atômico + Guardas SQL) | Zero | `cf213a9` |
+| [`DrizzleUnitOfWork.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleUnitOfWork.ts) | **9,5 / 10** | 🛡️ Sólido (Fail-Closed no D1 / Immediate no SQLite / Memoized) | Mínimo | `c2b0e69` |
+| [`DrizzleFinanceRepository.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.ts) | **9,5 / 10** | 🛡️ Sólido (Fencing P0, CAS e Deduplicação Atômica) | Mínimo | `3da5c75` |
+| [`DrizzleOutboxRepository.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleOutboxRepository.ts) | **9,5 / 10** | 🛡️ Sólido (Distributed Lease CAS & BigInt-Safe) | Mínimo | `5f89fdc` |
+| [`EventInboxService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/EventInboxService.ts) | **9,5 / 10** | 🛡️ Sólido (Fencing Token, PayloadHash & Anti-Zombie) | Mínimo | `1c130ba` |
+| [`FinanceBootstrapService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinanceBootstrapService.ts) | **9,5 / 10** | 🛡️ Sólido (Genesis Equilibrado & Guardas de Produção) | Mínimo | `336203b` |
+| [`FinancialHistoricalImportService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinancialHistoricalImportService.ts) | **9,5 / 10** | 🛡️ Sólido (Zero-Float Centavos, SHA-256 & Staging) | Mínimo | `2acbb75` |
+
+---
+
 #### [CAMADA 3 / ARQUIVO-39] [`src/infrastructure/repositories/DrizzleUnitOfWork.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleUnitOfWork.ts)
 - **Responsabilidade Central:** Fábrica transacional Drizzle, gerenciador de fronteira física de persistência, emissor soberano de `PostingSession` e executor de transações interativas com `BEGIN IMMEDIATE`.
-- **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `24e2652`)
+- **Nota Matrix Oficial:** **`9,5 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `c2b0e69`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1762,13 +1776,14 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
 1. **Fallback Uniforme em `DrizzleRepositoryFactory` (`6b994b8`):** Todos os métodos de repositório (`getAuthenticationRepository`, `getWeb3Repository`, `getSessionRepository`, etc.) utilizam `(this.tx || this.db) as any`, prevenindo injeções nulas.
 2. **Reafirmação do Bloqueio Arquitetural P0-A (`24e2652`):** Guarda explícita `if (isD1Database(this.db))` lançando erro de transação interativa não suportada, blindando a integridade das 28 operações contábeis.
+3. **Memoização Lazy no Factory (`c2b0e69`):** Implementação de armazenamento local em campos privados na `DrizzleRepositoryFactory` (`_userRepo`, `_financeRepo`, `_postingSession`, `_postingAuthority`, etc.), reutilizando a mesma instância de adaptador ao longo da transação sem alocações espúrias.
 
 ---
 
 #### [CAMADA 3 / ARQUIVO-40] [`src/infrastructure/repositories/DrizzleFinanceRepository.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleFinanceRepository.ts)
 - **Responsabilidade Central:** Adaptador de persistência de dados do domínio financeiro sobre Drizzle ORM, gerência de saldos, contas, ativos, taxas de câmbio e reivindicação atômica de idempotência.
-- **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `2fcb8c3`)
+- **Nota Matrix Oficial:** **`9,5 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `3da5c75`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1790,13 +1805,15 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
 1. **Eliminação de TOCTOU em `ensureAccountBalance` (`2fcb8c3`):** Substituição do padrão sequencial `select-then-insert` por `insert(...).onConflictDoNothing()` atômico, eliminando condições de corrida e economizando roundtrips.
 2. **Compatibilidade Defensiva com Mocks:** Verificação defensiva de suporte a `.onConflictDoNothing()` no query builder para execução transparente em qualquer driver ou mock de teste.
+3. **Centralização da Classe de Erro de Idempotência (`eb7428f`):** Migração de `IdempotencyKeyReusedWithDifferentRequestError` para o catálogo canônico `FinancialError.ts` com reexportação no repositório para retrocompatibilidade total.
+4. **Blindagem Estrita de Filtros de Paginação (`3da5c75`):** Substituição de `if (userId)` e `if (options?.cursor)` por comparações explícitas `!== undefined && !== null`, prevenindo exclusão indevida do identificador ou cursor `0` por avaliação falsy.
 
 ---
 
 #### [CAMADA 3 / ARQUIVO-41] [`src/infrastructure/repositories/DrizzleOutboxRepository.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/repositories/DrizzleOutboxRepository.ts)
 - **Responsabilidade Central:** Repositório de mensageria assíncrona baseado no padrão Transactional Outbox, gerenciamento de leases de workers, publicações e recibos de consumo.
-- **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `5a17a6d`)
+- **Nota Matrix Oficial:** **`9,5 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `5f89fdc`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1819,14 +1836,15 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 1. **Serialização Segura de BigInt (`5a17a6d`):** Introdução da função `safeSerializeJson(data)` com replacer customizado para evitar `TypeError: Do not know how to serialize a BigInt`.
 2. **Geração de IDs via CSPRNG (`5a17a6d`):** Substituição de fallbacks inseguros por gerador estrito `generateEventId()` via `crypto.randomUUID()`.
 3. **Propriedade `db` Imutável:** Marcada como `readonly` no construtor.
+4. **Operadores Drizzle Tipados (`5f89fdc`):** Substituição de interpolações SQL brutas por operadores tipados do Drizzle ORM (`gte`, `lte`) para comparação de datas e renovação de leases.
 
 ---
 
 #### [CAMADA 3 / ARQUIVO-42] [`src/infrastructure/services/D1AtomicPostingExecutor.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/D1AtomicPostingExecutor.ts)
 - **Responsabilidade Central:** Executor físico atômico do `PostingPlan` via Cloudflare D1 `db.batch()`, aplicando asserções SQL (`_sql_assertions`) e garantindo atomicidade total do lote contábil.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `1d0c38b`)
-- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `cf213a9`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO (Padrão Ouro Impenetrável)`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
 ##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
@@ -1852,13 +1870,16 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 1. **Guarda de Limite Físico de Statements D1 (`1d0c38b`):** Adição de verificação `if (statements.length > MAX_D1_BATCH_STATEMENTS)` com emissão de `AtomicPostingExecutionError('D1_BATCH_OVERFLOW')`.
 2. **Timestamp Primitivo Imutável (`261b8ba`):** Emissão de `executedAtEpochMs: now.getTime()` e congelamento profundo do resultado de execução via `Object.freeze(...)`.
 3. **Defesa em Profundidade na Fronteira Física:** Validação compulsória de `isAuthenticPostingPlan` e `session.isValid()` na entrada de `execute()`.
+4. **Guardas Físicas SQL via `_sql_assertions` (`18c3d70`):** Injeção de instruções SQL com `CHECK (guard = 1)` e `changes() = 1` após cada mutação de saldo, provocando rollback determinístico imediato no Cloudflare D1 em caso de divergência de versão OCC ou lease expirado.
+5. **Binds Stringificados e Tratamento de Wrapper D1 (`18c3d70`):** Conversão estrita de parâmetros de binds para strings no cliente D1 nativo.
+6. **Fail-Closed em Drivers Não-Transacionais (`cf213a9`):** Eliminação de fallback sequencial permissivo; se o driver não for D1 (com batch) nem possuir transações interativas ativas, aborta imediatamente com `AtomicPostingExecutionError`.
 
 ---
 
 #### [CAMADA 3 / ARQUIVO-43] [`src/infrastructure/services/EventInboxService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/EventInboxService.ts)
 - **Responsabilidade Central:** Serviço de deduplicação e ingestão de eventos de mensageria externa (*at-least-once*), controle de concorrência com lease tokens e verificação de integridade de payload.
-- **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `7e0a46b`)
+- **Nota Matrix Oficial:** **`9,5 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `1c130ba`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1882,13 +1903,15 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
 1. **CSPRNG Worker ID (`7e0a46b`):** Erradicação de `Math.random()` na identificação de workers concorrentes.
 2. **Serialização Segura de BigInt (`7e0a46b`):** Tratamento de `BigInt` em payloads de entrada antes de hashing e persistência.
+3. **Operadores Tipados Drizzle (`4ab883c`):** Remoção de interpolações SQL brutas em comparações de expiração de lease.
+4. **Blindagem CAS Monotônica contra Disputas no Mesmo Milissegundo (`1c130ba`):** Adição de `eq(eventInbox.leaseGeneration, existing.leaseGeneration)` na cláusula `where` do claim de evento, garantindo que se dois workers disputarem o mesmo webhook expirado simultaneamente, apenas o primeiro obtenha sucesso.
 
 ---
 
 #### [CAMADA 3 / ARQUIVO-44] [`src/infrastructure/services/FinanceBootstrapService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinanceBootstrapService.ts)
 - **Responsabilidade Central:** Provisionamento idempotente de contas sistêmicas (Tesouraria, Operacional, Fees, Abertura de Patrimônio) e lançamento de saldo inicial gênesis.
-- **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `c432b24`)
+- **Nota Matrix Oficial:** **`9,5 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `336203b`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1909,13 +1932,15 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
 1. **Propagação de PostingSession e Alinhamento de Argumentos (`c432b24`):** Obtenção e repasse de `factory.getPostingSession()` para `orchestrator.executePosting(openingTransaction, undefined, session)`.
+2. **Injeção Opcional de Orquestrador (`b8151d1`):** Suporte à injeção de dependência desacoplada de `FinancialTransactionOrchestrator` em `options.orchestrator`.
+3. **Delimitação Explícita de Runtime (`336203b`):** Inclusão de JSDoc de arquitetura `@runtime Node.js / CLI / Local SQLite` documentando a restrição de runtime do serviço de bootstrap fora do Edge HTTP.
 
 ---
 
 #### [CAMADA 3 / ARQUIVO-45] [`src/infrastructure/services/FinancialHistoricalImportService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/infrastructure/services/FinancialHistoricalImportService.ts)
 - **Responsabilidade Central:** Pipeline de ingestão histórica de extratos bancários (Bradesco, Cora, Caixa, Inter), conversão monetária canônica sem ponto flutuante e reconciliação de fingerprints.
-- **Nota Matrix Oficial:** **`10,0 / 10,0`**
-- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `1dc1c91`)
+- **Nota Matrix Oficial:** **`9,5 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `2acbb75`)
 - **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
 - **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
 
@@ -1937,6 +1962,8 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
 1. **Serialização Segura com `safeSerializeRawPayload` (`1dc1c91`):** Adição de replacer para valores `BigInt` na montagem de `rawPayload` e filtragem de linhas.
 2. **Defesa contra Crashes V8:** Prevenção de quebras de execução durante processamento em lote de planilhas e extratos de múltiplos bancos.
+3. **Delimitação Explícita de Runtime (`336203b`):** Inclusão de JSDoc de arquitetura `@runtime Node.js / CLI` informando o uso de módulos nativos do Node (`node:fs`, `node:child_process`) e proibindo importação em rotas Edge.
+4. **Parser de Datas UTC Determinístico (`2acbb75`):** Blindagem de `parseBankDate` para converter múltiplos formatos bancários diretamente para `Date.UTC(..., 12, 0, 0)` determinístico e rejeitar formatos desconhecidos com `null`, eliminando desvio de fuso horário local.
 
 ---
 
