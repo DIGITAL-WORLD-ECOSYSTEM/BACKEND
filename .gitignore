@@ -7,6 +7,7 @@
 !.dev.vars.example
 .env
 .env.*
+!.env.example
 .env.local
 .env.*.local
 .env.development.local
@@ -80,6 +81,7 @@ wallet-*.json
 .wrangler/
 .mf/
 .d1/
+*.capnp
 
 # ------------------------------------------------------
 # 📦 Dependências & Node.js
@@ -88,7 +90,9 @@ node_modules/
 .pnpm-store/
 npm-debug.log*
 yarn-debug.log*
+yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
 # TypeScript incremental build
 *.tsbuildinfo
@@ -98,14 +102,20 @@ pnpm-debug.log*
 # ------------------------------------------------------
 *.sqlite
 *.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 *.db
 *.db-journal
 *.db-shm
 *.db-wal
+test*.db*
+test*.sqlite*
 .finance-gate0/
 
 logs/
 *.log
+*.log.*
 wrangler_dev.log
 
 tmp/
@@ -117,6 +127,7 @@ temp/
 *.snapshot.txt
 *.dump
 *.patch
+*.diff
 scratch/
 
 # ------------------------------------------------------
@@ -129,6 +140,7 @@ coverage/
 .nyc_output/
 .turbo/
 .vite/
+*.lcov
 
 # ------------------------------------------------------
 # 🧪 Testes & Coverage
@@ -143,7 +155,14 @@ test-results/
 # 🖥️ OS, IDEs & Agent Temp Files
 # ------------------------------------------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
+desktop.ini
+
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
@@ -154,7 +173,17 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# AI Assistant & IDE scratch
 .antigravity/
 .gemini/
+.claude/
+.cursor/
+.agents/
+
+# Python artifacts
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
