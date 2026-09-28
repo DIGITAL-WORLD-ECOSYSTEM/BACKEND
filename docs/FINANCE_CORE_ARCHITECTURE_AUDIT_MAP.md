@@ -525,13 +525,15 @@ BackEnd/
 
 ---
 
-### Camada 4: Banco de Dados Relacional (`src/db/finance/` e seed) — 3 Arquivos
+### Camada 4: Banco de Dados Relacional (`src/db/finance/` e `src/db/seed_treasury_report.sql`) — 3 Arquivos
+
+> **Nota de Reconciliação Canônica do Arquivo #48:** O script de seed da tesouraria reside fisicamente em [`src/db/seed_treasury_report.sql`](file:///home/sandro/Área de trabalho/BackEnd/src/db/seed_treasury_report.sql). A referência histórica preliminar `src/db/finance/seed_treasury_report.sql` de drafts anteriores foi formalmente retificada e sincronizada com o caminho canônico do repositório.
 
 | # | Arquivo | Responsabilidade Arquitetural | Invariante / Garantia de Segurança |
 | :---: | :--- | :--- | :--- |
-| **46** | [`finance/tables.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/db/finance/tables.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (9,95 / 10,0)`**<br/>*Auditado: `2026-09-28` (`71baa76`)* | Definição das tabelas físicas do razão contábil, asserções e rotas. | Valores monetários em `TEXT` canônico ($0 \le \text{amt} \le 2^{256}-1$), constraints de check lexicográficas (`GLOB '[1-9]*'`), foreign keys com `ON DELETE RESTRICT`, índices parciais anti-NULL, controle OCC (`version > 0`) e tabela `_sql_assertions` (`changes() = 1`). |
+| **46** | [`finance/tables.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/db/finance/tables.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (9,95 / 10,0)`**<br/>*Auditado: `2026-09-28` (`71baa76`)* | Definição das tabelas físicas do razão contábil, asserções e rotas. | Valores monetários em `TEXT` canônico ($0 \le \text{amt} \le 2^{256}-1$), constraints de check lexicográficas (`GLOB '[1-9]*'`), foreign keys com `ON DELETE RESTRICT`, índices parciais anti-NULL. Encadeamento físico de OCC: colunas `version` e tabela `_sql_assertions` (`changes() = 1`) garantem CAS atômico e rollback via `D1AtomicPostingExecutor.ts` sob concorrência. |
 | **47** | [`finance/relations.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/db/finance/relations.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-28` (`71baa76`)* | Definição dos relacionamentos estruturais e de navegação ORM do Drizzle. | Navegação pura sem lógica contábil (`FINANCE_RELATION_LAYER_IS_NAVIGATION_ONLY = true`), desambiguação explícita de relações de câmbio, conversão, estorno e holds, e composite relation em `fiatPaymentMethods`. |
-| **48** | [`seed_treasury_report.sql`](file:///home/sandro/Área de trabalho/BackEnd/src/db/seed_treasury_report.sql)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN COM HARDENING P2 (9,20 / 10,0)`**<br/>*Auditado: `2026-09-28` (`71baa76`)* | Script de seed determinístico para relatórios contábeis da tesouraria. | Carga de homologação com 45 transações e 80 lançamentos em partidas dobradas rigorosas ($\sum \text{Dr} = \sum \text{Cr} = \text{R\$}~36.623,00$). Normal balance auditado nas 4 contas; apontamento H-48-01 (P2) para triggers de append-only. |
+| **48** | [`seed_treasury_report.sql`](file:///home/sandro/Área de trabalho/BackEnd/src/db/seed_treasury_report.sql)<br/>`[████████████████████] 100%`<br/>**`🟡 FROZEN (com Hardening P2) (9,20 / 10,0)`**<br/>*Auditado: `2026-09-28` (`71baa76`)* | Script de seed determinístico para relatórios contábeis da tesouraria. | Carga de homologação com 45 transações e 80 lançamentos em partidas dobradas rigorosas ($\sum \text{Dr} = \sum \text{Cr} = \text{R\$}~36.623,00$). Normal balance auditado nas 4 contas; apontamento H-48-01 (P2) para triggers de append-only documentado. |
 
 ---
 
@@ -692,11 +694,11 @@ STATUS GERAL: [████████████▒▒▒▒▒▒▒▒] 48 
 | **Camada 1 — Domínio Contábil Puro** | 22 | 22 | 100,0% | 🟢 Concluído (100% Frozen) |
 | **Camada 2 — Aplicação, Portas e Casos de Uso** | 16 | 16 | 100,0% | 🟢 Concluído (100% Frozen) |
 | **Camada 3 — Infraestrutura Concreta, Adaptadores e Repositórios** | 7 | 7 | 100,0% | 🟢 Concluído (100% Frozen) |
-| **Camada 4 — Banco de Dados Relacional** | 3 | 3 | 100,0% | 🟢 Concluído (100% Frozen) |
+| **Camada 4 — Banco de Dados Relacional** | 3 | 3 | 100,0% | 🟢 FROZEN (com 1 Hardening P2 e reconciliações documentais) |
 | **Camada 5 — Apresentação HTTP** | 2 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 6 — Migrações Relacionais Contábeis** | 4 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 7 — Suíte de Testes Automatizados e Invariantes** | 30 | 0 | 0,0% | ⚪ Na Fila |
-| **TOTAL CONSOLIDADO** | **84** | **48** | **57,1%** | 🟢 **Camadas 1, 2, 3 e 4 100% Concluídas (48 Arquivos FROZEN)** |
+| **TOTAL CONSOLIDADO** | **84** | **48** | **57,1%** | 🟢 **Camadas 1, 2, 3 e 4 Concluídas (48 Arquivos FROZEN)** |
 
 ---
 
@@ -2247,7 +2249,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 
 ---
 
-### 8.6. Camada 4: Banco de Dados Relacional — Registros de Auditoria Individual (100% Homologado)
+### 8.6. Camada 4: Banco de Dados Relacional — Registros de Auditoria Individual (Homologado com 1 Hardening P2)
 
 #### [CAMADA 4 / ARQUIVO-46] [`src/db/finance/tables.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/db/finance/tables.ts)
 - **Responsabilidade Central:** Definição canônica do schema físico relacional do subsistema contábil e financeiro para Cloudflare D1 / SQLite via Drizzle ORM, declarando 17 tabelas, constraints de check determinísticas, tipos físicos em `TEXT`, foreign keys restritivas, índices parciais e asserções atômicas de escrita.
@@ -2271,6 +2273,9 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 - [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
   - Controle de concorrência otimista (OCC) com `CHECK(version > 0)` em todas as entidades mutáveis.
   - Tabela de guarda física `_sql_assertions` (`id = 1`, `guard = 1`) para verificação transacional atômica `changes() = 1`.
+  - **Encadeamento Físico Completo de OCC:** A garantia de OCC contra disputas concorrentes é demonstrada pelo encadeamento físico cruzado com o `D1AtomicPostingExecutor.ts`:
+    $$\text{Read version} \rightarrow \text{UPDATE account\_balances ... WHERE version = expectedVersion} \rightarrow \text{changes() = 1} \rightarrow \text{INSERT/UPDATE \_sql\_assertions} \rightarrow \text{Rollback se guard != 1}$$
+    Se outra transação alterar o saldo concorrentemente, `changes()` resultará em `0`, violando a constraint física `ck_sql_assertions_guard` (`CHECK (guard = 1)`), abortando todo o batch atômico no Cloudflare D1 e retornando `OptimisticConcurrencyError`.
   - Declaração formal de metadados `FINANCE_HARDENING_CONTRACT`.
 - [x] **Pilar 5: Governança de Fronteira & Depreciação:**
   - Re-exportação padronizada da tabela de infraestrutura `idempotencyKeys` com colunas para request hashing, lease owner e geração monotônica.
@@ -2282,7 +2287,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 1. **Validação Lexical de Montantes uint256 (L111-233):** Helpers `canonicalUnsignedAmountSql` e `uint256UpperBoundSql` aplicados em todas as colunas de montantes e saldos.
 2. **Composite FK de Titularidade Fiat (L1855-1861):** Restrição multi-coluna `[userId, fiatAccountId] -> [userId, id]` impedindo vinculação de métodos de pagamento a contas de terceiros.
 3. **Substituição de Taxas por Numerador e Denominador (L2469-2852):** Erradicação de `rate` flutuante em `exchange_rates` e `asset_conversions`, substituído por frações racionais exatas em `TEXT`.
-4. **Tabela de Asserções Físicas `_sql_assertions` (L3552-3563):** Criação de tabela guarda singleton para rollback imediato em caso de divergência em batches D1.
+4. **Tabela de Asserções Físicas `_sql_assertions` (L3552-3563) & Encadeamento de OCC:** Criação de tabela guarda singleton e integração com o executor para validação de `changes() = 1`, forçando rollback imediato e retorno de `OptimisticConcurrencyError` em caso de disputa concorrente.
 
 ---
 
@@ -2317,11 +2322,12 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 ---
 
 #### [CAMADA 4 / ARQUIVO-48] [`src/db/seed_treasury_report.sql`](file:///home/sandro/Área de trabalho/BackEnd/src/db/seed_treasury_report.sql)
+- **Nota de Reconciliação Canônica de Localização:** O arquivo canônico reside em [`src/db/seed_treasury_report.sql`](file:///home/sandro/Área de trabalho/BackEnd/src/db/seed_treasury_report.sql). A menção preliminar `src/db/finance/seed_treasury_report.sql` de drafts anteriores foi formalmente retificada e sincronizada com a árvore canônica do repositório.
 - **Responsabilidade Central:** Script SQL determinístico de homologação e carga contábil de auditoria da tesouraria do ecossistema ASPPIBRA (referência: Andressa de Lima Ferreira), provisionando 45 transações e 80 lançamentos contábeis em partidas dobradas rigorosas com saldos materializados balanceados.
 - **Nota Matrix Oficial:** **`9,20 / 10,0`**
 - **Data da Última Atualização / Auditoria:** `2026-09-28` (Commit: `71baa76`)
 - **Classificação de Homologação:** **`STATUS: FROZEN COM HARDENING PENDENTE (P2)`**
-- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado com apontamento não-bloqueador)`
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado com apontamento não-bloqueador P2)`
 
 ##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
 - [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
