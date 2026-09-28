@@ -113,5 +113,33 @@ describe('Invariante DOD-17: Transações de Estorno (ReverseTransactionUseCase)
 
     expect(b1Final[0].availableBaseUnits).toBe('100000');
     expect(b2Final[0].availableBaseUnits).toBe('0');
+
+    // 4. P0-1: Retransmissão com a MESMA chave de idempotência deve retornar isReplayed: true (BUG-37-01 corrigido)
+    const replayRes = await reverseUseCase.execute({
+      originalTransactionId: originalTxId,
+      actorUserId: 1,
+      idempotencyKey: 'rev-dep-100',
+      reason: 'Solicitação do cliente / Erro operacional',
+    });
+
+    expect(replayRes.isSuccess).toBe(true);
+    const replayValue = replayRes.getValue();
+    expect(replayValue.isReplayed).toBe(true);
+    expect(replayValue.transactionId).toBe(revRes.getValue().transactionId);
+
+    // Valida que saldos continuam intactos após o replay (sem efeito colateral)
+    const b1AfterReplay = await db.select().from(accountBalances).where(and(eq(accountBalances.accountId, 1), eq(accountBalances.assetId, 1)));
+    const b2AfterReplay = await db.select().from(accountBalances).where(and(eq(accountBalances.accountId, 2), eq(accountBalances.assetId, 1)));
+    expect(b1AfterReplay[0].availableBaseUnits).toBe('100000');
+    expect(b2AfterReplay[0].availableBaseUnits).toBe('0');
+
+    // 5. Retransmissão com chave de idempotência reutilizada para transação original DIFERENTE deve falhar (409)
+    const conflictRes = await reverseUseCase.execute({
+      originalTransactionId: 99999, // ID diferente com a mesma idempotencyKey
+      actorUserId: 1,
+      idempotencyKey: 'rev-dep-100',
+      reason: 'Tentativa fraudulenta de reutilizar chave',
+    });
+    expect(conflictRes.isFailure).toBe(true);
   });
 });

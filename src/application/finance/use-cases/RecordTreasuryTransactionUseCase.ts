@@ -24,6 +24,7 @@ export interface RecordTreasuryTransactionDTO {
   userId?: number | null; // targetUserId
   actorUserId?: number | null;
   authorizedByUserId?: number | null;
+  isDualAuthorization?: boolean;
   type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'refund' | 'fee' | 'reward' | 'yield' | 'conversion' | 'adjustment';
   direction?: 'INBOUND' | 'OUTBOUND';
   category?: FinancialTransactionCategory;
@@ -418,15 +419,29 @@ export class RecordTreasuryTransactionUseCase {
             const parsedActorUserId = parsePositiveSafeIntegerId(actorUserId, 'actorUserId');
             const parsedAuthUserId = parsePositiveSafeIntegerId(dto.authorizedByUserId, 'authorizedByUserId');
 
-            if (parsedActorUserId !== parsedAuthUserId) {
-              return Result.fail<RecordTreasuryTransactionResult>(
-                new AccountOwnershipError("O autorizador do ajuste deve corresponder ao ator autenticado.")
-              );
+            if (dto.isDualAuthorization) {
+              if (parsedActorUserId === parsedAuthUserId) {
+                return Result.fail<RecordTreasuryTransactionResult>(
+                  new InvalidFinancialOperationError("Invariante de segregação de funções violado: Para ajustes com autorização dual (four-eyes), o operador (actorUserId) deve ser estritamente distinto do autorizador (authorizedByUserId).")
+                );
+              }
+            } else {
+              if (parsedActorUserId !== parsedAuthUserId) {
+                return Result.fail<RecordTreasuryTransactionResult>(
+                  new AccountOwnershipError("O autorizador do ajuste deve corresponder ao ator autenticado.")
+                );
+              }
             }
 
             if (parsedUserId !== null && parsedUserId === parsedAuthUserId) {
               return Result.fail<RecordTreasuryTransactionResult>(
                 new InvalidFinancialOperationError("Invariante FIN-007 violado: Para ajustes administrativos, o usuário titular (targetUserId) deve ser distinto do autorizador (authorizedByUserId).")
+              );
+            }
+
+            if (parsedUserId !== null && parsedUserId === parsedActorUserId) {
+              return Result.fail<RecordTreasuryTransactionResult>(
+                new InvalidFinancialOperationError("Invariante FIN-007 violado: O operador do ajuste não pode ser o próprio usuário titular da conta alvo.")
               );
             }
 

@@ -5,7 +5,12 @@ import { Money256 } from '../../../domains/finance/value-objects/Money256';
 import { AccountingEntryPolicy } from '../../../domains/finance/policies/AccountingEntryPolicy';
 import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
 import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
-import { InvalidStateTransitionError } from '../../../domains/finance/errors/FinancialError';
+import {
+  InvalidStateTransitionError,
+  IdempotencyConflictError,
+  IdempotencyInProgressError,
+  FinancialError,
+} from '../../../domains/finance/errors/FinancialError';
 import { FinancialTransactionStateMachine } from '../../../domains/finance/services/FinancialTransactionStateMachine';
 import { freezeAuthorizationContext } from '../../../domains/finance/contracts/AuthorizationContext';
 
@@ -28,6 +33,38 @@ export class ReverseTransactionUseCase {
 
       return await this.uow.execute(async (factory) => {
         const repo = factory.getFinanceRepository();
+
+        // P0-1: Early idempotency replay check before validating originalTx mutable status
+        const prior = await repo.getIdempotencyRecord(input.idempotencyKey, 'finance');
+        if (prior?.status === 'completed' && prior.transactionId) {
+          const existingTxRes = await repo.getTransactionById(prior.transactionId);
+          if (existingTxRes.isSuccess) {
+            const existingTx = existingTxRes.getValue();
+            const isMatchingReversal =
+              existingTx.type === 'reversal' &&
+              ((existingTx as any).reversalOfTransactionId === input.originalTransactionId ||
+                existingTx.description.includes(`Estorno da Transação #${input.originalTransactionId}`));
+
+            if (isMatchingReversal) {
+              if (input.requestHash !== undefined && prior.requestHash && input.requestHash !== prior.requestHash) {
+                return Result.fail<OrchestratorResult>(
+                  new IdempotencyConflictError('409 Conflict: O requestHash fornecido não coincide com o hash canônico do estorno.')
+                );
+              }
+              return Result.ok<OrchestratorResult>({
+                transactionId: prior.transactionId,
+                isReplayed: true,
+              });
+            }
+            return Result.fail<OrchestratorResult>(new IdempotencyConflictError());
+          }
+        }
+
+        if (prior?.status === 'processing') {
+          return Result.fail<OrchestratorResult>(
+            new IdempotencyInProgressError('Transação de estorno em processamento com esta chave de idempotência.')
+          );
+        }
 
         // 1. Obter registro original por ID direto O(1) para validar estado e tipo
         const txRes = await repo.getTransactionById(input.originalTransactionId);
@@ -107,7 +144,7 @@ export class ReverseTransactionUseCase {
         if (input.requestHash !== undefined) {
           const canonicalHash = CanonicalRequestHashService.calculateHash(reversalTx);
           if (input.requestHash !== canonicalHash) {
-            throw new Error('409 Conflict: O requestHash fornecido não coincide com o hash canônico do estorno.');
+            throw new IdempotencyConflictError('409 Conflict: O requestHash fornecido não coincide com o hash canônico do estorno.');
           }
         }
 
@@ -127,6 +164,9 @@ export class ReverseTransactionUseCase {
         return Result.ok(orchestratorResult);
       });
     } catch (err: unknown) {
+      if (err instanceof FinancialError) {
+        return Result.fail(err);
+      }
       const message = err instanceof Error ? err.message : 'Falha ao estornar transação financeira.';
       return Result.fail(message);
     }
