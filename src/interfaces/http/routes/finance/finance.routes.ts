@@ -28,8 +28,8 @@ function buildFinanceDeps(db: Database) {
   const getBalanceUseCase = new GetTreasuryBalanceUseCase(financeRepo);
   const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
   const recordTransferUseCase = new RecordTransferUseCase(uow);
-  const getExternalTransactionsUseCase = new GetExternalTransactionsUseCase(db);
-  const getConsolidatedReportUseCase = new GetConsolidatedFinancialReportUseCase(db);
+  const getExternalTransactionsUseCase = new GetExternalTransactionsUseCase(financeRepo);
+  const getConsolidatedReportUseCase = new GetConsolidatedFinancialReportUseCase(financeRepo);
   return {
     uow,
     financeRepo,

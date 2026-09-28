@@ -1,4 +1,4 @@
-import { eq, and, or, lt, inArray, sql, asc, desc } from 'drizzle-orm';
+import { eq, and, or, lt, gt, gte, lte, inArray, sql, asc, desc } from 'drizzle-orm';
 import {
   financialAccounts,
   accountBalances,
@@ -6,6 +6,7 @@ import {
   financialLedgerEntries,
   financialAssets,
   fiatExternalTransactions,
+  fiatProviders,
   systemAccountRoutes,
   MAX_UINT256_BASE_UNITS_TEXT,
 } from '../../db/finance/tables';
@@ -26,6 +27,10 @@ import {
   IdempotencyRecord,
   TreasuryBootstrapOptions,
   TreasuryBootstrapResult,
+  RawExternalTransactionForReport,
+  ExternalTransactionsFilterCriteria,
+  ExternalTransactionSummaryRow,
+  PaginatedExternalTransactionRow,
 } from '../../application/ports/output/IFinanceRepository';
 import { FinancialLedgerEntryRecord } from '../../domains/finance/contracts/FinancialLedgerEntryRecord';
 import { LedgerEntry } from '../../domains/finance/entities/LedgerTransaction';
@@ -1516,6 +1521,181 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
         .where(eq(fiatExternalTransactions.id, id));
 
       return Result.ok(undefined);
+    } catch (e: any) {
+      return Result.err(RepositoryError.transient(e.message, e));
+    }
+  }
+
+  async getConsolidatedReportRawData(): Promise<Result<RawExternalTransactionForReport[], RepositoryError>> {
+    try {
+      const rows = await this.executor
+        .select({
+          id: fiatExternalTransactions.id,
+          providerCode: fiatProviders.code,
+          direction: fiatExternalTransactions.direction,
+          amountBaseUnits: fiatExternalTransactions.amountBaseUnits,
+          bankTimestamp: fiatExternalTransactions.bankTimestamp,
+          sourceFile: fiatExternalTransactions.sourceFile,
+          sourceFileHash: fiatExternalTransactions.sourceFileHash,
+          reconciliationStatus: fiatExternalTransactions.reconciliationStatus,
+        })
+        .from(fiatExternalTransactions)
+        .innerJoin(fiatProviders, eq(fiatExternalTransactions.providerId, fiatProviders.id))
+        .orderBy(fiatExternalTransactions.bankTimestamp);
+
+      return Result.ok(rows as RawExternalTransactionForReport[]);
+    } catch (e: any) {
+      return Result.err(RepositoryError.transient(e.message, e));
+    }
+  }
+
+  async getExternalTransactionsSummary(
+    filters: ExternalTransactionsFilterCriteria = {}
+  ): Promise<Result<ExternalTransactionSummaryRow[], RepositoryError>> {
+    try {
+      const commonConditions = [];
+
+      if (filters.providerCode) {
+        commonConditions.push(eq(fiatProviders.code, filters.providerCode.toUpperCase()));
+      }
+
+      if (filters.direction) {
+        commonConditions.push(
+          eq(fiatExternalTransactions.direction, filters.direction.toLowerCase() as 'credit' | 'debit')
+        );
+      }
+
+      if (filters.startDate) {
+        const startTs =
+          typeof filters.startDate === 'string'
+            ? new Date(filters.startDate).getTime()
+            : Number(filters.startDate);
+        if (!isNaN(startTs)) {
+          commonConditions.push(gte(fiatExternalTransactions.bankTimestamp, new Date(startTs)));
+        }
+      }
+
+      if (filters.endDate) {
+        const endTs =
+          typeof filters.endDate === 'string'
+            ? new Date(filters.endDate).getTime()
+            : Number(filters.endDate);
+        if (!isNaN(endTs)) {
+          commonConditions.push(lte(fiatExternalTransactions.bankTimestamp, new Date(endTs)));
+        }
+      }
+
+      if (filters.reconciliationStatus) {
+        const validStatuses = ['unmatched', 'matched', 'ignored', 'discrepancy'] as const;
+        const normalized = filters.reconciliationStatus.toLowerCase();
+        if (validStatuses.includes(normalized as any)) {
+          commonConditions.push(
+            eq(fiatExternalTransactions.reconciliationStatus, normalized as (typeof validStatuses)[number])
+          );
+        }
+      }
+
+      const whereClause = commonConditions.length > 0 ? and(...commonConditions) : undefined;
+
+      const summaryRows = await this.executor
+        .select({
+          providerCode: fiatProviders.code,
+          amountBaseUnits: fiatExternalTransactions.amountBaseUnits,
+          reconciliationStatus: fiatExternalTransactions.reconciliationStatus,
+        })
+        .from(fiatExternalTransactions)
+        .innerJoin(fiatProviders, eq(fiatExternalTransactions.providerId, fiatProviders.id))
+        .where(whereClause);
+
+      return Result.ok(summaryRows);
+    } catch (e: any) {
+      return Result.err(RepositoryError.transient(e.message, e));
+    }
+  }
+
+  async getExternalTransactionsPaginated(
+    filters: ExternalTransactionsFilterCriteria = {},
+    limit: number,
+    cursor?: number
+  ): Promise<Result<PaginatedExternalTransactionRow[], RepositoryError>> {
+    try {
+      const commonConditions = [];
+
+      if (filters.providerCode) {
+        commonConditions.push(eq(fiatProviders.code, filters.providerCode.toUpperCase()));
+      }
+
+      if (filters.direction) {
+        commonConditions.push(
+          eq(fiatExternalTransactions.direction, filters.direction.toLowerCase() as 'credit' | 'debit')
+        );
+      }
+
+      if (filters.startDate) {
+        const startTs =
+          typeof filters.startDate === 'string'
+            ? new Date(filters.startDate).getTime()
+            : Number(filters.startDate);
+        if (!isNaN(startTs)) {
+          commonConditions.push(gte(fiatExternalTransactions.bankTimestamp, new Date(startTs)));
+        }
+      }
+
+      if (filters.endDate) {
+        const endTs =
+          typeof filters.endDate === 'string'
+            ? new Date(filters.endDate).getTime()
+            : Number(filters.endDate);
+        if (!isNaN(endTs)) {
+          commonConditions.push(lte(fiatExternalTransactions.bankTimestamp, new Date(endTs)));
+        }
+      }
+
+      if (filters.reconciliationStatus) {
+        const validStatuses = ['unmatched', 'matched', 'ignored', 'discrepancy'] as const;
+        const normalized = filters.reconciliationStatus.toLowerCase();
+        if (validStatuses.includes(normalized as any)) {
+          commonConditions.push(
+            eq(fiatExternalTransactions.reconciliationStatus, normalized as (typeof validStatuses)[number])
+          );
+        }
+      }
+
+      const paginatedConditions = [...commonConditions];
+      if (cursor !== undefined && !isNaN(cursor)) {
+        paginatedConditions.push(gt(fiatExternalTransactions.id, cursor));
+      }
+
+      const paginatedWhere = paginatedConditions.length > 0 ? and(...paginatedConditions) : undefined;
+
+      const rows = await this.executor
+        .select({
+          id: fiatExternalTransactions.id,
+          providerCode: fiatProviders.code,
+          providerName: fiatProviders.name,
+          externalTransactionId: fiatExternalTransactions.externalTransactionId,
+          rawAmount: fiatExternalTransactions.rawAmount,
+          amountBaseUnits: fiatExternalTransactions.amountBaseUnits,
+          direction: fiatExternalTransactions.direction,
+          rawDescription: fiatExternalTransactions.rawDescription,
+          bankTimestamp: fiatExternalTransactions.bankTimestamp,
+          documentNumber: fiatExternalTransactions.documentNumber,
+          runningBalanceBaseUnits: fiatExternalTransactions.runningBalanceBaseUnits,
+          sourceFile: fiatExternalTransactions.sourceFile,
+          sourceFileHash: fiatExternalTransactions.sourceFileHash,
+          rowFingerprint: fiatExternalTransactions.rowFingerprint,
+          rawPayload: fiatExternalTransactions.rawPayload,
+          status: fiatExternalTransactions.status,
+          reconciliationStatus: fiatExternalTransactions.reconciliationStatus,
+          financialTransactionId: fiatExternalTransactions.financialTransactionId,
+        })
+        .from(fiatExternalTransactions)
+        .innerJoin(fiatProviders, eq(fiatExternalTransactions.providerId, fiatProviders.id))
+        .where(paginatedWhere)
+        .orderBy(fiatExternalTransactions.id)
+        .limit(limit + 1);
+
+      return Result.ok(rows as PaginatedExternalTransactionRow[]);
     } catch (e: any) {
       return Result.err(RepositoryError.transient(e.message, e));
     }

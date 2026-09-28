@@ -1,7 +1,16 @@
-import { eq } from 'drizzle-orm';
-import { Database } from '../../../db';
-import { fiatExternalTransactions, fiatProviders } from '../../../db/finance/tables';
 import { Result } from '../../../shared/kernel/Result';
+import { IFinanceRepository } from '../../ports/output/IFinanceRepository';
+import { formatBaseUnitsToBRL } from '../utils/currencyFormatter';
+import {
+  CAIXA_FORENSIC_CUTOFF_TS,
+  CAIXA_FORENSIC_INTERVAL_A,
+  CAIXA_FORENSIC_CONDITION_A,
+  CAIXA_STATEMENT_BREAKS_PERIOD_A,
+  CAIXA_FORENSIC_INTERVAL_B,
+  CAIXA_FORENSIC_CONDITION_B,
+  CAIXA_STATEMENT_BREAKS_PERIOD_B,
+  PROVIDER_SORT_ORDER,
+} from '../services/ConsolidatedReportConfig';
 
 export interface SourceReportItem {
   provider: string;
@@ -65,35 +74,19 @@ export interface ConsolidatedFinancialReport {
   };
 }
 
-function formatBaseUnitsToBRL(baseUnits: bigint): string {
-  const isNeg = baseUnits < 0n;
-  const abs = isNeg ? -baseUnits : baseUnits;
-  const str = abs.toString().padStart(3, '0');
-  const intPart = str.slice(0, -2);
-  const decPart = str.slice(-2);
-  return `${isNeg ? '-' : ''}${intPart}.${decPart}`;
-}
-
 export class GetConsolidatedFinancialReportUseCase {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly financeRepo: IFinanceRepository) {}
 
   async execute(): Promise<Result<ConsolidatedFinancialReport>> {
     try {
-      // 1. Ler todas as movimentações da staging juntamente com o provedor
-      const rows = await this.db
-        .select({
-          id: fiatExternalTransactions.id,
-          providerCode: fiatProviders.code,
-          direction: fiatExternalTransactions.direction,
-          amountBaseUnits: fiatExternalTransactions.amountBaseUnits,
-          bankTimestamp: fiatExternalTransactions.bankTimestamp,
-          sourceFile: fiatExternalTransactions.sourceFile,
-          sourceFileHash: fiatExternalTransactions.sourceFileHash,
-          reconciliationStatus: fiatExternalTransactions.reconciliationStatus,
-        })
-        .from(fiatExternalTransactions)
-        .innerJoin(fiatProviders, eq(fiatExternalTransactions.providerId, fiatProviders.id))
-        .orderBy(fiatExternalTransactions.bankTimestamp);
+      // 1. Ler todas as movimentações da staging juntamente com o provedor via repositório
+      const rawRes = await this.financeRepo.getConsolidatedReportRawData();
+      if (rawRes.isFailure) {
+        const errorMsg = rawRes.error || (rawRes.typedError as any)?.message || 'Erro desconhecido';
+        return Result.fail(`Erro ao carregar dados brutos para o relatório: ${errorMsg}`);
+      }
+
+      const rows = rawRes.getValue();
 
       if (rows.length === 0) {
         return Result.ok({
@@ -193,12 +186,10 @@ export class GetConsolidatedFinancialReportUseCase {
           acc.debitsBaseUnits += amt;
         }
 
-        // Segmentação forense da Caixa (Período A: 2016-2020 vs Período B: 2021-2026)
+        // Segmentação forense da Caixa (Período A vs Período B)
         if (code === 'CAIXA' && acc.periodA && acc.periodB) {
           const ts = row.bankTimestamp ? new Date(row.bankTimestamp).getTime() : 0;
-          // Divisor: 01/09/2021 00:00:00 UTC (1630454400000)
-          const CUTOFF_TS = 1630454400000;
-          if (ts < CUTOFF_TS) {
+          if (ts < CAIXA_FORENSIC_CUTOFF_TS) {
             acc.periodA.records++;
             if (isCredit) acc.periodA.credits += amt;
             else acc.periodA.debits += amt;
@@ -226,22 +217,22 @@ export class GetConsolidatedFinancialReportUseCase {
 
           breakdown = {
             periodA: {
-              interval: '2016-05-30 a 2020-12-31',
-              condition: 'incompleta_nao_reconciliavel',
+              interval: CAIXA_FORENSIC_INTERVAL_A,
+              condition: CAIXA_FORENSIC_CONDITION_A,
               records: acc.periodA.records,
               creditsAmount: formatBaseUnitsToBRL(acc.periodA.credits),
               debitsAmount: formatBaseUnitsToBRL(acc.periodA.debits),
               netAmount: formatBaseUnitsToBRL(periodANet),
-              statementBreaks: 33,
+              statementBreaks: CAIXA_STATEMENT_BREAKS_PERIOD_A,
             },
             periodB: {
-              interval: '2021-09-01 a 2026-08-11',
-              condition: 'cadeia_continua',
+              interval: CAIXA_FORENSIC_INTERVAL_B,
+              condition: CAIXA_FORENSIC_CONDITION_B,
               records: acc.periodB.records,
               creditsAmount: formatBaseUnitsToBRL(acc.periodB.credits),
               debitsAmount: formatBaseUnitsToBRL(acc.periodB.debits),
               netAmount: formatBaseUnitsToBRL(periodBNet),
-              statementBreaks: 0,
+              statementBreaks: CAIXA_STATEMENT_BREAKS_PERIOD_B,
             },
           };
         }
@@ -262,9 +253,8 @@ export class GetConsolidatedFinancialReportUseCase {
         });
       }
 
-      // Ordenar fontes: Bradesco, Cora, Inter, Caixa
-      const sortOrder: Record<string, number> = { BRADESCO: 1, CORA: 2, INTER: 3, CAIXA: 4 };
-      sources.sort((a, b) => (sortOrder[a.provider] || 99) - (sortOrder[b.provider] || 99));
+      // Ordenar fontes conforme configuração forense
+      sources.sort((a, b) => (PROVIDER_SORT_ORDER[a.provider] || 99) - (PROVIDER_SORT_ORDER[b.provider] || 99));
 
       const globalNetBaseUnits = globalCreditsBaseUnits - globalDebitsBaseUnits;
 
@@ -296,8 +286,9 @@ export class GetConsolidatedFinancialReportUseCase {
             'AVISO CONTÁBIL: Os registros apresentados residem na staging fiat_external_transactions e possuem status unmatched. Este relatório reflete estritamente a movimentação bruta e líquida informada pelos documentos bancários externos e NÃO representa lançamentos contábeis no ledger ou saldos patrimoniais da tesouraria.',
         },
       });
-    } catch (err: any) {
-      return Result.fail(`Erro ao gerar relatório financeiro consolidado: ${err.message || String(err)}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return Result.fail(`Erro ao gerar relatório financeiro consolidado: ${message}`);
     }
   }
 }

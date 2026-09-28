@@ -285,4 +285,64 @@ export interface IFinanceRepository {
       assetId?: number | null;
     }
   ): Promise<Result<void, RepositoryError>>;
+
+  // CQRS Read Models for External Bank Transactions & Reporting
+  getConsolidatedReportRawData(): Promise<Result<RawExternalTransactionForReport[], RepositoryError>>;
+  getExternalTransactionsSummary(
+    filters?: ExternalTransactionsFilterCriteria
+  ): Promise<Result<ExternalTransactionSummaryRow[], RepositoryError>>;
+  getExternalTransactionsPaginated(
+    filters: ExternalTransactionsFilterCriteria,
+    limit: number,
+    cursor?: number
+  ): Promise<Result<PaginatedExternalTransactionRow[], RepositoryError>>;
 }
+
+export interface RawExternalTransactionForReport {
+  id: number;
+  providerCode: string;
+  direction: 'credit' | 'debit';
+  amountBaseUnits: string | null;
+  bankTimestamp: Date | null;
+  sourceFile: string | null;
+  sourceFileHash: string | null;
+  reconciliationStatus: string;
+}
+
+export interface ExternalTransactionsFilterCriteria {
+  limit?: number;
+  cursor?: number;
+  providerCode?: string;
+  direction?: 'credit' | 'debit';
+  startDate?: number | string;
+  endDate?: number | string;
+  reconciliationStatus?: string;
+}
+
+export interface ExternalTransactionSummaryRow {
+  providerCode: string;
+  amountBaseUnits: string | null;
+  reconciliationStatus: string;
+}
+
+export interface PaginatedExternalTransactionRow {
+  id: number;
+  providerCode: string;
+  providerName: string;
+  externalTransactionId: string;
+  rawAmount: string;
+  amountBaseUnits: string | null;
+  direction: string;
+  rawDescription: string | null;
+  bankTimestamp: Date | null;
+  documentNumber: string | null;
+  runningBalanceBaseUnits: string | null;
+  sourceFile: string | null;
+  sourceFileHash: string | null;
+  rowFingerprint: string | null;
+  rawPayload: string | null;
+  status: string;
+  reconciliationStatus: string;
+  financialTransactionId: number | null;
+}
+
