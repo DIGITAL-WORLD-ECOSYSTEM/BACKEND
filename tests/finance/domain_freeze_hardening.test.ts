@@ -47,6 +47,8 @@ import {
   FinancialRangeError,
   UnsupportedFinancialOperationError,
   InvalidFinancialOperationError,
+  IdempotencyKeyReusedWithDifferentRequestError,
+  AtomicPostingExecutionError,
 } from '../../src/domains/finance/errors/FinancialError';
 import { LedgerImbalanceError } from '../../src/domains/finance/errors/LedgerImbalanceError';
 import { mapFinancialErrorToHttpStatus } from '../../src/application/finance/errors/FinancialErrorMapper';
@@ -956,12 +958,16 @@ describe('Domain Freeze — RC1 Hardening Suite', () => {
         expect(mapFinancialErrorToHttpStatus(new OptimisticConcurrencyError())).toBe(409);
         expect(mapFinancialErrorToHttpStatus(new IdempotencyConflictError())).toBe(409);
         expect(mapFinancialErrorToHttpStatus(new IdempotencyInProgressError())).toBe(409);
+        expect(mapFinancialErrorToHttpStatus(new IdempotencyKeyReusedWithDifferentRequestError())).toBe(409);
         expect(mapFinancialErrorToHttpStatus(new ReversalAlreadyExistsError())).toBe(409);
         expect(mapFinancialErrorToHttpStatus(new ExternalEventPayloadConflictError())).toBe(409);
 
         // 404 Not Found
         expect(mapFinancialErrorToHttpStatus({ code: 'ACCOUNT_NOT_FOUND' })).toBe(404);
         expect(mapFinancialErrorToHttpStatus({ code: 'ASSET_NOT_FOUND' })).toBe(404);
+
+        // 500 Internal Server Error
+        expect(mapFinancialErrorToHttpStatus(new AtomicPostingExecutionError())).toBe(500);
 
         // 400 Bad Request
         expect(mapFinancialErrorToHttpStatus(new InvalidMoneyFormatError())).toBe(400);

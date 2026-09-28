@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 
 export type CanonicalPrimitive = string | number | boolean | null;
 export type CanonicalValue =
@@ -126,11 +126,31 @@ export class CanonicalRequestHashService {
   }
 
   /**
+   * Remove recursivamente propriedades com valor `undefined` de objetos e arrays.
+   */
+  private static stripUndefined(val: unknown): unknown {
+    if (val === null || typeof val !== 'object') {
+      return val;
+    }
+    if (Array.isArray(val)) {
+      return val.map((item) => CanonicalRequestHashService.stripUndefined(item));
+    }
+    const clean: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      if (v !== undefined) {
+        clean[k] = CanonicalRequestHashService.stripUndefined(v);
+      }
+    }
+    return clean;
+  }
+
+  /**
    * Hashes an incoming command / request DTO representing the caller's financial intent.
    * Strips undefined and computes deterministic SHA-256 without relying on internal server resolution.
    */
   public static hashCommand(command: unknown): string {
-    const canonicalString = CanonicalRequestHashService.canonicalize(command);
+    const sanitized = CanonicalRequestHashService.stripUndefined(command);
+    const canonicalString = CanonicalRequestHashService.canonicalize(sanitized);
     return createHash('sha256').update(canonicalString, 'utf8').digest('hex');
   }
 

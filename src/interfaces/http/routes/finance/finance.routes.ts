@@ -25,7 +25,7 @@ financeRouter.use('*', sessionGuard);
 function buildFinanceDeps(db: Database) {
   const uow = new DrizzleUnitOfWork(db);
   const financeRepo = new DrizzleFinanceRepository(db);
-  const getBalanceUseCase = new GetTreasuryBalanceUseCase(uow);
+  const getBalanceUseCase = new GetTreasuryBalanceUseCase(financeRepo);
   const recordTxUseCase = new RecordTreasuryTransactionUseCase(uow);
   const recordTransferUseCase = new RecordTransferUseCase(uow);
   const getExternalTransactionsUseCase = new GetExternalTransactionsUseCase(db);

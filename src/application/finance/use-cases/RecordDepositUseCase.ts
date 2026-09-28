@@ -5,7 +5,11 @@ import { Money256 } from '../../../domains/finance/value-objects/Money256';
 import { AccountingEntryPolicy } from '../../../domains/finance/policies/AccountingEntryPolicy';
 import { FinancialTransactionOrchestrator, OrchestratorResult } from '../services/FinancialTransactionOrchestrator';
 import { CanonicalRequestHashService } from '../services/CanonicalRequestHashService';
-import { AccountInactiveError } from '../../../domains/finance/errors/FinancialError';
+import {
+  AccountInactiveError,
+  IdempotencyConflictError,
+  FinancialError,
+} from '../../../domains/finance/errors/FinancialError';
 import { freezeAuthorizationContext } from '../../../domains/finance/contracts/AuthorizationContext';
 
 export interface DepositCommand {
@@ -68,7 +72,7 @@ export class RecordDepositUseCase {
         if (command.requestHash !== undefined) {
           const canonicalHash = CanonicalRequestHashService.calculateHash(transaction);
           if (command.requestHash !== canonicalHash) {
-            throw new Error('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload de depósito.');
+            throw new IdempotencyConflictError('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload de depósito.');
           }
         }
 
@@ -84,6 +88,9 @@ export class RecordDepositUseCase {
         return Result.ok(orchestratorResult);
       });
     } catch (err: unknown) {
+      if (err instanceof FinancialError) {
+        return Result.fail(err);
+      }
       const message = err instanceof Error ? err.message : 'Falha ao realizar depósito.';
       return Result.fail(message);
     }

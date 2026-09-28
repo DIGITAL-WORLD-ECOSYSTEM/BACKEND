@@ -53,11 +53,14 @@ export function mapFinancialErrorToHttpStatus(error: unknown): number {
     case 'IDEMPOTENCY_CONFLICT':
     case 'IDEMPOTENCY_HASH_MISMATCH':
     case 'IDEMPOTENCY_IN_PROGRESS':
+    case 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST':
     case 'REVERSAL_ALREADY_EXISTS':
       return 409;
     case 'ACCOUNT_NOT_FOUND':
     case 'ASSET_NOT_FOUND':
       return 404;
+    case 'ATOMIC_POSTING_EXECUTION_ERROR':
+      return 500;
     case 'INVALID_MONEY_FORMAT':
     case 'INVALID_IDENTIFIER':
     case 'FINANCIAL_VALIDATION_ERROR':

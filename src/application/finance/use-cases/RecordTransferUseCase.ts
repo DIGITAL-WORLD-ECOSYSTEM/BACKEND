@@ -11,6 +11,11 @@ import {
   CustodyOperationSpec,
   freezeAuthorizationContext,
 } from '../../../domains/finance/contracts/AuthorizationContext';
+import {
+  AccountOwnershipError,
+  IdempotencyConflictError,
+  FinancialError,
+} from '../../../domains/finance/errors/FinancialError';
 
 export interface TransferCommand {
   sourceUserId: number;
@@ -96,7 +101,7 @@ export class RecordTransferUseCase {
 
         const authDecision = CustodyAuthorizationPolicy.canDebitSourceAccount(authCtx, opSpec);
         if (!authDecision.allowed) {
-          throw new Error(`403 Forbidden: Autorização de custódia negada: ${authDecision.reason}`);
+          throw new AccountOwnershipError(`403 Forbidden: Autorização de custódia negada: ${authDecision.reason}`);
         }
 
         // 2. Accounting Leg Generation
@@ -138,7 +143,7 @@ export class RecordTransferUseCase {
         if (command.requestHash !== undefined) {
           const canonicalHash = CanonicalRequestHashService.calculateHash(transaction);
           if (command.requestHash !== canonicalHash) {
-            throw new Error('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload de transferência.');
+            throw new IdempotencyConflictError('409 Conflict: O requestHash fornecido não coincide com o hash canônico do payload de transferência.');
           }
         }
 
@@ -147,6 +152,9 @@ export class RecordTransferUseCase {
         return Result.ok(orchestratorResult);
       });
     } catch (err: unknown) {
+      if (err instanceof FinancialError) {
+        return Result.fail(err);
+      }
       const message = err instanceof Error ? err.message : 'Falha ao realizar transferência.';
       return Result.fail(message);
     }
