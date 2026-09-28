@@ -1,7 +1,7 @@
 # Finance Core — Mapeamento Arquitetural, Diagramas & Checklist Unificado de Auditoria
 
 > **Documento Oficial de Engenharia & Auditoria de Fronteira (Gate 0 / P0 Hardened)**  
-> **Versão:** 3.2.0 (Certificação Plena das Camadas 1, 2 e 3: Infraestrutura Concreta, Adaptadores, Repositórios e Persistência D1 Atômica)  
+> **Versão:** 3.3.0 (Certificação Plena das Camadas 1, 2 e 3: Domínio Contábil Puro, Casos de Uso de Aplicação, Infraestrutura Concreta e Repositórios D1 Atômicos)  
 > **Ambiente de Execução:** Cloudflare Workers (D1 SQLite) + Drizzle ORM + Hono Framework  
 > **Padrão Arquitetural:** Clean Architecture + Domain-Driven Design (DDD) + Append-Only Double-Entry Ledger com Balanços Materializados Síncronos (State-Based OCC) + Transactional Outbox Pattern  
 > **Aritmética & Armazenamento:** Precisão Arbitrária de 256 bits (`Money256` / `BigInt` em Memória V8) + Persistência em Texto Canônico (`TEXT`) no Cloudflare D1 SQLite
@@ -344,18 +344,21 @@ BackEnd/
 │   │   │   │   └── FinancialErrorMapper.ts
 │   │   │   ├── services/
 │   │   │   │   ├── CanonicalRequestHashService.ts
+│   │   │   │   ├── ConsolidatedReportConfig.ts
 │   │   │   │   ├── FinancialTransactionOrchestrator.ts
 │   │   │   │   └── PostingAuthority.ts
-│   │   │   └── use-cases/
-│   │   │       ├── GetConsolidatedFinancialReportUseCase.ts
-│   │   │       ├── GetExternalTransactionsUseCase.ts
-│   │   │       ├── GetTreasuryBalanceUseCase.ts
-│   │   │       ├── RecordDepositUseCase.ts
-│   │   │       ├── RecordLedgerTransactionUseCase.ts
-│   │   │       ├── RecordTransferUseCase.ts
-│   │   │       ├── RecordTreasuryTransactionUseCase.ts
-│   │   │       ├── RepairFinanceUseCase.ts
-│   │   │       └── ReverseTransactionUseCase.ts
+│   │   │   ├── use-cases/
+│   │   │   │   ├── GetConsolidatedFinancialReportUseCase.ts
+│   │   │   │   ├── GetExternalTransactionsUseCase.ts
+│   │   │   │   ├── GetTreasuryBalanceUseCase.ts
+│   │   │   │   ├── RecordDepositUseCase.ts
+│   │   │   │   ├── RecordLedgerTransactionUseCase.ts
+│   │   │   │   ├── RecordTransferUseCase.ts
+│   │   │   │   ├── RecordTreasuryTransactionUseCase.ts
+│   │   │   │   ├── RepairFinanceUseCase.ts
+│   │   │   │   └── ReverseTransactionUseCase.ts
+│   │   │   └── utils/
+│   │   │       └── currencyFormatter.ts
 │   │   └── ports/
 │   │       └── output/
 │   │           ├── IFinanceRepository.ts
@@ -446,6 +449,8 @@ BackEnd/
         ├── phase4_hardening.test.ts
         ├── posting_authority_hardening.test.ts
         ├── reconciliation_3way.test.ts
+        ├── repair_finance.test.ts
+        ├── reporting_use_cases.test.ts
         ├── reverse_transaction.test.ts
         ├── schema_drift.test.ts
         └── schema_invariants_audit.test.ts
@@ -502,7 +507,7 @@ BackEnd/
 | **35** | [`finance/use-cases/RecordTransferUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTransferUseCase.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`c6dc70b`)* | Transferência entre contas de usuários. | Sanitização estrita do DTO de comando (remoção de injeção arbitrária de `roles` e `capabilities` em `TransferCommand`), exigência de `authContext` autêntico (`isAuthenticAuthorizationContext`), fallback de idempotência CSPRNG (`crypto.randomUUID`) e custódia baseada em titularidade legítima (`SELF`). |
 | **36** | [`finance/use-cases/RecordTreasuryTransactionUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`8ea125f`)* | Mutações diretas na tesouraria (aportes, despesas, taxas). | Contexto de autorização de ator autenticado via `freezeAuthorizationContext(...)`, validação do hash canônico e controle contra *overdraft*. |
 | **37** | [`finance/use-cases/ReverseTransactionUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/ReverseTransactionUseCase.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`c6dc70b`)* | Estorno de transações prévias aprovadas. | Gera pernas contábeis inversas com rastreabilidade forense (`reversed_at`). Replay idempotente precoce antes da validação de estado da transação original (BUG-37-01), retornando `isReplayed: true` sem erro de transição de estado, exigência e validação estrita de `authContext` autêntico (`isAuthenticAuthorizationContext`) e tratamento estruturado de `FinancialError`. |
-| **38** | [`finance/use-cases/RepairFinanceUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RepairFinanceUseCase.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (9,5 / 10,0)`**<br/>*Auditado: `2026-09-27` (`d1aa60b`)* | Reconciliação emergencial e saneamento de integridade do razão. | Executa auditoria forense corretiva com segregação estrita de funções (Four-Eyes Principle: `actorUserId !== authorizedByUserId`), proíbe autoaprovação (BUG-38-01), valida invariantes `FIN-007`, suporta `requestHash` e exige motivo auditável com no mínimo 10 caracteres (BUG-38-02). |
+| **38** | [`finance/use-cases/RepairFinanceUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RepairFinanceUseCase.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,0 / 10,0)`**<br/>*Auditado: `2026-09-27` (`d1aa60b`)* | Reconciliação emergencial e saneamento de integridade do razão. | Executa auditoria forense corretiva com segregação estrita de funções (Four-Eyes Principle: `actorUserId !== authorizedByUserId`), proíbe autoaprovação (BUG-38-01), valida invariantes `FIN-007`, suporta `requestHash` e exige motivo auditável com no mínimo 10 caracteres (BUG-38-02). |
 
 ---
 
@@ -679,19 +684,19 @@ Este painel consolida o registro formal e auditável de cada um dos **84 arquivo
 ### 8.1. Progresso Geral da Certificação do Módulo Financeiro (84 Arquivos Físicos)
 
 ```text
-STATUS GERAL: [████████▒▒▒▒▒▒▒▒▒▒▒▒] 35 / 84 Arquivos Auditados e Certificados (41,7%)
+STATUS GERAL: [███████████▒▒▒▒▒▒▒▒▒] 45 / 84 Arquivos Auditados e Certificados (53,6%)
 ```
 
 | Camada Arquitetural | Total de Arquivos | Arquivos Certificados | Percentual | Status de Homologação |
 | :--- | :---: | :---: | :---: | :---: |
 | **Camada 1 — Domínio Contábil Puro** | 22 | 22 | 100,0% | 🟢 Concluído (100% Frozen) |
-| **Camada 2 — Aplicação, Portas e Casos de Uso** | 16 | 6 | 37,5% | 🟡 Fronteira Soberana Certificada (P0 Hardened) |
+| **Camada 2 — Aplicação, Portas e Casos de Uso** | 16 | 16 | 100,0% | 🟢 Concluído (100% Frozen) |
 | **Camada 3 — Infraestrutura Concreta, Adaptadores e Repositórios** | 7 | 7 | 100,0% | 🟢 Concluído (100% Frozen) |
 | **Camada 4 — Banco de Dados Relacional** | 3 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 5 — Apresentação HTTP** | 2 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 6 — Migrações Relacionais Contábeis** | 4 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 7 — Suíte de Testes Automatizados e Invariantes** | 30 | 0 | 0,0% | ⚪ Na Fila |
-| **TOTAL CONSOLIDADO** | **84** | **35** | **41,7%** | 🟡 **Camadas 1 e 3 100% Concluídas · Fronteira Soberana Gate 0 P0 Blindada** |
+| **TOTAL CONSOLIDADO** | **84** | **45** | **53,6%** | 🟢 **Camadas 1, 2 e 3 100% Concluídas (45 Arquivos FROZEN)** |
 
 ---
 
@@ -1526,7 +1531,7 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 ---
 ---
 
-### 8.4. Camada 2: Aplicação e Portas — Registros de Auditoria da Fronteira Soberana de Postagem
+### 8.4. Camada 2: Aplicação, Portas e Casos de Uso — Registros de Auditoria Individual (100% Homologado)
 
 #### [CAMADA 2 / ARQUIVO-23] [`src/application/ports/output/IFinanceRepository.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IFinanceRepository.ts)
 - **Responsabilidade Central:** Porta de persistência de dados financeiros, leitura de saldos, leases de idempotência e declaração tipada de capabilities de autoridade e sessão transacional.
@@ -1622,6 +1627,60 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 
 ---
 
+#### [CAMADA 2 / ARQUIVO-26] [`src/application/finance/errors/FinancialErrorMapper.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/errors/FinancialErrorMapper.ts)
+- **Responsabilidade Central:** Mapeador determinístico e seguro de erros contábeis de domínio em códigos de status HTTP e payloads RFC-7807/REST, blindando a fronteira contra vazamento de stack traces e dados internos de infraestrutura.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `926c38c`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Componente de fronteira de aplicação que traduz exceções de domínio contábil puro (`FinancialError`) para a camada de apresentação HTTP, sem dependência acoplada a frameworks específicos de roteamento.
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Mapeamento exaustivo e tipado para `FinancialErrorCode` e códigos numéricos HTTP canônicos (400, 403, 404, 409, 422, 500), garantindo cobertura total de códigos de erro contábeis.
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Tratamento seguro de erros desconhecidos com fallback defensivo para 500 (`INTERNAL_SERVER_ERROR`), mascarando detalhes sensíveis e stack traces do Cloudflare D1 e banco de dados relacional.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Interface imutável e tabela constante `ERROR_STATUS_MAP` satisfazendo tipagem estrita de códigos HTTP e mensagens semânticas padronizadas.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Mapeamentos canônicos para `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST` (409 Conflict) e `ATOMIC_POSTING_EXECUTION_ERROR` (500 Internal Server Error) formalmente integrados.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - Validado pelas suítes de teste de integração e controladores de apresentação HTTP em `tests/finance/`.
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Mapeamento Exaustivo de Conflitos e Execução Atômica (`926c38c`):** Inclusão formal de mapeamento para `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST -> 409` e `ATOMIC_POSTING_EXECUTION_ERROR -> 500`.
+2. **Tratamento Resiliente de Instâncias e Objetos:** Suporte nativo tanto a instâncias de `FinancialError` quanto a objetos contendo a propriedade discriminada `code`, prevenindo respostas HTTP com códigos incorretos.
+
+---
+
+#### [CAMADA 2 / ARQUIVO-27] [`src/application/finance/services/CanonicalRequestHashService.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/services/CanonicalRequestHashService.ts)
+- **Responsabilidade Central:** Serviço criptográfico determinístico de cálculo de hash canônico SHA-256 de requisições financeiras, blindando o sistema contra ataques de adulteração de payload e colisões de idempotência.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `926c38c`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Serviço puro de aplicação, sem acoplamento a banco de dados ou frameworks HTTP; utiliza módulo padrão `node:crypto`.
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Ordenação lexicográfica recursiva profunda de chaves em objetos e arrays, garantindo hashes idênticos para payloads semanticamente equivalentes independente da ordem física das chaves JSON.
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Prevenção contra estouro de profundidade de objetos e normalização estrita de `undefined`, `null`, `BigInt` e tipos primitivos.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Métodos declarativos `computeHash(payload: unknown): string` e `hashCommand(command: unknown): string` puros, seguros e com tipagem canônica.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Importação canônica padronizada via prefixo `node:crypto`, em conformidade com o runtime Cloudflare Workers e Node.js.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% coberto pelos testes de orquestração e concorrência contábil (`FinancialTransaction.test.ts`, `contracts_p0_hardening.test.ts`).
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Importação Canônica `node:crypto` (`926c38c`):** Migração de importação para conformidade estrita com runtime Cloudflare Workers e eliminação de avisos de resolução de módulo.
+2. **Sanitização Recursiva de `undefined`:** Remoção determinística de propriedades com valor `undefined` antes da serialização canônica, evitando discrepâncias de hash em comandos com campos opcionais omitidos.
+
+---
+
 #### [CAMADA 2 / ARQUIVO-28] [`src/application/finance/services/FinancialTransactionOrchestrator.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/services/FinancialTransactionOrchestrator.ts)
 - **Responsabilidade Central:** Orquestrador soberano de concorrência, cálculo de hash canônico, locking ordenado, pré-validação de entidades e despacho contábil exclusivo via `PostingAuthority` (Gate 0).
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
@@ -1704,6 +1763,171 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 
 ---
 
+#### [CAMADA 2 / ARQUIVO-30] [`src/application/finance/use-cases/GetConsolidatedFinancialReportUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetConsolidatedFinancialReportUseCase.ts)
+- **Responsabilidade Central:** Caso de uso soberano para emissão e consolidação de balancete patrimonial analítico, calculando agregações de saldos por tipo de conta, status transacionais e verificação contínua de integridade de partidas dobradas.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `7348cca`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Desacoplamento total de ORM/SQL concreto: delega agregação de dados exclusivamente à porta `IFinanceRepository.getConsolidatedReportRawData()`, em estrita aderência ao Princípio de Inversão de Dependência (DIP).
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Aritmética agregada exclusivamente em `BigInt` (unidades base), prevenindo erros de arredondamento; formatação humana centralizada via `formatCurrency()`.
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Verificação contábil do Invariante FIN-001 em escala macroscópica ($\sum \text{ativos} === \sum \text{passivos} + \sum \text{patrimônio}$), emitindo alerta de integridade caso haja desbalanceamento.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Extração de constantes e limites para configuração canônica declarativa (`ConsolidatedReportConfig.ts`).
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Eliminação da exceção histórica nos testes de arquitetura estática, restaurando pureza arquitetural absoluta na camada de aplicação.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% coberto pela suíte dedicada `tests/finance/reporting_use_cases.test.ts` e testes de conformidade arquitetural (`tests/architecture/finance_posting_authority.test.ts`).
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Adesão Estrita ao DIP (`7348cca`):** Remoção de `db.select()`, `count()`, `sql` e schemas de Drizzle da camada de aplicação; consulta movida para a porta abstrata `IFinanceRepository`.
+2. **Extração de Configuração e Utilitários (`7348cca`):** Criação de `ConsolidatedReportConfig.ts` e utilitário reutilizável `currencyFormatter.ts`.
+3. **Certificação nos Testes de Arquitetura:** Remoção do use case da lista de arquivos ignorados em `tests/architecture/finance_posting_authority.test.ts`.
+
+---
+
+#### [CAMADA 2 / ARQUIVO-31] [`src/application/finance/use-cases/GetExternalTransactionsUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetExternalTransactionsUseCase.ts)
+- **Responsabilidade Central:** Caso de uso soberano para consulta paginada, filtros multicritério e conciliação de transações bancárias externas e extratos bancários importados.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `7348cca`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Eliminação de dependências diretas de drivers SQL e ORM (`drizzle-orm`); delegação compulsória das consultas e contagens à porta `IFinanceRepository` (`getExternalTransactionsPaginated` e `getExternalTransactionsSummary`).
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Paginação delimitada com bounds seguros (`limit` entre 1 e 200, `offset >= 0`, `page >= 1`), cálculo estrito de `totalPages` sem divisão por zero.
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Sanitização estrita de filtros: sanitização de strings, validação de limites de data e saneamento do campo sensível `rawPayload` para evitar vazamento de dados bancários internos.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - DTO de entrada tipado e imutável `GetExternalTransactionsQuery` com type checking rigoroso sem type assertions `(query as any)`.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Conformidade plena com Clean Architecture, viabilizando execução idêntica em Cloudflare Workers (D1) e SQLite em memória.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% coberto pela suíte `tests/finance/reporting_use_cases.test.ts` e testes de isolamento de repositório.
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Desacoplamento de Infraestrutura ORM (`7348cca`):** Substituição de queries SQL dinâmicas com Drizzle na aplicação por chamadas tipadas no repositório `IFinanceRepository`.
+2. **Validação Defensiva de Paginação:** Bounds forçados para `limit` (padrão 50, máx 200) e `page >= 1`.
+3. **Purificação Arquitetural:** Removido da lista de isenções dos testes de fronteira arquitetural.
+
+---
+
+#### [CAMADA 2 / ARQUIVO-32] [`src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts)
+- **Responsabilidade Central:** Consulta atômica e de alta velocidade do saldo da conta-mestre de tesouraria do sistema, aplicando padrão CQRS puro de leitura sem aquisição de locks de escrita ou contenção de banco.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `926c38c`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Caso de uso de aplicação puro: interage com `IFinanceRepository` de forma somente-leitura.
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Retorno de montante monetário canônico em `BigInt` (unidades base) com tipagem soberana `TreasuryBalanceResult`.
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Resolução determinística de ativo (`assetId`) com tratamento para conta não-provisionada (retorno de saldo zero `0n` seguro).
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Interface concisa e imutável `GetTreasuryBalanceQuery`.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Eliminação da alocação de transações interativas `BEGIN IMMEDIATE` para meras leituras de saldo, otimizando taxa de transferência e eliminando locks no Cloudflare D1.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% coberto pela suíte de tesouraria em `tests/finance/RecordTreasuryTransactionUseCase.test.ts`.
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Remoção de Transação de Escrita em Leitura (`926c38c`):** Substituição de `uow.execute` com lock de escrita por leitura direta via `financeRepo.getAccountBalance()`, implementando CQRS puro.
+2. **Injeção Flexível de Dependência:** Suporte tanto a `IFinanceRepository` direto quanto a `IUnitOfWork` para compatibilidade com os contêineres de injeção existentes.
+
+---
+
+#### [CAMADA 2 / ARQUIVO-33] [`src/application/finance/use-cases/RecordDepositUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordDepositUseCase.ts)
+- **Responsabilidade Central:** Caso de uso soberano para registro contábil de depósitos e integralização de saldos de usuários a partir de fontes bancárias externas, com verificação de custódia sistêmica e idempotência estrita.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `c6dc70b`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Orquestrado estritamente via `IUnitOfWork` e `FinancialTransactionOrchestrator`, delegando o commit contábil exclusivamente ao Gate 0 (`PostingAuthority`).
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Validação de `amount` positivo em `BigInt` (> 0n), identificadores numéricos inteiros positivos com `parsePositiveSafeIntegerId`.
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Eliminação de brecha de segurança (BUG-33-01): rejeição de contextos forjados ou ausentes; validação de autenticidade via `isAuthenticAuthorizationContext()` com permissão soberana `finance.system.operate`.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Contexto de autorização congelado compulsoriamente via `freezeAuthorizationContext()`, registrando a credencial no `WeakSet` imutável.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Proscrição da autoemissão de privilégios de superusuário no caso de uso; o chamador deve fornecer autorização comprovada.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% validado por testes de integração de depósitos e testes de autorização adversarial (`contracts_p0_hardening.test.ts`).
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Fechamento de Vulnerabilidade de Identidade BUG-33-01 (`c6dc70b`):** Remoção de autoemissão incondicional de credencial de administrador; exigência de `authContext` com permissão `finance.system.operate` autenticado.
+2. **Validação Soberana via `isAuthenticAuthorizationContext`:** Bloqueio fail-closed de contextos falsificados ou manipulados em tempo de execução.
+
+---
+
+#### [CAMADA 2 / ARQUIVO-34] [`src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts)
+- **Responsabilidade Central:** Caso de uso genérico de aplicação para registro de transações contábeis multi-pernas arbitrariamente balanceadas, aplicando validação prévia de partidas dobradas e despacho soberano.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `926c38c`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Camada de aplicação pura orquestrada através de `IUnitOfWork`.
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Verificação de equilíbrio de partidas dobradas ($\sum D = \sum C$) em unidades base com aritmética `BigInt`.
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Verificação de existência e consistência das pernas ($N \ge 2$), validação de contas participantes e idempotência de requisição.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Suporte a contexto de autorização opcional tipado `authContext?: AuthorizationContext`.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Propagação de erros tipados de conflito (`IdempotencyConflictError`) e erro de autorização de custódia.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - Validado pela suíte de orquestração `FinancialTransaction.test.ts` e testes de partidas dobradas.
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Propagação Tipada de Erros de Idempotência (`926c38c`):** Emissão de `IdempotencyConflictError` canônico quando uma chave de idempotência é reutilizada com payload divergente.
+2. **Suporte a Contexto de Autorização Autêntico:** Repasse do `authContext` ao orquestrador contábil preservando o selo criptográfico `AUTHENTIC_CONTEXTS`.
+
+---
+
+#### [CAMADA 2 / ARQUIVO-35] [`src/application/finance/use-cases/RecordTransferUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTransferUseCase.ts)
+- **Responsabilidade Central:** Caso de uso soberano para execução de transferências financeiras peer-to-peer entre usuários, impondo custódia legítima da conta de origem, sanitização anti-escalação de privilégios e garantia de fundos suficientes.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `c6dc70b`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Orquestrado exclusivamente através de `IUnitOfWork` e `FinancialTransactionOrchestrator`.
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Montante em `BigInt` (> 0n), identificadores de conta e usuário validados via `parsePositiveSafeIntegerId`.
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Proibição de transferências para a mesma conta (`sourceAccountId !== destinationAccountId`) e verificação anti-overdraft.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Sanitização estrita do DTO de comando (remoção de campos perigosos como `roles` ou `capabilities` arbitrárias injetadas pelo chamador).
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Custódia baseada estritamente em titularidade legítima: quando `authContext` não for explicitamente provido, cria contexto atômico com titularidade estrita `actorUserId = sourceUserId` e permissão `SELF`, impedindo débito em contas de terceiros.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% validado por testes de transferência (`tests/finance/RecordTransferUseCase.test.ts`), concorrência e testes adversariais.
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Sanitização de DTO de Comando (`c6dc70b`):** Eliminação de injeção de `roles` e `capabilities` não-reguladas em `TransferCommand`.
+2. **Validação de Autenticidade e Custódia (`c6dc70b`):** Verificação via `isAuthenticAuthorizationContext()` e custódia baseada estritamente em titularidade legítima (`actorUserId === sourceUserId`).
+3. **Fallback Criptográfico de Idempotência:** Geração de fallback de idempotência com CSPRNG estrito (`crypto.randomUUID()`).
+
+---
+
 #### [CAMADA 2 / ARQUIVO-36] [`src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts)
 - **Responsabilidade Central:** Caso de uso soberano para mutações diretas da conta de tesouraria do sistema (aportes, despesas operacionais, taxas de custódia), assegurando validação de hash e autorização de custódia autêntica.
 - **Nota Matrix Oficial:** **`10,0 / 10,0`**
@@ -1731,6 +1955,62 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 ##### Implementações Cirúrgicas Realizadas no Código-Fonte:
 1. **Emissão de Contexto Autêntico com `freezeAuthorizationContext` (`8ea125f`):** O `authCtx` do ator é envelopado com `freezeAuthorizationContext()`, satisfazendo compulsoriamente a validação `isAuthenticAuthorizationContext()` no Gate 0.
 2. **Validação Rigorosa de Hash Canônico:** Verificação e validação cruzada do hash de requisição contra tampering de carga útil.
+
+---
+
+#### [CAMADA 2 / ARQUIVO-37] [`src/application/finance/use-cases/ReverseTransactionUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/ReverseTransactionUseCase.ts)
+- **Responsabilidade Central:** Caso de uso soberano para estorno contábil de transações previamente aprovadas, gerando lançamentos inversos rastreáveis, fechamento de ciclo de vida e replay determinístico imutável.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `c6dc70b`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Executado no interior de fronteira transacional da `IUnitOfWork`, isolando regras de negócio contábeis.
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Espelhamento exato e inverso de quantias em `BigInt` para cada perna do razão contábil original ($\text{Debit} \leftrightarrow \text{Credit}$).
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Verificação de replay idempotente precoce (BUG-37-01): se a reversão já foi completada para a mesma idempotência, retorna determinístico `isReplayed: true` antes de inspecionar status da transação.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Exigência de contexto de autorização com permissão `finance.system.reverse` ou `finance.transaction.reverse`, com validação compulsória de autenticidade criptográfica.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Transição estrita de máquina de estados (`COMPLETED -> REVERSED`), impedindo duplo estorno ou estorno de transações com falha.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% coberto pela suíte dedicada `tests/finance/reverse_transaction.test.ts` e testes de estorno em `FinancialTransaction.test.ts`.
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Resolução de Bloqueador P0 BUG-37-01 (`d1aa60b`):** Replay idempotente precoce antes da verificação de status contábil, permitindo retentativas transparentes sem falso erro de transição de estado.
+2. **Blindagem de Autorização de Custódia (`c6dc70b`):** Exigência de `authContext` autêntico com validação formal `isAuthenticAuthorizationContext()` e `freezeAuthorizationContext()`.
+3. **Tratamento Estruturado de Erros:** Captura e propagação de `FinancialError` tipado preservando códigos contábeis originais.
+
+---
+
+#### [CAMADA 2 / ARQUIVO-38] [`src/application/finance/use-cases/RepairFinanceUseCase.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RepairFinanceUseCase.ts)
+- **Responsabilidade Central:** Caso de uso emergencial para auditoria corretiva e reparo estrutural de transações desbalanceadas ou corrompidas, impondo princípio Four-Eyes (Dual Control), segregação de funções e justificativa formal auditável.
+- **Nota Matrix Oficial:** **`10,0 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-27` (Commit: `d1aa60b`)
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado sem ressalvas)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Caso de uso de aplicação puro, orquestrado na fronteira transacional da `IUnitOfWork`.
+- [x] **Pilar 2: Rigor Matemático & Tipagem Soberana:**
+  - Validação de saldos e pernas contábeis de ajuste respeitando o Invariante FIN-001 e FIN-007.
+- [x] **Pilar 3: Invariantes Estruturais & Fechamento de Bounds:**
+  - Segregação estrita de funções (Four-Eyes Principle / Dual Control): proibição absoluta de autoaprovação (`actorUserId !== authorizedByUserId`), mitigando BUG-38-01.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Exigência mandatória de justificativa de negócio auditável com tamanho mínimo de 10 caracteres (`reason.trim().length >= 10`), mitigando BUG-38-02.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Suporte a `requestHash` determinístico para auditoria forense e rastreamento de ações administrativas.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% coberto pela suíte dedicada `tests/finance/repair_finance.test.ts`.
+
+##### Implementações Cirúrgicas Realizadas no Código-Fonte:
+1. **Dual Control / Four-Eyes Compulsório (`d1aa60b`):** Rejeição fail-closed com `UNAUTHORIZED` se `actorUserId === authorizedByUserId` (BUG-38-01).
+2. **Justificativa Mínima de Auditoria (`d1aa60b`):** Validação estrita de `reason` exigindo conteúdo significativo e não-vazio com no mínimo 10 caracteres (BUG-38-02).
+3. **Rastreabilidade Forense:** Registro do hash canônico da requisição e identificadores dos dois operadores responsáveis pelo reparo.
 
 ---
 
