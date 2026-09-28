@@ -30,6 +30,18 @@ import { FinancialError } from '../../domains/finance/errors/FinancialError';
 
 class DrizzleRepositoryFactory implements IRepositoryFactory {
   private _postingExecutor?: IPostingExecutor;
+  private _postingSession?: PostingSession;
+  private _postingAuthority?: PostingAuthority;
+  private _userRepo?: IUserRepository;
+  private _authTxRepo?: IAuthTransactionRepository;
+  private _authRepo?: IAuthenticationRepository;
+  private _web3Repo?: IWeb3Repository;
+  private _sessionRepo?: ISessionRepository;
+  private _civilRepo?: ICivilIdentityRepository;
+  private _ssiRepo?: ISsiRepository;
+  private _outboxRepo?: IOutboxRepository;
+  private _passwordResetRepo?: IPasswordResetRepository;
+  private _financeRepo?: IFinanceRepository;
 
   constructor(
     private readonly tx: FinanceTransaction,
@@ -37,60 +49,96 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
   ) {}
 
   getUserRepository(): IUserRepository {
-    return new DrizzleUserRepositoryAdapter((this.tx || this.db) as any);
+    if (!this._userRepo) {
+      this._userRepo = new DrizzleUserRepositoryAdapter((this.tx || this.db) as any);
+    }
+    return this._userRepo;
   }
 
   getAuthTransactionRepository(): IAuthTransactionRepository {
-    return new DrizzleAuthTransactionRepository((this.tx || this.db) as any);
+    if (!this._authTxRepo) {
+      this._authTxRepo = new DrizzleAuthTransactionRepository((this.tx || this.db) as any);
+    }
+    return this._authTxRepo;
   }
 
   getAuthenticationRepository(): IAuthenticationRepository {
-    return new DrizzleAuthenticationRepositoryAdapter((this.tx || this.db) as any);
+    if (!this._authRepo) {
+      this._authRepo = new DrizzleAuthenticationRepositoryAdapter((this.tx || this.db) as any);
+    }
+    return this._authRepo;
   }
 
   getWeb3Repository(): IWeb3Repository {
-    return new DrizzleWeb3RepositoryAdapter((this.tx || this.db) as any);
+    if (!this._web3Repo) {
+      this._web3Repo = new DrizzleWeb3RepositoryAdapter((this.tx || this.db) as any);
+    }
+    return this._web3Repo;
   }
 
   getSessionRepository(): ISessionRepository {
-    return new DrizzleSessionRepository((this.tx || this.db) as any);
+    if (!this._sessionRepo) {
+      this._sessionRepo = new DrizzleSessionRepository((this.tx || this.db) as any);
+    }
+    return this._sessionRepo;
   }
 
   getCivilIdentityRepository(): ICivilIdentityRepository {
-    return new DrizzleCivilIdentityRepositoryAdapter((this.tx || this.db) as any);
+    if (!this._civilRepo) {
+      this._civilRepo = new DrizzleCivilIdentityRepositoryAdapter((this.tx || this.db) as any);
+    }
+    return this._civilRepo;
   }
 
   getSsiRepository(): ISsiRepository {
-    return new DrizzleSsiRepository((this.tx || this.db) as any);
+    if (!this._ssiRepo) {
+      this._ssiRepo = new DrizzleSsiRepository((this.tx || this.db) as any);
+    }
+    return this._ssiRepo;
   }
 
   getOutboxRepository(): IOutboxRepository {
-    return new DrizzleOutboxRepository((this.tx || this.db) as any);
+    if (!this._outboxRepo) {
+      this._outboxRepo = new DrizzleOutboxRepository((this.tx || this.db) as any);
+    }
+    return this._outboxRepo;
   }
 
   getPasswordResetRepository(): IPasswordResetRepository {
-    return new DrizzlePasswordResetRepository((this.tx || this.db) as any);
+    if (!this._passwordResetRepo) {
+      this._passwordResetRepo = new DrizzlePasswordResetRepository((this.tx || this.db) as any);
+    }
+    return this._passwordResetRepo;
   }
 
   getFinanceRepository(): IFinanceRepository {
-    return new DrizzleFinanceRepository((this.tx || this.db) as any);
+    if (!this._financeRepo) {
+      this._financeRepo = new DrizzleFinanceRepository((this.tx || this.db) as any);
+    }
+    return this._financeRepo;
   }
 
   getPostingSession(): PostingSession {
-    const isD1 = isD1Database(this.db || this.tx);
-    const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
-    const boundaryToken =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID().replace(/-/g, '').substring(0, 12)
-        : Date.now().toString(36);
-    const boundaryId = `uow_boundary_${Date.now()}_${boundaryToken}`;
-    const physicalDb = (this.tx || this.db) as object;
-    return new PostingSession(physicalDb, mode, boundaryId);
+    if (!this._postingSession) {
+      const isD1 = isD1Database(this.db || this.tx);
+      const mode = isD1 ? 'd1-batch' : 'sqlite-transaction';
+      const boundaryToken =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID().replace(/-/g, '').substring(0, 12)
+          : Date.now().toString(36);
+      const boundaryId = `uow_boundary_${Date.now()}_${boundaryToken}`;
+      const physicalDb = (this.tx || this.db) as object;
+      this._postingSession = new PostingSession(physicalDb, mode, boundaryId);
+    }
+    return this._postingSession;
   }
 
   getPostingAuthority(): PostingAuthority {
-    const physicalDb = (this.tx || this.db) as object;
-    return new PostingAuthority(new D1AtomicPostingExecutor(physicalDb));
+    if (!this._postingAuthority) {
+      const physicalDb = (this.tx || this.db) as object;
+      this._postingAuthority = new PostingAuthority(new D1AtomicPostingExecutor(physicalDb));
+    }
+    return this._postingAuthority;
   }
 
   getPostingExecutor(): IPostingExecutor {
