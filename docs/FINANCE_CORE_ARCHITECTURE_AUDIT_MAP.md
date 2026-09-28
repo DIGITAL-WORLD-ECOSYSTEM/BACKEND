@@ -1,7 +1,7 @@
 # Finance Core — Mapeamento Arquitetural, Diagramas & Checklist Unificado de Auditoria
 
 > **Documento Oficial de Engenharia & Auditoria de Fronteira (Gate 0 / P0 Hardened)**  
-> **Versão:** 3.5.0 (Certificação Plena das Camadas 1, 2, 3, 4 e 5: Domínio Contábil Puro, Casos de Uso de Aplicação, Infraestrutura Concreta, Banco de Dados Relacional D1 / SQLite e Apresentação HTTP Hono)  
+> **Versão:** 3.6.0 (Certificação Plena das Camadas 1, 2, 3, 4, 5 e 6: Domínio Contábil Puro, Casos de Uso de Aplicação, Infraestrutura Concreta, Banco de Dados Relacional D1 / SQLite, Apresentação HTTP Hono e Migrações Relacionais Contábeis)  
 > **Ambiente de Execução:** Cloudflare Workers (D1 SQLite) + Drizzle ORM + Hono Framework  
 > **Padrão Arquitetural:** Clean Architecture + Domain-Driven Design (DDD) + Append-Only Double-Entry Ledger com Balanços Materializados Síncronos (State-Based OCC) + Transactional Outbox Pattern  
 > **Aritmética & Armazenamento:** Precisão Arbitrária de 256 bits (`Money256` / `BigInt` em Memória V8) + Persistência em Texto Canônico (`TEXT`) no Cloudflare D1 SQLite
@@ -550,10 +550,10 @@ BackEnd/
 
 | # | Arquivo | Responsabilidade Arquitetural | Invariante / Garantia de Segurança |
 | :---: | :--- | :--- | :--- |
-| **51** | [`0009_finance_schema_alignment.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0009_finance_schema_alignment.sql) | Alinhamento estrutural inicial das tabelas contábeis. | Criação das tabelas do livro-razão e saldos materializados. |
-| **52** | [`0010_finance_fixes_and_rates_alignment.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0010_finance_fixes_and_rates_alignment.sql) | Ajuste fino de tipos, índices e precisão de taxas financeiras. | Índices compostos de concorrência e busca rápida de transações. |
-| **53** | [`0011_treasury_singleton_and_forensic_audit.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0011_treasury_singleton_and_forensic_audit.sql) | Garantia de singleton de tesouraria e triggers forenses. | Impede criação de uma segunda conta de tesouraria no sistema. |
-| **54** | [`0012_finance_p0_hardening.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0012_finance_p0_hardening.sql) | Endurecimento P0: ordinais contíguos e tabela `_sql_assertions`. | Unique constraint em `(transaction_id, entry_ordinal)` e tabela de guarda `_sql_assertions`. |
+| **51** | [`0009_finance_schema_alignment.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0009_finance_schema_alignment.sql)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,00 / 10,0)`**<br/>*Auditado: `2026-09-28`* | Alinhamento estrutural inicial das tabelas contábeis. | Classificação contábil determinística (`account_class`), singletons parciais de contas operacionais/taxas, proteção anti-reversão múltipla e staging `fiat_external_transactions` para o modelo Ingestion-First. |
+| **52** | [`0010_finance_fixes_and_rates_alignment.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0010_finance_fixes_and_rates_alignment.sql)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,00 / 10,0)`**<br/>*Auditado: `2026-09-28`* | Ajuste fino de tipos, índices e precisão de taxas financeiras. | Erradicação de aritmética de ponto flutuante (`REAL`/`FLOAT`), adoção canônica de `rate_numerator` e `rate_denominator` em `TEXT` com validação léxica uint256 e state machine temporal em conversões. |
+| **53** | [`0011_treasury_singleton_and_forensic_audit.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0011_treasury_singleton_and_forensic_audit.sql)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,00 / 10,0)`**<br/>*Auditado: `2026-09-28`* | Garantia de singleton de tesouraria e triggers forenses. | Deduplicação forense não-destrutiva de tesouraria, criação do índice de unicidade físico `uq_treasury_active_singleton` e colunas de linhagem forense `actor_user_id` e `authorized_by_user_id`. |
+| **54** | [`0012_finance_p0_hardening.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0012_finance_p0_hardening.sql)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,00 / 10,0)`**<br/>*Auditado: `2026-09-28`* | Endurecimento P0: ordinais contíguos, triggers append-only e tabela `_sql_assertions`. | Ordinais contíguos $1 \dots N$ em pernas contábeis (`uq_ledger_entry_ordinal`), tabela singleton `_sql_assertions` para OCC atômico D1 e triggers nativos SQLite (`trg_ledger_entries_no_update` / `no_delete`) impondo append-only físico. |
 
 ---
 
@@ -686,7 +686,7 @@ Este painel consolida o registro formal e auditável de cada um dos **84 arquivo
 ### 8.1. Progresso Geral da Certificação do Módulo Financeiro (84 Arquivos Físicos)
 
 ```text
-STATUS GERAL: [█████████████▒▒▒▒▒▒▒] 50 / 84 Arquivos Auditados e Certificados (59,5%)
+STATUS GERAL: [█████████████▒▒▒▒▒▒▒] 54 / 84 Arquivos Auditados e Certificados (64,3%)
 ```
 
 | Camada Arquitetural | Total de Arquivos | Arquivos Certificados | Percentual | Status de Homologação |
@@ -696,9 +696,9 @@ STATUS GERAL: [█████████████▒▒▒▒▒▒▒] 50 
 | **Camada 3 — Infraestrutura Concreta, Adaptadores e Repositórios** | 7 | 7 | 100,0% | 🟢 Concluído (100% Frozen) |
 | **Camada 4 — Banco de Dados Relacional** | 3 | 3 | 100,0% | 🟢 FROZEN (com 1 Hardening P2 e reconciliações documentais) |
 | **Camada 5 — Apresentação HTTP** | 2 | 2 | 100,0% | 🟢 FROZEN (com Hardening P2) |
-| **Camada 6 — Migrações Relacionais Contábeis** | 4 | 0 | 0,0% | ⚪ Na Fila |
+| **Camada 6 — Migrações Relacionais Contábeis** | 4 | 4 | 100,0% | 🟢 Concluído (100% Frozen) |
 | **Camada 7 — Suíte de Testes Automatizados e Invariantes** | 30 | 0 | 0,0% | ⚪ Na Fila |
-| **TOTAL CONSOLIDADO** | **84** | **50** | **59,5%** | 🟢 **Camadas 1, 2, 3, 4 e 5 Concluídas (50 Arquivos FROZEN)** |
+| **TOTAL CONSOLIDADO** | **84** | **54** | **64,3%** | 🟢 **Camadas 1, 2, 3, 4, 5 e 6 Concluídas (54 Arquivos FROZEN)** |
 
 ---
 
@@ -2416,7 +2416,133 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 
 ---
 
-### 8.8. Prova Matemática e Arquitetural Formal de Fechamento da Fronteira Soberana (Gate 0 / P0)
+### 8.8. Camada 6: Migrações Relacionais Contábeis — Registros de Auditoria Individual (100% Homologado)
+
+#### [CAMADA 6 / ARQUIVO-51] [`migrations/0009_finance_schema_alignment.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0009_finance_schema_alignment.sql)
+- **Responsabilidade Central:** Migração SQL DDL/DML de alinhamento estrutural das tabelas contábeis, retro-alimentando `account_class` conforme a equação patrimonial estrita, criando índices parciais de unicidade para contas operacionais e de taxas, e provisionando a tabela de staging `fiat_external_transactions` para o modelo Ingestion-First.
+- **Nota Matrix Oficial:** **`10,00 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-28`
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Conforme)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Migração não-destrutiva que preserva chaves estrangeiras físicas.
+  - Alinhamento da tabela de staging `fiat_external_transactions` com isolamento completo do razão.
+- [x] **Pilar 2: Concorrência, Transacionalidade & Atomicidade:**
+  - Criação de índices parciais de unicidade: `uq_operating_active_singleton`, `uq_fees_active_singleton` e `uq_user_available_singleton`.
+  - Proteção anti-reversão concorrente: `uq_financial_tx_active_reversal` garantindo no máximo uma reversão ativa por transação.
+- [x] **Pilar 3: Tipagem Estrita, Imutabilidade & Domain Invariants:**
+  - Classificação estrita de classes contábeis: `UPDATE financial_accounts SET account_class = 'asset'` para `treasury`/`operating` e `'revenue'` para `fees`.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Constraints físicas em `fiat_external_transactions`: `ck_fiat_external_tx_direction`, `ck_fiat_external_tx_reconciliation_status` e `ck_fiat_external_tx_status`.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Erradicação de índices redundantes com `DROP INDEX IF EXISTS uq_financial_tx_single_reversal` e substituição pelo índice parcial com predicado de status ativo.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% auditado e aprovado por [`tests/migrations/migration_integrity.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/migrations/migration_integrity.test.ts).
+
+---
+
+#### [CAMADA 6 / ARQUIVO-52] [`migrations/0010_finance_fixes_and_rates_alignment.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0010_finance_fixes_and_rates_alignment.sql)
+- **Responsabilidade Central:** Migração SQL DDL de alinhamento canônico e fechamento definitivo de câmbio (FX), erradicando colunas legadas `REAL`/`FLOAT` e recriando `exchange_rates` e `asset_conversions` com frações racionais exatas (`rate_numerator` e `rate_denominator` em `TEXT`) com validações léxicas uint256 e state machine temporal.
+- **Nota Matrix Oficial:** **`10,00 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-28`
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Conforme)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Erradicação definitiva de representações IEEE-754 flutuantes (`rate` em REAL/FLOAT) no schema relacional físico.
+- [x] **Pilar 2: Concorrência, Transacionalidade & Atomicidade:**
+  - Suporte a OCC com coluna `version integer DEFAULT 1 NOT NULL` e constraint `CHECK(version > 0)` em `asset_conversions`.
+  - Unicidade estrita vinculando uma conversão a uma única transação: `uq_asset_conversions_transaction`.
+- [x] **Pilar 3: Tipagem Estrita, Imutabilidade & Domain Invariants:**
+  - Validações léxicas uint256 via constraints `GLOB '[0-9]*' AND NOT GLOB '0[0-9]*' AND length > 0 AND length <= 78` em numeradores, denominadores, quantias e taxas.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Enforcement físico de integridade temporal: `ck_asset_conversions_completed_temporal` (`completed_at >= created_at`) e correspondência de estado `ck_asset_conversions_completed_state`.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Procedimento canônico de migração de tabela SQLite: criação de tabela temporária `__new_*`, cópia segura, drop da legada e rename atômico.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% auditado e aprovado por [`tests/finance/schema_drift.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/schema_drift.test.ts) (4/4 asserções de schema drift físico).
+
+---
+
+#### [CAMADA 6 / ARQUIVO-53] [`migrations/0011_treasury_singleton_and_forensic_audit.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0011_treasury_singleton_and_forensic_audit.sql)
+- **Responsabilidade Central:** Migração SQL de deduplicação forense de contas de tesouraria, criação do índice de unicidade físico `uq_treasury_active_singleton` e inclusão de colunas de linhagem forense de autorização em transações contábeis.
+- **Nota Matrix Oficial:** **`10,00 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-28`
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Conforme)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Remediação não-destrutiva: duplicatas de tesouraria são desativadas de forma auditável (`status = 'inactive'`, `name = name || ' [MIGRATED_DUPLICATE_0011]'`) sem perda de histórico contábil.
+- [x] **Pilar 2: Concorrência, Transacionalidade & Atomicidade:**
+  - Restauração do singleton físico de tesouraria:
+    ```sql
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_treasury_active_singleton
+    ON financial_accounts (account_type) WHERE account_type = 'treasury' AND status = 'active';
+    ```
+    Torna impossível a coexistência de duas contas ativas de tesouraria no banco.
+- [x] **Pilar 3: Tipagem Estrita, Imutabilidade & Domain Invariants:**
+  - Invariante P0 fechada: garantia de tesouraria única em nível de engine SQLite.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Adição de colunas forenses com chaves estrangeiras restritivas: `actor_user_id` e `authorized_by_user_id` em `financial_transactions`.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - Resolução definitiva da divergência de singleton identificada após a migration 0009.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% auditado e aprovado por [`tests/migrations/migration_integrity.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/migrations/migration_integrity.test.ts).
+
+---
+
+#### [CAMADA 6 / ARQUIVO-54] [`migrations/0012_finance_p0_hardening.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0012_finance_p0_hardening.sql)
+- **Responsabilidade Central:** Migração SQL de endurecimento P0 do subsistema financeiro: ordinais contíguos estruturais nas pernas contábeis, criação da tabela singleton de asserções físicas `_sql_assertions`, tabela de rotas de contas do sistema e **triggers nativos SQLite impondo imutabilidade append-only no livro-razão contábil**.
+- **Nota Matrix Oficial:** **`10,00 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-28`
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Conforme)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Imposição da imutabilidade física no nível do motor do banco de dados (SQLite Engine).
+- [x] **Pilar 2: Concorrência, Transacionalidade & Atomicidade:**
+  - **Tabela de Asserções Físicas `_sql_assertions`:**
+    ```sql
+    CREATE TABLE IF NOT EXISTS _sql_assertions (
+      id integer PRIMARY KEY CHECK (id = 1),
+      guard integer NOT NULL CHECK (guard = 1)
+    );
+    ```
+    Base física do OCC: se `changes() = 0`, a tentativa de gravar `guard = 0` dispara violação de CHECK constraint e aborta atomicamente o batch D1 com rollback.
+- [x] **Pilar 3: Tipagem Estrita, Imutabilidade & Domain Invariants:**
+  - **Ordinais Estruturais Contíguos:** `entry_ordinal integer` com backfill determinístico $1 \dots N$, índice de unicidade `uq_ledger_entry_ordinal (transaction_id, entry_ordinal)` e trigger `trg_ledger_entry_ordinal_not_null`.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Provisionamento da tabela `system_account_routes` com restrições e foreign keys para mapeamento determinístico de contas por provedor fiat.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - **Triggers Físicos de Append-Only:**
+    ```sql
+    CREATE TRIGGER IF NOT EXISTS trg_ledger_entries_no_update
+    BEFORE UPDATE ON financial_ledger_entries
+    BEGIN
+      SELECT RAISE(ABORT, 'LEDGER_IS_APPEND_ONLY: Atualizações em lançamentos contábeis são proibidas.');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_ledger_entries_no_delete
+    BEFORE DELETE ON financial_ledger_entries
+    BEGIN
+      SELECT RAISE(ABORT, 'LEDGER_IS_APPEND_ONLY: Exclusões de lançamentos contábeis são proibidas.');
+    END;
+    ```
+    Garante que nenhuma mutação direta (via D1 console, script externo ou bug da aplicação) altere ou exclua lançamentos históricos.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% auditado e aprovado por [`tests/migrations/migration_integrity.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/migrations/migration_integrity.test.ts).
+
+##### Nota de Arquivo Complementar do Lote:
+- [`migrations/0013_idempotency_fencing_and_snapshots.sql`](file:///home/sandro/Área de trabalho/BackEnd/migrations/0013_idempotency_fencing_and_snapshots.sql): Adiciona suporte a distributed fencing tokens (`lease_owner`, `lease_generation`) e snapshots de resposta (`response_status`, `response_payload`) na tabela `idempotency_keys`, homologado conjuntamente pela suíte de migrações.
+
+---
+
+### 8.9. Prova Matemática e Arquitetural Formal de Fechamento da Fronteira Soberana (Gate 0 / P0)
 
 #### 1. Topologia Formal do Pipeline Contábil (Unicidade de Fluxo)
 A arquitetura do subsistema financeiro impõe a seguinte cadeia estrita de transformação e autorização:
