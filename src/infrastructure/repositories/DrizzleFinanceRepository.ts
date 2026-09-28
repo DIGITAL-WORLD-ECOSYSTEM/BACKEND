@@ -820,10 +820,10 @@ export class DrizzleFinanceRepository implements IFinanceRepository {
     try {
       const limit = options?.limit ? Math.min(Math.max(options.limit, 1), 100) : 100;
       const conditions = [];
-      if (userId) {
+      if (userId !== undefined && userId !== null) {
         conditions.push(eq(financialTransactions.userId, userId));
       }
-      if (options?.cursor) {
+      if (options?.cursor !== undefined && options?.cursor !== null) {
         conditions.push(lt(financialTransactions.id, options.cursor));
       }
 
