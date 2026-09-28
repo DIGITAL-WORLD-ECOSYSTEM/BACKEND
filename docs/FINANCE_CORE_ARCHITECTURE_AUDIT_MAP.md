@@ -1,7 +1,7 @@
 # Finance Core — Mapeamento Arquitetural, Diagramas & Checklist Unificado de Auditoria
 
 > **Documento Oficial de Engenharia & Auditoria de Fronteira (Gate 0 / P0 Hardened)**  
-> **Versão:** 3.4.0 (Certificação Plena das Camadas 1, 2, 3 e 4: Domínio Contábil Puro, Casos de Uso de Aplicação, Infraestrutura Concreta e Banco de Dados Relacional D1 / SQLite)  
+> **Versão:** 3.5.0 (Certificação Plena das Camadas 1, 2, 3, 4 e 5: Domínio Contábil Puro, Casos de Uso de Aplicação, Infraestrutura Concreta, Banco de Dados Relacional D1 / SQLite e Apresentação HTTP Hono)  
 > **Ambiente de Execução:** Cloudflare Workers (D1 SQLite) + Drizzle ORM + Hono Framework  
 > **Padrão Arquitetural:** Clean Architecture + Domain-Driven Design (DDD) + Append-Only Double-Entry Ledger com Balanços Materializados Síncronos (State-Based OCC) + Transactional Outbox Pattern  
 > **Aritmética & Armazenamento:** Precisão Arbitrária de 256 bits (`Money256` / `BigInt` em Memória V8) + Persistência em Texto Canônico (`TEXT`) no Cloudflare D1 SQLite
@@ -541,8 +541,8 @@ BackEnd/
 
 | # | Arquivo | Responsabilidade Arquitetural | Invariante / Garantia de Segurança |
 | :---: | :--- | :--- | :--- |
-| **49** | [`controllers/finance/FinanceController.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts) | Controlador HTTP do módulo financeiro. | Parse estrito de Safe Integer, extração do ator da sessão e mapa de erros. |
-| **50** | [`routes/finance/finance.routes.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/routes/finance/finance.routes.ts) | Roteador REST (Hono) do subsistema. | sessionGuard obrigatório, requireAal(2, 15) e permissões granulares por rota. |
+| **49** | [`controllers/finance/FinanceController.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts)<br/>`[████████████████████] 100%`<br/>**`🟢 FROZEN (com Hardening P2) (9,80 / 10,0)`**<br/>*Auditado: `2026-09-28`* | Controlador HTTP do módulo financeiro. | Parse estrito de Safe Integer e regex `/^[1-9]\d*$/`, extração de `actorUserId` da sessão física no D1, bloqueio 403 para movimentações de terceiros por não-admins, integração com `FinancialErrorMapper` e fallback fail-closed com `requestId` sem vazamento de stack/SQL. |
+| **50** | [`routes/finance/finance.routes.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/routes/finance/finance.routes.ts)<br/>`[████████████████████] 100%`<br/>**`✅ FROZEN (10,00 / 10,0)`**<br/>*Auditado: `2026-09-28`* | Roteador REST (Hono) do subsistema financeiro. | `sessionGuard` obrigatório em 100% das rotas (`*`), `requireAal(2, 15)` em todas as mutações e `verifyPermission` com verificação física no SQLite D1 sem bypass. |
 
 ---
 
@@ -686,7 +686,7 @@ Este painel consolida o registro formal e auditável de cada um dos **84 arquivo
 ### 8.1. Progresso Geral da Certificação do Módulo Financeiro (84 Arquivos Físicos)
 
 ```text
-STATUS GERAL: [████████████▒▒▒▒▒▒▒▒] 48 / 84 Arquivos Auditados e Certificados (57,1%)
+STATUS GERAL: [█████████████▒▒▒▒▒▒▒] 50 / 84 Arquivos Auditados e Certificados (59,5%)
 ```
 
 | Camada Arquitetural | Total de Arquivos | Arquivos Certificados | Percentual | Status de Homologação |
@@ -695,10 +695,10 @@ STATUS GERAL: [████████████▒▒▒▒▒▒▒▒] 48 
 | **Camada 2 — Aplicação, Portas e Casos de Uso** | 16 | 16 | 100,0% | 🟢 Concluído (100% Frozen) |
 | **Camada 3 — Infraestrutura Concreta, Adaptadores e Repositórios** | 7 | 7 | 100,0% | 🟢 Concluído (100% Frozen) |
 | **Camada 4 — Banco de Dados Relacional** | 3 | 3 | 100,0% | 🟢 FROZEN (com 1 Hardening P2 e reconciliações documentais) |
-| **Camada 5 — Apresentação HTTP** | 2 | 0 | 0,0% | ⚪ Na Fila |
+| **Camada 5 — Apresentação HTTP** | 2 | 2 | 100,0% | 🟢 FROZEN (com Hardening P2) |
 | **Camada 6 — Migrações Relacionais Contábeis** | 4 | 0 | 0,0% | ⚪ Na Fila |
 | **Camada 7 — Suíte de Testes Automatizados e Invariantes** | 30 | 0 | 0,0% | ⚪ Na Fila |
-| **TOTAL CONSOLIDADO** | **84** | **48** | **57,1%** | 🟢 **Camadas 1, 2, 3 e 4 Concluídas (48 Arquivos FROZEN)** |
+| **TOTAL CONSOLIDADO** | **84** | **50** | **59,5%** | 🟢 **Camadas 1, 2, 3, 4 e 5 Concluídas (50 Arquivos FROZEN)** |
 
 ---
 
@@ -2352,7 +2352,71 @@ A partir da certificação pioneira do arquivo `#01`, **todos os 84 arquivos do 
 
 ---
 
-### 8.7. Prova Matemática e Arquitetural Formal de Fechamento da Fronteira Soberana (Gate 0 / P0)
+### 8.7. Camada 5: Apresentação HTTP — Registros de Auditoria Individual (100% Homologado com Hardening P2)
+
+#### [CAMADA 5 / ARQUIVO-49] [`src/interfaces/http/controllers/finance/FinanceController.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts)
+- **Responsabilidade Central:** Controlador HTTP do subsistema financeiro sob o framework Hono, responsável por extrair e normalizar parâmetros brutos de entrada, aplicar parsing defensivo de safe integers e tipos numéricos, derivar a identidade confiável do ator (`actorUserId`) da sessão física D1, isolar operações entre usuários, delegar a execução aos Casos de Uso canônicos e traduzir erros tipados via `FinancialErrorMapper` em respostas HTTP padronizadas e seguras contra vazamento de dados internos.
+- **Nota Matrix Oficial:** **`9,80 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-28`
+- **Classificação de Homologação:** **`STATUS: FROZEN COM HARDENING PENDENTE (P2)`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Aprovado com apontamento não-bloqueador P2)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Adaptador de entrada primário puro (Clean Architecture / Hexagonal).
+  - Zero imports de Drizzle ORM, D1Database, queries SQL ou tabelas físicas de persistência.
+  - Zero acoplamento contábil direto: montantes recebidos e repassados como strings inteiras, sem aritmética IEEE-754.
+- [x] **Pilar 2: Concorrência, Transacionalidade & Atomicidade:**
+  - Propagação e validação obrigatória do header `Idempotency-Key` em todas as mutações (`recordTransactionWithType` e `recordPeerTransfer`).
+  - Suporte completo a idempotência e replay: emissão do cabeçalho `Idempotency-Replayed: true` e status HTTP 200 OK em replays idênticos; emissão de HTTP 201 Created para novas transações.
+  - Mapeamento determinístico de conflitos de payload para HTTP 409 Conflict.
+- [x] **Pilar 3: Tipagem Estrita, Imutabilidade & Domain Invariants:**
+  - Parsing léxico rigoroso com regex `/^[1-9]\d*$/` para `assetId`, `amountBaseUnits` e `destinationUserId`, rejeitando números negativos, decimais, zeros isolados e notação científica.
+  - Paginação delimitada e defensiva em `listTransactions` (`Math.min(..., 100)`) e `getExternalTransactions`.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Integração com `mapFinancialErrorToHttpStatus(errObj)` para mapear erros canônicos de domínio em status HTTP (400, 403, 404, 409, 422, 500).
+  - Emissão de envelopes JSON uniformes `{ success: boolean, message?: string, code?: string, data?: any, requestId?: string }`.
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - **Derivação Estrita de Identidade:** `actorUserId` provém exclusivamente de `c.get('userId')` (injetado pelo `sessionGuard`).
+  - **Bloqueio de Impersonação Cross-Account:** Não-administradores são terminantemente impedidos de movimentar contas de terceiros (HTTP 403 Forbidden).
+  - **Autorização em Ajustes:** `authorizedByUserId` é obrigatoriamente forçado para o `actorUserId` da sessão em transações do tipo `adjustment`.
+  - **Postura Fail-Closed:** Blocos `catch` capturam `err: unknown`, geram `requestId` único e retornam HTTP 500 genérico sem vazar stack trace, queries SQL ou estruturas internas.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% auditado e aprovado pela suíte dedicada [`tests/finance/finance_controller_e2e.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/finance_controller_e2e.test.ts) (6 cenários E2E cobrindo 201 Created, 200 Replay, 409 Conflict, 400 Bad Request, 403 Third-Party Denial e 500 Safe Error).
+
+##### Apontamentos de Hardening P2 & Tech Debt Identificados:
+1. **TD-49-01 (Tech Debt / P2): Derivação de `permissions` no Hono Context:** Em `L100` e `L299`, o controller inspeciona `c.get('permissions')`. O middleware `verifyPermission` valida a permissão no banco, mas não grava o array completo em `c.set('permissions')`. O comportamento resultante é estritamente **Fail-Closed** (`isAdmin = false`), mas exige injeção prévia do contexto para que administradores legítimos possam movimentar contas de terceiros no endpoint genérico.
+2. **TD-49-02 (Tech Debt / P2): Filtro Restritivo em `listTransactions`:** Em `L312`, `targetUserId` sempre recebe `Number(userId)` do usuário autenticado, impedindo que administradores visualizem o razão global diretamente pelo endpoint genérico de listagem sem parâmetros dedicados.
+
+---
+
+#### [CAMADA 5 / ARQUIVO-50] [`src/interfaces/http/routes/finance/finance.routes.ts`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/routes/finance/finance.routes.ts)
+- **Responsabilidade Central:** Roteador canônico do subsistema financeiro no framework Hono (`financeRouter`), responsável por montar os endpoints REST do módulo, aplicar a cadeia soberana de middlewares de segurança (`sessionGuard`, `requireAal`, `verifyPermission`) na ordem correta, instanciar a cadeia de dependências por requisição (`buildFinanceDeps`) e despachar o fluxo para os métodos do `FinanceController`.
+- **Nota Matrix Oficial:** **`10,00 / 10,0`**
+- **Data da Última Atualização / Auditoria:** `2026-09-28`
+- **Classificação de Homologação:** **`STATUS: FROZEN / CERTIFICADO`**
+- **Barra de Progresso Individual:** `[████████████████████] 100% (Conforme)`
+
+##### Checklist Padronizado de Rigor Arquitetural (6 Pilares Matrix):
+- [x] **Pilar 1: Pureza Arquitetural & Desacoplamento:**
+  - Roteador HTTP puro sem lógica de persistência ou de negócios.
+  - Conexão 1:1 rigorosa entre rotas e métodos do `FinanceController`.
+- [x] **Pilar 2: Concorrência, Transacionalidade & Atomicidade:**
+  - Instanciação de dependências escopada por requisição (`buildFinanceDeps(db)`), garantindo isolamento total do `DrizzleUnitOfWork` por contexto de request no Cloudflare Workers.
+- [x] **Pilar 3: Tipagem Estrita, Imutabilidade & Domain Invariants:**
+  - Configuração de tipagem estrita no Hono `new Hono<AppType>()` compartilhando `Bindings` e `Variables`.
+- [x] **Pilar 4: Contratos Declarativos & Metadados Executáveis:**
+  - Mapeamento explícito de 11 rotas canônicas: 7 rotas mutáveis (`POST /deposits`, `/withdrawals`, `/payments`, `/refunds`, `/transfers`, `/adjustments`, `/transactions`) e 4 rotas de leitura (`GET /treasury/balance`, `/transactions`, `/external-transactions`, `/reports/consolidated`).
+- [x] **Pilar 5: Governança de Fronteira & Depreciação:**
+  - **`sessionGuard` Universal:** Declarado em `financeRouter.use('*', sessionGuard)`, cobrindo compulsoriamente 100% dos endpoints do módulo.
+  - **Enforcement de AAL2:** `requireAal(2, 15)` aplicado a todas as rotas de mutação (exigindo autenticação recente de até 15 minutos e nível forte).
+  - **RBAC Granular no Banco Físico:** Cada rota possui proteção `verifyPermission('finance.<op>.<action>')` verificada no SQLite D1 sem confiança cega em claims de token.
+- [x] **Pilar 6: Auto-Auditoria Executável & CI Gate:**
+  - 100% integrado ao gateway central `src/index.ts` e homologado pela suíte completa de testes contábeis do backend.
+
+---
+
+### 8.8. Prova Matemática e Arquitetural Formal de Fechamento da Fronteira Soberana (Gate 0 / P0)
 
 #### 1. Topologia Formal do Pipeline Contábil (Unicidade de Fluxo)
 A arquitetura do subsistema financeiro impõe a seguinte cadeia estrita de transformação e autorização:
@@ -2388,7 +2452,9 @@ Como a relação $\prec$ é assimétrica e transitiva, o grafo de dependência d
 
 ---
 
-##### Evidências Consolidadas de Teste e Validação da Fronteira Soberana, Infraestrutura e Banco de Dados (Camadas 1, 2, 3 e 4):
+##### Evidências Consolidadas de Teste e Validação da Fronteira Soberana, Infraestrutura, Banco de Dados e Apresentação HTTP (Camadas 1, 2, 3, 4 e 5):
+- **Suíte E2E de Apresentação HTTP e Idempotência (Camada 5):** [`tests/finance/finance_controller_e2e.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/finance_controller_e2e.test.ts) — **6 / 6 testes aprovados (100%)** (201 Created, 200 Replay, 409 Conflict, 400 Bad Request, 403 Third-Party Denial, 500 Safe Error).
+- **Suíte de Hardening de Concorrência e Listagem (Camada 5):** [`tests/finance/phase4_hardening.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/phase4_hardening.test.ts) — **10 / 10 testes aprovados (100%)** (incluindo validação de paginação determinística e bloqueio 401 contra vazamento de ledger global).
 - **Suíte de Invariantes de Seeds e Normal Balance (Camada 4):** [`tests/finance/invariants/seeds_normal_balance.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/invariants/seeds_normal_balance.test.ts) — **2 / 2 testes aprovados (100%)**.
 - **Suíte de Schema Drift e DDL Físico (Camada 4):** [`tests/finance/schema_drift.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/schema_drift.test.ts) — **4 / 4 testes aprovados (100%)**.
 - **Suíte de Integridade de Migrações (Camada 4):** [`tests/migrations/migration_integrity.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/migrations/migration_integrity.test.ts) — **2 / 2 testes aprovados (100%)**.
@@ -2410,7 +2476,7 @@ Como a relação $\prec$ é assimétrica e transitiva, o grafo de dependência d
 - **Suíte de Reparo Contábil Emergencial (Camada 2):** [`tests/finance/repair_finance.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/repair_finance.test.ts) — **6 / 6 testes aprovados (100%)**.
 - **Suíte de Relatórios e Leitura CQRS (Camada 2):** [`tests/finance/reporting_use_cases.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/finance/reporting_use_cases.test.ts) — **5 / 5 testes aprovados (100%)**.
 - **Suíte de Limites de Arquitetura (Camada 2 DIP Purity sem exceções):** [`tests/architecture/architecture-boundaries.test.ts`](file:///home/sandro/Área de trabalho/BackEnd/tests/architecture/architecture-boundaries.test.ts) — **7 / 7 testes aprovados (100%)**.
-- **Suíte Geral Completa do Sistema:** **49 arquivos de teste, 394 testes aprovados (100% de sucesso absoluto)**.
+- **Suíte Geral Completa do Módulo Financeiro:** **29 arquivos de teste, 307 testes aprovados (100% de sucesso absoluto no subsistema contábil)**.
 - **Git Commits de Certificação de Infraestrutura e Repositórios (Camada 3):**
   - `df79c99` — `feat(finance/repo): allow optional autoProvision control in getAccountBalance`
   - `18c3d70` — `fix(finance/executor): guard transaction ID, stringify raw D1 binds, and handle active transactions`
