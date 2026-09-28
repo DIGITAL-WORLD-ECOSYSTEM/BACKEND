@@ -143,10 +143,14 @@ export function parseToCentavosString(val: unknown): {
 
 /**
  * Converte datas de extratos bancários para Date UTC determinístico.
- * Suporta formatos ISO (YYYY-MM-DD) e brasileiro (DD/MM/YYYY).
+ * Suporta formatos ISO (YYYY-MM-DD), brasileiro (DD/MM/YYYY) e formato de barra ISO (YYYY/MM/DD).
+ * Força UTC estrito (meio-dia UTC 12:00:00) para eliminar desvios de fuso horário local.
  */
 export function parseBankDate(val: unknown): Date | null {
   if (!val) return null;
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? null : val;
+  }
   const s = String(val).trim();
 
   // Formato ISO: YYYY-MM-DD
@@ -167,8 +171,25 @@ export function parseBankDate(val: unknown): Date | null {
     return new Date(Date.UTC(y, m, d, 12, 0, 0));
   }
 
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d;
+  // Formato ISO com barras: YYYY/MM/DD
+  if (/^\d{4}\/\d{2}\/\d{2}/.test(s)) {
+    const parts = s.split(/[/:\s]/);
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    return new Date(Date.UTC(y, m, d, 12, 0, 0));
+  }
+
+  // Fallback determinístico: se for timestamp numérico (epoch ms)
+  if (/^\d{10,13}$/.test(s)) {
+    const epoch = parseInt(s, 10);
+    const ms = s.length === 10 ? epoch * 1000 : epoch;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Rejeita formatos desconhecidos para evitar dependência de fuso horário local
+  return null;
 }
 
 function safeSerializeRawPayload(payload: unknown): string {
