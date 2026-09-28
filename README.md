@@ -2,11 +2,15 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Status-Production%20Active-059669?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Status" />
-  <img src="https://img.shields.io/badge/Runtime-Cloudflare%20Workers%20Edge-F38020?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Runtime" />
-  <img src="https://img.shields.io/badge/Architecture-Clean%20Arch%20%2F%20DDD-2563EB?style=for-the-badge" alt="Architecture" />
-  <img src="https://img.shields.io/badge/Tests-49%20Suites%20Passing-10B981?style=for-the-badge&logo=vitest&logoColor=white" alt="Vitest" />
-  <img src="https://img.shields.io/badge/Framework-Hono%20v4-E11D48?style=for-the-badge&logo=hono&logoColor=white" alt="Hono" />
-  <img src="https://img.shields.io/badge/Database-D1%20SQLite%20%2B%20Drizzle-7C3AED?style=for-the-badge&logo=sqlite&logoColor=white" alt="D1" />
+  <img src="https://img.shields.io/badge/Contract-v1.6.0-2563EB?style=for-the-badge" alt="Contract Version" />
+  <img src="https://img.shields.io/badge/Tests-49%20Suites%20Passing-10B981?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/License-Apache%202.0-3B82F6?style=for-the-badge&logo=apache&logoColor=white" alt="License" />
+  <img src="https://img.shields.io/badge/Runtime-Cloudflare%20Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Cloudflare Workers" />
+  <img src="https://img.shields.io/badge/Database-D1%20SQLite-2563EB?style=for-the-badge&logo=sqlite&logoColor=white" alt="D1 SQLite" />
+  <img src="https://img.shields.io/badge/Cache-Workers%20KV-F38020?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Workers KV" />
+  <img src="https://img.shields.io/badge/Storage-Cloudflare%20R2-0284C7?style=for-the-badge&logo=icloud&logoColor=white" alt="R2 Storage" />
+  <img src="https://img.shields.io/badge/Web3-IPFS%20Decentralized-65C2CB?style=for-the-badge&logo=ipfs&logoColor=white" alt="IPFS" />
+  <img src="https://img.shields.io/badge/AI-Workers%20AI-E11D48?style=for-the-badge&logo=openai&logoColor=white" alt="Workers AI" />
 </p>
 
 > **Sistema Operacional Descentralizado de Governança, Identidade Auto-Soberana e Motor Contábil de Alta Integridade** para o ecossistema **ASPPIBRA DAO**.  
