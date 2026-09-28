@@ -8,9 +8,14 @@ import { CanonicalRequestHashService } from '../services/CanonicalRequestHashSer
 import {
   AccountInactiveError,
   IdempotencyConflictError,
+  AccountOwnershipError,
   FinancialError,
 } from '../../../domains/finance/errors/FinancialError';
-import { freezeAuthorizationContext } from '../../../domains/finance/contracts/AuthorizationContext';
+import {
+  freezeAuthorizationContext,
+  isAuthenticAuthorizationContext,
+  AuthorizationContext,
+} from '../../../domains/finance/contracts/AuthorizationContext';
 
 export interface DepositCommand {
   userId: number;
@@ -19,6 +24,7 @@ export interface DepositCommand {
   description: string;
   idempotencyKey: string;
   requestHash?: string;
+  authContext?: AuthorizationContext;
 }
 
 export class RecordDepositUseCase {
@@ -76,12 +82,16 @@ export class RecordDepositUseCase {
           }
         }
 
-        const depositAuthCtx = freezeAuthorizationContext({
-          principalId: 0,
-          principalType: 'system',
-          capabilities: ['finance.system.operate'],
-          correlationId: command.idempotencyKey,
-        });
+        let depositAuthCtx: AuthorizationContext;
+        if (command.authContext) {
+          if (!isAuthenticAuthorizationContext(command.authContext)) {
+            throw new AccountOwnershipError('Contexto de autorização fornecido é inválido ou não autenticado.');
+          }
+          depositAuthCtx = command.authContext;
+        } else {
+          // BUG-33-01: Proíbe auto-emissão arbitrária de privilégio de superusuário sem contexto autenticado
+          throw new AccountOwnershipError('Depósito exige AuthorizationContext autenticado com capability finance.system.operate.');
+        }
 
         const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
         const orchestratorResult = await orchestrator.executePosting(transaction, depositAuthCtx);

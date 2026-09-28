@@ -9,10 +9,15 @@ import {
   InvalidStateTransitionError,
   IdempotencyConflictError,
   IdempotencyInProgressError,
+  AccountOwnershipError,
   FinancialError,
 } from '../../../domains/finance/errors/FinancialError';
 import { FinancialTransactionStateMachine } from '../../../domains/finance/services/FinancialTransactionStateMachine';
-import { freezeAuthorizationContext } from '../../../domains/finance/contracts/AuthorizationContext';
+import {
+  freezeAuthorizationContext,
+  isAuthenticAuthorizationContext,
+  AuthorizationContext,
+} from '../../../domains/finance/contracts/AuthorizationContext';
 
 export interface ReverseTransactionInput {
   originalTransactionId: number;
@@ -20,6 +25,7 @@ export interface ReverseTransactionInput {
   idempotencyKey: string;
   reason: string;
   requestHash?: string;
+  authContext?: AuthorizationContext;
 }
 
 export class ReverseTransactionUseCase {
@@ -148,12 +154,20 @@ export class ReverseTransactionUseCase {
           }
         }
 
-        const reversalAuthCtx = freezeAuthorizationContext({
-          principalId: input.actorUserId,
-          principalType: input.actorUserId === 0 ? 'system' : 'service_account',
-          capabilities: ['finance.system.reversal', 'finance.system.operate'],
-          correlationId: input.idempotencyKey,
-        });
+        let reversalAuthCtx: AuthorizationContext;
+        if (input.authContext) {
+          if (!isAuthenticAuthorizationContext(input.authContext)) {
+            throw new AccountOwnershipError('Contexto de autorização de estorno fornecido é inválido ou não autenticado.');
+          }
+          reversalAuthCtx = input.authContext;
+        } else {
+          reversalAuthCtx = freezeAuthorizationContext({
+            principalId: input.actorUserId,
+            principalType: input.actorUserId === 0 ? 'system' : 'service_account',
+            capabilities: ['finance.system.reversal', 'finance.system.operate'],
+            correlationId: input.idempotencyKey,
+          });
+        }
 
         const orchestrator = new FinancialTransactionOrchestrator(repo, factory.getOutboxRepository());
         const orchestratorResult = await orchestrator.executePosting(reversalTx, reversalAuthCtx);

@@ -10,6 +10,7 @@ import {
   AuthorizationContext,
   CustodyOperationSpec,
   freezeAuthorizationContext,
+  isAuthenticAuthorizationContext,
 } from '../../../domains/finance/contracts/AuthorizationContext';
 import {
   AccountOwnershipError,
@@ -29,13 +30,12 @@ export interface TransferCommand {
   authenticatedUserId?: number;
   actorUserId?: number;
   authorizedByUserId?: number;
-  capabilities?: string[];
-  roles?: string[];
   delegatedForUserId?: number | null;
   sourceType?: string;
   sourceId?: string;
   correlationId?: string;
   scope?: string;
+  authContext?: AuthorizationContext;
 }
 
 export class RecordTransferUseCase {
@@ -75,19 +75,29 @@ export class RecordTransferUseCase {
           throw new Error('Auto-transferência para a mesma conta é proibida.');
         }
 
-        // 1. Custody & Authorization Gate (Gate 4)
-        const principalId = command.actorUserId ?? command.authenticatedUserId ?? command.sourceUserId;
-        const correlationToken =
-          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID().replace(/-/g, '').substring(0, 10)
-            : Date.now().toString(36);
-        const authCtx = freezeAuthorizationContext({
-          principalId,
-          principalType: 'user',
-          capabilities: command.capabilities ?? (command.roles?.includes('admin') ? ['admin', 'finance.custody.debit'] : []),
-          delegatedForUserId: command.delegatedForUserId ?? null,
-          correlationId: command.correlationId ?? `corr_tx_${Date.now()}_${correlationToken}`,
-        });
+        // 1. Custody & Authorization Gate (Gate 4 & BUG-35-01 Fix)
+        // Não aceita capabilities ou roles livres injetadas no comando.
+        // Apenas repasse de AuthorizationContext autêntico ou contexto estrito SELF com capabilities vazias.
+        let authCtx: AuthorizationContext;
+        if (command.authContext) {
+          if (!isAuthenticAuthorizationContext(command.authContext)) {
+            throw new AccountOwnershipError('Contexto de autorização fornecido é inválido ou não autenticado.');
+          }
+          authCtx = command.authContext;
+        } else {
+          const principalId = command.actorUserId ?? command.authenticatedUserId ?? command.sourceUserId;
+          const correlationToken =
+            typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+              ? crypto.randomUUID().replace(/-/g, '').substring(0, 10)
+              : '0000000000';
+          authCtx = freezeAuthorizationContext({
+            principalId,
+            principalType: 'user',
+            capabilities: [],
+            delegatedForUserId: command.delegatedForUserId ?? null,
+            correlationId: command.correlationId ?? `corr_tx_${correlationToken}`,
+          });
+        }
 
         const opSpec: CustodyOperationSpec = {
           operationType: 'transfer',
