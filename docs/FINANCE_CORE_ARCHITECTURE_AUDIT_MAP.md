@@ -69,7 +69,7 @@ flowchart TD
 
 ---
 
-## 🚀 2. Catálogo Interativo de APIs
+## 🚀 2. Catálogo Visual de APIs do Módulo
 
 Todas as rotas operam sob a base `https://w3-api.asppibra.workers.dev/api/v1/finance` com proteção **Fail-Closed**, validação física de sessão e autorização granular baseada em papéis (RBAC).
 
@@ -77,196 +77,24 @@ Todas as rotas operam sob a base `https://w3-api.asppibra.workers.dev/api/v1/fin
   <img src="./assets/finance_api_matrix_board.svg" width="100%" alt="Finance Core REST API Gateway & Capabilities Matrix" />
 </p>
 
-### 📌 Painel Geral de Rotas
-
-| Método | Endpoint | Função do Controlador | Nível de Segurança | Idempotência | Propósito Contábil |
-| :---: | :--- | :--- | :---: | :---: | :--- |
-| ![GET](https://img.shields.io/badge/GET-0284c7?style=flat-square) | `/treasury/balance` | [`FinanceController.getBalance`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L21) | <kbd>AAL2</kbd> • `finance.treasury.read` | Opcional | Consulta saldo consolidado da tesouraria |
-| ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/deposits` | [`FinanceController.recordDeposit`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L193) | <kbd>AAL2 (15m)</kbd> • `finance.deposit.create` | **Obrigatória** | Crédito de fundos externos no passivo do usuário |
-| ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/withdrawals` | [`FinanceController.recordWithdrawal`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L197) | <kbd>AAL2 (15m)</kbd> • `finance.withdrawal.create` | **Obrigatória** | Saque de fundos com validação de custódia |
-| ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/transfers` | [`FinanceController.recordTransfer`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L209) | <kbd>AAL2 (15m)</kbd> • `finance.transfer.create` | **Obrigatória** | Transferência P2P atômica entre usuários |
-| ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/payments` | [`FinanceController.recordPayment`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L201) | <kbd>AAL2 (15m)</kbd> • `finance.payment.create` | **Obrigatória** | Pagamento de serviços com crédito à plataforma |
-| ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/refunds` | [`FinanceController.recordRefund`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L205) | <kbd>AAL2 (15m)</kbd> • `finance.refund.create` | **Obrigatória** | Estorno contábil de transação original |
-| ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/adjustments` | [`FinanceController.recordAdjustment`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L292) | <kbd>AAL2 (Admin)</kbd> • `finance.adjustment.create` | **Obrigatória** | Ajuste administrativo auditado (4-Eyes) |
-| ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/transactions` | [`FinanceController.recordTransaction`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L189) | <kbd>AAL2 (15m)</kbd> • `finance.transaction.create` | **Obrigatória** | Gateway transacional multicanal genérico |
-| ![GET](https://img.shields.io/badge/GET-0284c7?style=flat-square) | `/transactions` | [`FinanceController.listTransactions`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L296) | <kbd>AAL2</kbd> • Próprio / Admin | Opcional | Extrato com paginação defensiva por cursor |
-| ![GET](https://img.shields.io/badge/GET-0284c7?style=flat-square) | `/external-transactions` | [`FinanceController.getExternalTransactions`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L331) | <kbd>AAL2</kbd> • `finance.treasury.read` | Opcional | Staging de conciliação bancária externa |
-| ![GET](https://img.shields.io/badge/GET-0284c7?style=flat-square) | `/reports/consolidated` | [`FinanceController.getConsolidatedReport`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L381) | <kbd>AAL2</kbd> • `finance.treasury.read` | Opcional | Balancete patrimonial consolidado (Ativo = Passivo + PL) |
-
 > [!IMPORTANT]
 > **Idempotência & Fencing Distribuído:** Todas as operações mutatórias (`POST`) exigem o header `Idempotency-Key`. Tentativas de repetição legítimas recebem o resultado original em cache com o header `Idempotency-Replayed: true`, prevenindo double-spend sem reprocessar saldo ou razão.
 
----
+### 📋 Especificação Unificada dos 11 Endpoints
 
-### 🏛️ Especificação Visual por Domínio de Negócio
-
-#### 🏦 1. Gestão de Tesouraria & Balanços Materializados
-
-<details open>
-<summary><b><kbd>GET</kbd> <code>/treasury/balance</code> — Consulta Consolidada de Saldo da Tesouraria</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.getBalance()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L21) |
-| **Caso de Uso** | [`GetTreasuryBalanceUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2)</kbd> • `finance.treasury.read` |
-| **Idempotência** | Opcional / Não aplicável (Operação de leitura segura) |
-| **Operação Contábil** | Retorna os saldos consolidados (`availableBaseUnits`, `lockedBaseUnits`, `totalBaseUnits`) da conta mestre |
-| **Garantia Técnica** | Leitura atômica com versão de concorrência otimista (OCC) em precisão arbitrária uint256 |
-
-</details>
-
-<details open>
-<summary><b><kbd>GET</kbd> <code>/reports/consolidated</code> — Balancete Patrimonial Consolidado</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.getConsolidatedReport()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L381) |
-| **Caso de Uso** | [`GetConsolidatedFinancialReportUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetConsolidatedFinancialReportUseCase.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2)</kbd> • `finance.treasury.read` |
-| **Idempotência** | Opcional / Não aplicável (Auditoria de leitura) |
-| **Operação Contábil** | Emite o balancete de fechamento comprovando: $	ext{Ativo} = 	ext{Passivo} + 	ext{Patrimônio Líquido}$ |
-| **Garantia Técnica** | Prova matemática de conservação de valor auditando todas as contas do livro-razão |
-
-</details>
-
----
-
-#### 💸 2. Movimentações & Transferências de Usuários
-
-<details open>
-<summary><b><kbd>POST</kbd> <code>/deposits</code> — Registro de Depósito de Fundos Externos</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.recordDeposit()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L193) |
-| **Caso de Uso** | [`RecordDepositUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordDepositUseCase.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2, 15)</kbd> • `finance.deposit.create` |
-| **Idempotência** | **Compulsória** via `Idempotency-Key` com lease transacional no D1 |
-| **Operação Contábil** | Entrada externa (`INBOUND`): Credita a conta de custódia do usuário e debita a conta clearing de tesouraria |
-| **Invariantes & Defesas** | Restrição de destino (usuário comum só deposita para si) • Partidas dobradas rigorosamente balanceadas (FIN-001) |
-
-</details>
-
-<details open>
-<summary><b><kbd>POST</kbd> <code>/withdrawals</code> — Solicitação de Saque com Validação de Custódia</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.recordWithdrawal()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L197) |
-| **Caso de Uso** | [`RecordTreasuryTransactionUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2, 15)</kbd> • `finance.withdrawal.create` |
-| **Idempotência** | **Compulsória** via `Idempotency-Key` (Hash canônico SHA-256) |
-| **Operação Contábil** | Saída externa (`OUTBOUND`): Debita o saldo disponível do usuário e credita a tesouraria para liquidação |
-| **Invariantes & Defesas** | [`CustodyAuthorizationPolicy`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/CustodyAuthorizationPolicy.ts) assegura $	ext{saldoDisponível} \ge 	ext{valorSaque}$. Rejeição em compilação do plano |
-
-</details>
-
-<details open>
-<summary><b><kbd>POST</kbd> <code>/transfers</code> — Transferência Atômica Peer-to-Peer (P2P)</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.recordTransfer()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L209) |
-| **Caso de Uso** | [`RecordTransferUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTransferUseCase.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2, 15)</kbd> • `finance.transfer.create` |
-| **Idempotência** | **Compulsória** via `Idempotency-Key` (Fencing token distribuído) |
-| **Operação Contábil** | Transferência P2P atômica entre dois usuários sob plano contábil balanceado fechado |
-| **Invariantes & Defesas** | Bloqueio de auto-transferência (`source != destination`) • Ordenação lexicográfica de bloqueio anti-deadlock |
-
-</details>
-
-<details open>
-<summary><b><kbd>POST</kbd> <code>/payments</code> — Pagamento de Serviços da Plataforma</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.recordPayment()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L201) |
-| **Caso de Uso** | [`RecordTreasuryTransactionUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2, 15)</kbd> • `finance.payment.create` |
-| **Idempotência** | **Compulsória** via `Idempotency-Key` |
-| **Operação Contábil** | Liquidação interna: Debita o saldo da conta do pagador e credita a receita operacional da plataforma |
-| **Invariantes & Defesas** | Validação de liquidez do pagador e liquidação imediata sem intermediários |
-
-</details>
-
----
-
-#### ⚖️ 3. Governança, Estornos & Ajustes Administrativos
-
-<details open>
-<summary><b><kbd>POST</kbd> <code>/refunds</code> — Estorno Contábil Auditado de Transação Prévia</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.recordRefund()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L205) |
-| **Caso de Uso** | [`ReverseTransactionUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/ReverseTransactionUseCase.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2, 15)</kbd> • `finance.refund.create` |
-| **Idempotência** | **Compulsória** via `Idempotency-Key` |
-| **Operação Contábil** | Reverte contabilisticamente uma transação anterior (`refundOfTransactionId`) |
-| **Invariantes & Defesas** | Inversão espelhada perfeita das pernas contábeis originais • Bloqueio de estorno duplo ou valor excedente |
-
-</details>
-
-<details open>
-<summary><b><kbd>POST</kbd> <code>/adjustments</code> — Ajuste Administrativo Auditado (4-Eyes)</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.recordAdjustment()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L292) |
-| **Caso de Uso** | [`RecordTreasuryTransactionUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2, Admin)</kbd> • `finance.adjustment.create` |
-| **Idempotência** | **Compulsória** via `Idempotency-Key` |
-| **Operação Contábil** | Correções patrimoniais extraordinárias com justificativa formal registrada no razão |
-| **Invariantes & Defesas** | Princípio de 4 Olhos • Autorizador (`authorizedByUserId`) injetado compulsoriamente pela sessão física |
-
-</details>
-
-<details open>
-<summary><b><kbd>POST</kbd> <code>/transactions</code> — Gateway Transacional Multicanal Genérico</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.recordTransaction()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L189) |
-| **Caso de Uso** | [`RecordLedgerTransactionUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2, 15)</kbd> • `finance.transaction.create` |
-| **Idempotência** | **Compulsória** via `Idempotency-Key` |
-| **Operação Contábil** | Ponto de integração para submissão direta de eventos contábeis parametrizados |
-| **Invariantes & Defesas** | Sanitização textual anti-DoS via [`FinancialTextPolicy`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/FinancialTextPolicy.ts) • Checagem de capabilities |
-
-</details>
-
----
-
-#### 🔍 4. Auditoria Forense & Conciliação Bancária
-
-<details open>
-<summary><b><kbd>GET</kbd> <code>/transactions</code> — Extrato de Transações com Paginação por Cursor</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.listTransactions()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L296) |
-| **Caso de Uso** | [`IFinanceRepository.listTransactions()`](file:///home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IFinanceRepository.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2)</kbd> • Próprio Usuário ou `finance.treasury.read` |
-| **Idempotência** | Opcional / Não aplicável (Operação de leitura segura) |
-| **Operação Contábil** | Retorna a listagem cronológica forense das transações financeiras registradas |
-| **Garantia Técnica** | Paginação defensiva por cursor (`limit <= 100`) • Proteção **Fail-Closed** contra vazamento do razão global |
-
-</details>
-
-<details open>
-<summary><b><kbd>GET</kbd> <code>/external-transactions</code> — Staging de Extratos Bancários Externos</b></summary>
-
-| Atributo | Especificação de Engenharia |
-| :--- | :--- |
-| **Controlador** | [`FinanceController.getExternalTransactions()`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L331) |
-| **Caso de Uso** | [`GetExternalTransactionsUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetExternalTransactionsUseCase.ts) |
-| **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2)</kbd> • `finance.treasury.read` |
-| **Idempotência** | Opcional / Não aplicável (Operação de leitura segura) |
-| **Operação Contábil** | Consulta registros brutos de conciliação bancária externa (Bradesco, Cora, Inter) |
-| **Garantia Técnica** | Filtros por status de conciliação (`unmatched`, `matched`, `ignored`), provedor bancário e data |
-
-</details>
+| # | Domínio | Método | Endpoint | Controlador & Caso de Uso | Segurança & RBAC | Regra Contábil & Invariante |
+| :-: | :--- | :---: | :--- | :--- | :--- | :--- |
+| 01 | Tesouraria | ![GET](https://img.shields.io/badge/GET-0284c7?style=flat-square) | `/treasury/balance` | [`FinanceController.getBalance`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L21)<br/><sub>[`GetTreasuryBalanceUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetTreasuryBalanceUseCase.ts)</sub> | <kbd>AAL2</kbd><br/>`finance.treasury.read` | Consulta saldo consolidado da conta mestre com versão de concorrência (OCC) em uint256 |
+| 02 | Tesouraria | ![GET](https://img.shields.io/badge/GET-0284c7?style=flat-square) | `/reports/consolidated` | [`FinanceController.getConsolidatedReport`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L381)<br/><sub>[`GetConsolidatedFinancialReportUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetConsolidatedFinancialReportUseCase.ts)</sub> | <kbd>AAL2</kbd><br/>`finance.treasury.read` | Balancete patrimonial consolidado: prova matemática de conservação onde $\text{Ativo} = \text{Passivo} + \text{PL}$ |
+| 03 | Movimentação | ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/deposits` | [`FinanceController.recordDeposit`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L193)<br/><sub>[`RecordDepositUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordDepositUseCase.ts)</sub> | <kbd>AAL2 (15m)</kbd> • **Idempotente**<br/>`finance.deposit.create` | Entrada de fundos (`INBOUND`): credita conta de custódia do usuário e debita clearing da tesouraria (FIN-001) |
+| 04 | Movimentação | ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/withdrawals` | [`FinanceController.recordWithdrawal`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L197)<br/><sub>[`RecordTreasuryTransactionUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts)</sub> | <kbd>AAL2 (15m)</kbd> • **Idempotente**<br/>`finance.withdrawal.create` | Saída (`OUTBOUND`): debita saldo disponível após validação via [`CustodyAuthorizationPolicy`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/CustodyAuthorizationPolicy.ts) |
+| 05 | Movimentação | ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/transfers` | [`FinanceController.recordTransfer`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L209)<br/><sub>[`RecordTransferUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTransferUseCase.ts)</sub> | <kbd>AAL2 (15m)</kbd> • **Idempotente**<br/>`finance.transfer.create` | Transferência P2P atômica entre dois usuários sob plano fechado com ordenação lexicográfica anti-deadlock |
+| 06 | Movimentação | ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/payments` | [`FinanceController.recordPayment`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L201)<br/><sub>[`RecordTreasuryTransactionUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts)</sub> | <kbd>AAL2 (15m)</kbd> • **Idempotente**<br/>`finance.payment.create` | Pagamento de serviços: debita a conta do usuário e credita a receita operacional da plataforma sem intermediários |
+| 07 | Governança | ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/refunds` | [`FinanceController.recordRefund`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L205)<br/><sub>[`ReverseTransactionUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/ReverseTransactionUseCase.ts)</sub> | <kbd>AAL2 (15m)</kbd> • **Idempotente**<br/>`finance.refund.create` | Estorno contábil auditado: inverte pernas contábeis da transação original com bloqueio de estorno duplicado |
+| 08 | Governança | ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/adjustments` | [`FinanceController.recordAdjustment`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L292)<br/><sub>[`RecordTreasuryTransactionUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordTreasuryTransactionUseCase.ts)</sub> | <kbd>AAL2 (Admin)</kbd> • **Idempotente**<br/>`finance.adjustment.create` | Ajuste administrativo auditado (4-Eyes): autorizador (`authorizedByUserId`) injetado compulsoriamente pela sessão |
+| 09 | Governança | ![POST](https://img.shields.io/badge/POST-10b981?style=flat-square) | `/transactions` | [`FinanceController.recordTransaction`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L189)<br/><sub>[`RecordLedgerTransactionUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/RecordLedgerTransactionUseCase.ts)</sub> | <kbd>AAL2 (15m)</kbd> • **Idempotente**<br/>`finance.transaction.create` | Gateway multicanal genérico com validação tipada e sanitização textual anti-DoS ([`FinancialTextPolicy`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/policies/FinancialTextPolicy.ts)) |
+| 10 | Auditoria | ![GET](https://img.shields.io/badge/GET-0284c7?style=flat-square) | `/transactions` | [`FinanceController.listTransactions`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L296)<br/><sub>[`IFinanceRepository.listTransactions`](file:///home/sandro/Área de trabalho/BackEnd/src/application/ports/output/IFinanceRepository.ts)</sub> | <kbd>AAL2</kbd><br/>Próprio / `finance.treasury.read` | Extrato cronológico do razão contábil com paginação defensiva por cursor (`limit <= 100`) e proteção Fail-Closed |
+| 11 | Auditoria | ![GET](https://img.shields.io/badge/GET-0284c7?style=flat-square) | `/external-transactions` | [`FinanceController.getExternalTransactions`](file:///home/sandro/Área de trabalho/BackEnd/src/interfaces/http/controllers/finance/FinanceController.ts#L331)<br/><sub>[`GetExternalTransactionsUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetExternalTransactionsUseCase.ts)</sub> | <kbd>AAL2</kbd><br/>`finance.treasury.read` | Staging de extratos bancários externos para conciliação automatizada multibanco (Bradesco, Cora, Inter) |
 
 ---
 
