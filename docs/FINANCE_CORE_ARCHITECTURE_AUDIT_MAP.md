@@ -11,11 +11,19 @@
 > **Motor financeiro transacional de missão crítica** projetado segundo **Clean Architecture** e **Domain-Driven Design (DDD)**.  
 > Implementa **livro-razão em partidas dobradas (Double-Entry Ledger)**, balanços materializados com **OCC (Optimistic Concurrency Control)**, aritmética de precisão exata de **256 bits (`Money256`)** e barreira soberana de autorização contábil (**PostingAuthority / Gate 0**).
 
+<p align="center">
+  <img src="./assets/finance_telemetry_dashboard.svg" width="100%" alt="Finance Core Telemetry & Engineering Dashboard" />
+</p>
+
 ---
 
 ## 🏛️ 1. Diagrama de Arquitetura do Módulo
 
-O diagrama a seguir sintetiza a jornada de uma transação financeira pelas camadas do sistema — desde a borda até a persistência atômica no SQLite D1:
+O diagrama abaixo sintetiza a jornada de uma transação financeira pelas camadas do sistema — desde a borda até a persistência atômica no SQLite D1:
+
+<p align="center">
+  <img src="./assets/finance_architecture_board.svg" width="100%" alt="Finance Core Architecture Topology & Data Flow" />
+</p>
 
 ```mermaid
 flowchart TD
@@ -65,6 +73,10 @@ flowchart TD
 
 Todas as rotas operam sob a base `https://w3-api.asppibra.workers.dev/api/v1/finance` com proteção **Fail-Closed**, validação física de sessão e autorização granular baseada em papéis (RBAC).
 
+<p align="center">
+  <img src="./assets/finance_api_matrix_board.svg" width="100%" alt="Finance Core REST API Gateway & Capabilities Matrix" />
+</p>
+
 ### 📌 Painel Geral de Rotas
 
 | Método | Endpoint | Função do Controlador | Nível de Segurança | Idempotência | Propósito Contábil |
@@ -113,7 +125,7 @@ Todas as rotas operam sob a base `https://w3-api.asppibra.workers.dev/api/v1/fin
 | **Caso de Uso** | [`GetConsolidatedFinancialReportUseCase`](file:///home/sandro/Área de trabalho/BackEnd/src/application/finance/use-cases/GetConsolidatedFinancialReportUseCase.ts) |
 | **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2)</kbd> • `finance.treasury.read` |
 | **Idempotência** | Opcional / Não aplicável (Auditoria de leitura) |
-| **Operação Contábil** | Emite o balancete de fechamento comprovando: $\text{Ativo} = \text{Passivo} + \text{Patrimônio Líquido}$ |
+| **Operação Contábil** | Emite o balancete de fechamento comprovando: $	ext{Ativo} = 	ext{Passivo} + 	ext{Patrimônio Líquido}$ |
 | **Garantia Técnica** | Prova matemática de conservação de valor auditando todas as contas do livro-razão |
 
 </details>
@@ -146,7 +158,7 @@ Todas as rotas operam sob a base `https://w3-api.asppibra.workers.dev/api/v1/fin
 | **Segurança & RBAC** | <kbd>sessionGuard</kbd> • <kbd>requireAal(2, 15)</kbd> • `finance.withdrawal.create` |
 | **Idempotência** | **Compulsória** via `Idempotency-Key` (Hash canônico SHA-256) |
 | **Operação Contábil** | Saída externa (`OUTBOUND`): Debita o saldo disponível do usuário e credita a tesouraria para liquidação |
-| **Invariantes & Defesas** | [`CustodyAuthorizationPolicy`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/CustodyAuthorizationPolicy.ts) assegura $\text{saldoDisponível} \ge \text{valorSaque}$. Rejeição em compilação do plano |
+| **Invariantes & Defesas** | [`CustodyAuthorizationPolicy`](file:///home/sandro/Área de trabalho/BackEnd/src/domains/finance/contracts/CustodyAuthorizationPolicy.ts) assegura $	ext{saldoDisponível} \ge 	ext{valorSaque}$. Rejeição em compilação do plano |
 
 </details>
 
@@ -262,20 +274,9 @@ Todas as rotas operam sob a base `https://w3-api.asppibra.workers.dev/api/v1/fin
 
 Todos os **84 arquivos** do módulo Finance Core foram auditados, certificados e congelados (**100% `FROZEN`**, média geral **9,98 / 10,0**).
 
-### 📊 Resumo por Camada Arquitetural
-
-| Camada | Escopo Arquitetural | Total | Média | Status |
-| :--- | :--- | :---: | :---: | :---: |
-| **Camada 1 — Domínio Contábil Puro** | Entidades, Value Objects, Políticas Contábeis e Invariantes | 22 | 10,0 | 🟢 FROZEN |
-| **Camada 2 — Casos de Uso & Orquestração** | Casos de Uso, Portas de Saída, Orquestrador e Gate 0 | 16 | 10,0 | 🟢 FROZEN |
-| **Camada 3 — Infraestrutura & Repositórios** | Adaptadores de Banco D1, Unit of Work e Mensageria | 7 | 9,9 | 🟢 FROZEN |
-| **Camada 4 — Banco de Dados Relacional D1** | Tabelas SQLite D1, Relações e Fixtures de Auditoria | 3 | 9,7 | 🟢 FROZEN |
-| **Camada 5 — Apresentação HTTP (Hono)** | Controller REST e Roteador com RBAC e Session Guard | 2 | 9,9 | 🟢 FROZEN |
-| **Camada 6 — Migrações Relacionais** | Migrações SQL Versionadas e Triggers de Append-Only | 4 | 10,0 | 🟢 FROZEN |
-| **Camada 7 — Suíte de Testes Automatizados** | Invariantes, Estresse, Ataques Adversariais e Testes E2E | 30 | 10,0 | 🟢 FROZEN |
-| **Total Homologado** | **Módulo Completo Finance Core** | **84** | **9,98 / 10** | 🟢 **100% FROZEN** |
-
----
+<p align="center">
+  <img src="./assets/finance_layers_breakdown.svg" width="100%" alt="Finance Core Architectural Layers & Audit Matrix" />
+</p>
 
 ### 📋 Inventário Completo dos 84 Arquivos
 

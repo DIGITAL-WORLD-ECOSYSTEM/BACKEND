@@ -1,0 +1,197 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 950 490" width="100%" height="100%">
+  <defs>
+    <linearGradient id="apiBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C14"/>
+      <stop offset="50%" stop-color="#0B101B"/>
+      <stop offset="100%" stop-color="#05080F"/>
+    </linearGradient>
+
+    <linearGradient id="quadCard" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#121829"/>
+      <stop offset="100%" stop-color="#0B111F"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; fill: #F1F5F9; }
+    .quad-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; }
+    .route-text { font-family: -apple-system, BlinkMacSystemFont, "JetBrains Mono", Menlo, monospace; font-size: 11.5px; font-weight: 700; fill: #E2E8F0; }
+    .badge-get { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 9px; font-weight: 800; fill: #38BDF8; letter-spacing: 0.5px; }
+    .badge-post { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 9px; font-weight: 800; fill: #34D399; letter-spacing: 0.5px; }
+    .chip-text { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 8.5px; font-weight: 700; fill: #94A3B8; }
+    .chip-text-accent { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 8.5px; font-weight: 700; fill: #FBBF24; }
+  </style>
+
+  <!-- Container -->
+  <rect x="2" y="2" width="946" height="486" rx="14" fill="url(#apiBg)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Window Header Bar -->
+  <circle cx="32" cy="30" r="6" fill="#EF4444"/>
+  <circle cx="52" cy="30" r="6" fill="#F59E0B"/>
+  <circle cx="72" cy="30" r="6" fill="#10B981"/>
+  <text x="100" y="34" class="title">ASPPIBRA ECOSYSTEM — REST API GATEWAY &amp; CAPABILITIES MATRIX</text>
+
+  <!-- Status Pill -->
+  <rect x="760" y="18" width="160" height="25" rx="12.5" fill="#064E3B" stroke="#059669" stroke-width="1.2"/>
+  <circle cx="778" cy="30.5" r="4" fill="#34D399"/>
+  <text x="792" y="34" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10" font-weight="800" fill="#6EE7B7" letter-spacing="1px">11 ROUTES ACTIVE</text>
+
+  <!-- Separator -->
+  <line x1="20" y1="56" x2="930" y2="56" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- ================= QUADRANT 1: TREASURY & BALANCES (Top Left) ================= -->
+  <rect x="30" y="75" width="435" height="165" rx="10" fill="url(#quadCard)" stroke="#0284C7" stroke-width="1.2"/>
+  <text x="48" y="98" class="quad-title" fill="#38BDF8">🏦 1. GESTÃO DE TESOURARIA &amp; SALDOS</text>
+
+  <!-- Row 1.1: /treasury/balance -->
+  <g transform="translate(48, 115)">
+    <rect x="0" y="0" width="38" height="18" rx="4" fill="#0C4A6E"/>
+    <text x="7" y="12.5" class="badge-get">GET</text>
+    <text x="48" y="13" class="route-text">/treasury/balance</text>
+    
+    <rect x="235" y="0" width="55" height="18" rx="4" fill="#1E293B"/>
+    <text x="245" y="12.5" class="chip-text">AAL2</text>
+
+    <rect x="298" y="0" width="120" height="18" rx="4" fill="#1E293B"/>
+    <text x="308" y="12.5" class="chip-text">OCC uint256 Lock</text>
+  </g>
+
+  <!-- Row 1.2: /reports/consolidated -->
+  <g transform="translate(48, 155)">
+    <rect x="0" y="0" width="38" height="18" rx="4" fill="#0C4A6E"/>
+    <text x="7" y="12.5" class="badge-get">GET</text>
+    <text x="48" y="13" class="route-text">/reports/consolidated</text>
+
+    <rect x="235" y="0" width="55" height="18" rx="4" fill="#1E293B"/>
+    <text x="245" y="12.5" class="chip-text">AAL2</text>
+
+    <rect x="298" y="0" width="120" height="18" rx="4" fill="#1E293B"/>
+    <text x="308" y="12.5" class="chip-text">A = P + PL Audit</text>
+  </g>
+
+  <!-- Description tag -->
+  <text x="48" y="222" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#64748B">Soberania patrimonial e balanço materializado com versão de concorrência</text>
+
+  <!-- ================= QUADRANT 2: TRANSFERS & USER MOVEMENTS (Top Right) ================= -->
+  <rect x="485" y="75" width="435" height="165" rx="10" fill="url(#quadCard)" stroke="#10B981" stroke-width="1.2"/>
+  <text x="503" y="98" class="quad-title" fill="#34D399">💸 2. MOVIMENTAÇÕES &amp; CUSTÓDIA DE USUÁRIO</text>
+
+  <!-- Row 2.1: /transfers -->
+  <g transform="translate(503, 112)">
+    <rect x="0" y="0" width="42" height="18" rx="4" fill="#064E3B"/>
+    <text x="6" y="12.5" class="badge-post">POST</text>
+    <text x="50" y="13" class="route-text">/transfers</text>
+
+    <rect x="200" y="0" width="85" height="18" rx="4" fill="#1E293B"/>
+    <text x="208" y="12.5" class="chip-text">P2P Atomic</text>
+
+    <rect x="293" y="0" width="105" height="18" rx="4" fill="#1E293B"/>
+    <text x="300" y="12.5" class="chip-text">Anti-Deadlock</text>
+  </g>
+
+  <!-- Row 2.2: /deposits -->
+  <g transform="translate(503, 140)">
+    <rect x="0" y="0" width="42" height="18" rx="4" fill="#064E3B"/>
+    <text x="6" y="12.5" class="badge-post">POST</text>
+    <text x="50" y="13" class="route-text">/deposits</text>
+
+    <rect x="200" y="0" width="85" height="18" rx="4" fill="#1E293B"/>
+    <text x="208" y="12.5" class="chip-text">Inbound Fiat</text>
+
+    <rect x="293" y="0" width="105" height="18" rx="4" fill="#1E293B"/>
+    <text x="300" y="12.5" class="chip-text">Clearing Debit</text>
+  </g>
+
+  <!-- Row 2.3: /withdrawals & /payments combined info -->
+  <g transform="translate(503, 168)">
+    <rect x="0" y="0" width="42" height="18" rx="4" fill="#064E3B"/>
+    <text x="6" y="12.5" class="badge-post">POST</text>
+    <text x="50" y="13" class="route-text">/withdrawals &amp; /payments</text>
+
+    <rect x="250" y="0" width="148" height="18" rx="4" fill="#1E293B"/>
+    <text x="258" y="12.5" class="chip-text">Custody Check • 15m</text>
+  </g>
+
+  <text x="503" y="222" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#64748B">Idempotency-Key compulsória com lease transacional e validação FIN-001</text>
+
+  <!-- ================= QUADRANT 3: GOVERNANCE & RECOVERY (Bottom Left) ================= -->
+  <rect x="30" y="255" width="435" height="165" rx="10" fill="url(#quadCard)" stroke="#F59E0B" stroke-width="1.2"/>
+  <text x="48" y="278" class="quad-title" fill="#FBBF24">⚖️ 3. GOVERNANÇA, ESTORNOS &amp; AJUSTES</text>
+
+  <!-- Row 3.1: /refunds -->
+  <g transform="translate(48, 295)">
+    <rect x="0" y="0" width="42" height="18" rx="4" fill="#064E3B"/>
+    <text x="6" y="12.5" class="badge-post">POST</text>
+    <text x="50" y="13" class="route-text">/refunds</text>
+
+    <rect x="225" y="0" width="85" height="18" rx="4" fill="#1E293B"/>
+    <text x="233" y="12.5" class="chip-text">Mirrored Legs</text>
+
+    <rect x="318" y="0" width="100" height="18" rx="4" fill="#1E293B"/>
+    <text x="326" y="12.5" class="chip-text">Anti-Overfund</text>
+  </g>
+
+  <!-- Row 3.2: /adjustments -->
+  <g transform="translate(48, 325)">
+    <rect x="0" y="0" width="42" height="18" rx="4" fill="#064E3B"/>
+    <text x="6" y="12.5" class="badge-post">POST</text>
+    <text x="50" y="13" class="route-text">/adjustments</text>
+
+    <rect x="225" y="0" width="85" height="18" rx="4" fill="#2E1C07"/>
+    <text x="233" y="12.5" class="chip-text-accent">4-Eyes Admin</text>
+
+    <rect x="318" y="0" width="100" height="18" rx="4" fill="#1E293B"/>
+    <text x="326" y="12.5" class="chip-text">Session Actor</text>
+  </g>
+
+  <!-- Row 3.3: /transactions -->
+  <g transform="translate(48, 355)">
+    <rect x="0" y="0" width="42" height="18" rx="4" fill="#064E3B"/>
+    <text x="6" y="12.5" class="badge-post">POST</text>
+    <text x="50" y="13" class="route-text">/transactions</text>
+
+    <rect x="225" y="0" width="193" height="18" rx="4" fill="#1E293B"/>
+    <text x="233" y="12.5" class="chip-text">Multichannel Parametric Gateway</text>
+  </g>
+
+  <text x="48" y="405" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#64748B">Identificação do autorizador extraída estritamente da sessão física de auth</text>
+
+  <!-- ================= QUADRANT 4: FORENSIC AUDIT & STAGING (Bottom Right) ================= -->
+  <rect x="485" y="255" width="435" height="165" rx="10" fill="url(#quadCard)" stroke="#8B5CF6" stroke-width="1.2"/>
+  <text x="503" y="278" class="quad-title" fill="#C084FC">🔍 4. AUDITORIA FORENSE &amp; CONCILIAÇÃO</text>
+
+  <!-- Row 4.1: /transactions (GET) -->
+  <g transform="translate(503, 298)">
+    <rect x="0" y="0" width="38" height="18" rx="4" fill="#0C4A6E"/>
+    <text x="7" y="12.5" class="badge-get">GET</text>
+    <text x="48" y="13" class="route-text">/transactions</text>
+
+    <rect x="215" y="0" width="90" height="18" rx="4" fill="#1E293B"/>
+    <text x="223" y="12.5" class="chip-text">Cursor Paging</text>
+
+    <rect x="313" y="0" width="90" height="18" rx="4" fill="#1E293B"/>
+    <text x="321" y="12.5" class="chip-text">Fail-Closed</text>
+  </g>
+
+  <!-- Row 4.2: /external-transactions -->
+  <g transform="translate(503, 338)">
+    <rect x="0" y="0" width="38" height="18" rx="4" fill="#0C4A6E"/>
+    <text x="7" y="12.5" class="badge-get">GET</text>
+    <text x="48" y="13" class="route-text">/external-transactions</text>
+
+    <rect x="215" y="0" width="90" height="18" rx="4" fill="#1E293B"/>
+    <text x="223" y="12.5" class="chip-text">Bank Staging</text>
+
+    <rect x="313" y="0" width="90" height="18" rx="4" fill="#1E293B"/>
+    <text x="321" y="12.5" class="chip-text">Multi-Provider</text>
+  </g>
+
+  <text x="503" y="405" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#64748B">Consulta a extratos brutos bancários (Bradesco, Cora, Inter) e ledger auditável</text>
+
+  <!-- Footer Info Line -->
+  <g transform="translate(30, 460)">
+    <text x="0" y="0" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11" fill="#64748B">
+      <tspan fill="#38BDF8">⚡</tspan> Standard HTTP Hono Router • Cloudflare Workers Edge • Fail-Closed Enforcement
+    </text>
+  </g>
+</svg>

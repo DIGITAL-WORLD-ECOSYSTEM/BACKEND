@@ -1,0 +1,196 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 950 460" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C14"/>
+      <stop offset="50%" stop-color="#0B101B"/>
+      <stop offset="100%" stop-color="#05080F"/>
+    </linearGradient>
+
+    <!-- Card Background Gradient -->
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#141C2E"/>
+      <stop offset="100%" stop-color="#0D1424"/>
+    </linearGradient>
+
+    <!-- Activity Stream Waveform Gradient -->
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#C084FC"/>
+    </linearGradient>
+
+    <!-- Glow Filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; fill: #F1F5F9; }
+    .label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; fill: #64748B; }
+    .kpi-num { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-weight: 800; font-size: 28px; }
+    .bar-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 12px; fill: #94A3B8; font-weight: 500; }
+    .bar-pct { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; fill: #E2E8F0; }
+    .tag-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; }
+    .footer-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 11px; fill: #64748B; }
+  </style>
+
+  <!-- Main Container -->
+  <rect x="2" y="2" width="946" height="456" rx="14" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Window Header Bar -->
+  <circle cx="32" cy="30" r="6" fill="#EF4444"/>
+  <circle cx="52" cy="30" r="6" fill="#F59E0B"/>
+  <circle cx="72" cy="30" r="6" fill="#10B981"/>
+
+  <text x="100" y="34" class="title">ASPPIBRA ECOSYSTEM — FINANCE CORE ENGINE</text>
+
+  <!-- Auto-Sync / Live Status Pill -->
+  <rect x="760" y="18" width="160" height="25" rx="12.5" fill="#064E3B" stroke="#059669" stroke-width="1.2"/>
+  <circle cx="778" cy="30.5" r="4" fill="#34D399" filter="url(#glow)"/>
+  <text x="792" y="34" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10.5" font-weight="800" fill="#6EE7B7" letter-spacing="1px">100% FROZEN • PROD</text>
+
+  <!-- Header Separator Line -->
+  <line x1="20" y1="56" x2="930" y2="56" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- ================= LEFT COLUMN ================= -->
+  <!-- KPI 1: Repositories / Files -->
+  <rect x="30" y="78" width="135" height="75" rx="8" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1"/>
+  <text x="44" y="98" class="label">TOTAL FILES</text>
+  <text x="44" y="134" class="kpi-num" fill="#F8FAFC">84<tspan font-size="14" fill="#64748B" font-weight="500"> / 84</tspan></text>
+
+  <!-- KPI 2: Test Pass Rate -->
+  <rect x="175" y="78" width="145" height="75" rx="8" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1"/>
+  <text x="189" y="98" class="label">TEST PASS RATE</text>
+  <text x="189" y="134" class="kpi-num" fill="#38BDF8">100%<tspan font-size="13" fill="#0284C7" font-weight="600"> (394)</tspan></text>
+
+  <!-- KPI 3: Precision / Engine -->
+  <rect x="330" y="78" width="145" height="75" rx="8" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1"/>
+  <text x="344" y="98" class="label">PRECISION</text>
+  <text x="344" y="134" class="kpi-num" fill="#F59E0B">256<tspan font-size="14" fill="#D97706" font-weight="600"> uint</tspan></text>
+
+  <!-- Recent Activity Stream -->
+  <text x="30" y="184" class="label">TRANSACTION INTEGRITY STREAM</text>
+
+  <!-- Activity Bars / Waveform Pulse -->
+  <g transform="translate(30, 205)">
+    <!-- Base Waveform Line -->
+    <rect x="0" y="52" width="10" height="4" rx="2" fill="#1E293B"/>
+    <rect x="14" y="52" width="10" height="4" rx="2" fill="#1E293B"/>
+    <rect x="28" y="50" width="10" height="6" rx="2" fill="#1E293B"/>
+    <rect x="42" y="48" width="10" height="8" rx="2" fill="#1E293B"/>
+    <rect x="56" y="44" width="10" height="12" rx="2" fill="#1E293B"/>
+    <rect x="70" y="42" width="10" height="14" rx="2" fill="#38BDF8" opacity="0.5"/>
+    <rect x="84" y="46" width="10" height="10" rx="2" fill="#38BDF8" opacity="0.6"/>
+    <rect x="98" y="40" width="10" height="16" rx="2" fill="#38BDF8" opacity="0.7"/>
+    <rect x="112" y="44" width="10" height="12" rx="2" fill="#38BDF8" opacity="0.7"/>
+    <rect x="126" y="38" width="10" height="18" rx="2" fill="#38BDF8" opacity="0.8"/>
+    <rect x="140" y="32" width="10" height="24" rx="2" fill="#38BDF8" opacity="0.9"/>
+    <rect x="154" y="36" width="10" height="20" rx="2" fill="#38BDF8" opacity="0.9"/>
+    <rect x="168" y="26" width="10" height="30" rx="2" fill="#38BDF8"/>
+    <rect x="182" y="22" width="10" height="34" rx="2" fill="#38BDF8"/>
+    <rect x="196" y="30" width="10" height="26" rx="2" fill="#38BDF8"/>
+    <rect x="210" y="28" width="10" height="28" rx="2" fill="#38BDF8"/>
+    <rect x="224" y="24" width="10" height="32" rx="2" fill="#38BDF8"/>
+    <rect x="238" y="20" width="10" height="36" rx="2" fill="#38BDF8"/>
+
+    <!-- Sparkline Active Glowing Pulses -->
+    <rect x="260" y="50" width="16" height="6" rx="3" fill="#38BDF8"/>
+    <rect x="282" y="50" width="16" height="6" rx="3" fill="#38BDF8"/>
+    <rect x="304" y="50" width="16" height="6" rx="3" fill="#38BDF8"/>
+    <rect x="326" y="50" width="16" height="6" rx="3" fill="#38BDF8"/>
+    <rect x="348" y="50" width="16" height="6" rx="3" fill="#38BDF8"/>
+    <rect x="370" y="50" width="16" height="6" rx="3" fill="#38BDF8"/>
+    <rect x="392" y="50" width="16" height="6" rx="3" fill="#38BDF8"/>
+    <rect x="414" y="50" width="16" height="6" rx="3" fill="#38BDF8"/>
+
+    <!-- Peak Active Pulse -->
+    <rect x="436" y="8" width="18" height="48" rx="4" fill="url(#waveGrad)" filter="url(#glow)"/>
+  </g>
+
+  <text x="30" y="295" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11" fill="#64748B">(Double-Entry Conservation • Zero Deadlocks • Continuous Pulse)</text>
+
+  <!-- Vertical Divider -->
+  <line x1="495" y1="78" x2="495" y2="310" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- ================= RIGHT COLUMN (STACK / LAYERS) ================= -->
+  <text x="525" y="98" class="label">STACK / ARCHITECTURAL LAYERS</text>
+
+  <!-- Progress Bar 1: Pure Domain -->
+  <g transform="translate(525, 122)">
+    <text x="0" y="10" class="bar-label">Domain Layer (DDD Pure)</text>
+    <rect x="180" y="2" width="170" height="9" rx="4.5" fill="#1E293B"/>
+    <rect x="180" y="2" width="95" height="9" rx="4.5" fill="#38BDF8"/>
+    <text x="365" y="11" class="bar-pct">26%</text>
+  </g>
+
+  <!-- Progress Bar 2: Application Core -->
+  <g transform="translate(525, 158)">
+    <text x="0" y="10" class="bar-label">Application &amp; Use Cases</text>
+    <rect x="180" y="2" width="170" height="9" rx="4.5" fill="#1E293B"/>
+    <rect x="180" y="2" width="70" height="9" rx="4.5" fill="#60A5FA"/>
+    <text x="365" y="11" class="bar-pct">19%</text>
+  </g>
+
+  <!-- Progress Bar 3: Automated Test Suite -->
+  <g transform="translate(525, 194)">
+    <text x="0" y="10" class="bar-label">Test Automation &amp; Invariants</text>
+    <rect x="180" y="2" width="170" height="9" rx="4.5" fill="#1E293B"/>
+    <rect x="180" y="2" width="130" height="9" rx="4.5" fill="#10B981"/>
+    <text x="365" y="11" class="bar-pct">36%</text>
+  </g>
+
+  <!-- Progress Bar 4: Infrastructure & Repos -->
+  <g transform="translate(525, 230)">
+    <text x="0" y="10" class="bar-label">Infrastructure &amp; Adapters</text>
+    <rect x="180" y="2" width="170" height="9" rx="4.5" fill="#1E293B"/>
+    <rect x="180" y="2" width="45" height="9" rx="4.5" fill="#8B5CF6"/>
+    <text x="365" y="11" class="bar-pct">12%</text>
+  </g>
+
+  <!-- Progress Bar 5: Database D1 & HTTP -->
+  <g transform="translate(525, 266)">
+    <text x="0" y="10" class="bar-label">D1 SQLite &amp; HTTP Presentation</text>
+    <rect x="180" y="2" width="170" height="9" rx="4.5" fill="#1E293B"/>
+    <rect x="180" y="2" width="30" height="9" rx="4.5" fill="#06B6D4"/>
+    <text x="365" y="11" class="bar-pct">7%</text>
+  </g>
+
+  <!-- Horizontal Divider -->
+  <line x1="20" y1="330" x2="930" y2="330" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- ================= BOTTOM ROW (CORE FOCUS PILLS) ================= -->
+  <text x="30" y="368" class="label">CORE FOCUS:</text>
+
+  <!-- Tag 1: DOUBLE-ENTRY -->
+  <rect x="125" y="352" width="120" height="26" rx="6" fill="#0E1726" stroke="#0284C7" stroke-width="1.2"/>
+  <text x="140" y="369" class="tag-text" fill="#38BDF8">DOUBLE-ENTRY</text>
+
+  <!-- Tag 2: APPEND-ONLY -->
+  <rect x="255" y="352" width="115" height="26" rx="6" fill="#0E1726" stroke="#2563EB" stroke-width="1.2"/>
+  <text x="272" y="369" class="tag-text" fill="#60A5FA">APPEND-ONLY</text>
+
+  <!-- Tag 3: OCC BALANCES -->
+  <rect x="380" y="352" width="125" height="26" rx="6" fill="#130E26" stroke="#7C3AED" stroke-width="1.2"/>
+  <text x="398" y="369" class="tag-text" fill="#A78BFA">OCC BALANCES</text>
+
+  <!-- Tag 4: GATE 0 / AUTHORITY -->
+  <rect x="515" y="352" width="165" height="26" rx="6" fill="#1D1408" stroke="#D97706" stroke-width="1.2"/>
+  <text x="530" y="369" class="tag-text" fill="#FBBF24">GATE 0 / AUTHORITY</text>
+
+  <!-- Tag 5: CLOUDFLARE D1 -->
+  <rect x="690" y="352" width="140" height="26" rx="6" fill="#062419" stroke="#059669" stroke-width="1.2"/>
+  <text x="708" y="369" class="tag-text" fill="#34D399">CLOUDFLARE D1</text>
+
+  <!-- Footer Info Line -->
+  <g transform="translate(30, 420)">
+    <text x="0" y="0" class="footer-text">
+      <tspan fill="#F59E0B">⚡</tspan> Certified via Vitest (394 tests passed) • Cloudflare Workers Edge (86ms startup) • Last Sync: 2026-09-28
+    </text>
+    <text x="815" y="0" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11" font-weight="700" fill="#475569">
+      ASPP-ARCH v4.0.0
+    </text>
+  </g>
+</svg>
