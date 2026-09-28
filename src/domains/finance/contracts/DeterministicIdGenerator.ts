@@ -28,8 +28,19 @@ export const MAX_EPOCH_41BIT_MS = 2199023255551;
 export class DeterministicIdGenerator {
   private static lastTimestamp = 0;
   private static sequence = 0;
-  private static workerId: number = DeterministicIdGenerator.initializeWorkerId();
+  private static workerId: number | null = null;
   private static workerIdLocked = false;
+
+  /**
+   * Obtém o workerId de forma preguiçosa (lazy) no primeiro uso dentro de um handler,
+   * prevenindo execução de crypto.getRandomValues() no escopo global do Cloudflare Workers.
+   */
+  private static getWorkerId(): number {
+    if (DeterministicIdGenerator.workerId === null) {
+      DeterministicIdGenerator.workerId = DeterministicIdGenerator.initializeWorkerId();
+    }
+    return DeterministicIdGenerator.workerId;
+  }
 
   /**
    * Inicializa o workerId sem uso de Math.random(), buscando variáveis de ambiente
@@ -63,6 +74,7 @@ export class DeterministicIdGenerator {
    * Garante que o retorno seja um Safe Integer estritamente positivo e monotônico.
    */
   public static nextTransactionId(): number {
+    const currentWorkerId = DeterministicIdGenerator.getWorkerId();
     // Trava o workerId após a primeira geração para impedir deriva em runtime
     DeterministicIdGenerator.workerIdLocked = true;
 
@@ -106,7 +118,7 @@ export class DeterministicIdGenerator {
 
     // Composição de 53 bits seguros:
     // (now * 4096) + (workerId * 256) + sequence
-    const id = now * 4096 + DeterministicIdGenerator.workerId * 256 + DeterministicIdGenerator.sequence;
+    const id = now * 4096 + currentWorkerId * 256 + DeterministicIdGenerator.sequence;
 
     if (!Number.isSafeInteger(id) || id <= 0) {
       throw new Error(`ID gerado fora dos limites de inteiro seguro de 53 bits: ${id}`);
@@ -145,6 +157,7 @@ export class DeterministicIdGenerator {
     }
     DeterministicIdGenerator.lastTimestamp = 0;
     DeterministicIdGenerator.sequence = initialSeq;
+    DeterministicIdGenerator.workerId = null;
     DeterministicIdGenerator.workerIdLocked = false;
   }
 }
