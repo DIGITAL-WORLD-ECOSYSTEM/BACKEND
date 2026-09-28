@@ -1,0 +1,242 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 950 560" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C14"/>
+      <stop offset="50%" stop-color="#0B101B"/>
+      <stop offset="100%" stop-color="#05080F"/>
+    </linearGradient>
+
+    <linearGradient id="modFin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0C253B"/>
+      <stop offset="100%" stop-color="#061524"/>
+    </linearGradient>
+
+    <linearGradient id="modId" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#141E38"/>
+      <stop offset="100%" stop-color="#0C1324"/>
+    </linearGradient>
+
+    <linearGradient id="modCiv" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#281E10"/>
+      <stop offset="100%" stop-color="#181108"/>
+    </linearGradient>
+
+    <linearGradient id="modSsi" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1F1538"/>
+      <stop offset="100%" stop-color="#120B24"/>
+    </linearGradient>
+
+    <linearGradient id="modUser" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1A1828"/>
+      <stop offset="100%" stop-color="#0E0D1A"/>
+    </linearGradient>
+
+    <linearGradient id="modRt" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2A122E"/>
+      <stop offset="100%" stop-color="#180A1A"/>
+    </linearGradient>
+
+    <linearGradient id="tierGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#090E17"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; fill: #F1F5F9; }
+    .tier-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; fill: #94A3B8; }
+    .mod-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 13px; font-weight: 800; }
+    .mod-route { font-family: -apple-system, BlinkMacSystemFont, "JetBrains Mono", monospace; font-size: 10px; font-weight: 700; }
+    .mod-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 10px; fill: #94A3B8; line-height: 1.3; }
+    .badge { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 8.5px; font-weight: 800; letter-spacing: 0.5px; }
+    .storage-title { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 11px; font-weight: 700; fill: #F1F5F9; }
+    .storage-desc { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 9px; fill: #64748B; }
+  </style>
+
+  <!-- Container -->
+  <rect x="2" y="2" width="946" height="556" rx="14" fill="url(#bgGrad2)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Window Header Bar -->
+  <circle cx="32" cy="30" r="6" fill="#EF4444"/>
+  <circle cx="52" cy="30" r="6" fill="#F59E0B"/>
+  <circle cx="72" cy="30" r="6" fill="#10B981"/>
+  <text x="100" y="34" class="title">ASPPIBRA ECOSYSTEM — MODULE TOPOLOGY &amp; DATA FABRIC</text>
+
+  <!-- Status Pill -->
+  <rect x="740" y="18" width="180" height="25" rx="12.5" fill="#1E1B4B" stroke="#6366F1" stroke-width="1.2"/>
+  <text x="765" y="34" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10.5" font-weight="800" fill="#A5B4FC" letter-spacing="1px">6 BOUNDED MODULES</text>
+
+  <!-- Separator -->
+  <line x1="20" y1="56" x2="930" y2="56" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- ================= TIER 1: INGRESS & SECURITY (Top) ================= -->
+  <g transform="translate(30, 72)">
+    <rect x="0" y="0" width="890" height="58" rx="8" fill="url(#tierGrad)" stroke="#1E293B" stroke-width="1.2"/>
+    <text x="20" y="22" class="tier-title">1. INGRESS, AUTH &amp; EDGE RESILIENCE (CLOUDFLARE WORKERS)</text>
+    
+    <!-- Badges in Ingress -->
+    <g transform="translate(20, 32)">
+      <rect x="0" y="0" width="95" height="18" rx="4" fill="#0C4A6E"/>
+      <text x="8" y="12.5" class="badge" fill="#38BDF8">HONO V4 ROUTER</text>
+
+      <rect x="105" y="0" width="105" height="18" rx="4" fill="#1E293B"/>
+      <text x="113" y="12.5" class="badge" fill="#94A3B8">CORRELATION ID</text>
+
+      <rect x="220" y="0" width="115" height="18" rx="4" fill="#1E293B"/>
+      <text x="228" y="12.5" class="badge" fill="#94A3B8">SESSIONGUARD (AAL2)</text>
+
+      <rect x="345" y="0" width="105" height="18" rx="4" fill="#1E293B"/>
+      <text x="353" y="12.5" class="badge" fill="#94A3B8">FAIL-CLOSED RBAC</text>
+
+      <rect x="460" y="0" width="115" height="18" rx="4" fill="#1E293B"/>
+      <text x="468" y="12.5" class="badge" fill="#94A3B8">IDEMPOTENCY FENCE</text>
+
+      <rect x="585" y="0" width="115" height="18" rx="4" fill="#1E293B"/>
+      <text x="593" y="12.5" class="badge" fill="#94A3B8">CHAOS ENG (D1 DOWN)</text>
+
+      <rect x="710" y="0" width="150" height="18" rx="4" fill="#064E3B"/>
+      <text x="718" y="12.5" class="badge" fill="#34D399">0ms COLD START ISOLATES</text>
+    </g>
+  </g>
+
+  <!-- ================= TIER 2: 6 CORE MODULES (Grid 3x2) ================= -->
+  
+  <!-- Module 1: Finance Core -->
+  <g transform="translate(30, 145)">
+    <rect x="0" y="0" width="280" height="142" rx="8" fill="url(#modFin)" stroke="#0284C7" stroke-width="1.2"/>
+    <text x="16" y="24" class="mod-title" fill="#38BDF8">💳 Finance Core</text>
+    <rect x="200" y="12" width="65" height="16" rx="4" fill="#064E3B"/>
+    <text x="207" y="23.5" class="badge" fill="#34D399">FROZEN</text>
+
+    <text x="16" y="42" class="mod-route" fill="#0284C7">/api/v1/finance (11 APIs)</text>
+    <text x="16" y="62" class="mod-desc">Livro-razão em partidas dobradas, balanços OCC,</text>
+    <text x="16" y="76" class="mod-desc">aritmética uint256 (Money256), Gate 0 soberano e</text>
+    <text x="16" y="90" class="mod-desc">conciliação bancária multibanco (Bradesco, Cora).</text>
+    
+    <line x1="16" y1="104" x2="264" y2="104" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="124" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#38BDF8" font-weight="700">84 Arquivos • 394 Testes (100% Pass)</text>
+  </g>
+
+  <!-- Module 2: Identity & IAM -->
+  <g transform="translate(335, 145)">
+    <rect x="0" y="0" width="280" height="142" rx="8" fill="url(#modId)" stroke="#3B82F6" stroke-width="1.2"/>
+    <text x="16" y="24" class="mod-title" fill="#60A5FA">🛡️ Identity &amp; IAM</text>
+    <rect x="200" y="12" width="65" height="16" rx="4" fill="#064E3B"/>
+    <text x="207" y="23.5" class="badge" fill="#34D399">ACTIVE</text>
+
+    <text x="16" y="42" class="mod-route" fill="#3B82F6">/api/v1/identity (Auth Hub)</text>
+    <text x="16" y="62" class="mod-desc">Autenticação híbrida: Senhas PBKDF2, Web3 SIWE</text>
+    <text x="16" y="76" class="mod-desc">(Ethereum), Passkeys / WebAuthn, TOTP MFA,</text>
+    <text x="16" y="90" class="mod-desc">authEpoch em tempo real e proteção anti-lockout.</text>
+    
+    <line x1="16" y1="104" x2="264" y2="104" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="124" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#60A5FA" font-weight="700">AAL1 / AAL2 / AAL3 Step-Up Auth</text>
+  </g>
+
+  <!-- Module 3: Civil Identity & KYC -->
+  <g transform="translate(640, 145)">
+    <rect x="0" y="0" width="280" height="142" rx="8" fill="url(#modCiv)" stroke="#D97706" stroke-width="1.2"/>
+    <text x="16" y="24" class="mod-title" fill="#FBBF24">🆔 Civil Identity</text>
+    <rect x="200" y="12" width="65" height="16" rx="4" fill="#064E3B"/>
+    <text x="207" y="23.5" class="badge" fill="#34D399">ACTIVE</text>
+
+    <text x="16" y="42" class="mod-route" fill="#D97706">/api/v1/civil &amp; /api/core/compliance</text>
+    <text x="16" y="62" class="mod-desc">Registro do Cidadão Soberano, esteiras KYC/AML,</text>
+    <text x="16" y="76" class="mod-desc">validação pericial de documentos, hashes biométricos</text>
+    <text x="16" y="90" class="mod-desc">e trilhas forenses em estrita aderência à LGPD.</text>
+    
+    <line x1="16" y1="104" x2="264" y2="104" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="124" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#FBBF24" font-weight="700">Auditoria Forense • Compliance SAR</text>
+  </g>
+
+  <!-- Module 4: Self-Sovereign Identity (SSI) -->
+  <g transform="translate(30, 302)">
+    <rect x="0" y="0" width="280" height="142" rx="8" fill="url(#modSsi)" stroke="#7C3AED" stroke-width="1.2"/>
+    <text x="16" y="24" class="mod-title" fill="#A78BFA">🌐 Self-Sovereign (SSI)</text>
+    <rect x="200" y="12" width="65" height="16" rx="4" fill="#064E3B"/>
+    <text x="207" y="23.5" class="badge" fill="#34D399">ACTIVE</text>
+
+    <text x="16" y="42" class="mod-route" fill="#7C3AED">/api/v1/ssi (W3C Standard)</text>
+    <text x="16" y="62" class="mod-desc">Identificadores Descentralizados (DIDs), emissão</text>
+    <text x="16" y="76" class="mod-desc">e revogação de Credenciais Verificáveis (VCs),</text>
+    <text x="16" y="90" class="mod-desc">assinaturas criptográficas Ed25519 e Secp256k1.</text>
+    
+    <line x1="16" y1="104" x2="264" y2="104" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="124" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#A78BFA" font-weight="700">did:key • did:ion • W3C Credentials</text>
+  </g>
+
+  <!-- Module 5: User & DAO Governance -->
+  <g transform="translate(335, 302)">
+    <rect x="0" y="0" width="280" height="142" rx="8" fill="url(#modUser)" stroke="#6366F1" stroke-width="1.2"/>
+    <text x="16" y="24" class="mod-title" fill="#818CF8">👤 User &amp; Governance</text>
+    <rect x="200" y="12" width="65" height="16" rx="4" fill="#064E3B"/>
+    <text x="207" y="23.5" class="badge" fill="#34D399">ACTIVE</text>
+
+    <text x="16" y="42" class="mod-route" fill="#6366F1">/api/v1/user (Membership Hub)</text>
+    <text x="16" y="62" class="mod-desc">Perfis soberanos, vinculação de contas externas</text>
+    <text x="16" y="76" class="mod-desc">com garantia anti-lockout, níveis associativos de</text>
+    <text x="16" y="90" class="mod-desc">membros e prerrogativas de voto na DAO ASPPIBRA.</text>
+    
+    <line x1="16" y1="104" x2="264" y2="104" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="124" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#818CF8" font-weight="700">Account-First Identity • DAO Privileges</text>
+  </g>
+
+  <!-- Module 6: Realtime & Edge Infra -->
+  <g transform="translate(640, 302)">
+    <rect x="0" y="0" width="280" height="142" rx="8" fill="url(#modRt)" stroke="#EC4899" stroke-width="1.2"/>
+    <text x="16" y="24" class="mod-title" fill="#F472B6">⚡ Realtime &amp; Queues</text>
+    <rect x="200" y="12" width="65" height="16" rx="4" fill="#064E3B"/>
+    <text x="207" y="23.5" class="badge" fill="#34D399">ACTIVE</text>
+
+    <text x="16" y="42" class="mod-route" fill="#EC4899">ChatRoomDO &amp; Cloudflare Queues</text>
+    <text x="16" y="62" class="mod-desc">Durable Objects com SQLite dedicado para chat e</text>
+    <text x="16" y="76" class="mod-desc">colaboração P2P; Filas assíncronas (w3-mail, w3-chat)</text>
+    <text x="16" y="90" class="mod-desc">com Dead Letter Queues (DLQs) e outbox transacional.</text>
+    
+    <line x1="16" y1="104" x2="264" y2="104" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="124" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#F472B6" font-weight="700">Durable Objects • WebSockets • DLQ</text>
+  </g>
+
+  <!-- ================= TIER 3: DISTRIBUTED STORAGE (Bottom) ================= -->
+  <g transform="translate(30, 460)">
+    <rect x="0" y="0" width="890" height="66" rx="8" fill="url(#tierGrad)" stroke="#1E293B" stroke-width="1.2"/>
+    <text x="20" y="22" class="tier-title">3. STORAGE FABRIC &amp; HARDENED PERSISTENCE (CLOUDFLARE CLUSTER)</text>
+
+    <!-- Storage Node 1 -->
+    <g transform="translate(20, 32)">
+      <rect x="0" y="0" width="165" height="24" rx="4" fill="#0F172A" stroke="#2563EB" stroke-width="1"/>
+      <text x="10" y="16" class="storage-title">🗄️ D1 SQLite (w3-db)</text>
+    </g>
+
+    <!-- Storage Node 2 -->
+    <g transform="translate(195, 32)">
+      <rect x="0" y="0" width="165" height="24" rx="4" fill="#0F172A" stroke="#EC4899" stroke-width="1"/>
+      <text x="10" y="16" class="storage-title">💬 DO SQLite (ChatRoom)</text>
+    </g>
+
+    <!-- Storage Node 3 -->
+    <g transform="translate(370, 32)">
+      <rect x="0" y="0" width="165" height="24" rx="4" fill="#0F172A" stroke="#0284C7" stroke-width="1"/>
+      <text x="10" y="16" class="storage-title">📦 R2 Buckets (Media)</text>
+    </g>
+
+    <!-- Storage Node 4 -->
+    <g transform="translate(545, 32)">
+      <rect x="0" y="0" width="165" height="24" rx="4" fill="#0F172A" stroke="#D97706" stroke-width="1"/>
+      <text x="10" y="16" class="storage-title">⚡ KV (Auth &amp; Cache)</text>
+    </g>
+
+    <!-- Storage Node 5 -->
+    <g transform="translate(720, 32)">
+      <rect x="0" y="0" width="150" height="24" rx="4" fill="#0F172A" stroke="#10B981" stroke-width="1"/>
+      <text x="10" y="16" class="storage-title">📬 Queues + DLQs</text>
+    </g>
+  </g>
+
+  <!-- Footer Info Line -->
+  <g transform="translate(30, 545)">
+    <text x="0" y="0" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10.5" fill="#64748B">
+      <tspan fill="#34D399">✓</tspan> Arquitetura Limpa • Separação Estrita de Bounded Contexts • Princípio de Inversão de Dependência (DIP)
+    </text>
+  </g>
+</svg>

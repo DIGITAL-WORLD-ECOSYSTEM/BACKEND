@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 950 375" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C14"/>
+      <stop offset="50%" stop-color="#0B101B"/>
+      <stop offset="100%" stop-color="#05080F"/>
+    </linearGradient>
+
+    <linearGradient id="rowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#0B1120"/>
+    </linearGradient>
+
+    <linearGradient id="scoreCardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#141E33"/>
+      <stop offset="100%" stop-color="#0D1527"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; fill: #F1F5F9; }
+    .col-header { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 10px; font-weight: 800; letter-spacing: 1px; fill: #64748B; }
+    .row-name { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 11.5px; font-weight: 700; fill: #F1F5F9; }
+    .row-tech { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 10px; fill: #94A3B8; }
+    .row-stat { font-family: -apple-system, BlinkMacSystemFont, "JetBrains Mono", monospace; font-size: 11px; font-weight: 700; fill: #38BDF8; }
+    .score-badge { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 9px; font-weight: 800; fill: #34D399; }
+    .active-badge { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 9px; font-weight: 800; fill: #38BDF8; }
+  </style>
+
+  <!-- Container -->
+  <rect x="2" y="2" width="946" height="371" rx="14" fill="url(#bgGrad3)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Window Header Bar -->
+  <circle cx="32" cy="30" r="6" fill="#EF4444"/>
+  <circle cx="52" cy="30" r="6" fill="#F59E0B"/>
+  <circle cx="72" cy="30" r="6" fill="#10B981"/>
+  <text x="100" y="34" class="title">ASPPIBRA ECOSYSTEM — MODULE COMPLIANCE &amp; AUDIT MATRIX</text>
+
+  <!-- Status Pill -->
+  <rect x="740" y="18" width="180" height="25" rx="12.5" fill="#064E3B" stroke="#059669" stroke-width="1.2"/>
+  <text x="765" y="34" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10.5" font-weight="800" fill="#6EE7B7" letter-spacing="1px">6/6 CERTIFIED MODULES</text>
+
+  <!-- Separator -->
+  <line x1="20" y1="56" x2="930" y2="56" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- Table Header -->
+  <g transform="translate(30, 75)">
+    <text x="10" y="0" class="col-header">MÓDULO &amp; BOUNDED CONTEXT</text>
+    <text x="280" y="0" class="col-header">TECNOLOGIAS &amp; PADRÕES</text>
+    <text x="540" y="0" class="col-header">STATUS AUDITORIA</text>
+    <text x="680" y="0" class="col-header">NOTA QUALIDADE</text>
+    <text x="810" y="0" class="col-header">CICLO DE VIDA</text>
+  </g>
+
+  <!-- Row 1: Finance Core -->
+  <g transform="translate(30, 90)">
+    <rect x="0" y="0" width="890" height="38" rx="6" fill="url(#rowGrad)" stroke="#0284C7" stroke-width="1"/>
+    <text x="15" y="24" class="row-name">💳 Finance Core Engine</text>
+    <text x="280" y="24" class="row-tech">Double-Entry, OCC Balances, Money256 (uint256), Gate 0</text>
+    <text x="540" y="24" class="row-stat">84 Arqs • 394 Testes</text>
+    <text x="690" y="24" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="12" font-weight="800" fill="#10B981">10,0 / 10</text>
+    <rect x="800" y="10" width="75" height="18" rx="4" fill="#064E3B"/>
+    <text x="812" y="22.5" class="score-badge">🟢 FROZEN</text>
+  </g>
+
+  <!-- Row 2: Identity & IAM -->
+  <g transform="translate(30, 134)">
+    <rect x="0" y="0" width="890" height="38" rx="6" fill="url(#rowGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="15" y="24" class="row-name">🛡️ Identity &amp; IAM (Auth Hub)</text>
+    <text x="280" y="24" class="row-tech">Web3 SIWE (Ethereum), Passkeys WebAuthn, TOTP MFA, AAL2</text>
+    <text x="540" y="24" class="row-stat">28 Arqs • Full Vitest</text>
+    <text x="690" y="24" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="12" font-weight="800" fill="#38BDF8">9,9 / 10</text>
+    <rect x="800" y="10" width="75" height="18" rx="4" fill="#0C4A6E"/>
+    <text x="812" y="22.5" class="active-badge">⚡ ACTIVE</text>
+  </g>
+
+  <!-- Row 3: Civil Identity & Compliance -->
+  <g transform="translate(30, 178)">
+    <rect x="0" y="0" width="890" height="38" rx="6" fill="url(#rowGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="15" y="24" class="row-name">🆔 Civil Identity &amp; Compliance</text>
+    <text x="280" y="24" class="row-tech">Citizen Registration, KYC/AML Esteira, LGPD Biometrics</text>
+    <text x="540" y="24" class="row-stat">16 Arqs • Audit Trails</text>
+    <text x="690" y="24" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="12" font-weight="800" fill="#FBBF24">9,8 / 10</text>
+    <rect x="800" y="10" width="75" height="18" rx="4" fill="#0C4A6E"/>
+    <text x="812" y="22.5" class="active-badge">⚡ ACTIVE</text>
+  </g>
+
+  <!-- Row 4: Self-Sovereign Identity -->
+  <g transform="translate(30, 222)">
+    <rect x="0" y="0" width="890" height="38" rx="6" fill="url(#rowGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="15" y="24" class="row-name">🌐 Self-Sovereign Identity (SSI)</text>
+    <text x="280" y="24" class="row-tech">W3C DIDs (did:key, did:ion), Verifiable Credentials, Ed25519</text>
+    <text x="540" y="24" class="row-stat">18 Arqs • W3C Certified</text>
+    <text x="690" y="24" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="12" font-weight="800" fill="#818CF8">9,9 / 10</text>
+    <rect x="800" y="10" width="75" height="18" rx="4" fill="#0C4A6E"/>
+    <text x="812" y="22.5" class="active-badge">⚡ ACTIVE</text>
+  </g>
+
+  <!-- Row 5: User & Membership -->
+  <g transform="translate(30, 266)">
+    <rect x="0" y="0" width="890" height="38" rx="6" fill="url(#rowGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="15" y="24" class="row-name">👤 User &amp; DAO Governance</text>
+    <text x="280" y="24" class="row-tech">Sovereign Profiles, Account-First Identity, Anti-Lockout Link</text>
+    <text x="540" y="24" class="row-stat">14 Arqs • Clean DIP</text>
+    <text x="690" y="24" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="12" font-weight="800" fill="#C084FC">9,9 / 10</text>
+    <rect x="800" y="10" width="75" height="18" rx="4" fill="#0C4A6E"/>
+    <text x="812" y="22.5" class="active-badge">⚡ ACTIVE</text>
+  </g>
+
+  <!-- Row 6: Realtime & Edge Infra -->
+  <g transform="translate(30, 310)">
+    <rect x="0" y="0" width="890" height="38" rx="6" fill="url(#rowGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="15" y="24" class="row-name">⚡ Realtime DO &amp; Queues</text>
+    <text x="280" y="24" class="row-tech">ChatRoomDO (SQLite Provider), Cloudflare Queues + DLQs</text>
+    <text x="540" y="24" class="row-stat">12 Arqs • Multi-Worker</text>
+    <text x="690" y="24" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="12" font-weight="800" fill="#10B981">10,0 / 10</text>
+    <rect x="800" y="10" width="75" height="18" rx="4" fill="#0C4A6E"/>
+    <text x="812" y="22.5" class="active-badge">⚡ ACTIVE</text>
+  </g>
+</svg>

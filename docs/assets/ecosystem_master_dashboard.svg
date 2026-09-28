@@ -1,0 +1,200 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 950 490" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C14"/>
+      <stop offset="50%" stop-color="#0B101B"/>
+      <stop offset="100%" stop-color="#05080F"/>
+    </linearGradient>
+
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#141C2E"/>
+      <stop offset="100%" stop-color="#0D1424"/>
+    </linearGradient>
+
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#C084FC"/>
+    </linearGradient>
+
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; fill: #F1F5F9; }
+    .label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; fill: #64748B; }
+    .kpi-num { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-weight: 800; font-size: 28px; }
+    .bar-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 11.5px; fill: #94A3B8; font-weight: 500; }
+    .bar-pct { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 11.5px; font-weight: 700; fill: #E2E8F0; }
+    .tag-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 10.5px; font-weight: 700; letter-spacing: 0.8px; }
+    .footer-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 11px; fill: #64748B; }
+  </style>
+
+  <!-- Main Container -->
+  <rect x="2" y="2" width="946" height="486" rx="14" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Window Header Bar -->
+  <circle cx="32" cy="30" r="6" fill="#EF4444"/>
+  <circle cx="52" cy="30" r="6" fill="#F59E0B"/>
+  <circle cx="72" cy="30" r="6" fill="#10B981"/>
+
+  <text x="100" y="34" class="title">ASPPIBRA ECOSYSTEM — DISTRIBUTED BACKEND ARCHITECTURE</text>
+
+  <!-- Live Status Pill -->
+  <rect x="740" y="18" width="180" height="25" rx="12.5" fill="#064E3B" stroke="#059669" stroke-width="1.2"/>
+  <circle cx="758" cy="30.5" r="4.5" fill="#34D399" filter="url(#glow)"/>
+  <text x="772" y="34" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10.5" font-weight="800" fill="#6EE7B7" letter-spacing="1px">LIVE ON EDGE (W3)</text>
+
+  <!-- Divider -->
+  <line x1="20" y1="56" x2="930" y2="56" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- ================= TOP ROW: 4 KPI CARDS ================= -->
+  
+  <!-- Card 1: Core Modules -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="205" height="98" rx="8" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="26" class="label">ECOSYSTEM MODULES</text>
+    <text x="16" y="66" class="kpi-num" fill="#38BDF8">06</text>
+    <text x="56" y="66" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="14" fill="#64748B" font-weight="600">BOUNDED</text>
+    <text x="16" y="86" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10" fill="#10B981">● Finance, IAM, SSI, Civil, User, Edge</text>
+  </g>
+
+  <!-- Card 2: Test Suites -->
+  <g transform="translate(255, 75)">
+    <rect x="0" y="0" width="205" height="98" rx="8" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="26" class="label">TEST SUITES (VITEST)</text>
+    <text x="16" y="66" class="kpi-num" fill="#10B981">49<tspan font-size="18" fill="#6EE7B7">/49</tspan></text>
+    <text x="16" y="86" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10" fill="#34D399">✓ 100% Passed • Strict DIP Bounds</text>
+  </g>
+
+  <!-- Card 3: Edge Latency -->
+  <g transform="translate(480, 75)">
+    <rect x="0" y="0" width="205" height="98" rx="8" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="26" class="label">GLOBAL EDGE P99</text>
+    <text x="16" y="66" class="kpi-num" fill="#FBBF24">&lt; 25<tspan font-size="16" fill="#FDE68A">ms</tspan></text>
+    <text x="16" y="86" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10" fill="#F59E0B">⚡ Cloudflare Global V8 Isolates</text>
+  </g>
+
+  <!-- Card 4: Precision & Storage -->
+  <g transform="translate(705, 75)">
+    <rect x="0" y="0" width="215" height="98" rx="8" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="26" class="label">PERSISTENCE ENGINES</text>
+    <text x="16" y="66" class="kpi-num" fill="#A855F7">05<tspan font-size="14" fill="#C084FC"> TIERS</tspan></text>
+    <text x="16" y="86" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10" fill="#C084FC">D1, DO SQLite, R2, KV, Queues</text>
+  </g>
+
+  <!-- ================= MIDDLE ROW ================= -->
+  
+  <!-- Activity Stream Box (Left) -->
+  <g transform="translate(30, 192)">
+    <rect x="0" y="0" width="445" height="150" rx="8" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="24" class="label">SYSTEM PULSE &amp; EDGE WORKER TRAFFIC</text>
+    <text x="350" y="24" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10" font-weight="700" fill="#38BDF8">REALTIME</text>
+
+    <!-- Synthetic Waveform Chart -->
+    <path d="M 16 110 Q 50 40 85 85 T 155 95 T 225 45 T 295 105 T 365 35 T 425 75" 
+          fill="none" stroke="url(#waveGrad)" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Gradient Fill Area below wave -->
+    <path d="M 16 110 Q 50 40 85 85 T 155 95 T 225 45 T 295 105 T 365 35 T 425 75 L 425 135 L 16 135 Z" 
+          fill="url(#waveGrad)" opacity="0.12"/>
+
+    <!-- Pulse nodes -->
+    <circle cx="225" cy="45" r="4.5" fill="#38BDF8" filter="url(#glow)"/>
+    <circle cx="365" cy="35" r="4.5" fill="#C084FC" filter="url(#glow)"/>
+
+    <text x="16" y="138" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="9.5" fill="#64748B">
+      Borda Global Cloudflare • Zero Cold Starts • TLS 1.3 • Fail-Closed Resilience
+    </text>
+  </g>
+
+  <!-- Modules Health & Progress (Right) -->
+  <g transform="translate(495, 192)">
+    <rect x="0" y="0" width="425" height="150" rx="8" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1"/>
+    <text x="16" y="24" class="label">MODULE INTEGRITY &amp; COVERAGE</text>
+    <text x="350" y="24" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10" font-weight="700" fill="#10B981">99.8% AVG</text>
+
+    <!-- Bar 1: Finance Core -->
+    <g transform="translate(16, 42)">
+      <text x="0" y="10" class="bar-label">💳 Finance Core (Double-Entry Ledger)</text>
+      <rect x="235" y="2" width="125" height="8" rx="4" fill="#1E293B"/>
+      <rect x="235" y="2" width="125" height="8" rx="4" fill="#10B981"/>
+      <text x="375" y="10" class="bar-pct">100%</text>
+    </g>
+
+    <!-- Bar 2: Identity & IAM -->
+    <g transform="translate(16, 64)">
+      <text x="0" y="10" class="bar-label">🛡️ Identity IAM (SIWE + Passkeys + MFA)</text>
+      <rect x="235" y="2" width="125" height="8" rx="4" fill="#1E293B"/>
+      <rect x="235" y="2" width="124" height="8" rx="4" fill="#38BDF8"/>
+      <text x="375" y="10" class="bar-pct">99%</text>
+    </g>
+
+    <!-- Bar 3: Civil Identity & Compliance -->
+    <g transform="translate(16, 86)">
+      <text x="0" y="10" class="bar-label">🆔 Civil Identity (KYC/AML + LGPD)</text>
+      <rect x="235" y="2" width="125" height="8" rx="4" fill="#1E293B"/>
+      <rect x="235" y="2" width="122" height="8" rx="4" fill="#F59E0B"/>
+      <text x="375" y="10" class="bar-pct">98%</text>
+    </g>
+
+    <!-- Bar 4: Self-Sovereign Identity -->
+    <g transform="translate(16, 108)">
+      <text x="0" y="10" class="bar-label">🌐 Self-Sovereign Identity (W3C DID/VC)</text>
+      <rect x="235" y="2" width="125" height="8" rx="4" fill="#1E293B"/>
+      <rect x="235" y="2" width="124" height="8" rx="4" fill="#818CF8"/>
+      <text x="375" y="10" class="bar-pct">99%</text>
+    </g>
+
+    <!-- Bar 5: Edge Realtime & DOs -->
+    <g transform="translate(16, 130)">
+      <text x="0" y="10" class="bar-label">⚡ Realtime Chat DO &amp; Queues</text>
+      <rect x="235" y="2" width="125" height="8" rx="4" fill="#1E293B"/>
+      <rect x="235" y="2" width="125" height="8" rx="4" fill="#C084FC"/>
+      <text x="375" y="10" class="bar-pct">100%</text>
+    </g>
+  </g>
+
+  <!-- Horizontal Divider -->
+  <line x1="20" y1="360" x2="930" y2="360" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- ================= BOTTOM ROW: CORE CAPABILITY PILLS ================= -->
+  <text x="30" y="398" class="label">CORE CAPABILITIES:</text>
+
+  <!-- Pill 1 -->
+  <rect x="155" y="382" width="115" height="26" rx="6" fill="#0C253B" stroke="#0284C7" stroke-width="1.2"/>
+  <text x="168" y="399" class="tag-text" fill="#38BDF8">CLEAN ARCH</text>
+
+  <!-- Pill 2 -->
+  <rect x="280" y="382" width="125" height="26" rx="6" fill="#062E20" stroke="#059669" stroke-width="1.2"/>
+  <text x="294" y="399" class="tag-text" fill="#34D399">DOUBLE-ENTRY</text>
+
+  <!-- Pill 3 -->
+  <rect x="415" y="382" width="135" height="26" rx="6" fill="#1E163B" stroke="#7C3AED" stroke-width="1.2"/>
+  <text x="428" y="399" class="tag-text" fill="#A78BFA">PASSKEYS / SIWE</text>
+
+  <!-- Pill 4 -->
+  <rect x="560" y="382" width="125" height="26" rx="6" fill="#2E1C06" stroke="#D97706" stroke-width="1.2"/>
+  <text x="575" y="399" class="tag-text" fill="#FBBF24">W3C DID &amp; VC</text>
+
+  <!-- Pill 5 -->
+  <rect x="695" y="382" width="130" height="26" rx="6" fill="#0A223B" stroke="#2563EB" stroke-width="1.2"/>
+  <text x="708" y="399" class="tag-text" fill="#60A5FA">DURABLE OBJECTS</text>
+
+  <!-- Pill 6 -->
+  <rect x="835" y="382" width="85" height="26" rx="6" fill="#1C162E" stroke="#EC4899" stroke-width="1.2"/>
+  <text x="848" y="399" class="tag-text" fill="#F472B6">HONO V4</text>
+
+  <!-- Footer Info Line -->
+  <g transform="translate(30, 450)">
+    <text x="0" y="0" class="footer-text">
+      <tspan fill="#F59E0B">⚡</tspan> ASPPIBRA DAO Core Ecosystem • 49 Test Suites Passing (100%) • Cloudflare Workers Edge Runtime
+    </text>
+    <text x="795" y="0" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11" font-weight="700" fill="#475569">
+      W3-ECOSYSTEM v2.0
+    </text>
+  </g>
+</svg>
