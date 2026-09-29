@@ -134,8 +134,6 @@ export class DrizzleSessionRepository implements ISessionRepository {
       .where(
         and(
           eq(userSessions.refreshTokenHash, refreshTokenHash),
-          isNull(userSessions.revokedAt),
-          isNull(refreshTokenFamilies.revokedAt),
           gt(userSessions.expiresAt, now)
         )
       )
