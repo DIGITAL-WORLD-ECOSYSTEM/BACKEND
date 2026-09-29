@@ -1,4 +1,4 @@
 export interface ConfirmPasswordResetDTO {
-  token: string;
-  newPassword: string;
+  readonly token: string;
+  readonly newPassword: string;
 }
