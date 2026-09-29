@@ -1,3 +1,3 @@
 export interface RequestPasswordResetDTO {
-  email: string;
+  readonly email: string;
 }
