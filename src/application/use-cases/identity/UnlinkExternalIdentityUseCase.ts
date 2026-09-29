@@ -20,8 +20,9 @@ export class UnlinkExternalIdentityUseCase {
 
       const passwordCredential = await authRepo.findPasswordCredentialByUserId(userId);
       const userWallets = await web3Repo.findByUserId(userId);
+      const webauthnCreds = await authRepo.findAllWebAuthnCredentialsByUserId(userId);
 
-      const totalMethods = (passwordCredential ? 1 : 0) + userWallets.length;
+      const totalMethods = (passwordCredential ? 1 : 0) + userWallets.length + webauthnCreds.length;
 
       // Trava Anti-Lockout (AF-008)
       if (totalMethods <= 1) {
