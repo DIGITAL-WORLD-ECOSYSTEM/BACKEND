@@ -60,7 +60,7 @@ export class IdentityController {
       }
 
       const user = result.getValue();
-      const effectiveAal = user.userId === 1 ? 2 : 1;
+      const effectiveAal = 1;
       return this.issueSessionResponse(c, user.userId, user.email, user.publicId, user.status, effectiveAal, new Date(), 'password');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -264,7 +264,10 @@ export class IdentityController {
     const db = c.get('db');
     const userRepo = new (await import('../../../../infrastructure/repositories/DrizzleUserRepositoryAdapter')).DrizzleUserRepositoryAdapter(db);
     const user = await userRepo.findById(userId);
-    const userAuthEpoch = user?.authEpoch || 1;
+    if (!user) {
+      return error(c, 'Usuário não encontrado durante a emissão de sessão.', null, 500);
+    }
+    const userAuthEpoch = user.authEpoch;
 
     await this.sessionRepo.createSession({
       id: sessionId,
@@ -342,6 +345,101 @@ export class IdentityController {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       return error(c, 'Erro interno ao realizar logout global', message, 500);
+    }
+  }
+
+  async getMe(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      const db = c.get('db');
+      if (!db) {
+        return error(c, 'Conexão com banco de dados indisponível', null, 500);
+      }
+
+      const userRepo = new (await import('../../../../infrastructure/repositories/DrizzleUserRepositoryAdapter')).DrizzleUserRepositoryAdapter(db);
+      const user = await userRepo.findById(userId);
+
+      if (!user) {
+        return error(c, 'Usuário não encontrado', null, 404);
+      }
+
+      const sessionId = c.get('sessionId') || c.get('user')?.sessionId;
+      const sessionAal = c.get('sessionAal') || c.get('user')?.sessionAal || 1;
+      const lastAuthenticatedAt = c.get('lastAuthenticatedAt');
+
+      // Buscar roles ativas via repositório
+      const activeRoles = typeof userRepo.findActiveUserRoles === 'function'
+        ? await userRepo.findActiveUserRoles(userId)
+        : [];
+
+      return success(c, 'Perfil de identidade carregado com sucesso', {
+        user: {
+          id: user.id,
+          publicId: user.publicId,
+          email: user.email,
+          status: user.status,
+          subjectType: user.subjectType,
+          roles: activeRoles,
+        },
+        session: {
+          id: sessionId,
+          aal: sessionAal,
+          lastAuthenticatedAt,
+        },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao obter perfil da sessão', message, 500);
+    }
+  }
+
+  async verifyPasskeyRegistration(c: Context): Promise<Response> {
+    try {
+      const userId = c.get('userId') || c.get('user')?.userId;
+      if (!userId) {
+        return error(c, 'Usuário não autenticado', null, 401);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+      const { challengeId, responseJSON } = body || {};
+
+      if (!challengeId || !responseJSON) {
+        return error(c, 'Challenge ID e resposta WebAuthn são obrigatórios para registrar passkey.', null, 400);
+      }
+
+      const origin = c.env.WEBAUTHN_ALLOWED_ORIGINS;
+      const rpID = c.env.WEBAUTHN_RP_ID;
+
+      if (!origin || !rpID) {
+        return error(c, 'Configuração de servidor inválida: WEBAUTHN_ALLOWED_ORIGINS ou WEBAUTHN_RP_ID não definidos.', null, 500);
+      }
+
+      const db = c.get('db');
+      const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
+      const { VerifyPasskeyRegistrationUseCase } = await import('../../../../application/use-cases/identity/VerifyPasskeyRegistrationUseCase');
+
+      const uow = new DrizzleUnitOfWork(db);
+      const verifyRegistration = new VerifyPasskeyRegistrationUseCase(uow);
+
+      const result = await verifyRegistration.execute({
+        challengeId,
+        responseJSON,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+      });
+
+      if (result.isFailure) {
+        return error(c, result.error || 'Falha ao registrar passkey.', null, 400);
+      }
+
+      return success(c, 'Passkey registrada com sucesso', result.getValue());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      return error(c, 'Erro interno ao verificar registro de passkey', message, 500);
     }
   }
 }
