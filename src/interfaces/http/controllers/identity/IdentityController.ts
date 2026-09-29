@@ -9,9 +9,9 @@ import { error, success } from '../../helpers/response';
 
 export class IdentityController {
   constructor(
-    private readonly authenticateUseCase: AuthenticateAccountUseCase,
-    private readonly jwtService: IJwtService,
-    private readonly sessionRepo: ISessionRepository,
+    private readonly authenticateUseCase?: AuthenticateAccountUseCase,
+    private readonly jwtService?: IJwtService,
+    private readonly sessionRepo?: ISessionRepository,
     private readonly registerUseCase?: RegisterAccountUseCase,
     private readonly verifyWalletUseCase?: VerifyWalletIdentityUseCase,
     private readonly verifyPasskeyUseCase?: VerifyPasskeyIdentityUseCase
@@ -46,6 +46,10 @@ export class IdentityController {
 
   async loginLocal(c: Context): Promise<Response> {
     try {
+      if (!this.authenticateUseCase) {
+        return error(c, 'Caso de uso de autenticação não configurado.', null, 500);
+      }
+
       const body = await c.req.json().catch(() => ({}));
       const { email, password } = body || {};
 
@@ -80,7 +84,7 @@ export class IdentityController {
       const body = await c.req.json().catch(() => ({}));
       const { transactionId, context } = body || {};
 
-      const domain = c.req.header('host') || 'w3.app'; // Em prod, pegar env.EXPECTED_DOMAIN
+      const domain = c.env?.SIWE_ALLOWED_DOMAIN || c.req.header('host') || 'w3.app';
 
       const result = await generateWeb3ChallengeUseCase.execute({
         context: context || 'login',
@@ -219,7 +223,7 @@ export class IdentityController {
     }
   }
 
-  public async issueSessionResponse(
+  private async issueSessionResponse(
     c: Context,
     userId: number,
     email: string,
@@ -232,6 +236,10 @@ export class IdentityController {
     const jwtSecret = c.env?.JWT_SECRET;
     if (!jwtSecret) {
       return error(c, 'Erro de configuração do servidor (JWT_SECRET ausente).', null, 500);
+    }
+
+    if (!this.sessionRepo || !this.jwtService) {
+      return error(c, 'Dependências de sessão não configuradas.', null, 500);
     }
 
     const sessionId = crypto.randomUUID();
@@ -248,7 +256,7 @@ export class IdentityController {
     
     const now = new Date();
     const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 3600 * 1000); // 30 days for refresh session
-    const expireSeconds = c.env?.JWT_EXPIRE_IN === '24h' ? 86400 : 86400;
+    const expireSeconds = 86400; // 24h fixo por especificação de segurança
     const jwtExpiresAt = new Date(now.getTime() + expireSeconds * 1000);
 
     // Create the token family first
@@ -320,6 +328,10 @@ export class IdentityController {
 
   async logout(c: Context): Promise<Response> {
     try {
+      if (!this.sessionRepo) {
+        return error(c, 'Repositório de sessão não configurado.', null, 500);
+      }
+
       const sessionId = c.get('sessionId') || c.get('user')?.sessionId;
       if (!sessionId) {
         return error(c, 'Sessão ativa não encontrada', null, 400);
@@ -335,6 +347,10 @@ export class IdentityController {
 
   async logoutAll(c: Context): Promise<Response> {
     try {
+      if (!this.sessionRepo) {
+        return error(c, 'Repositório de sessão não configurado.', null, 500);
+      }
+
       const userId = c.get('userId') || c.get('user')?.userId;
       if (!userId) {
         return error(c, 'Usuário não autenticado', null, 401);
