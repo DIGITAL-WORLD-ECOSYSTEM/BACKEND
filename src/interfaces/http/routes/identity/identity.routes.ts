@@ -42,7 +42,7 @@ identityRouter.post('/logout', sessionGuard, async (c) => {
   const db = c.get('db');
   const sessionRepo = new DrizzleSessionRepository(db);
   const jwtService = new JwtService();
-  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  const controller = new IdentityController(undefined, jwtService, sessionRepo);
   return controller.logout(c);
 });
 
@@ -50,7 +50,7 @@ identityRouter.post('/logout-all', sessionGuard, async (c) => {
   const db = c.get('db');
   const sessionRepo = new DrizzleSessionRepository(db);
   const jwtService = new JwtService();
-  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  const controller = new IdentityController(undefined, jwtService, sessionRepo);
   return controller.logoutAll(c);
 });
 
@@ -58,7 +58,7 @@ identityRouter.get('/me', sessionGuard, async (c) => {
   const db = c.get('db');
   const sessionRepo = new DrizzleSessionRepository(db);
   const jwtService = c.get('jwtService') || new JwtService();
-  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  const controller = new IdentityController(undefined, jwtService, sessionRepo);
   return controller.getMe(c);
 });
 
@@ -103,7 +103,7 @@ identityRouter.post('/web3/challenge', rateLimit({ windowMs: 60 * 1000, maxReque
   const db = c.get('db');
   const jwtService = new JwtService();
   const sessionRepo = new DrizzleSessionRepository(db);
-  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  const controller = new IdentityController(undefined, jwtService, sessionRepo);
   return controller.generateWeb3Challenge(c);
 });
 
@@ -138,7 +138,7 @@ identityRouter.post('/login/passkey/challenge', rateLimit({ windowMs: 60 * 1000,
   const db = c.get('db');
   const jwtService = new JwtService();
   const sessionRepo = new DrizzleSessionRepository(db);
-  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  const controller = new IdentityController(undefined, jwtService, sessionRepo);
   return controller.generatePasskeyChallenge(c);
 });
 
@@ -146,7 +146,7 @@ identityRouter.post('/registration/passkey/challenge', sessionGuard, rateLimit({
   const db = c.get('db');
   const jwtService = new JwtService();
   const sessionRepo = new DrizzleSessionRepository(db);
-  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  const controller = new IdentityController(undefined, jwtService, sessionRepo);
   return controller.generatePasskeyChallenge(c);
 });
 
@@ -159,7 +159,7 @@ identityRouter.post(
     const db = c.get('db');
     const jwtService = new JwtService();
     const sessionRepo = new DrizzleSessionRepository(db);
-    const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+    const controller = new IdentityController(undefined, jwtService, sessionRepo);
     return controller.verifyPasskeyRegistration(c);
   }
 );
@@ -177,7 +177,7 @@ identityRouter.post(
 
     const verifyPasskeyUseCase = new VerifyPasskeyIdentityUseCase(uow, resolverAdapter, auditAdapter);
     const controller = new IdentityController(
-      undefined as any,
+      undefined,
       jwtService,
       sessionRepo,
       undefined,
