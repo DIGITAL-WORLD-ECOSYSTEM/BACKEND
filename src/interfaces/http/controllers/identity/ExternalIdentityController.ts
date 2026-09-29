@@ -37,7 +37,7 @@ export class ExternalIdentityController {
   async link(c: Context): Promise<Response> {
     try {
       const userId = c.get('userId');
-      const sessionAal = c.get('sessionAal') || 1;
+      const sessionAal = c.get('sessionAal') ?? 1;
 
       if (!userId) {
         return error(c, 'Usuário não autenticado', null, 401);
@@ -154,7 +154,7 @@ export class ExternalIdentityController {
   async unlink(c: Context): Promise<Response> {
     try {
       const userId = c.get('userId');
-      const sessionAal = c.get('sessionAal') || 1;
+      const sessionAal = c.get('sessionAal') ?? 1;
 
       if (!userId) {
         return error(c, 'Usuário não autenticado', null, 401);
