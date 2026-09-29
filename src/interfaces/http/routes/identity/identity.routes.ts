@@ -26,7 +26,7 @@ import { IdentityController } from '../../controllers/identity/IdentityControlle
 import { ExternalIdentityController } from '../../controllers/identity/ExternalIdentityController';
 import { AuthAuxiliaryController } from '../../controllers/identity/AuthAuxiliaryController';
 import { rateLimit } from '../../middlewares/rate_limit';
-import { sessionGuard } from '../../middlewares/session_guard';
+import { sessionGuard, requireAal } from '../../middlewares/session_guard';
 
 type AppType = {
   Bindings: Bindings;
@@ -52,6 +52,14 @@ identityRouter.post('/logout-all', sessionGuard, async (c) => {
   const jwtService = new JwtService();
   const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
   return controller.logoutAll(c);
+});
+
+identityRouter.get('/me', sessionGuard, async (c) => {
+  const db = c.get('db');
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const jwtService = c.get('jwtService') || new JwtService();
+  const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+  return controller.getMe(c);
 });
 
 identityRouter.post(
@@ -143,6 +151,20 @@ identityRouter.post('/registration/passkey/challenge', sessionGuard, rateLimit({
 });
 
 identityRouter.post(
+  '/registration/passkey/verify',
+  sessionGuard,
+  requireAal(2),
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
+  async (c) => {
+    const db = c.get('db');
+    const jwtService = new JwtService();
+    const sessionRepo = new DrizzleSessionRepository(db);
+    const controller = new IdentityController(undefined as any, jwtService, sessionRepo);
+    return controller.verifyPasskeyRegistration(c);
+  }
+);
+
+identityRouter.post(
   '/login/passkey',
   rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
   async (c) => {
@@ -219,13 +241,20 @@ identityRouter.post('/refresh', rateLimit({ windowMs: 60 * 1000, maxRequests: 20
   }
 
   const tokenService = {
-    generateAccessToken: async (payload: { userId: number; email: string; authEpoch: number }) => {
+    generateAccessToken: async (payload: { userId: number; email: string; authEpoch: number; sessionId?: string }) => {
       return await jwtService.sign(
-        { sub: String(payload.userId), userId: payload.userId, email: payload.email, authEpoch: payload.authEpoch },
+        {
+          sub: String(payload.userId),
+          userId: payload.userId,
+          email: payload.email,
+          authEpoch: payload.authEpoch,
+          sid: payload.sessionId,
+        },
         secret
       );
     },
-    generateRefreshToken: async () => crypto.randomUUID(),
+    generateRefreshToken: async () =>
+      crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, ''),
   };
 
   const refreshUseCase = new RefreshTokenUseCase(uow, tokenService, auditAdapter);
@@ -236,7 +265,7 @@ identityRouter.post('/refresh', rateLimit({ windowMs: 60 * 1000, maxRequests: 20
 // ----------------------------------------------------------------------------
 // 3. EXTERNAL IDENTITIES (GET, POST /link, POST /unlink)
 // ----------------------------------------------------------------------------
-identityRouter.get('/external-identities', async (c) => {
+identityRouter.get('/external-identities', sessionGuard, async (c) => {
   const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const auditAdapter = new SecurityAuditAdapter(db);
@@ -248,7 +277,7 @@ identityRouter.get('/external-identities', async (c) => {
   return controller.list(c);
 });
 
-identityRouter.post('/external-identities/link', async (c) => {
+identityRouter.post('/external-identities/link', sessionGuard, requireAal(2), async (c) => {
   const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const auditAdapter = new SecurityAuditAdapter(db);
@@ -260,7 +289,7 @@ identityRouter.post('/external-identities/link', async (c) => {
   return controller.link(c);
 });
 
-identityRouter.post('/external-identities/unlink', async (c) => {
+identityRouter.post('/external-identities/unlink', sessionGuard, async (c) => {
   const db = c.get('db');
   const uow = new DrizzleUnitOfWork(db);
   const auditAdapter = new SecurityAuditAdapter(db);
