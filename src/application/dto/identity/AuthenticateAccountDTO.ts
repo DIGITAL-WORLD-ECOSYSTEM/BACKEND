@@ -1,11 +1,11 @@
 export interface AuthenticateAccountDTO {
-  email: string;
-  password: string;
+  readonly email: string;
+  readonly password: string;
 }
 
 export interface AuthenticateAccountResult {
-  userId: number;
-  email: string;
-  publicId: string | null;
-  status: string;
+  readonly userId: number;
+  readonly email: string;
+  readonly publicId: string | null;
+  readonly status: string;
 }
