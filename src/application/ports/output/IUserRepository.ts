@@ -45,4 +45,6 @@ export interface IUserRepository {
   /** Atomic increment of failed login attempts */
   incrementFailedLoginAttempts(userId: UserId): Promise<Result<number, RepositoryError>>;
   resetFailedLoginAttempts(userId: UserId): Promise<Result<void, RepositoryError>>;
+  /** Busca papéis (roles) ativos atribuídos ao usuário no RBAC */
+  findActiveUserRoles?(userId: UserId): Promise<string[]>;
 }
