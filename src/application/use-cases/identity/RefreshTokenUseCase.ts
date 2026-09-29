@@ -4,7 +4,7 @@ import { Result } from '../../../shared/kernel/Result';
 import { RefreshTokenDTO, RefreshTokenResult } from '../../../application/dto/identity/RefreshTokenDTO';
 
 export interface ITokenService {
-  generateAccessToken(payload: { userId: number; email: string; authEpoch: number }): Promise<string>;
+  generateAccessToken(payload: { userId: number; email: string; authEpoch: number; sessionId?: string }): Promise<string>;
   generateRefreshToken(): Promise<string>;
 }
 
@@ -70,12 +70,6 @@ export class RefreshTokenUseCase {
         return Result.fail<RefreshTokenResult>('Falha de concorrência ou sessão revogada por outra requisição (Race Condition).');
       }
 
-      const newAccessToken = await this.tokenService.generateAccessToken({
-        userId: user.id,
-        email: user.email || '',
-        authEpoch: user.authEpoch || 1,
-      });
-
       const newRefreshToken = await this.tokenService.generateRefreshToken();
 
       // Create new session in the same family
@@ -100,6 +94,13 @@ export class RefreshTokenUseCase {
         createdAt: now,
         expiresAt,
         lastAuthenticatedAt: session.lastAuthenticatedAt ? new Date(session.lastAuthenticatedAt) : undefined,
+      });
+
+      const newAccessToken = await this.tokenService.generateAccessToken({
+        userId: user.id,
+        email: user.email || '',
+        authEpoch: user.authEpoch || 1,
+        sessionId: newSessionId,
       });
 
       return Result.ok<RefreshTokenResult>({
