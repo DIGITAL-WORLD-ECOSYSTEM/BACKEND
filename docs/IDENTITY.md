@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/Status-FROZEN%20%2F%20CERTIFICADO-10B981?style=for-the-badge&logo=shield" alt="Status" />
   <img src="https://img.shields.io/badge/Score-10.0%20%2F%2010.0-10B981?style=for-the-badge" alt="Score" />
   <img src="https://img.shields.io/badge/Audit%20Date-2026--09--29-0284C7?style=for-the-badge" alt="Audit Date" />
-  <img src="https://img.shields.io/badge/Scope-76%20Files%20Audited-7C3AED?style=for-the-badge" alt="Scope" />
+  <img src="https://img.shields.io/badge/Scope-89%20Files%20Audited-7C3AED?style=for-the-badge" alt="Scope" />
   <img src="https://img.shields.io/badge/Tests-394%20Passed%20(100%25)-10B981?style=for-the-badge&logo=vitest&logoColor=white" alt="Tests" />
 </p>
 
