@@ -69,7 +69,10 @@ export class ExternalIdentityController {
         const resolver = new DrizzleIdentityResolverAdapter(db);
         const verifyWallet = new VerifyWalletIdentityUseCase(uow, siweVerifier, resolver);
 
-        const domain = c.req.header('host') || 'w3.app';
+        const domain = c.env?.SIWE_ALLOWED_DOMAIN;
+        if (!domain) {
+          return error(c, 'Configuração de servidor inválida: SIWE_ALLOWED_DOMAIN não definido.', null, 500);
+        }
 
         const verifyResult = await verifyWallet.execute({
           challengeId,
@@ -103,8 +106,12 @@ export class ExternalIdentityController {
         const uow = new DrizzleUnitOfWork(db);
         const verifyRegistration = new VerifyPasskeyRegistrationUseCase(uow);
 
-        const origin = c.req.header('origin') || `https://${c.req.header('host')}`;
-        const rpID = c.req.header('host') || 'w3.app';
+        const origin = c.env?.WEBAUTHN_ALLOWED_ORIGINS;
+        const rpID = c.env?.WEBAUTHN_RP_ID;
+
+        if (!origin || !rpID) {
+          return error(c, 'Configuração de servidor inválida: WEBAUTHN_ALLOWED_ORIGINS ou WEBAUTHN_RP_ID não definidos.', null, 500);
+        }
 
         const verifyResult = await verifyRegistration.execute({
           challengeId,
