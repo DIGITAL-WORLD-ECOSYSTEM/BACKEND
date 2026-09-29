@@ -4,11 +4,7 @@ import { IJwtService } from '../../../application/ports/security/IJwtService';
 import { SessionValidationService } from '../../../application/services/SessionValidationService';
 
 function resolveJwtService(c: Context): IJwtService {
-  const service = c.get('jwtService') as IJwtService | undefined;
-  if (!service) {
-    throw new Error('IJwtService was not provided in the Hono context (Dependency Injection missing).');
-  }
-  return service;
+  return (c.get('jwtService') as IJwtService | undefined) || new JwtService();
 }
 
 /**
@@ -27,10 +23,10 @@ export const sessionGuard = async (c: Context, next: Next) => {
   const authHeader = c.req.header('Authorization');
   const token = authHeader?.startsWith('Bearer ')
     ? authHeader.substring(7)
-    : (c.req.query('token') || null);
+    : null;
 
   if (!token) {
-    return c.json({ success: false, message: 'Authentication required (Bearer token or ?token= query param missing).' }, 401);
+    return c.json({ success: false, message: 'Authentication required (Bearer token missing).' }, 401);
   }
 
   const secret = c.env.JWT_SECRET;
