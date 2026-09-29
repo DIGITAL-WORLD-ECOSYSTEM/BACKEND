@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 950 480" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C14"/>
+      <stop offset="100%" stop-color="#05080F"/>
+    </linearGradient>
+    <linearGradient id="colGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#141C2E"/>
+      <stop offset="100%" stop-color="#0D1424"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; fill: #F1F5F9; }
+    .col-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 11.5px; font-weight: 800; letter-spacing: 1px; }
+    .card-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 11px; font-weight: 700; fill: #F8FAFC; }
+    .card-desc { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 10px; fill: #94A3B8; line-height: 14px; }
+    .badge { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 9px; font-weight: 700; }
+  </style>
+
+  <rect x="2" y="2" width="946" height="476" rx="14" fill="url(#bgGrad2)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Header -->
+  <circle cx="32" cy="30" r="6" fill="#EF4444"/>
+  <circle cx="52" cy="30" r="6" fill="#F59E0B"/>
+  <circle cx="72" cy="30" r="6" fill="#10B981"/>
+  <text x="100" y="34" class="title">IDENTITY &amp; IAM CORE — ARQUITETURA EM 4 CAMADAS (CLEAN ARCHITECTURE)</text>
+
+  <!-- 4 COLUMNS -->
+  <!-- Layer 1: Ingress / Edge -->
+  <rect x="25" y="65" width="210" height="385" rx="10" fill="url(#colGrad)" stroke="#38BDF8" stroke-width="1.2"/>
+  <text x="45" y="95" class="col-title" fill="#38BDF8">1. BORDA &amp; INGRESSO</text>
+
+  <rect x="35" y="115" width="190" height="75" rx="6" fill="#0B132B" stroke="#1E293B"/>
+  <text x="45" y="135" class="card-title">🛡️ sessionGuard</text>
+  <text x="45" y="152" class="card-desc">Validação stateless de JWT e</text>
+  <text x="45" y="167" class="card-desc">lookup físico de sessão no D1</text>
+  <text x="45" y="182" class="badge" fill="#38BDF8">FAIL-CLOSED • AUTH-EPOCH</text>
+
+  <rect x="35" y="200" width="190" height="75" rx="6" fill="#0B132B" stroke="#1E293B"/>
+  <text x="45" y="220" class="card-title">🔐 requireAal(2 / 3)</text>
+  <text x="45" y="237" class="card-desc">Garantia de nível de MFA para</text>
+  <text x="45" y="252" class="card-desc">operações sensíveis e vínculo</text>
+  <text x="45" y="267" class="badge" fill="#F59E0B">NIST AAL COMPLIANT</text>
+
+  <rect x="35" y="285" width="190" height="75" rx="6" fill="#0B132B" stroke="#1E293B"/>
+  <text x="45" y="305" class="card-title">⏱️ rateLimit Middleware</text>
+  <text x="45" y="322" class="card-desc">Controle de requisições por IP</text>
+  <text x="45" y="337" class="card-desc">prevenindo brute-force em login</text>
+  <text x="45" y="352" class="badge" fill="#10B981">MAX 10 REQ / MIN</text>
+
+  <rect x="35" y="370" width="190" height="65" rx="6" fill="#0B132B" stroke="#1E293B"/>
+  <text x="45" y="390" class="card-title">🎮 3 Controladores HTTP</text>
+  <text x="45" y="407" class="card-desc">Identity • AuthAuxiliary •</text>
+  <text x="45" y="422" class="card-desc">ExternalIdentityController</text>
+
+  <!-- Layer 2: Application Use Cases -->
+  <rect x="255" y="65" width="210" height="385" rx="10" fill="url(#colGrad)" stroke="#818CF8" stroke-width="1.2"/>
+  <text x="275" y="95" class="col-title" fill="#818CF8">2. APLICAÇÃO &amp; CASOS</text>
+
+  <rect x="265" y="115" width="190" height="75" rx="6" fill="#0F172A" stroke="#1E293B"/>
+  <text x="275" y="135" class="card-title">🔑 AuthenticateAccount</text>
+  <text x="275" y="152" class="card-desc">Anti-timing attacks via dummy</text>
+  <text x="275" y="167" class="card-desc">hash e bloqueio aos 5 erros</text>
+  <text x="275" y="182" class="badge" fill="#818CF8">ANTI-ENUMERATION</text>
+
+  <rect x="265" y="200" width="190" height="75" rx="6" fill="#0F172A" stroke="#1E293B"/>
+  <text x="275" y="220" class="card-title">🦊 SIWE &amp; FIDO2 Cases</text>
+  <text x="275" y="237" class="card-desc">VerifyWalletIdentityUseCase &amp;</text>
+  <text x="275" y="252" class="card-desc">VerifyPasskeyIdentityUseCase</text>
+  <text x="275" y="267" class="badge" fill="#38BDF8">ASSYMETRIC CRYPTO</text>
+
+  <rect x="265" y="285" width="190" height="75" rx="6" fill="#0F172A" stroke="#1E293B"/>
+  <text x="275" y="305" class="card-title">📲 TOTP &amp; Reset Cases</text>
+  <text x="275" y="322" class="card-desc">SetupTotp, AuthenticateTotp,</text>
+  <text x="275" y="337" class="card-desc">Request &amp; ConfirmPasswordReset</text>
+  <text x="275" y="352" class="badge" fill="#F59E0B">OUTBOX + QUEUES</text>
+
+  <rect x="265" y="370" width="190" height="65" rx="6" fill="#0F172A" stroke="#1E293B"/>
+  <text x="275" y="390" class="card-title">🔁 RefreshTokenUseCase</text>
+  <text x="275" y="407" class="card-desc">Rotação estrita com detecção de</text>
+  <text x="275" y="422" class="card-desc">reutilização maliciosa</text>
+
+  <!-- Layer 3: Pure Domain DDD -->
+  <rect x="485" y="65" width="210" height="385" rx="10" fill="url(#colGrad)" stroke="#10B981" stroke-width="1.2"/>
+  <text x="505" y="95" class="col-title" fill="#10B981">3. DOMÍNIO PURO (DDD)</text>
+
+  <rect x="495" y="115" width="190" height="75" rx="6" fill="#062419" stroke="#064E3B"/>
+  <text x="505" y="135" class="card-title">👤 UserAccount Aggregate</text>
+  <text x="505" y="152" class="card-desc">Invariantes de login, bloqueio,</text>
+  <text x="505" y="167" class="card-desc">canAuthenticate e authEpoch</text>
+  <text x="505" y="182" class="badge" fill="#10B981">CANONICAL ENTITY</text>
+
+  <rect x="495" y="200" width="190" height="75" rx="6" fill="#062419" stroke="#064E3B"/>
+  <text x="505" y="220" class="card-title">🎫 Session Aggregate</text>
+  <text x="505" y="237" class="card-desc">matchesUserEpoch(), isValid()</text>
+  <text x="505" y="252" class="card-desc">revogação explícita e AAL level</text>
+  <text x="505" y="267" class="badge" fill="#10B981">ZERO REGRESSION</text>
+
+  <rect x="495" y="285" width="190" height="75" rx="6" fill="#062419" stroke="#064E3B"/>
+  <text x="505" y="305" class="card-title">⚡ AuthTransaction Entity</text>
+  <text x="505" y="322" class="card-desc">MFA state machine: login,</text>
+  <text x="505" y="337" class="card-desc">mfa_setup, sensitive_operation</text>
+  <text x="505" y="352" class="badge" fill="#34D399">ATOMIC STEP-UP</text>
+
+  <rect x="495" y="370" width="190" height="65" rx="6" fill="#062419" stroke="#064E3B"/>
+  <text x="505" y="390" class="card-title">🚫 Anti-Lockout Violation</text>
+  <text x="505" y="407" class="card-desc">Regra de ouro AF-008: jamais</text>
+  <text x="505" y="422" class="card-desc">remover o último credencial</text>
+
+  <!-- Layer 4: Storage & Crypto Vault -->
+  <rect x="715" y="65" width="210" height="385" rx="10" fill="url(#colGrad)" stroke="#F59E0B" stroke-width="1.2"/>
+  <text x="735" y="95" class="col-title" fill="#F59E0B">4. VAULT &amp; D1 STORAGE</text>
+
+  <rect x="725" y="115" width="190" height="75" rx="6" fill="#241400" stroke="#78350F"/>
+  <text x="735" y="135" class="card-title">🗄️ user_authenticators</text>
+  <text x="735" y="152" class="card-desc">Chave mestre polimórfica com</text>
+  <text x="735" y="167" class="card-desc">password, webauthn e totp</text>
+  <text x="735" y="182" class="badge" fill="#F59E0B">DRIZZLE SQLITE D1</text>
+
+  <rect x="725" y="200" width="190" height="75" rx="6" fill="#241400" stroke="#78350F"/>
+  <text x="735" y="220" class="card-title">🛡️ user_sessions</text>
+  <text x="735" y="237" class="card-desc">Sessões vivas com AAL, IP,</text>
+  <text x="735" y="252" class="card-desc">User-Agent e refreshTokenHash</text>
+  <text x="735" y="267" class="badge" fill="#F59E0B">TTL 30 DIAS</text>
+
+  <rect x="725" y="285" width="190" height="75" rx="6" fill="#241400" stroke="#78350F"/>
+  <text x="735" y="305" class="card-title">🔐 Web Crypto &amp; PBKDF2</text>
+  <text x="735" y="322" class="card-desc">100.000 iterações com salt</text>
+  <text x="735" y="337" class="card-desc">único + AES-GCM 256 bits</text>
+  <text x="735" y="352" class="badge" fill="#FCD34D">ZERO WEAK HASHES</text>
+
+  <rect x="725" y="370" width="190" height="65" rx="6" fill="#241400" stroke="#78350F"/>
+  <text x="735" y="390" class="card-title">📜 security_audit_logs</text>
+  <text x="735" y="407" class="card-desc">Trilha imutável append-only</text>
+  <text x="735" y="422" class="card-desc">para perícia e compliance</text>
+</svg>

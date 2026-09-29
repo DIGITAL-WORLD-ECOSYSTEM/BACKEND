@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 950 360" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C14"/>
+      <stop offset="100%" stop-color="#05080F"/>
+    </linearGradient>
+    <linearGradient id="layerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#141C2E"/>
+      <stop offset="100%" stop-color="#0D1424"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; fill: #F1F5F9; }
+    .badge-name { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 12px; font-weight: 800; }
+    .stat-val { font-family: "JetBrains Mono", monospace; font-size: 16px; font-weight: 800; fill: #F8FAFC; }
+    .stat-label { font-family: -apple-system, BlinkMacSystemFont, monospace; font-size: 10px; fill: #94A3B8; }
+  </style>
+
+  <rect x="2" y="2" width="946" height="356" rx="14" fill="url(#bgGrad4)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Header -->
+  <circle cx="32" cy="30" r="6" fill="#EF4444"/>
+  <circle cx="52" cy="30" r="6" fill="#F59E0B"/>
+  <circle cx="72" cy="30" r="6" fill="#10B981"/>
+  <text x="100" y="34" class="title">INVENTÁRIO FÍSICO DO MÓDULO IDENTITY &amp; IAM (36 ARQUIVOS ATIVOS)</text>
+
+  <!-- 4 Layer Cards -->
+  <!-- Card 1: Borda e HTTP -->
+  <rect x="25" y="65" width="210" height="260" rx="8" fill="url(#layerGrad)" stroke="#38BDF8" stroke-width="1.2"/>
+  <text x="45" y="95" class="badge-name" fill="#38BDF8">🌐 BORDA / HTTP</text>
+  <text x="45" y="130" class="stat-val">6 Arquivos</text>
+  <text x="45" y="148" class="stat-label">CAMADA DE INGRESSO</text>
+  <line x1="45" y1="165" x2="215" y2="165" stroke="#334155" stroke-width="1"/>
+  <text x="45" y="190" font-family="monospace" font-size="10.5px" fill="#94A3B8">• identity.routes.ts</text>
+  <text x="45" y="215" font-family="monospace" font-size="10.5px" fill="#94A3B8">• IdentityController.ts</text>
+  <text x="45" y="240" font-family="monospace" font-size="10.5px" fill="#94A3B8">• AuthAuxiliaryController</text>
+  <text x="45" y="265" font-family="monospace" font-size="10.5px" fill="#94A3B8">• ExternalIdentityController</text>
+  <text x="45" y="290" font-family="monospace" font-size="10.5px" fill="#94A3B8">• session_guard.ts</text>
+
+  <!-- Card 2: Aplicação e Casos de Uso -->
+  <rect x="255" y="65" width="210" height="260" rx="8" fill="url(#layerGrad)" stroke="#818CF8" stroke-width="1.2"/>
+  <text x="275" y="95" class="badge-name" fill="#818CF8">⚙️ APLICAÇÃO</text>
+  <text x="275" y="130" class="stat-val">15 Arquivos</text>
+  <text x="275" y="148" class="stat-label">CASOS DE USO &amp; ORQUESTRAÇÃO</text>
+  <line x1="275" y1="165" x2="445" y2="165" stroke="#334155" stroke-width="1"/>
+  <text x="275" y="190" font-family="monospace" font-size="10.5px" fill="#94A3B8">• AuthenticateAccount</text>
+  <text x="275" y="215" font-family="monospace" font-size="10.5px" fill="#94A3B8">• VerifyWallet / Passkey</text>
+  <text x="275" y="240" font-family="monospace" font-size="10.5px" fill="#94A3B8">• Setup &amp; AuthTotp</text>
+  <text x="275" y="265" font-family="monospace" font-size="10.5px" fill="#94A3B8">• RefreshTokenUseCase</text>
+  <text x="275" y="290" font-family="monospace" font-size="10.5px" fill="#94A3B8">• SessionValidationService</text>
+
+  <!-- Card 3: Domínio Puro DDD -->
+  <rect x="485" y="65" width="210" height="260" rx="8" fill="url(#layerGrad)" stroke="#10B981" stroke-width="1.2"/>
+  <text x="505" y="95" class="badge-name" fill="#10B981">🏛️ DOMÍNIO PURO</text>
+  <text x="505" y="130" class="stat-val">8 Arquivos</text>
+  <text x="505" y="148" class="stat-label">ENTIDADES &amp; INVARIANTES</text>
+  <line x1="505" y1="165" x2="675" y2="165" stroke="#334155" stroke-width="1"/>
+  <text x="505" y="190" font-family="monospace" font-size="10.5px" fill="#94A3B8">• UserAccount.ts</text>
+  <text x="505" y="215" font-family="monospace" font-size="10.5px" fill="#94A3B8">• Session.ts</text>
+  <text x="505" y="240" font-family="monospace" font-size="10.5px" fill="#94A3B8">• AuthTransaction.ts</text>
+  <text x="505" y="265" font-family="monospace" font-size="10.5px" fill="#94A3B8">• AuthChallenge.ts</text>
+  <text x="505" y="290" font-family="monospace" font-size="10.5px" fill="#94A3B8">• AntiLockoutViolation</text>
+
+  <!-- Card 4: Infraestrutura & D1 -->
+  <rect x="715" y="65" width="210" height="260" rx="8" fill="url(#layerGrad)" stroke="#F59E0B" stroke-width="1.2"/>
+  <text x="735" y="95" class="badge-name" fill="#F59E0B">📦 INFRA &amp; STORAGE</text>
+  <text x="735" y="130" class="stat-val">12 Arquivos</text>
+  <text x="735" y="148" class="stat-label">ADAPTERS, CRYPTO &amp; D1</text>
+  <line x1="735" y1="165" x2="905" y2="165" stroke="#334155" stroke-width="1"/>
+  <text x="735" y="190" font-family="monospace" font-size="10.5px" fill="#94A3B8">• DrizzleAuthRepoAdapter</text>
+  <text x="735" y="215" font-family="monospace" font-size="10.5px" fill="#94A3B8">• DrizzleSessionRepository</text>
+  <text x="735" y="240" font-family="monospace" font-size="10.5px" fill="#94A3B8">• PBKDF2PasswordHasher</text>
+  <text x="735" y="265" font-family="monospace" font-size="10.5px" fill="#94A3B8">• JwtService.ts</text>
+  <text x="735" y="290" font-family="monospace" font-size="10.5px" fill="#94A3B8">• D1 authentication/tables</text>
+</svg>

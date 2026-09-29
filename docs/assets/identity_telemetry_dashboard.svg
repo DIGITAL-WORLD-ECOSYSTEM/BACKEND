@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 950 460" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C14"/>
+      <stop offset="50%" stop-color="#0B101B"/>
+      <stop offset="100%" stop-color="#05080F"/>
+    </linearGradient>
+
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#141C2E"/>
+      <stop offset="100%" stop-color="#0D1424"/>
+    </linearGradient>
+
+    <filter id="glowCyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <style>
+    .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; fill: #F1F5F9; }
+    .label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; fill: #64748B; }
+    .kpi-num { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-weight: 800; font-size: 28px; }
+    .bar-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 12px; fill: #94A3B8; font-weight: 500; }
+    .bar-pct { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; fill: #E2E8F0; }
+    .footer-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 11px; fill: #64748B; }
+  </style>
+
+  <rect x="2" y="2" width="946" height="456" rx="14" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="1.5"/>
+
+  <!-- Window Header Bar -->
+  <circle cx="32" cy="30" r="6" fill="#EF4444"/>
+  <circle cx="52" cy="30" r="6" fill="#F59E0B"/>
+  <circle cx="72" cy="30" r="6" fill="#10B981"/>
+
+  <text x="100" y="34" class="title">ASPPIBRA ECOSYSTEM — IDENTITY &amp; IAM CORE TELEMETRY</text>
+
+  <!-- Live Status Pill -->
+  <rect x="740" y="18" width="180" height="25" rx="12.5" fill="#0C4A6E" stroke="#0284C7" stroke-width="1.2"/>
+  <circle cx="758" cy="30.5" r="4" fill="#38BDF8" filter="url(#glowCyan)"/>
+  <text x="772" y="34" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10.5" font-weight="800" fill="#BAE6FD" letter-spacing="1px">ACTIVE • IAM PRODUCTION</text>
+
+  <!-- 4 KPI CARDS -->
+  <rect x="25" y="65" width="210" height="105" rx="10" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1.2"/>
+  <text x="45" y="92" class="label">MECANISMOS DE AUTH</text>
+  <text x="45" y="132" class="kpi-num" fill="#38BDF8">4 Modos</text>
+  <text x="45" y="153" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11px" fill="#7DD3FC">Senha • Web3 • FIDO2 • TOTP</text>
+
+  <rect x="255" y="65" width="210" height="105" rx="10" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1.2"/>
+  <text x="275" y="92" class="label">INVARIANTES DE SEGURANÇA</text>
+  <text x="275" y="132" class="kpi-num" fill="#10B981">10 / 10</text>
+  <text x="275" y="153" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11px" fill="#6EE7B7">100% Certified (AF-001 - 010)</text>
+
+  <rect x="485" y="65" width="210" height="105" rx="10" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1.2"/>
+  <text x="505" y="92" class="label">GESTÃO DE SESSÕES</text>
+  <text x="505" y="132" class="kpi-num" fill="#818CF8">Stateful</text>
+  <text x="505" y="153" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11px" fill="#A5B4FC">authEpoch + Token Families</text>
+
+  <rect x="715" y="65" width="210" height="105" rx="10" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1.2"/>
+  <text x="735" y="92" class="label">CRIPTOGRAFIA EDGE</text>
+  <text x="735" y="132" class="kpi-num" fill="#F59E0B">100.000</text>
+  <text x="735" y="153" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11px" fill="#FCD34D">Iterações PBKDF2 + AES-GCM</text>
+
+  <!-- MIDDLE SECTION: Architecture & Compliance Gauges -->
+  <rect x="25" y="190" width="440" height="210" rx="10" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1.2"/>
+  <text x="45" y="218" class="label">COBERTURA DE SEGURANÇA POR VETOR</text>
+
+  <text x="45" y="250" class="bar-label">Anti-Enumeration &amp; Timing-Attack Safety</text>
+  <text x="410" y="250" class="bar-pct">100%</text>
+  <rect x="45" y="260" width="380" height="8" rx="4" fill="#0B132B"/>
+  <rect x="45" y="260" width="380" height="8" rx="4" fill="#10B981"/>
+
+  <text x="45" y="295" class="bar-label">Step-Up Assurance Levels (AAL1 • AAL2 • AAL3)</text>
+  <text x="410" y="295" class="bar-pct">100%</text>
+  <rect x="45" y="305" width="380" height="8" rx="4" fill="#0B132B"/>
+  <rect x="45" y="305" width="380" height="8" rx="4" fill="#38BDF8"/>
+
+  <text x="45" y="340" class="bar-label">Criptografia Assimétrica (EIP-4361 &amp; FIDO2)</text>
+  <text x="410" y="340" class="bar-pct">100%</text>
+  <rect x="45" y="350" width="380" height="8" rx="4" fill="#0B132B"/>
+  <rect x="45" y="350" width="380" height="8" rx="4" fill="#818CF8"/>
+
+  <text x="45" y="380" class="bar-label">Trava Constitucional Anti-Lockout (AF-008)</text>
+  <text x="410" y="380" class="bar-pct">100%</text>
+  <rect x="45" y="385" width="380" height="8" rx="4" fill="#0B132B"/>
+  <rect x="45" y="385" width="380" height="8" rx="4" fill="#F59E0B"/>
+
+  <!-- RIGHT SECTION: Identity Lifecycle & Session Engine -->
+  <rect x="485" y="190" width="440" height="210" rx="10" fill="url(#cardGrad)" stroke="#1E293B" stroke-width="1.2"/>
+  <text x="505" y="218" class="label">SISTEMA DE AUDITORIA &amp; PERSISTÊNCIA D1</text>
+
+  <rect x="505" y="235" width="400" height="42" rx="6" fill="#0F172A" stroke="#334155" stroke-width="1"/>
+  <text x="520" y="253" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11.5px" font-weight="700" fill="#38BDF8">TABELA MESTRE: user_authenticators</text>
+  <text x="520" y="268" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10.5px" fill="#94A3B8">Controle polimórfico de senhas, WebAuthn e carteiras com revokedAt</text>
+
+  <rect x="505" y="287" width="400" height="42" rx="6" fill="#0F172A" stroke="#334155" stroke-width="1"/>
+  <text x="520" y="305" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11.5px" font-weight="700" fill="#818CF8">SESSÕES EM TEMPO REAL: user_sessions</text>
+  <text x="520" y="320" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10.5px" fill="#94A3B8">Validação física por requisição via sessionGuard com matching de authEpoch</text>
+
+  <rect x="505" y="339" width="400" height="42" rx="6" fill="#0F172A" stroke="#334155" stroke-width="1"/>
+  <text x="520" y="357" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="11.5px" font-weight="700" fill="#34D399">ROTAÇÃO ATÔMICA: refresh_token_families</text>
+  <text x="520" y="372" font-family="-apple-system, BlinkMacSystemFont, monospace" font-size="10.5px" fill="#94A3B8">Mitigação automática de replay attack com revogação da árvore inteira</text>
+
+  <!-- FOOTER -->
+  <text x="25" y="435" class="footer-text">ASPPIBRA DAO • IAM &amp; IDENTITY PLATFORM • CLOUDFLARE WORKERS EDGE RUNTIME</text>
+  <text x="740" y="435" class="footer-text">LAST FORENSIC AUDIT: 2026-09-28</text>
+</svg>
