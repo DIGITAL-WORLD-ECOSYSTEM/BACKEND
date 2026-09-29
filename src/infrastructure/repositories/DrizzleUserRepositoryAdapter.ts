@@ -239,6 +239,29 @@ export class DrizzleUserRepositoryAdapter implements IUserRepository {
     }
   }
 
+  async findActiveUserRoles(userId: UserId): Promise<string[]> {
+    const rawId = userId as unknown as number;
+    try {
+      const { userRoles, roles } = await import('../../db/authorization/tables');
+      const { and, eq, isNull, sql } = await import('drizzle-orm');
+      const rolesData = await this.db
+        .select({ roleKey: roles.key })
+        .from(userRoles)
+        .innerJoin(roles, eq(userRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userRoles.userId, rawId),
+            isNull(userRoles.revokedAt),
+            sql`${userRoles.expiresAt} IS NULL OR ${userRoles.expiresAt} > ${sql`(unixepoch())`}`,
+            eq(roles.status, 'active')
+          )
+        );
+      return rolesData.map((r: any) => r.roleKey);
+    } catch {
+      return [];
+    }
+  }
+
   private mapToRecord(raw: any): UserRecord {
     if (!raw.id || typeof raw.id !== 'number') {
       throw new Error(`Integridade violada: Usuário sem ID numérico válido.`);
