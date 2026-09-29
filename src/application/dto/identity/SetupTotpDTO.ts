@@ -1,9 +1,9 @@
 export interface SetupTotpDTO {
-  transactionId: string;
-  encryptionKey: string;
+  readonly transactionId: string;
+  readonly encryptionKey: string;
 }
 
 export interface SetupTotpResult {
-  secret: string;
-  otpauthUrl: string;
+  readonly secret: string;
+  readonly otpauthUrl: string;
 }
