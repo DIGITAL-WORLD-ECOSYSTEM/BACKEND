@@ -62,17 +62,10 @@ export class DrizzleSessionRepository implements ISessionRepository {
   }
 
   async getSessionById(sessionId: string): Promise<SessionRecord | null> {
-    const now = new Date();
     const [session] = await this.db
       .select()
       .from(userSessions)
-      .where(
-        and(
-          eq(userSessions.id, sessionId),
-          isNull(userSessions.revokedAt),
-          gt(userSessions.expiresAt, now)
-        )
-      )
+      .where(eq(userSessions.id, sessionId))
       .limit(1);
     return (session as SessionRecord) || null;
   }
