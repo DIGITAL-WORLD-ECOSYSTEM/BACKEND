@@ -47,13 +47,12 @@ export class RequestPasswordResetUseCase {
         return Result.ok();
       }
 
-      // Generate secure random token
-      const rawTokenBytes = new Uint8Array(32);
-      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-        crypto.getRandomValues(rawTokenBytes);
-      } else {
-        for (let i = 0; i < 32; i++) rawTokenBytes[i] = Math.floor(Math.random() * 256);
+      // Generate secure random token (CSPRNG required; fail-closed)
+      if (typeof crypto === 'undefined' || !crypto.getRandomValues) {
+        throw new Error('CSPRNG indisponível para geração segura de token de recuperação.');
       }
+      const rawTokenBytes = new Uint8Array(32);
+      crypto.getRandomValues(rawTokenBytes);
       const rawToken = Array.from(rawTokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
       generatedRawToken = rawToken;
 
