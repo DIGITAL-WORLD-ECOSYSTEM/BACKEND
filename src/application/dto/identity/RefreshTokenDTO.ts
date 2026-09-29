@@ -1,9 +1,9 @@
 export interface RefreshTokenDTO {
-  refreshToken: string;
+  readonly refreshToken: string;
 }
 
 export interface RefreshTokenResult {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  readonly expiresIn: number;
 }
