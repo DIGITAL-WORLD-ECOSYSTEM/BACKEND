@@ -21,6 +21,8 @@ import { DrizzleFinanceRepository, FinanceDatabase, FinanceTransaction } from '.
 import { Result } from '../../shared/kernel/Result';
 import { IAuthTransactionRepository } from '../../application/ports/output/IAuthTransactionRepository';
 import { DrizzleAuthTransactionRepository } from './DrizzleAuthTransactionRepository';
+import { ISecureVaultRepository } from '../../application/ports/output/ISecureVaultRepository';
+import { DrizzleSecureVaultRepositoryAdapter } from './DrizzleSecureVaultRepositoryAdapter';
 import { isD1Database } from './db_helper';
 import { PostingSession } from '../../domains/finance/contracts/PostingSession';
 import { IPostingExecutor } from '../../application/ports/output/IPostingExecutor';
@@ -42,6 +44,7 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
   private _outboxRepo?: IOutboxRepository;
   private _passwordResetRepo?: IPasswordResetRepository;
   private _financeRepo?: IFinanceRepository;
+  private _secureVaultRepo?: ISecureVaultRepository;
 
   constructor(
     private readonly tx: FinanceTransaction,
@@ -53,6 +56,13 @@ class DrizzleRepositoryFactory implements IRepositoryFactory {
       this._userRepo = new DrizzleUserRepositoryAdapter((this.tx || this.db) as any);
     }
     return this._userRepo;
+  }
+
+  getSecureVaultRepository(): ISecureVaultRepository {
+    if (!this._secureVaultRepo) {
+      this._secureVaultRepo = new DrizzleSecureVaultRepositoryAdapter((this.tx || this.db) as any);
+    }
+    return this._secureVaultRepo;
   }
 
   getAuthTransactionRepository(): IAuthTransactionRepository {

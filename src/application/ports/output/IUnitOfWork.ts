@@ -8,11 +8,13 @@ import { IOutboxRepository } from './IOutboxRepository';
 import { IPasswordResetRepository } from './IPasswordResetRepository';
 import { ISsiRepository } from './ISsiRepository';
 import { IFinanceRepository } from './IFinanceRepository';
+import { ISecureVaultRepository } from './ISecureVaultRepository';
 
 import { IAuthTransactionRepository } from './IAuthTransactionRepository';
 import { PostingSession } from '../../../domains/finance/contracts/PostingSession';
 
 export interface IRepositoryFactory {
+  getSecureVaultRepository(): ISecureVaultRepository;
   getUserRepository(): IUserRepository;
   getAuthTransactionRepository(): IAuthTransactionRepository;
   getAuthenticationRepository(): IAuthenticationRepository;

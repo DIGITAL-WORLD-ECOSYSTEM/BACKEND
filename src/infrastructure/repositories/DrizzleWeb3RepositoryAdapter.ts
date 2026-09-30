@@ -69,6 +69,18 @@ export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
     return this.mapToRecord(newWallet);
   }
 
+  async createInternalWallet(walletData: any): Promise<WalletRecord> {
+    const [newWallet] = await this.db
+      .insert(wallets)
+      .values({
+        ...walletData,
+        version: 1,
+      })
+      .returning();
+
+    return this.mapToRecord(newWallet);
+  }
+
   async updateWallet(wallet: WalletRecord): Promise<WalletRecord> {
     const currentVersion = wallet.version ?? 1;
 
