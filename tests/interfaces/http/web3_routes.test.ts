@@ -20,7 +20,7 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
         json: vi.fn((body, status) => ({ body, status })),
       } as any;
 
-      const res = await controller.createUserWallet(c);
+      const res = (await controller.createUserWallet(c)) as any;
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toContain('Acesso negado: Usuário não autenticado.');
@@ -44,7 +44,7 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
         json: vi.fn((body, status) => ({ body, status })),
       } as any;
 
-      const res = await controller.createUserWallet(c);
+      const res = (await controller.createUserWallet(c)) as any;
       expect(mockUseCase.execute).toHaveBeenCalledWith({
         userId: 42,
         networkId: 56,
@@ -71,7 +71,7 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
         json: vi.fn((body, status) => ({ body, status })),
       } as any;
 
-      const res = await controller.createUserWallet(c);
+      const res = (await controller.createUserWallet(c)) as any;
       expect(mockUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 99,
@@ -91,7 +91,7 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
         json: vi.fn((body, status) => ({ body, status })),
       } as any;
 
-      const res = await controller.batchCreateWallets(c);
+      const res = (await controller.batchCreateWallets(c)) as any;
       expect(res.status).toBe(400);
       expect(res.body.message).toContain('targetUserId é obrigatório no lote.');
     });
@@ -104,7 +104,7 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
         json: vi.fn((body, status) => ({ body, status })),
       } as any;
 
-      const res = await controller.batchCreateWallets(c);
+      const res = (await controller.batchCreateWallets(c)) as any;
       expect(res.status).toBe(400);
       expect(res.body.message).toContain('Limite de segurança: O lote deve conter um número inteiro entre 1 e 50 carteiras.');
     });
@@ -122,7 +122,7 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
         json: vi.fn((body, status) => ({ body, status })),
       } as any;
 
-      const res = await controller.batchCreateWallets(c);
+      const res = (await controller.batchCreateWallets(c)) as any;
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
       expect(res.body.data).toHaveLength(2);

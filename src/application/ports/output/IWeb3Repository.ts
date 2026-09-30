@@ -10,6 +10,11 @@ export interface WalletRecord {
   label: string | null;
   status: 'pending' | 'active' | 'suspended' | 'revoked' | 'unlinked';
   verificationStatus: 'pending' | 'verified' | 'rejected';
+  verificationMethod?: 'signature' | 'siwe' | 'micro_deposit' | 'system' | 'admin';
+  verifiedAt?: Date;
+  lastOwnershipVerifiedAt?: Date;
+  keyProvider?: 'secure_vault' | 'hsm' | 'external_kms' | 'user_custody';
+  keyReference?: string;
   isPrimary: boolean;
   linkedAt: Date;
   version?: number;

@@ -10,17 +10,20 @@ export interface CreateInternalWalletInputDTO {
   label?: string;
   isPrimary?: boolean;
   status?: 'active' | 'pending';
+  entropyBits?: 128 | 256;
 }
 
 export interface CreateInternalWalletOutputDTO {
   walletId: number;
   address: string;
+  mnemonic?: string;
 }
 
 /**
  * Caso de Uso: Criação de Carteira Interna (Custodial).
  * 
  * Substitui o antigo app.py de Python garantindo:
+ * - Padrão institucional de 24 palavras (BIP-39 / 256 bits de entropia) + BIP-44.
  * - Atomicidade no Cloudflare D1 (db.batch) e SQLite (db.transaction).
  * - Satisfação das CHECK constraints de verificação (ck_wallets_verified_state).
  * - Criptografia forte AES-256-GCM com HKDF-SHA256 e envelope (nonce + authTag reais).
@@ -39,19 +42,24 @@ export class CreateInternalWalletUseCase {
         return Result.fail('ID do usuário e ID da rede são obrigatórios.');
       }
 
-      // 1. O Motor Matemático (Viem): Gera a chave com segurança em memória (CSPRNG)
-      const generatedWallet = await this.walletGenerator.generateWallet();
+      // 1. O Motor Matemático (Viem): Gera a chave e mnemônica de 24 palavras (256 bits)
+      const generatedWallet = await this.walletGenerator.generateWallet(input.entropyBits ?? 256);
 
       // 2. Cifragem Forte com Envelope (AES-256-GCM + HKDF)
+      const secretMaterial = JSON.stringify({
+        privateKey: generatedWallet.privateKey,
+        mnemonic: generatedWallet.mnemonic,
+      });
+
       let envelope: { ciphertext: string; nonce: string; authTag: string };
       if (typeof this.cryptoVault.encryptEnvelope === 'function') {
         envelope = await this.cryptoVault.encryptEnvelope(
-          generatedWallet.privateKey,
+          secretMaterial,
           this.masterEncryptionKey
         );
       } else {
         const ciphertext = await this.cryptoVault.encrypt(
-          generatedWallet.privateKey,
+          secretMaterial,
           this.masterEncryptionKey
         );
         envelope = { ciphertext, nonce: 'default_nonce', authTag: 'default_tag' };
@@ -74,7 +82,7 @@ export class CreateInternalWalletUseCase {
         addressNormalized: generatedWallet.address.toLowerCase(),
         label: input.label || 'Default Internal Wallet',
         isPrimary: input.isPrimary ?? false,
-        keyProvider: 'secure_vault',
+        keyProvider: 'secure_vault' as const,
         keyReference,
         status: input.status || ('active' as const),
         // F-01: Campos obrigatórios pela constraint ck_wallets_verified_state
@@ -107,6 +115,7 @@ export class CreateInternalWalletUseCase {
         return Result.ok<CreateInternalWalletOutputDTO>({
           walletId: wallet.id,
           address: wallet.address,
+          mnemonic: generatedWallet.mnemonic,
         });
       }
 
@@ -123,6 +132,7 @@ export class CreateInternalWalletUseCase {
           return Result.ok<CreateInternalWalletOutputDTO>({
             walletId: wallet.id,
             address: wallet.address,
+            mnemonic: generatedWallet.mnemonic,
           });
         }
 
@@ -137,6 +147,7 @@ export class CreateInternalWalletUseCase {
         return Result.ok<CreateInternalWalletOutputDTO>({
           walletId: newWallet.id,
           address: newWallet.address,
+          mnemonic: generatedWallet.mnemonic,
         });
       });
     } catch (error: any) {
