@@ -112,7 +112,7 @@ describe('Ecosystem Modules Suite (Civil Identity, SSI & Treasury)', () => {
         signCredential: vi.fn().mockResolvedValue({ type: 'Ed25519Signature2020', proofValue: 'sig_123' }),
       };
 
-      const useCase = new IssueVerifiableCredentialUseCase(mockUow as any, mockSigner as any);
+      const useCase = new IssueVerifiableCredentialUseCase(mockUow as any, mockSigner as any, undefined, 'integration_test_secret_key_32!');
       const result = await useCase.execute({
         holderUserId: 10,
         credentialType: 'CivicIdentityCredential',

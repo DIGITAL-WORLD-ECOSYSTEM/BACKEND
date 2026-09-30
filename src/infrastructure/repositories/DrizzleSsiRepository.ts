@@ -121,12 +121,17 @@ export class DrizzleSsiRepository implements ISsiRepository {
     }
   }
 
-  async findVerifiableCredentialById(id: string): Promise<Result<VerifiableCredentialRecord>> {
+  async findVerifiableCredentialById(id: string, holderUserId?: number): Promise<Result<VerifiableCredentialRecord>> {
     try {
+      const conditions = [eq(verifiableCredentials.id, id)];
+      if (holderUserId !== undefined) {
+        conditions.push(eq(verifiableCredentials.holderUserId, holderUserId));
+      }
+
       const [row] = await this.db
         .select()
         .from(verifiableCredentials)
-        .where(eq(verifiableCredentials.id, id))
+        .where(conditions.length === 1 ? conditions[0] : and(...conditions))
         .limit(1);
 
       if (!row) return Result.fail('Verifiable Credential not found');

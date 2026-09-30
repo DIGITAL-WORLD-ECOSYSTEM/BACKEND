@@ -9,6 +9,7 @@ describe('IssueVerifiableCredentialUseCase', () => {
   let mockUow: any;
   let mockSigner: any;
   const testSecretKey = 'test_ssi_vault_secret_key_32ch!';
+  const expectedIssuerDid = 'did:key:z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH';
 
   beforeEach(() => {
     ssiRepo = {
@@ -21,6 +22,7 @@ describe('IssueVerifiableCredentialUseCase', () => {
     };
 
     mockSigner = {
+      getIssuerDid: vi.fn().mockResolvedValue(expectedIssuerDid),
       signCredential: vi.fn().mockImplementation(async (doc: any, issuerDid: string) => ({
         type: 'Ed25519Signature2020',
         created: new Date().toISOString(),
@@ -33,7 +35,7 @@ describe('IssueVerifiableCredentialUseCase', () => {
   });
 
   it('fails when holderUserId or credentialType are missing', async () => {
-    const useCase = new IssueVerifiableCredentialUseCase(ssiRepo, mockSigner);
+    const useCase = new IssueVerifiableCredentialUseCase(ssiRepo, mockSigner, undefined, testSecretKey);
     const res1 = await useCase.execute({
       holderUserId: 0,
       credentialType: 'CivicIdentityCredential',
@@ -50,9 +52,23 @@ describe('IssueVerifiableCredentialUseCase', () => {
     expect(res2.isFailure).toBe(true);
   });
 
+  it('fails when encryption key is not provided', async () => {
+    ssiRepo.findDidByUserId.mockResolvedValue(Result.ok({ did: 'did:key:holder-123' }));
+    const useCase = new IssueVerifiableCredentialUseCase(ssiRepo, mockSigner);
+
+    const result = await useCase.execute({
+      holderUserId: 10,
+      credentialType: 'CivicIdentityCredential',
+      claims: { isCitizen: true },
+    });
+
+    expect(result.isFailure).toBe(true);
+    expect(result.error).toContain('não configurada');
+  });
+
   it('fails when holder does not have an active DID', async () => {
     ssiRepo.findDidByUserId.mockResolvedValue(Result.fail('DID identity not found'));
-    const useCase = new IssueVerifiableCredentialUseCase(ssiRepo, mockSigner);
+    const useCase = new IssueVerifiableCredentialUseCase(ssiRepo, mockSigner, undefined, testSecretKey);
 
     const result = await useCase.execute({
       holderUserId: 10,
@@ -65,7 +81,7 @@ describe('IssueVerifiableCredentialUseCase', () => {
     expect(ssiRepo.saveVerifiableCredential).not.toHaveBeenCalled();
   });
 
-  it('HARDENED SECURITY P0: encrypts claims with real AES-GCM and eliminates naive enc_ prefix', async () => {
+  it('HARDENED SECURITY P0: encrypts claims with real AES-GCM and derives issuerDid from signer', async () => {
     ssiRepo.findDidByUserId.mockResolvedValue(Result.ok({ did: 'did:key:holder-123' }));
     ssiRepo.saveVerifiableCredential.mockImplementation(async (record: any) => Result.ok(record));
 
@@ -103,7 +119,11 @@ describe('IssueVerifiableCredentialUseCase', () => {
     expect(issuedVc.credentialHash).toHaveLength(64);
     expect(/^[0-9a-f]{64}$/.test(issuedVc.credentialHash)).toBe(true);
 
-    // 5. Must return the signed document including the cryptographic proof
+    // 5. Must derive issuerDid from signer.getIssuerDid()
+    expect(issuedVc.issuerDid).toBe(expectedIssuerDid);
+    expect(mockSigner.getIssuerDid).toHaveBeenCalled();
+
+    // 6. Must return the signed document including the cryptographic proof
     expect(issuedVc.document).toBeDefined();
     expect(issuedVc.document.proof.proofValue).toBe('test_base58_signature_value');
   });
@@ -130,7 +150,7 @@ describe('IssueVerifiableCredentialUseCase', () => {
     ssiRepo.findDidByUserId.mockResolvedValue(Result.ok({ did: 'did:key:holder-123' }));
     ssiRepo.saveVerifiableCredential.mockImplementation(async (record: any) => Result.ok(record));
 
-    const useCase = new IssueVerifiableCredentialUseCase(mockUow, mockSigner);
+    const useCase = new IssueVerifiableCredentialUseCase(mockUow, mockSigner, undefined, testSecretKey);
     const result = await useCase.execute({
       holderUserId: 10,
       credentialType: 'KycVerificationCredential',

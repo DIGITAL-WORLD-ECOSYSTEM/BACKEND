@@ -124,6 +124,36 @@ describe('DrizzleSsiRepository', () => {
     expect(result.getValue().id).toBe('550e8400-e29b-41d4-a716-446655440000');
   });
 
+  it('should find a verifiable credential by id and holderUserId', async () => {
+    const mockDb = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([
+        {
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          holderUserId: 42,
+          issuerDid: 'did:key:issuer',
+          subjectDid: 'did:key:subject',
+          credentialType: 'CivicIdentityCredential',
+          credentialHash: 'testhash',
+          encryptedClaims: 'testencrypted',
+          proofType: 'Ed25519Signature2020',
+          status: 'active',
+          issuanceDate: new Date().toISOString(),
+          expirationDate: null,
+          revokedAt: null,
+          version: 1,
+        },
+      ]),
+    };
+
+    const repo = new DrizzleSsiRepository(mockDb);
+    const result = await repo.findVerifiableCredentialById('550e8400-e29b-41d4-a716-446655440000', 42);
+    expect(result.isSuccess).toBe(true);
+    expect(result.getValue().holderUserId).toBe(42);
+  });
+
   it('should return failure if verifiable credential is not found by id', async () => {
     const mockDb = {
       select: vi.fn().mockReturnThis(),

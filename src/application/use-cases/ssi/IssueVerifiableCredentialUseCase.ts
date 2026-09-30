@@ -19,15 +19,19 @@ export class IssueVerifiableCredentialUseCase {
     private readonly repoOrUow: ISsiRepository | IUnitOfWork,
     private readonly signer: ICredentialSigner,
     private readonly cryptoVault?: ICryptoVaultPort,
-    private readonly defaultSecretKey: string = 'asppibra_ssi_claims_vault_secret'
+    private readonly defaultSecretKey?: string
   ) {}
 
-  private async encryptSecret(text: string, secretKey: string): Promise<string> {
+  private async encryptSecret(text: string, secretKey?: string): Promise<string> {
+    const keyToUse = secretKey || this.defaultSecretKey;
+    if (!keyToUse) {
+      throw new Error('Chave de criptografia de claims não configurada.');
+    }
     if (this.cryptoVault) {
-      return this.cryptoVault.encrypt(text, secretKey);
+      return this.cryptoVault.encrypt(text, keyToUse);
     }
     const encoder = new TextEncoder();
-    const keyData = encoder.encode(secretKey.padEnd(32, '0').slice(0, 32));
+    const keyData = encoder.encode(keyToUse.padEnd(32, '0').slice(0, 32));
     const key = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['encrypt']);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(text));
@@ -50,7 +54,11 @@ export class IssueVerifiableCredentialUseCase {
       }
 
       const subjectDid = didRes.getValue().did;
-      const issuerDid = dto.issuerDid || 'did:key:asppibra-dao-root-issuer';
+      const issuerDid =
+        dto.issuerDid ||
+        (typeof this.signer.getIssuerDid === 'function'
+          ? await this.signer.getIssuerDid()
+          : 'did:key:asppibra-dao-root-issuer');
       const id = crypto.randomUUID();
       const issuanceDate = new Date();
       const expirationDate = dto.expirationDays
@@ -75,6 +83,9 @@ export class IssueVerifiableCredentialUseCase {
 
       const claimsStr = JSON.stringify(dto.claims || {});
       const secretKey = dto.encryptionKey || this.defaultSecretKey;
+      if (!secretKey) {
+        return Result.fail<VerifiableCredentialRecord>('Chave de criptografia de claims não configurada.');
+      }
       const encryptedClaims = await this.encryptSecret(claimsStr, secretKey);
 
       // CredentialHash is a canonical SHA-256 hash of the signed document

@@ -92,7 +92,7 @@ export class LocalIssuerSigner implements ICredentialSigner {
     if (pubBytes && pubBytes.length === 32) {
       return encodeDidKey(pubBytes);
     }
-    return 'did:key:asppibra-dao-root-issuer';
+    throw new Error('Unable to derive public key for issuer DID: key material unavailable or malformed.');
   }
 
   async signCredential(document: any, issuerDid?: string, keyId?: string): Promise<CredentialProof> {
@@ -141,26 +141,33 @@ export class LocalIssuerSigner implements ICredentialSigner {
       }
 
       let pubKeyBytes: Uint8Array | undefined = undefined;
+      const verificationMethod = String(proof.verificationMethod || '');
 
       // 1. Resolve public key from proof.verificationMethod if it's a did:key (universal W3C verification)
-      if (typeof proof.verificationMethod === 'string') {
-        const didKeyMatch = proof.verificationMethod.match(/did:key:(z[1-9A-HJ-NP-Za-km-z]+)/);
-        if (didKeyMatch) {
-          const resolved = decodeDidKey(`did:key:${didKeyMatch[1]}`);
-          if (resolved && resolved.length === 32) {
-            pubKeyBytes = resolved;
+      const didKeyMatch = verificationMethod.match(/did:key:(z[1-9A-HJ-NP-Za-km-z]+)/);
+      if (didKeyMatch) {
+        const resolved = decodeDidKey(`did:key:${didKeyMatch[1]}`);
+        if (resolved && resolved.length === 32) {
+          pubKeyBytes = resolved;
+        }
+      }
+
+      // 2. If verificationMethod refers to the local issuer (key alias or local DID fragment)
+      if (!pubKeyBytes) {
+        const localIssuerDid = await this.getIssuerDid().catch(() => null);
+        const isLocalMethod =
+          (localIssuerDid && (verificationMethod.startsWith(localIssuerDid) || verificationMethod.startsWith('#'))) ||
+          verificationMethod === 'did:key:asppibra-dao-root-issuer#keys-1';
+
+        if (isLocalMethod) {
+          pubKeyBytes = this.cachedPublicKeyBytes;
+          if (!pubKeyBytes && this.privateKeyBytes) {
+            pubKeyBytes = await this.getPublicKeyBytes();
           }
         }
       }
 
-      // 2. Fallback to cached or local issuer key if verificationMethod is a local alias or self-signed
-      if (!pubKeyBytes) {
-        pubKeyBytes = this.cachedPublicKeyBytes;
-        if (!pubKeyBytes && this.privateKeyBytes) {
-          pubKeyBytes = await this.getPublicKeyBytes();
-        }
-      }
-
+      // 3. If verificationMethod could not be resolved or is an unsupported/unknown DID method, fail-closed
       if (!pubKeyBytes || pubKeyBytes.length !== 32) {
         return false;
       }

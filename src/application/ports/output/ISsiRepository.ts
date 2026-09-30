@@ -30,7 +30,7 @@ export interface ISsiRepository {
   findDidByUserId(userId: number): Promise<Result<DidIdentityRecord>>;
   saveDid(record: DidIdentityRecord): Promise<Result<DidIdentityRecord>>;
   saveVerifiableCredential(record: VerifiableCredentialRecord): Promise<Result<VerifiableCredentialRecord>>;
-  findVerifiableCredentialById(id: string): Promise<Result<VerifiableCredentialRecord>>;
+  findVerifiableCredentialById(id: string, holderUserId?: number): Promise<Result<VerifiableCredentialRecord>>;
   listVerifiableCredentialsByUserId(userId: number): Promise<Result<VerifiableCredentialRecord[]>>;
   revokeVerifiableCredential(id: string): Promise<Result<void>>;
 }
