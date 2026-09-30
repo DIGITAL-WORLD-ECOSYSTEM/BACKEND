@@ -22,6 +22,7 @@ import identityRouter from './interfaces/http/routes/identity/identity.routes';
 import { civilIdentityRouter } from './interfaces/http/routes/civil-identity/civil_identity.routes';
 import { ssiRouter } from './interfaces/http/routes/ssi/ssi.routes';
 import { financeRouter } from './interfaces/http/routes/finance/finance.routes';
+import { web3Router } from './interfaces/http/routes/web3/web3.routes';
 import { JwtService } from './infrastructure/security/jwt/JwtService';
 
 
@@ -172,6 +173,7 @@ app.route('/api/v1/identity', identityRouter);
 app.route('/api/v1/civil', civilIdentityRouter);
 app.route('/api/v1/ssi', ssiRouter);
 app.route('/api/v1/finance', financeRouter);
+app.route('/api/v1/web3', web3Router);
 
 // =================================================================
 // 4. TRATAMENTO DE ERROS & EXPORT
