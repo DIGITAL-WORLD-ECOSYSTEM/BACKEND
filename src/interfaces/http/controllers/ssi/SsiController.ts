@@ -2,6 +2,7 @@ import { Context } from 'hono';
 import { CreateDidUseCase } from '../../../../application/use-cases/ssi/CreateDidUseCase';
 import { IssueVerifiableCredentialUseCase } from '../../../../application/use-cases/ssi/IssueVerifiableCredentialUseCase';
 import { RevokeCredentialUseCase } from '../../../../application/use-cases/ssi/RevokeCredentialUseCase';
+import { VerifyVerifiableCredentialUseCase } from '../../../../application/use-cases/ssi/VerifyVerifiableCredentialUseCase';
 import { ISsiRepository } from '../../../../application/ports/output/ISsiRepository';
 
 export class SsiController {
@@ -9,7 +10,8 @@ export class SsiController {
     private readonly createDidUseCase: CreateDidUseCase,
     private readonly issueVcUseCase: IssueVerifiableCredentialUseCase,
     private readonly revokeVcUseCase: RevokeCredentialUseCase,
-    private readonly ssiRepo: ISsiRepository
+    private readonly ssiRepo: ISsiRepository,
+    private readonly verifyVcUseCase?: VerifyVerifiableCredentialUseCase
   ) {}
 
   async createDid(c: Context): Promise<Response> {
@@ -44,10 +46,20 @@ export class SsiController {
       }
 
       const body = await c.req.json();
+      
+      // Sanitize claims against prototype pollution
+      const rawClaims = body.claims && typeof body.claims === 'object' && !Array.isArray(body.claims) ? body.claims : {};
+      const claims: Record<string, any> = {};
+      for (const [key, value] of Object.entries(rawClaims)) {
+        if (key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
+          claims[key] = value;
+        }
+      }
+
       const result = await this.issueVcUseCase.execute({
         holderUserId: userId,
         credentialType: body.credentialType || 'CivicIdentityCredential',
-        claims: body.claims || {},
+        claims,
         expirationDays: body.expirationDays || 365,
       });
 
@@ -108,4 +120,33 @@ export class SsiController {
       return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
     }
   }
+
+  async verifyCredential(c: Context): Promise<Response> {
+    try {
+      const body = await c.req.json();
+      const credentialDocument = body.credentialDocument || body;
+
+      if (!this.verifyVcUseCase) {
+        return c.json({ success: false, message: 'Serviço de verificação não configurado no controlador' }, 500);
+      }
+
+      const result = await this.verifyVcUseCase.execute({
+        credentialDocument,
+      });
+
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error, isValid: false }, 400);
+      }
+
+      return c.json({
+        success: true,
+        message: 'Credencial Verificável autêntica e válida',
+        data: result.getValue(),
+      }, 200);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro interno';
+      return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
+    }
+  }
 }
+

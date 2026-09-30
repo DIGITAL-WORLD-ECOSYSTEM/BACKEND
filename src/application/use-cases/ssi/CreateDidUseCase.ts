@@ -1,6 +1,6 @@
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
 import { Result } from '../../../shared/kernel/Result';
-import { DidIdentityRecord } from '../../ports/output/ISsiRepository';
+import { ISsiRepository, DidIdentityRecord } from '../../ports/output/ISsiRepository';
 
 export interface CreateDidDTO {
   userId: number;
@@ -8,7 +8,7 @@ export interface CreateDidDTO {
 }
 
 export class CreateDidUseCase {
-  constructor(private readonly uow: IUnitOfWork) {}
+  constructor(private readonly repoOrUow: ISsiRepository | IUnitOfWork) {}
 
   async execute(dto: CreateDidDTO): Promise<Result<DidIdentityRecord>> {
     if (!dto.userId) {
@@ -17,8 +17,7 @@ export class CreateDidUseCase {
 
     const method = dto.method || 'key';
 
-    return await this.uow.execute(async (factory) => {
-      const ssiRepo = factory.getSsiRepository();
+    const run = async (ssiRepo: ISsiRepository): Promise<Result<DidIdentityRecord>> => {
       const existingRes = await ssiRepo.findDidByUserId(dto.userId);
 
       if (existingRes.isSuccess) {
@@ -38,6 +37,15 @@ export class CreateDidUseCase {
       };
 
       return await ssiRepo.saveDid(record);
-    });
+    };
+
+    if ('execute' in this.repoOrUow && typeof this.repoOrUow.execute === 'function') {
+      return await this.repoOrUow.execute(async (factory) => {
+        return run(factory.getSsiRepository());
+      });
+    }
+
+    return await run(this.repoOrUow as ISsiRepository);
   }
 }
+

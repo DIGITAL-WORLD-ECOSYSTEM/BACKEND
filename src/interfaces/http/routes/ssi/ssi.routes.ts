@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { Bindings, Variables } from '../../../../types/bindings';
-import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
 import { DrizzleSsiRepository } from '../../../../infrastructure/repositories/DrizzleSsiRepository';
+import { WebCryptoVaultAdapter } from '../../../../infrastructure/security/crypto/WebCryptoVaultAdapter';
 import { CreateDidUseCase } from '../../../../application/use-cases/ssi/CreateDidUseCase';
 import { IssueVerifiableCredentialUseCase } from '../../../../application/use-cases/ssi/IssueVerifiableCredentialUseCase';
 import { RevokeCredentialUseCase } from '../../../../application/use-cases/ssi/RevokeCredentialUseCase';
+import { VerifyVerifiableCredentialUseCase } from '../../../../application/use-cases/ssi/VerifyVerifiableCredentialUseCase';
 import { LocalIssuerSigner } from '../../../../infrastructure/security/crypto/LocalIssuerSigner';
 import { SsiController } from '../../controllers/ssi/SsiController';
 import { sessionGuard, requireAal } from '../../middlewares/session_guard';
@@ -19,8 +20,13 @@ export const ssiRouter = new Hono<AppType>();
 
 ssiRouter.use('*', sessionGuard);
 
-const dummyIssuerKey = new Uint8Array(32);
-const defaultSigner = new LocalIssuerSigner(dummyIssuerKey);
+async function getIssuerSigner(env: Bindings): Promise<LocalIssuerSigner> {
+  const rawSecret = env.JWT_SECRET || 'asppibra_root_issuer_fallback_secret_32';
+  const encoder = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(`SSI_ISSUER_KEY:${rawSecret}`));
+  const seedBytes = new Uint8Array(hashBuffer);
+  return new LocalIssuerSigner(seedBytes);
+}
 
 ssiRouter.post(
   '/did',
@@ -28,15 +34,20 @@ ssiRouter.post(
   verifyPermission('ssi.did.create'),
   async (c) => {
     const db = c.get('db');
-  const uow = new DrizzleUnitOfWork(db);
-  const ssiRepo = new DrizzleSsiRepository(db);
-  const createDidUseCase = new CreateDidUseCase(uow);
-  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow, defaultSigner);
-  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+    const ssiRepo = new DrizzleSsiRepository(db);
+    const signer = await getIssuerSigner(c.env);
+    const vault = new WebCryptoVaultAdapter();
+    const encryptionKey = c.env.TOTP_ENCRYPTION_KEY || c.env.JWT_SECRET;
 
-  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
-  return controller.createDid(c);
-});
+    const createDidUseCase = new CreateDidUseCase(ssiRepo);
+    const issueVcUseCase = new IssueVerifiableCredentialUseCase(ssiRepo, signer, vault, encryptionKey);
+    const revokeVcUseCase = new RevokeCredentialUseCase(ssiRepo);
+    const verifyVcUseCase = new VerifyVerifiableCredentialUseCase(ssiRepo, signer);
+
+    const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo, verifyVcUseCase);
+    return controller.createDid(c);
+  }
+);
 
 ssiRouter.post(
   '/credentials/issue',
@@ -44,15 +55,20 @@ ssiRouter.post(
   verifyPermission('ssi.credential.issue'),
   async (c) => {
     const db = c.get('db');
-  const uow = new DrizzleUnitOfWork(db);
-  const ssiRepo = new DrizzleSsiRepository(db);
-  const createDidUseCase = new CreateDidUseCase(uow);
-  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow, defaultSigner);
-  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+    const ssiRepo = new DrizzleSsiRepository(db);
+    const signer = await getIssuerSigner(c.env);
+    const vault = new WebCryptoVaultAdapter();
+    const encryptionKey = c.env.TOTP_ENCRYPTION_KEY || c.env.JWT_SECRET;
 
-  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
-  return controller.issueCredential(c);
-});
+    const createDidUseCase = new CreateDidUseCase(ssiRepo);
+    const issueVcUseCase = new IssueVerifiableCredentialUseCase(ssiRepo, signer, vault, encryptionKey);
+    const revokeVcUseCase = new RevokeCredentialUseCase(ssiRepo);
+    const verifyVcUseCase = new VerifyVerifiableCredentialUseCase(ssiRepo, signer);
+
+    const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo, verifyVcUseCase);
+    return controller.issueCredential(c);
+  }
+);
 
 ssiRouter.post(
   '/credentials/revoke',
@@ -60,15 +76,20 @@ ssiRouter.post(
   verifyPermission('ssi.credential.revoke'),
   async (c) => {
     const db = c.get('db');
-  const uow = new DrizzleUnitOfWork(db);
-  const ssiRepo = new DrizzleSsiRepository(db);
-  const createDidUseCase = new CreateDidUseCase(uow);
-  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow, defaultSigner);
-  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+    const ssiRepo = new DrizzleSsiRepository(db);
+    const signer = await getIssuerSigner(c.env);
+    const vault = new WebCryptoVaultAdapter();
+    const encryptionKey = c.env.TOTP_ENCRYPTION_KEY || c.env.JWT_SECRET;
 
-  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
-  return controller.revokeCredential(c);
-});
+    const createDidUseCase = new CreateDidUseCase(ssiRepo);
+    const issueVcUseCase = new IssueVerifiableCredentialUseCase(ssiRepo, signer, vault, encryptionKey);
+    const revokeVcUseCase = new RevokeCredentialUseCase(ssiRepo);
+    const verifyVcUseCase = new VerifyVerifiableCredentialUseCase(ssiRepo, signer);
+
+    const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo, verifyVcUseCase);
+    return controller.revokeCredential(c);
+  }
+);
 
 ssiRouter.get(
   '/credentials',
@@ -76,12 +97,34 @@ ssiRouter.get(
   verifyPermission('ssi.credential.read'),
   async (c) => {
     const db = c.get('db');
-  const uow = new DrizzleUnitOfWork(db);
-  const ssiRepo = new DrizzleSsiRepository(db);
-  const createDidUseCase = new CreateDidUseCase(uow);
-  const issueVcUseCase = new IssueVerifiableCredentialUseCase(uow, defaultSigner);
-  const revokeVcUseCase = new RevokeCredentialUseCase(uow);
+    const ssiRepo = new DrizzleSsiRepository(db);
+    const signer = await getIssuerSigner(c.env);
+    const vault = new WebCryptoVaultAdapter();
+    const encryptionKey = c.env.TOTP_ENCRYPTION_KEY || c.env.JWT_SECRET;
 
-  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo);
-  return controller.listMyCredentials(c);
+    const createDidUseCase = new CreateDidUseCase(ssiRepo);
+    const issueVcUseCase = new IssueVerifiableCredentialUseCase(ssiRepo, signer, vault, encryptionKey);
+    const revokeVcUseCase = new RevokeCredentialUseCase(ssiRepo);
+    const verifyVcUseCase = new VerifyVerifiableCredentialUseCase(ssiRepo, signer);
+
+    const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo, verifyVcUseCase);
+    return controller.listMyCredentials(c);
+  }
+);
+
+ssiRouter.post('/credentials/verify', async (c) => {
+  const db = c.get('db');
+  const ssiRepo = new DrizzleSsiRepository(db);
+  const signer = await getIssuerSigner(c.env);
+  const vault = new WebCryptoVaultAdapter();
+  const encryptionKey = c.env.TOTP_ENCRYPTION_KEY || c.env.JWT_SECRET;
+
+  const createDidUseCase = new CreateDidUseCase(ssiRepo);
+  const issueVcUseCase = new IssueVerifiableCredentialUseCase(ssiRepo, signer, vault, encryptionKey);
+  const revokeVcUseCase = new RevokeCredentialUseCase(ssiRepo);
+  const verifyVcUseCase = new VerifyVerifiableCredentialUseCase(ssiRepo, signer);
+
+  const controller = new SsiController(createDidUseCase, issueVcUseCase, revokeVcUseCase, ssiRepo, verifyVcUseCase);
+  return controller.verifyCredential(c);
 });
+

@@ -1,5 +1,6 @@
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
 import { Result } from '../../../shared/kernel/Result';
+import { ISsiRepository } from '../../ports/output/ISsiRepository';
 
 export interface RevokeCredentialDTO {
   credentialId: string;
@@ -9,7 +10,7 @@ export interface RevokeCredentialDTO {
 }
 
 export class RevokeCredentialUseCase {
-  constructor(private readonly uow: IUnitOfWork) {}
+  constructor(private readonly repoOrUow: ISsiRepository | IUnitOfWork) {}
 
   async execute(dto: RevokeCredentialDTO): Promise<Result<void>> {
     if (!dto.credentialId) {
@@ -19,8 +20,7 @@ export class RevokeCredentialUseCase {
       return Result.fail<void>('ActorUserId é obrigatório para revogação.');
     }
 
-    return await this.uow.execute(async (factory) => {
-      const ssiRepo = factory.getSsiRepository();
+    const run = async (ssiRepo: ISsiRepository): Promise<Result<void>> => {
       const vcRes = await ssiRepo.findVerifiableCredentialById(dto.credentialId);
 
       if (vcRes.isFailure) {
@@ -30,12 +30,20 @@ export class RevokeCredentialUseCase {
       const vc = vcRes.getValue();
 
       // IDOR Protection: only the holder of the credential may revoke it.
-      // An actor with ssi.credential.revoke permission alone is not sufficient.
       if (vc.holderUserId !== dto.actorUserId) {
         return Result.fail<void>('Acesso negado: você não é o titular desta credencial.');
       }
 
       return await ssiRepo.revokeVerifiableCredential(dto.credentialId);
-    });
+    };
+
+    if ('execute' in this.repoOrUow && typeof this.repoOrUow.execute === 'function') {
+      return await this.repoOrUow.execute(async (factory) => {
+        return run(factory.getSsiRepository());
+      });
+    }
+
+    return await run(this.repoOrUow as ISsiRepository);
   }
 }
+
