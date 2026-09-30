@@ -8,6 +8,8 @@ export interface DidIdentityRecord {
   controller: string;
   status?: 'active' | 'suspended' | 'revoked';
   version?: number;
+  privateKeyMultibase?: string;
+  privateKeyHex?: string;
 }
 
 export interface VerifiableCredentialRecord {

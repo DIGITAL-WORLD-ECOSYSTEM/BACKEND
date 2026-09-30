@@ -21,12 +21,14 @@ export const ssiRouter = new Hono<AppType>();
 ssiRouter.use('*', sessionGuard);
 
 async function getIssuerSigner(env: Bindings): Promise<LocalIssuerSigner> {
-  const rawSecret = (env as any).SSI_ISSUER_PRIVATE_KEY || env.JWT_SECRET;
+  const dedicatedSecret = env.SSI_ISSUER_PRIVATE_KEY || env.SSI_ISSUER_SEED;
+  const rawSecret = dedicatedSecret || env.JWT_SECRET;
   if (!rawSecret) {
-    throw new Error('SSI_ISSUER_PRIVATE_KEY ou JWT_SECRET deve estar configurado no ambiente.');
+    throw new Error('SSI_ISSUER_PRIVATE_KEY, SSI_ISSUER_SEED ou JWT_SECRET deve estar configurado no ambiente.');
   }
   const encoder = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(`SSI_ISSUER_KEY:${rawSecret}`));
+  const domainPrefix = dedicatedSecret ? 'ASPPIBRA_SSI_DEDICATED_ROOT_ISSUER:' : 'ASPPIBRA_SSI_ISOLATED_FALLBACK_SEED:';
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(`${domainPrefix}${rawSecret}`));
   const seedBytes = new Uint8Array(hashBuffer);
   return new LocalIssuerSigner(seedBytes);
 }

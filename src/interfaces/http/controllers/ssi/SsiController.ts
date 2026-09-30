@@ -169,21 +169,28 @@ export class SsiController {
 
       let credentialDocument: any;
       let presentationChallenge: string | undefined;
+      let vpDocument: any;
 
       if (isPresentation) {
-        const vp = body.verifiablePresentation || body;
-        presentationChallenge = vp.proof?.challenge;
-        if (Array.isArray(vp.verifiableCredential)) {
-          credentialDocument = vp.verifiableCredential[0];
+        vpDocument = body.verifiablePresentation || body;
+        presentationChallenge = vpDocument.proof?.challenge;
+        if (Array.isArray(vpDocument.verifiableCredential)) {
+          credentialDocument = vpDocument.verifiableCredential[0];
         } else {
-          credentialDocument = vp.verifiableCredential;
+          credentialDocument = vpDocument.verifiableCredential;
         }
       } else {
         credentialDocument = body.credentialDocument || body;
       }
 
+      const expectedChallenge =
+        (typeof c.req?.query === 'function' ? c.req.query('challenge') : undefined) || body.expectedChallenge;
+      const hasSignedPresentation = Boolean(vpDocument?.proof?.proofValue);
+
       const result = await this.verifyVcUseCase.execute({
         credentialDocument,
+        ...(hasSignedPresentation ? { verifiablePresentation: vpDocument } : {}),
+        ...(expectedChallenge ? { expectedChallenge } : {}),
       });
 
       if (result.isFailure) {

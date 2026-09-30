@@ -76,4 +76,19 @@ describe('CreateDidUseCase', () => {
     expect(result.getValue().did).toMatch(/^did:web:[0-9a-f-]{36}$/);
     expect(mockUow.execute).toHaveBeenCalled();
   });
+
+  it('HARDENED SECURITY P0 (Ataque 17): generates and exports holder private key for self-sovereignty', async () => {
+    ssiRepo.findDidByUserId.mockResolvedValue(Result.fail('Not found'));
+    ssiRepo.saveDid.mockImplementation(async (record: any) => Result.ok(record));
+
+    const useCase = new CreateDidUseCase(ssiRepo);
+    const result = await useCase.execute({ userId: 42, method: 'key' });
+
+    expect(result.isSuccess).toBe(true);
+    const didRecord = result.getValue();
+    expect(didRecord.privateKeyMultibase).toBeDefined();
+    expect(didRecord.privateKeyMultibase).toMatch(/^z[1-9A-HJ-NP-Za-km-z]+$/);
+    expect(didRecord.privateKeyHex).toBeDefined();
+    expect(didRecord.privateKeyHex).toHaveLength(64);
+  });
 });

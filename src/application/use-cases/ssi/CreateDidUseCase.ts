@@ -1,7 +1,7 @@
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
 import { Result } from '../../../shared/kernel/Result';
 import { ISsiRepository, DidIdentityRecord } from '../../ports/output/ISsiRepository';
-import { encodeDidKey } from '../../../shared/kernel/ssi_crypto';
+import { encodeDidKey, exportEd25519PrivateKeyMultibase } from '../../../shared/kernel/ssi_crypto';
 
 export interface CreateDidDTO {
   userId: number;
@@ -28,12 +28,21 @@ export class CreateDidUseCase {
 
       const id = crypto.randomUUID();
       let did: string;
+      let privateKeyMultibase: string | undefined;
+      let privateKeyHex: string | undefined;
 
       if (method === 'key') {
         // Generate real W3C Ed25519 key pair and multicodec multibase DID
         const keyPair = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']);
         const rawPublicKey = new Uint8Array(await crypto.subtle.exportKey('raw', keyPair.publicKey));
         did = encodeDidKey(rawPublicKey);
+
+        // Export holder private key for self-sovereignty & Proof-of-Possession
+        const pkcs8Buf = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
+        const pkcs8Bytes = new Uint8Array(pkcs8Buf);
+        const exportedKeys = exportEd25519PrivateKeyMultibase(pkcs8Bytes);
+        privateKeyMultibase = exportedKeys.privateKeyMultibase;
+        privateKeyHex = exportedKeys.privateKeyHex;
       } else {
         did = `did:${method}:${id}`;
       }
@@ -47,6 +56,8 @@ export class CreateDidUseCase {
         status: 'active',
         isPrimary: dto.isPrimary ?? true, // Set as primary DID by default
         version: 1,
+        ...(privateKeyMultibase ? { privateKeyMultibase } : {}),
+        ...(privateKeyHex ? { privateKeyHex } : {}),
       };
 
       return await ssiRepo.saveDid(record);

@@ -109,3 +109,19 @@ export function decodeDidKey(didKey: string): Uint8Array | null {
     return null;
   }
 }
+
+/**
+ * Extracts and encodes an Ed25519 private key from PKCS#8 DER bytes into multibase and hex format.
+ */
+export function exportEd25519PrivateKeyMultibase(pkcs8Bytes: Uint8Array): {
+  privateKeyMultibase: string;
+  privateKeyHex: string;
+} {
+  const seed = pkcs8Bytes.length >= 48 ? pkcs8Bytes.slice(pkcs8Bytes.length - 32) : pkcs8Bytes;
+  const privateKeyHex = Array.from(seed)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  const privateKeyMultibase = `z${base58Encode(seed)}`;
+  return { privateKeyMultibase, privateKeyHex };
+}
+

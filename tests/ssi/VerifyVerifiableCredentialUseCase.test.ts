@@ -344,4 +344,168 @@ describe('VerifyVerifiableCredentialUseCase', () => {
     expect(mockUow.execute).toHaveBeenCalled();
     expect(result.getValue().isValid).toBe(true);
   });
+
+  describe('Verifiable Presentation (VP) Proof-of-Possession & Anti-Replay', () => {
+    const validVp = {
+      '@context': ['https://www.w3.org/2018/credentials/v1'],
+      type: ['VerifiablePresentation'],
+      verifiableCredential: [validDocument],
+      proof: {
+        type: 'Ed25519Signature2020',
+        created: '2026-01-01T00:00:00Z',
+        challenge: 'expected-nonce-999',
+        verificationMethod: `${subjectDid}#key-1`,
+        proofValue: 'valid-holder-proof-signature',
+      },
+    };
+
+    it('HARDENED SECURITY P0 (Ataque 06): fails when VP presenter is not the credential subject', async () => {
+      const mockRepo: ISsiRepository = {
+        findDidByUserId: vi.fn(),
+        saveDid: vi.fn(),
+        saveVerifiableCredential: vi.fn(),
+        findVerifiableCredentialById: vi.fn(),
+        listVerifiableCredentialsByUserId: vi.fn(),
+        revokeVerifiableCredential: vi.fn(),
+      };
+      const mockSigner: ICredentialSigner = {
+        signCredential: vi.fn(),
+        verifyProof: vi.fn().mockResolvedValue(true),
+        getIssuerDid: vi.fn(),
+      };
+      const useCase = new VerifyVerifiableCredentialUseCase(mockRepo, mockSigner);
+
+      const attackerVp = {
+        ...validVp,
+        proof: {
+          ...validVp.proof,
+          verificationMethod: 'did:key:z6MkAttacker123#key-1',
+        },
+      };
+
+      const result = await useCase.execute({
+        verifiablePresentation: attackerVp,
+        expectedChallenge: 'expected-nonce-999',
+      });
+
+      expect(result.isFailure).toBe(true);
+      expect(result.error).toContain('não é o titular (subject) da credencial');
+    });
+
+    it('HARDENED SECURITY P0 (Ataque 13): fails when VP challenge does not match expected challenge (replay protection)', async () => {
+      const mockRepo: ISsiRepository = {
+        findDidByUserId: vi.fn(),
+        saveDid: vi.fn(),
+        saveVerifiableCredential: vi.fn(),
+        findVerifiableCredentialById: vi.fn(),
+        listVerifiableCredentialsByUserId: vi.fn(),
+        revokeVerifiableCredential: vi.fn(),
+      };
+      const mockSigner: ICredentialSigner = {
+        signCredential: vi.fn(),
+        verifyProof: vi.fn().mockResolvedValue(true),
+        getIssuerDid: vi.fn(),
+      };
+      const useCase = new VerifyVerifiableCredentialUseCase(mockRepo, mockSigner);
+
+      const result = await useCase.execute({
+        verifiablePresentation: validVp,
+        expectedChallenge: 'different-nonce-replay-attack',
+      });
+
+      expect(result.isFailure).toBe(true);
+      expect(result.error).toContain('risco de replay');
+    });
+
+    it('HARDENED SECURITY P0: successfully verifies a signed VP with valid holder PoP and matching challenge', async () => {
+      const expectedHash = await computeSha256(validDocument);
+      const mockRepo: ISsiRepository = {
+        findDidByUserId: vi.fn(),
+        saveDid: vi.fn(),
+        saveVerifiableCredential: vi.fn(),
+        findVerifiableCredentialById: vi.fn().mockResolvedValue(
+          Result.ok({
+            id: credentialId,
+            holderUserId: 1,
+            issuerDid,
+            subjectDid,
+            credentialType: 'CivicIdentityCredential',
+            credentialHash: expectedHash,
+            encryptedClaims: 'enc',
+            proofType: 'Ed25519Signature2020',
+            status: 'active',
+            issuanceDate: new Date(),
+            expirationDate: null,
+            version: 1,
+          })
+        ),
+        listVerifiableCredentialsByUserId: vi.fn(),
+        revokeVerifiableCredential: vi.fn(),
+      };
+      const mockSigner: ICredentialSigner = {
+        signCredential: vi.fn(),
+        verifyProof: vi.fn().mockResolvedValue(true),
+        getIssuerDid: vi.fn(),
+      };
+      const useCase = new VerifyVerifiableCredentialUseCase(mockRepo, mockSigner);
+
+      const result = await useCase.execute({
+        verifiablePresentation: validVp,
+        expectedChallenge: 'expected-nonce-999',
+      });
+
+      expect(result.isSuccess).toBe(true);
+      const value = result.getValue();
+      expect(value.isValid).toBe(true);
+      expect(value.isPresentation).toBe(true);
+      expect(value.presentationChallenge).toBe('expected-nonce-999');
+    });
+
+    it('HARDENED SECURITY P1 (Ataque 08): fails when credential signature key does not belong to authorized issuer', async () => {
+      const foreignIssuerDoc = {
+        ...validDocument,
+        proof: {
+          ...validDocument.proof,
+          verificationMethod: 'did:key:z6MkForeignUntrustedIssuer#key-1',
+        },
+      };
+      const foreignHash = await computeSha256(foreignIssuerDoc);
+
+      const mockRepo: ISsiRepository = {
+        findDidByUserId: vi.fn(),
+        saveDid: vi.fn(),
+        saveVerifiableCredential: vi.fn(),
+        findVerifiableCredentialById: vi.fn().mockResolvedValue(
+          Result.ok({
+            id: credentialId,
+            holderUserId: 1,
+            issuerDid, // ASPPIBRA root issuer
+            subjectDid,
+            credentialType: 'CivicIdentityCredential',
+            credentialHash: foreignHash,
+            encryptedClaims: 'enc',
+            proofType: 'Ed25519Signature2020',
+            status: 'active',
+            issuanceDate: new Date(),
+            expirationDate: null,
+            version: 1,
+          })
+        ),
+        listVerifiableCredentialsByUserId: vi.fn(),
+        revokeVerifiableCredential: vi.fn(),
+      };
+      const mockSigner: ICredentialSigner = {
+        signCredential: vi.fn(),
+        verifyProof: vi.fn().mockResolvedValue(true),
+        getIssuerDid: vi.fn(),
+      };
+      const useCase = new VerifyVerifiableCredentialUseCase(mockRepo, mockSigner);
+
+      const result = await useCase.execute({ credentialDocument: foreignIssuerDoc });
+
+      expect(result.isFailure).toBe(true);
+      expect(result.error).toContain('não pertence ao emissor autorizado');
+    });
+  });
 });
+

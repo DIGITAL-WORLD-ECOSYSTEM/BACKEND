@@ -5,7 +5,10 @@ import { ICredentialSigner } from '../../ports/security/ICredentialSigner';
 import { canonicalizeJson } from '../../../shared/kernel/ssi_crypto';
 
 export interface VerifyVerifiableCredentialDTO {
-  credentialDocument: any;
+  credentialDocument?: any;
+  verifiablePresentation?: any;
+  expectedChallenge?: string;
+  expectedDomain?: string;
 }
 
 export interface VerifyVerifiableCredentialResult {
@@ -14,6 +17,8 @@ export interface VerifyVerifiableCredentialResult {
   claims: any;
   credentialType?: string;
   issuer?: string;
+  presentationChallenge?: string;
+  isPresentation?: boolean;
 }
 
 export class VerifyVerifiableCredentialUseCase {
@@ -23,11 +28,68 @@ export class VerifyVerifiableCredentialUseCase {
   ) {}
 
   async execute(dto: VerifyVerifiableCredentialDTO): Promise<Result<VerifyVerifiableCredentialResult>> {
-    if (!dto.credentialDocument) {
+    if (!dto.credentialDocument && !dto.verifiablePresentation) {
       return Result.fail('Documento de credencial não fornecido.');
     }
 
-    const doc = dto.credentialDocument;
+    const rawInput = dto.verifiablePresentation || dto.credentialDocument;
+    const isPresentation = Boolean(
+      dto.verifiablePresentation ||
+      (rawInput?.type &&
+        (Array.isArray(rawInput.type)
+          ? rawInput.type.includes('VerifiablePresentation')
+          : rawInput.type === 'VerifiablePresentation')) ||
+      rawInput?.verifiablePresentation
+    );
+
+    let doc: any;
+    let presentationChallenge: string | undefined;
+
+    if (isPresentation) {
+      const vp = dto.verifiablePresentation || rawInput.verifiablePresentation || rawInput;
+
+      // 0a. Verify Presentation Proof existence
+      if (!vp.proof) {
+        return Result.fail('Apresentação Verificável não contém prova criptográfica (proof ausente).');
+      }
+
+      if (!vp.proof.proofValue) {
+        return Result.fail('Apresentação Verificável não contém assinatura (proofValue ausente).');
+      }
+
+      // 0b. Validate Presentation Challenge (Anti-Replay)
+      presentationChallenge = vp.proof.challenge;
+      if (dto.expectedChallenge && presentationChallenge !== dto.expectedChallenge) {
+        return Result.fail('Challenge da apresentação inválido ou expirado (risco de replay).');
+      }
+
+      // 0c. Validate Holder Proof-of-Possession (holder signature over presentation)
+      const isPresentationProofValid = await this.signer.verifyProof(vp);
+      if (!isPresentationProofValid) {
+        return Result.fail('Assinatura da Apresentação Verificável inválida (falha no Proof of Possession).');
+      }
+
+      // 0d. Extract embedded Verifiable Credential
+      const embeddedVc =
+        dto.verifiablePresentation && dto.credentialDocument && dto.credentialDocument !== dto.verifiablePresentation
+          ? dto.credentialDocument
+          : (Array.isArray(vp.verifiableCredential) ? vp.verifiableCredential[0] : vp.verifiableCredential);
+
+      if (!embeddedVc) {
+        return Result.fail('Apresentação Verificável não contém nenhuma credencial.');
+      }
+
+      // 0e. Verify Holder Binding: Presenter MUST be the Credential Subject
+      const presenterDid = String(vp.proof.verificationMethod || '').split('#')[0];
+      const subjectDid = embeddedVc.credentialSubject?.id;
+      if (presenterDid && subjectDid && presenterDid !== subjectDid) {
+        return Result.fail('O apresentador da Verifiable Presentation não é o titular (subject) da credencial.');
+      }
+
+      doc = embeddedVc;
+    } else {
+      doc = dto.credentialDocument;
+    }
 
     // 1. Verify Cryptographic Proof
     if (!doc.proof) {
@@ -78,6 +140,12 @@ export class VerifyVerifiableCredentialUseCase {
         return Result.fail(`Credencial não está ativa (status: ${record.status}).`);
       }
 
+      // Verify Issuer Trust Boundary
+      const proofIssuer = String(doc.proof?.verificationMethod || '').split('#')[0];
+      if (proofIssuer && record.issuerDid && proofIssuer !== record.issuerDid && proofIssuer.startsWith('did:key:')) {
+        return Result.fail('Chave de assinatura da credencial não pertence ao emissor autorizado.');
+      }
+
       // 5. Verify Hash Integrity against the stored hash
       if (record.credentialHash) {
         const encoder = new TextEncoder();
@@ -98,6 +166,8 @@ export class VerifyVerifiableCredentialUseCase {
         claims: doc.credentialSubject || {},
         credentialType: record.credentialType,
         issuer: doc.issuer || record.issuerDid,
+        ...(presentationChallenge ? { presentationChallenge } : {}),
+        isPresentation,
       });
     };
 
@@ -110,4 +180,5 @@ export class VerifyVerifiableCredentialUseCase {
     return await run(this.repoOrUow as ISsiRepository);
   }
 }
+
 

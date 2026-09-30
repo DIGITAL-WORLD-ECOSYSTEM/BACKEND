@@ -53,6 +53,19 @@ export class IssueVerifiableCredentialUseCase {
         return Result.fail<VerifiableCredentialRecord>('DID não encontrado para o cidadão informado. Crie o DID primeiro.');
       }
 
+      // Prevent duplicate concurrent active credentials of the same type (Attack 24 mitigation)
+      if (typeof ssiRepo.listVerifiableCredentialsByUserId === 'function') {
+        const existingListRes = await ssiRepo.listVerifiableCredentialsByUserId(dto.holderUserId);
+        if (existingListRes.isSuccess && Array.isArray(existingListRes.getValue())) {
+          const existingActive = existingListRes
+            .getValue()
+            .find((c) => c.credentialType === dto.credentialType && c.status === 'active');
+          if (existingActive) {
+            await ssiRepo.revokeVerifiableCredential(existingActive.id);
+          }
+        }
+      }
+
       const subjectDid = didRes.getValue().did;
       const issuerDid =
         dto.issuerDid ||

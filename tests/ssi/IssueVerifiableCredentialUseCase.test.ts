@@ -160,4 +160,28 @@ describe('IssueVerifiableCredentialUseCase', () => {
     expect(result.isSuccess).toBe(true);
     expect(mockUow.execute).toHaveBeenCalled();
   });
+
+  it('HARDENED SECURITY P2 (Ataque 24): revokes previous active credential of the same type on reissuance', async () => {
+    ssiRepo.findDidByUserId.mockResolvedValue(Result.ok({ did: 'did:key:holder-123' }));
+    ssiRepo.saveVerifiableCredential.mockImplementation(async (record: any) => Result.ok(record));
+    ssiRepo.listVerifiableCredentialsByUserId = vi.fn().mockResolvedValue(
+      Result.ok([
+        { id: 'older-vc-uuid', credentialType: 'CivicIdentityCredential', status: 'active' },
+        { id: 'other-type-vc', credentialType: 'MembershipCredential', status: 'active' },
+      ])
+    );
+    ssiRepo.revokeVerifiableCredential = vi.fn().mockResolvedValue(Result.ok(undefined));
+
+    const useCase = new IssueVerifiableCredentialUseCase(ssiRepo, mockSigner, undefined, testSecretKey);
+    const result = await useCase.execute({
+      holderUserId: 10,
+      credentialType: 'CivicIdentityCredential',
+      claims: { updated: true },
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(ssiRepo.revokeVerifiableCredential).toHaveBeenCalledWith('older-vc-uuid');
+    expect(ssiRepo.revokeVerifiableCredential).not.toHaveBeenCalledWith('other-type-vc');
+  });
 });
+
