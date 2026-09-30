@@ -96,17 +96,17 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
       expect(res.body.message).toContain('targetUserId é obrigatório no lote.');
     });
 
-    it('should reject batch count exceeding safety limit of 500', async () => {
+    it('should reject batch count exceeding safety limit of 50 or non-integer', async () => {
       const controller = createController();
       const c = {
         get: vi.fn().mockReturnValue(1),
-        req: { json: vi.fn().mockResolvedValue({ count: 501, targetUserId: 1 }) },
+        req: { json: vi.fn().mockResolvedValue({ count: 51, targetUserId: 1 }) },
         json: vi.fn((body, status) => ({ body, status })),
       } as any;
 
       const res = await controller.batchCreateWallets(c);
       expect(res.status).toBe(400);
-      expect(res.body.message).toContain('Limite de segurança: O lote deve conter entre 1 e 500 carteiras.');
+      expect(res.body.message).toContain('Limite de segurança: O lote deve conter um número inteiro entre 1 e 50 carteiras.');
     });
 
     it('should execute batch creation and aggregate results', async () => {

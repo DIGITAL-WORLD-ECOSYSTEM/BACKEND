@@ -18,7 +18,7 @@ export class Web3WalletController {
       }
 
       const userId = Number(rawUserId);
-      if (isNaN(userId) || userId <= 0) {
+      if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
         return c.json({ success: false, message: 'Identificador de usuário inválido.' }, 400);
       }
 
@@ -32,26 +32,30 @@ export class Web3WalletController {
       });
 
       if (result.isFailure) {
-        return c.json({ success: false, message: result.error }, 400);
+        // F-07: Sanitiza o erro para o cliente e loga o detalhe internamente
+        console.error('[Web3WalletController] Falha ao criar carteira custodial:', result.error);
+        return c.json({ success: false, message: 'Falha ao criar carteira interna. Verifique os parâmetros ou contate o suporte.' }, 400);
       }
 
       return c.json({ success: true, data: result.getValue() }, 201);
     } catch (err: any) {
+      console.error('[Web3WalletController] Erro inesperado:', err);
       return c.json({ success: false, message: 'Erro interno no servidor.' }, 500);
     }
   }
 
   /**
    * [Rota Administrativa]
-   * Cria dezenas/centenas de carteiras em lote de uma vez só.
-   * Reproduz a utilidade do script legado de forma segura e auditada.
+   * Cria carteiras em lote de forma segura e transacional.
+   * Reproduz a utilidade do script legado com limites estritos anti-DoS.
    */
   async batchCreateWallets(c: Context) {
     try {
       const user = c.get('user');
       const adminUserId = c.get('userId') ?? user?.userId ?? user?.id;
       const body = await c.req.json().catch(() => ({}));
-      const count = Number(body.count) || 1;
+      const rawCount = body.count ?? 1;
+      const count = Number(rawCount);
       const networkId = Number(body.networkId) || 1;
       
       // ID para alocar a carteira (Pode ser um usuário "Tesouraria" do sistema)
@@ -62,12 +66,13 @@ export class Web3WalletController {
       }
 
       const targetUserId = Number(rawTargetUserId);
-      if (isNaN(targetUserId) || targetUserId <= 0) {
+      if (isNaN(targetUserId) || targetUserId <= 0 || !Number.isInteger(targetUserId)) {
         return c.json({ success: false, message: 'targetUserId inválido.' }, 400);
       }
 
-      if (count < 1 || count > 500) {
-        return c.json({ success: false, message: 'Limite de segurança: O lote deve conter entre 1 e 500 carteiras.' }, 400);
+      // F-06: Limite de segurança de até 50 carteiras por chamada síncrona para não exceder quota de CPU
+      if (!Number.isInteger(count) || count < 1 || count > 50) {
+        return c.json({ success: false, message: 'Limite de segurança: O lote deve conter um número inteiro entre 1 e 50 carteiras.' }, 400);
       }
 
       const createdWallets = [];
@@ -80,10 +85,12 @@ export class Web3WalletController {
           networkId: networkId,
           label: `Batch Wallet #${i + 1} - ${new Date().toISOString()}`,
           isPrimary: false,
+          status: 'pending', // Carteiras de lote nascem como 'pending' para alocação/ativação posterior
         });
 
         if (result.isFailure) {
-          errors.push(`Erro na carteira ${i + 1}: ${result.error}`);
+          console.error(`[Web3WalletController] Erro na carteira ${i + 1}:`, result.error);
+          errors.push(`Erro na carteira ${i + 1}: Falha ao processar.`);
         } else {
           createdWallets.push(result.getValue());
         }
@@ -96,6 +103,7 @@ export class Web3WalletController {
         errors: errors.length > 0 ? errors : undefined,
       }, 201);
     } catch (err: any) {
+      console.error('[Web3WalletController] Erro crítico no lote:', err);
       return c.json({ success: false, message: 'Erro crítico interno ao processar o lote.' }, 500);
     }
   }

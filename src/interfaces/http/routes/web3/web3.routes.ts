@@ -3,7 +3,7 @@ import { Bindings, Variables } from '../../../../types/bindings';
 import { Web3WalletController } from '../../controllers/web3/Web3WalletController';
 import { sessionGuard } from '../../middlewares/session_guard';
 import { verifyRole } from '../../middlewares/rbac';
-import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
+import { DrizzleWeb3RepositoryAdapter } from '../../../../infrastructure/repositories/DrizzleWeb3RepositoryAdapter';
 import { ViemWalletGenerator } from '../../../../infrastructure/security/crypto/ViemWalletGenerator';
 import { WebCryptoVaultAdapter } from '../../../../infrastructure/security/crypto/WebCryptoVaultAdapter';
 import { CreateInternalWalletUseCase } from '../../../../application/use-cases/web3/CreateInternalWalletUseCase';
@@ -38,11 +38,17 @@ export function createWeb3Router(controller: Web3WalletController) {
  */
 function buildWeb3Controller(c: any): Web3WalletController {
   const db = c.get('db');
-  const uow = new DrizzleUnitOfWork(db);
+  const web3Repo = new DrizzleWeb3RepositoryAdapter(db);
   const walletGenerator = new ViemWalletGenerator();
   const cryptoVault = new WebCryptoVaultAdapter();
-  const masterEncryptionKey = c.env.WALLET_ENCRYPTION_KEY || c.env.TOTP_ENCRYPTION_KEY || c.env.JWT_SECRET;
-  const useCase = new CreateInternalWalletUseCase(uow, walletGenerator, cryptoVault, masterEncryptionKey);
+  
+  // Fail-Closed: Não herda segredos de JWT. Exige chave de criptografia de cofre dedicada.
+  const masterEncryptionKey = c.env.WALLET_ENCRYPTION_KEY || c.env.TOTP_ENCRYPTION_KEY;
+  if (!masterEncryptionKey || masterEncryptionKey.trim().length === 0) {
+    throw new Error('Configuração crítica ausente: WALLET_ENCRYPTION_KEY não configurada no ambiente.');
+  }
+
+  const useCase = new CreateInternalWalletUseCase(web3Repo, walletGenerator, cryptoVault, masterEncryptionKey);
   return new Web3WalletController(useCase);
 }
 
@@ -52,8 +58,13 @@ function buildWeb3Controller(c: any): Web3WalletController {
 export const web3Router = new Hono<AppType>();
 
 web3Router.post('/wallets/create', sessionGuard, async (c) => {
-  const controller = buildWeb3Controller(c);
-  return controller.createUserWallet(c);
+  try {
+    const controller = buildWeb3Controller(c);
+    return await controller.createUserWallet(c);
+  } catch (err: any) {
+    console.error('🚨 [Web3Router] Falha ao inicializar controller:', err);
+    return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
+  }
 });
 
 web3Router.post(
@@ -61,8 +72,14 @@ web3Router.post(
   sessionGuard,
   verifyRole(['admin']),
   async (c) => {
-    const controller = buildWeb3Controller(c);
-    return controller.batchCreateWallets(c);
+    try {
+      const controller = buildWeb3Controller(c);
+      return await controller.batchCreateWallets(c);
+    } catch (err: any) {
+      console.error('🚨 [Web3Router] Falha ao inicializar controller no lote:', err);
+      return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
+    }
   }
 );
+
 

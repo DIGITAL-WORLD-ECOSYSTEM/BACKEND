@@ -1,4 +1,4 @@
-import { ICryptoVaultPort } from '../../../application/ports/security/ICryptoVaultPort';
+import { ICryptoVaultPort, CryptoEnvelope } from '../../../application/ports/security/ICryptoVaultPort';
 import { CryptoVault } from './crypto';
 
 /**
@@ -14,4 +14,13 @@ export class WebCryptoVaultAdapter implements ICryptoVaultPort {
   async decrypt(ciphertext: string, secretKey: string): Promise<string> {
     return CryptoVault.decrypt(ciphertext, secretKey);
   }
+
+  async encryptEnvelope(text: string, secretKey: string): Promise<CryptoEnvelope> {
+    return CryptoVault.encryptEnvelope(text, secretKey);
+  }
+
+  async decryptEnvelope(envelope: CryptoEnvelope, secretKey: string): Promise<string> {
+    return CryptoVault.decryptEnvelope(envelope, secretKey);
+  }
 }
+

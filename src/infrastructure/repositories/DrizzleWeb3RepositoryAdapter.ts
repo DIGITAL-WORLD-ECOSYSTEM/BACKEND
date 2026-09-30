@@ -1,12 +1,14 @@
 import { eq, and, sql } from 'drizzle-orm';
 import { wallets } from '../../db/web3/tables';
+import { secureVaults } from '../../db/ssi/tables';
 import {
   IWeb3Repository,
   WalletRecord,
   LinkWalletData,
+  CreateInternalWalletWithVaultParams,
 } from '../../application/ports/output/IWeb3Repository';
 
-export type { WalletRecord, LinkWalletData };
+export type { WalletRecord, LinkWalletData, CreateInternalWalletWithVaultParams };
 
 export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
   constructor(private readonly db: any) {}
@@ -79,6 +81,82 @@ export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
       .returning();
 
     return this.mapToRecord(newWallet);
+  }
+
+  async createInternalWalletWithVault(
+    params: CreateInternalWalletWithVaultParams
+  ): Promise<{ wallet: WalletRecord; vaultId: number }> {
+    // 1. Suporte atômico nativo Cloudflare D1 via db.batch()
+    if (typeof (this.db as any).batch === 'function') {
+      const vaultQuery = this.db
+        .insert(secureVaults)
+        .values({
+          userId: params.vault.userId,
+          purpose: params.vault.purpose,
+          ciphertext: params.vault.ciphertext,
+          nonce: params.vault.nonce,
+          authTag: params.vault.authTag,
+          encryptionAlgorithm: params.vault.encryptionAlgorithm || 'AES-256-GCM',
+          keyVersion: params.vault.keyVersion || 1,
+          keyReference: params.vault.keyReference,
+          version: 1,
+        })
+        .returning({ id: secureVaults.id });
+
+      const walletQuery = this.db
+        .insert(wallets)
+        .values({
+          ...params.wallet,
+          version: 1,
+        })
+        .returning();
+
+      const [vaultRes, walletRes] = await (this.db as any).batch([vaultQuery, walletQuery]);
+      const createdVault = vaultRes[0];
+      const createdWallet = walletRes[0];
+
+      return {
+        vaultId: createdVault.id,
+        wallet: this.mapToRecord(createdWallet),
+      };
+    }
+
+    // 2. Suporte transacional interativo SQLite local / test
+    const executeTx = async (txDb: any) => {
+      const [createdVault] = await txDb
+        .insert(secureVaults)
+        .values({
+          userId: params.vault.userId,
+          purpose: params.vault.purpose,
+          ciphertext: params.vault.ciphertext,
+          nonce: params.vault.nonce,
+          authTag: params.vault.authTag,
+          encryptionAlgorithm: params.vault.encryptionAlgorithm || 'AES-256-GCM',
+          keyVersion: params.vault.keyVersion || 1,
+          keyReference: params.vault.keyReference,
+          version: 1,
+        })
+        .returning({ id: secureVaults.id });
+
+      const [createdWallet] = await txDb
+        .insert(wallets)
+        .values({
+          ...params.wallet,
+          version: 1,
+        })
+        .returning();
+
+      return {
+        vaultId: createdVault.id,
+        wallet: this.mapToRecord(createdWallet),
+      };
+    };
+
+    if (typeof (this.db as any).transaction === 'function') {
+      return (this.db as any).transaction(executeTx);
+    }
+
+    return executeTx(this.db);
   }
 
   async updateWallet(wallet: WalletRecord): Promise<WalletRecord> {

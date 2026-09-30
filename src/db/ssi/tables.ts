@@ -61,14 +61,13 @@ export const secureVaults = sqliteTable(
   },
   (table) => ({
     userIdx: index('idx_secure_vaults_user').on(table.userId),
-    userPurposeVersionUnq: uniqueIndex('uq_secure_vaults_user_purpose_version').on(
-      table.userId,
-      table.purpose,
-      table.keyVersion
-    ),
+    userPurposeVersionUnq: uniqueIndex('uq_secure_vaults_user_purpose_version')
+      .on(table.userId, table.purpose, table.keyVersion)
+      .where(sql`${table.purpose} != 'private_key'`),
     activePurposeUnq: uniqueIndex('uq_secure_vaults_active_purpose')
       .on(table.userId, table.purpose)
-      .where(sql`${table.revokedAt} IS NULL`),
+      .where(sql`${table.revokedAt} IS NULL AND ${table.purpose} != 'private_key'`),
+    keyReferenceUnq: uniqueIndex('uq_secure_vaults_key_reference').on(table.keyReference),
     purposeCheck: check(
       'ck_secure_vaults_purpose',
       sql`${table.purpose} IN ('wallet_mnemonic', 'recovery_material', 'private_key', 'identity_seed')`

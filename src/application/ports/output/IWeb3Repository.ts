@@ -25,13 +25,46 @@ export interface LinkWalletData {
   label?: string;
 }
 
+export interface CreateInternalWalletWithVaultParams {
+  vault: {
+    userId: number;
+    purpose: 'private_key';
+    ciphertext: string;
+    nonce: string;
+    authTag: string;
+    keyReference: string;
+    encryptionAlgorithm?: 'AES-256-GCM';
+    keyVersion?: number;
+  };
+  wallet: {
+    userId: number;
+    networkId: number;
+    provenance: 'internal';
+    walletType: 'eoa';
+    controlMode: 'platform_key';
+    address: string;
+    addressNormalized: string;
+    label: string;
+    isPrimary: boolean;
+    keyProvider: 'secure_vault';
+    keyReference: string;
+    status: 'pending' | 'active';
+    verificationStatus: 'verified';
+    verificationMethod: 'system';
+    verifiedAt: Date;
+    lastOwnershipVerifiedAt: Date;
+  };
+}
+
 export interface IWeb3Repository {
   findByAddress(address: string): Promise<WalletRecord | null>;
   findByUserId(userId: number): Promise<WalletRecord[]>;
   findActiveByUserId(userId: number): Promise<WalletRecord | null>;
   linkExternalWallet(data: LinkWalletData): Promise<WalletRecord>;
   createInternalWallet(wallet: Partial<WalletRecord>): Promise<WalletRecord>;
+  createInternalWalletWithVault(params: CreateInternalWalletWithVaultParams): Promise<{ wallet: WalletRecord; vaultId: number }>;
   updateWallet(wallet: WalletRecord): Promise<WalletRecord>;
   revokeWallet(userId: number, address: string): Promise<boolean>;
 }
+
 

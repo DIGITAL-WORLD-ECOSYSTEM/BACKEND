@@ -25,6 +25,7 @@ export type Bindings = {
   // 5. Segredos e Chaves de API
   JWT_SECRET: string;
   TOTP_ENCRYPTION_KEY?: string;
+  WALLET_ENCRYPTION_KEY?: string;
   SSI_ISSUER_PRIVATE_KEY?: string;
   SSI_ISSUER_SEED?: string;
   ADMIN_PASSWORD: string;
