@@ -247,5 +247,83 @@ describe('SsiController', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data).toEqual(verificationData);
     });
+
+    it('verifies credential embedded in a Verifiable Presentation with challenge', async () => {
+      const vpPayload = {
+        '@context': ['https://www.w3.org/2018/credentials/v1'],
+        type: ['VerifiablePresentation'],
+        verifiableCredential: [{ id: 'urn:uuid:vc-embedded' }],
+        proof: {
+          type: 'Ed25519Signature2020',
+          challenge: 'random-nonce-12345',
+        },
+      };
+
+      verifyVcUseCase.execute.mockResolvedValue(
+        Result.ok({ isValid: true, subjectId: 'did:key:subject', claims: {} })
+      );
+
+      const c = createMockContext(undefined, vpPayload);
+      const res: any = await controller.verifyCredential(c);
+
+      expect(res.status).toBe(200);
+      expect(verifyVcUseCase.execute).toHaveBeenCalledWith({
+        credentialDocument: { id: 'urn:uuid:vc-embedded' },
+      });
+      expect(res.body.data.presentationChallenge).toBe('random-nonce-12345');
+    });
+  });
+
+  describe('listMyCredentials with vault', () => {
+    it('decrypts claims for the holder when cryptoVault is configured', async () => {
+      const mockDid = { id: 'did-1', did: 'did:key:abc' };
+      const mockVcs = [{ id: 'vc-1', status: 'active', encryptedClaims: 'vault_cipher' }];
+      ssiRepo.findDidByUserId.mockResolvedValue(Result.ok(mockDid));
+      ssiRepo.listVerifiableCredentialsByUserId.mockResolvedValue(Result.ok(mockVcs));
+
+      const mockVault = {
+        encrypt: vi.fn(),
+        decrypt: vi.fn().mockResolvedValue(JSON.stringify({ name: 'Maria Souza', cpf: '00011122233' })),
+      };
+
+      const controllerWithVault = new SsiController(
+        createDidUseCase,
+        issueVcUseCase,
+        revokeVcUseCase,
+        ssiRepo,
+        verifyVcUseCase,
+        mockVault as any,
+        'secret-key'
+      );
+
+      const c = createMockContext(1);
+      const res: any = await controllerWithVault.listMyCredentials(c);
+
+      expect(res.status).toBe(200);
+      expect(mockVault.decrypt).toHaveBeenCalledWith('vault_cipher', 'secret-key');
+      expect(res.body.data.credentials[0].claims).toEqual({ name: 'Maria Souza', cpf: '00011122233' });
+    });
+  });
+
+  describe('administrative revocation', () => {
+    it('allows administrative revocation when user has ssi.credential.revoke permission', async () => {
+      revokeVcUseCase.execute.mockResolvedValue(Result.ok(undefined));
+      const c = createMockContext(999, { credentialId: 'vc-1' });
+      c.get.mockImplementation((key: string) => {
+        if (key === 'userId') return 999;
+        if (key === 'permissions') return ['ssi.credential.revoke'];
+        return undefined;
+      });
+
+      const res: any = await controller.revokeCredential(c);
+
+      expect(res.status).toBe(200);
+      expect(revokeVcUseCase.execute).toHaveBeenCalledWith({
+        credentialId: 'vc-1',
+        actorUserId: 999,
+        isIssuerOrAdmin: true,
+      });
+    });
   });
 });
+

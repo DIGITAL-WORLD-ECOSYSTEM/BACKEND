@@ -4,6 +4,7 @@ import { Result } from '@/shared/kernel/Result';
 import { ISsiRepository, VerifiableCredentialRecord } from '@/application/ports/output/ISsiRepository';
 import { ICredentialSigner } from '@/application/ports/security/ICredentialSigner';
 import { IUnitOfWork } from '@/application/ports/output/IUnitOfWork';
+import { canonicalizeJson } from '@/infrastructure/security/crypto/LocalIssuerSigner';
 
 describe('VerifyVerifiableCredentialUseCase', () => {
   const credentialId = '550e8400-e29b-41d4-a716-446655440000';
@@ -32,7 +33,8 @@ describe('VerifyVerifiableCredentialUseCase', () => {
 
   const computeSha256 = async (doc: any): Promise<string> => {
     const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify(doc)));
+    const canonicalDoc = canonicalizeJson(doc);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify(canonicalDoc)));
     return Array.from(new Uint8Array(hashBuffer))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');

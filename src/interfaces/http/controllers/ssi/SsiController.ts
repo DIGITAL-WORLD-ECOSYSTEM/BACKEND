@@ -4,6 +4,7 @@ import { IssueVerifiableCredentialUseCase } from '../../../../application/use-ca
 import { RevokeCredentialUseCase } from '../../../../application/use-cases/ssi/RevokeCredentialUseCase';
 import { VerifyVerifiableCredentialUseCase } from '../../../../application/use-cases/ssi/VerifyVerifiableCredentialUseCase';
 import { ISsiRepository } from '../../../../application/ports/output/ISsiRepository';
+import { ICryptoVaultPort } from '../../../../application/ports/security/ICryptoVaultPort';
 
 export class SsiController {
   constructor(
@@ -11,7 +12,9 @@ export class SsiController {
     private readonly issueVcUseCase: IssueVerifiableCredentialUseCase,
     private readonly revokeVcUseCase: RevokeCredentialUseCase,
     private readonly ssiRepo: ISsiRepository,
-    private readonly verifyVcUseCase?: VerifyVerifiableCredentialUseCase
+    private readonly verifyVcUseCase?: VerifyVerifiableCredentialUseCase,
+    private readonly cryptoVault?: ICryptoVaultPort,
+    private readonly encryptionKey?: string
   ) {}
 
   async createDid(c: Context): Promise<Response> {
@@ -25,6 +28,7 @@ export class SsiController {
       const result = await this.createDidUseCase.execute({
         userId,
         method: body.method || 'key',
+        isPrimary: body.isPrimary,
       });
 
       if (result.isFailure) {
@@ -46,7 +50,7 @@ export class SsiController {
       }
 
       const body = await c.req.json();
-      
+
       // Sanitize claims against prototype pollution
       const rawClaims = body.claims && typeof body.claims === 'object' && !Array.isArray(body.claims) ? body.claims : {};
       const claims: Record<string, any> = {};
@@ -82,9 +86,15 @@ export class SsiController {
       }
 
       const body = await c.req.json();
+      const permissions: string[] = c.get('permissions') || [];
+      const isIssuerOrAdmin =
+        Array.isArray(permissions) &&
+        (permissions.includes('ssi.credential.revoke') || permissions.includes('*') || permissions.includes('admin'));
+
       const result = await this.revokeVcUseCase.execute({
         credentialId: body.credentialId,
         actorUserId,
+        isIssuerOrAdmin,
       });
 
       if (result.isFailure) {
@@ -108,11 +118,34 @@ export class SsiController {
       const didRes = await this.ssiRepo.findDidByUserId(userId);
       const vcsRes = await this.ssiRepo.listVerifiableCredentialsByUserId(userId);
 
+      let credentials = vcsRes.isSuccess ? vcsRes.getValue() : [];
+
+      // Decrypt claims for the authenticated holder so they have possession of their data
+      if (this.cryptoVault && this.encryptionKey && credentials.length > 0) {
+        credentials = await Promise.all(
+          credentials.map(async (vc) => {
+            try {
+              if (vc.encryptedClaims) {
+                const decryptedStr = await this.cryptoVault!.decrypt(vc.encryptedClaims, this.encryptionKey!);
+                const claims = JSON.parse(decryptedStr);
+                return {
+                  ...vc,
+                  claims,
+                };
+              }
+            } catch {
+              // Return original record if decryption fails
+            }
+            return vc;
+          })
+        );
+      }
+
       return c.json({
         success: true,
         data: {
           did: didRes.isSuccess ? didRes.getValue() : null,
-          credentials: vcsRes.isSuccess ? vcsRes.getValue() : [],
+          credentials,
         },
       });
     } catch (err: unknown) {
@@ -124,10 +157,29 @@ export class SsiController {
   async verifyCredential(c: Context): Promise<Response> {
     try {
       const body = await c.req.json();
-      const credentialDocument = body.credentialDocument || body;
 
       if (!this.verifyVcUseCase) {
         return c.json({ success: false, message: 'Serviço de verificação não configurado no controlador' }, 500);
+      }
+
+      // Support both raw Verifiable Credential and Verifiable Presentation (VP)
+      const isPresentation =
+        (body.type && (body.type.includes('VerifiablePresentation') || body.type === 'VerifiablePresentation')) ||
+        Boolean(body.verifiablePresentation);
+
+      let credentialDocument: any;
+      let presentationChallenge: string | undefined;
+
+      if (isPresentation) {
+        const vp = body.verifiablePresentation || body;
+        presentationChallenge = vp.proof?.challenge;
+        if (Array.isArray(vp.verifiableCredential)) {
+          credentialDocument = vp.verifiableCredential[0];
+        } else {
+          credentialDocument = vp.verifiableCredential;
+        }
+      } else {
+        credentialDocument = body.credentialDocument || body;
       }
 
       const result = await this.verifyVcUseCase.execute({
@@ -138,15 +190,20 @@ export class SsiController {
         return c.json({ success: false, message: result.error, isValid: false }, 400);
       }
 
-      return c.json({
-        success: true,
-        message: 'Credencial Verificável autêntica e válida',
-        data: result.getValue(),
-      }, 200);
+      return c.json(
+        {
+          success: true,
+          message: 'Credencial Verificável autêntica e válida',
+          data: {
+            ...result.getValue(),
+            ...(presentationChallenge ? { presentationChallenge } : {}),
+          },
+        },
+        200
+      );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro interno';
       return c.json({ success: false, message: 'Erro no servidor', error: message }, 500);
     }
   }
 }
-

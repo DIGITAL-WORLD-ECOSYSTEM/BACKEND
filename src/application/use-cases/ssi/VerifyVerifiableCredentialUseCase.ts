@@ -2,6 +2,7 @@ import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
 import { Result } from '../../../shared/kernel/Result';
 import { ISsiRepository } from '../../ports/output/ISsiRepository';
 import { ICredentialSigner } from '../../ports/security/ICredentialSigner';
+import { canonicalizeJson } from '../../../shared/kernel/ssi_crypto';
 
 export interface VerifyVerifiableCredentialDTO {
   credentialDocument: any;
@@ -80,7 +81,8 @@ export class VerifyVerifiableCredentialUseCase {
       // 5. Verify Hash Integrity against the stored hash
       if (record.credentialHash) {
         const encoder = new TextEncoder();
-        const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify(doc)));
+        const canonicalDoc = canonicalizeJson(doc);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify(canonicalDoc)));
         const computedHash = Array.from(new Uint8Array(hashBuffer))
           .map((b) => b.toString(16).padStart(2, '0'))
           .join('');

@@ -129,4 +129,27 @@ describe('RevokeCredentialUseCase', () => {
     expect(mockUow.execute).toHaveBeenCalled();
     expect(mockRepo.revokeVerifiableCredential).toHaveBeenCalledWith(sampleVcRecord.id);
   });
+
+  it('should allow administrative / issuer revocation when isIssuerOrAdmin is true', async () => {
+    const mockRepo: ISsiRepository = {
+      findDidByUserId: vi.fn(),
+      saveDid: vi.fn(),
+      saveVerifiableCredential: vi.fn(),
+      findVerifiableCredentialById: vi.fn().mockResolvedValue(Result.ok(sampleVcRecord)),
+      listVerifiableCredentialsByUserId: vi.fn(),
+      revokeVerifiableCredential: vi.fn().mockResolvedValue(Result.ok(undefined)),
+    };
+    const useCase = new RevokeCredentialUseCase(mockRepo);
+
+    // Admin (actorUserId 999) revokes holder 42's credential with isIssuerOrAdmin: true
+    const result = await useCase.execute({
+      credentialId: sampleVcRecord.id,
+      actorUserId: 999,
+      isIssuerOrAdmin: true,
+    });
+
+    expect(result.isSuccess).toBe(true);
+    expect(mockRepo.revokeVerifiableCredential).toHaveBeenCalledWith(sampleVcRecord.id);
+  });
 });
+

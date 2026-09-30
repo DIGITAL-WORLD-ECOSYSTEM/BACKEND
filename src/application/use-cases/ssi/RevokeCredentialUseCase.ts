@@ -4,9 +4,10 @@ import { ISsiRepository } from '../../ports/output/ISsiRepository';
 
 export interface RevokeCredentialDTO {
   credentialId: string;
-  /** ID do usuário que está solicitando a revogação (actorId). 
-   *  Deve ser o holder da credencial para evitar IDOR. */
+  /** ID do usuário que está solicitando a revogação (actorId). */
   actorUserId: number;
+  /** Se o ator for um emissor governamental ou administrador autorizado com permissão ssi.credential.revoke */
+  isIssuerOrAdmin?: boolean;
 }
 
 export class RevokeCredentialUseCase {
@@ -29,8 +30,8 @@ export class RevokeCredentialUseCase {
 
       const vc = vcRes.getValue();
 
-      // IDOR Protection: only the holder of the credential may revoke it.
-      if (vc.holderUserId !== dto.actorUserId) {
+      // IDOR Protection: only the holder of the credential or an authorized issuer/admin may revoke it.
+      if (vc.holderUserId !== dto.actorUserId && !dto.isIssuerOrAdmin) {
         return Result.fail<void>('Acesso negado: você não é o titular desta credencial.');
       }
 
@@ -46,4 +47,3 @@ export class RevokeCredentialUseCase {
     return await run(this.repoOrUow as ISsiRepository);
   }
 }
-

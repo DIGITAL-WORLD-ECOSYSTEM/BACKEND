@@ -1,10 +1,12 @@
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
 import { Result } from '../../../shared/kernel/Result';
 import { ISsiRepository, DidIdentityRecord } from '../../ports/output/ISsiRepository';
+import { encodeDidKey } from '../../../shared/kernel/ssi_crypto';
 
 export interface CreateDidDTO {
   userId: number;
   method?: 'key' | 'ion' | 'polygonid' | 'web' | 'cheqd' | 'pkh';
+  isPrimary?: boolean;
 }
 
 export class CreateDidUseCase {
@@ -25,14 +27,25 @@ export class CreateDidUseCase {
       }
 
       const id = crypto.randomUUID();
-      const did = `did:${method}:${id}`;
-      const record: DidIdentityRecord = {
+      let did: string;
+
+      if (method === 'key') {
+        // Generate real W3C Ed25519 key pair and multicodec multibase DID
+        const keyPair = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']);
+        const rawPublicKey = new Uint8Array(await crypto.subtle.exportKey('raw', keyPair.publicKey));
+        did = encodeDidKey(rawPublicKey);
+      } else {
+        did = `did:${method}:${id}`;
+      }
+
+      const record: DidIdentityRecord & { isPrimary?: boolean } = {
         id,
         userId: dto.userId,
         did,
         method,
         controller: did,
         status: 'active',
+        isPrimary: dto.isPrimary ?? true, // Set as primary DID by default
         version: 1,
       };
 
@@ -48,4 +61,3 @@ export class CreateDidUseCase {
     return await run(this.repoOrUow as ISsiRepository);
   }
 }
-

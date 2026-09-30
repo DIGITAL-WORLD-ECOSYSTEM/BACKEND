@@ -54,12 +54,14 @@ describe('CreateDidUseCase', () => {
     expect(result.isSuccess).toBe(true);
     const didRecord = result.getValue();
     expect(didRecord.userId).toBe(10);
-    expect(didRecord.did).toMatch(/^did:key:[0-9a-f-]{36}$/);
+    expect(didRecord.did).toMatch(/^did:key:z6Mk[1-9A-HJ-NP-Za-km-z]+$/);
     expect(didRecord.status).toBe('active');
+    expect(didRecord.isPrimary).toBe(true);
     expect(ssiRepo.saveDid).toHaveBeenCalledWith(expect.objectContaining({
       userId: 10,
       method: 'key',
       status: 'active',
+      isPrimary: true,
     }));
   });
 

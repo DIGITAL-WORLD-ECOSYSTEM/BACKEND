@@ -1,4 +1,13 @@
 import { ICredentialSigner, CredentialProof } from '../../../application/ports/security/ICredentialSigner';
+import {
+  base58Encode,
+  base58Decode,
+  canonicalizeJson,
+  encodeDidKey,
+  decodeDidKey,
+} from '../../../shared/kernel/ssi_crypto';
+
+export { base58Encode, base58Decode, canonicalizeJson, encodeDidKey, decodeDidKey };
 
 const PKCS8_ED25519_PREFIX = new Uint8Array([
   0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
@@ -29,58 +38,18 @@ export class LocalIssuerSigner implements ICredentialSigner {
     }
   }
 
-  private base58Encode(buffer: Uint8Array): string {
-    const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-    const digits = [0];
-    for (let i = 0; i < buffer.length; i++) {
-      for (let j = 0; j < digits.length; j++) digits[j] <<= 8;
-      digits[0] += buffer[i];
-      let carry = 0;
-      for (let j = 0; j < digits.length; ++j) {
-        digits[j] += carry;
-        carry = (digits[j] / 58) | 0;
-        digits[j] %= 58;
-      }
-      while (carry) {
-        digits.push(carry % 58);
-        carry = (carry / 58) | 0;
-      }
-    }
-    for (let i = 0; buffer[i] === 0 && i < buffer.length - 1; i++) digits.push(0);
-    return digits
-      .reverse()
-      .map(function (digit) {
-        return ALPHABET[digit];
-      })
-      .join('');
+  /**
+   * Encodes a 32-byte Ed25519 public key into W3C multicodec multibase format (did:key:z6Mk...)
+   */
+  static encodeDidKey(rawPublicKey: Uint8Array): string {
+    return encodeDidKey(rawPublicKey);
   }
 
-  private base58Decode(string: string): Uint8Array {
-    const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-    const ALPHABET_MAP: Record<string, number> = {};
-    for (let i = 0; i < ALPHABET.length; i++) {
-      ALPHABET_MAP[ALPHABET.charAt(i)] = i;
-    }
-    if (string.length === 0) return new Uint8Array();
-    const bytes = [0];
-    for (let i = 0; i < string.length; i++) {
-      const c = string[i];
-      if (!(c in ALPHABET_MAP)) throw new Error('Non-base58 character');
-      for (let j = 0; j < bytes.length; j++) bytes[j] *= 58;
-      bytes[0] += ALPHABET_MAP[c];
-      let carry = 0;
-      for (let j = 0; j < bytes.length; ++j) {
-        bytes[j] += carry;
-        carry = bytes[j] >> 8;
-        bytes[j] &= 0xff;
-      }
-      while (carry) {
-        bytes.push(carry & 0xff);
-        carry >>= 8;
-      }
-    }
-    for (let i = 0; string[i] === '1' && i < string.length - 1; i++) bytes.push(0);
-    return new Uint8Array(bytes.reverse());
+  /**
+   * Decodes a W3C did:key:z6Mk... into a 32-byte Ed25519 raw public key.
+   */
+  static decodeDidKey(didKey: string): Uint8Array | null {
+    return decodeDidKey(didKey);
   }
 
   private async getPrivateKey(): Promise<CryptoKey> {
@@ -118,11 +87,20 @@ export class LocalIssuerSigner implements ICredentialSigner {
     return this.cachedPublicKeyBytes;
   }
 
-  async signCredential(document: any, issuerDid: string, keyId?: string): Promise<CredentialProof> {
+  async getIssuerDid(): Promise<string> {
+    const pubBytes = await this.getPublicKeyBytes();
+    if (pubBytes && pubBytes.length === 32) {
+      return encodeDidKey(pubBytes);
+    }
+    return 'did:key:asppibra-dao-root-issuer';
+  }
+
+  async signCredential(document: any, issuerDid?: string, keyId?: string): Promise<CredentialProof> {
+    const effectiveIssuerDid = issuerDid || (await this.getIssuerDid());
     const docCopy = { ...document };
     delete docCopy.proof;
 
-    const sortedDoc = this.sortKeys(docCopy);
+    const sortedDoc = canonicalizeJson(docCopy);
     const dataToSign = new TextEncoder().encode(JSON.stringify(sortedDoc));
 
     const key = await this.getPrivateKey();
@@ -133,12 +111,12 @@ export class LocalIssuerSigner implements ICredentialSigner {
       dataToSign
     );
 
-    const proofValue = this.base58Encode(new Uint8Array(signatureBuffer));
+    const proofValue = base58Encode(new Uint8Array(signatureBuffer));
 
     return {
       type: 'Ed25519Signature2020',
       created: new Date().toISOString(),
-      verificationMethod: keyId || `${issuerDid}#keys-1`,
+      verificationMethod: keyId || `${effectiveIssuerDid}#keys-1`,
       proofPurpose: 'assertionMethod',
       proofValue,
     };
@@ -154,33 +132,32 @@ export class LocalIssuerSigner implements ICredentialSigner {
       const proof = docCopy.proof;
       delete docCopy.proof;
 
-      const sortedDoc = this.sortKeys(docCopy);
+      const sortedDoc = canonicalizeJson(docCopy);
       const dataToVerify = new TextEncoder().encode(JSON.stringify(sortedDoc));
 
-      const signatureBytes = this.base58Decode(proof.proofValue);
+      const signatureBytes = base58Decode(proof.proofValue);
       if (signatureBytes.length !== 64) {
         return false;
       }
 
-      // Try to obtain the public key
-      let pubKeyBytes = this.cachedPublicKeyBytes;
+      let pubKeyBytes: Uint8Array | undefined = undefined;
 
-      if (!pubKeyBytes && this.privateKeyBytes) {
-        pubKeyBytes = await this.getPublicKeyBytes();
+      // 1. Resolve public key from proof.verificationMethod if it's a did:key (universal W3C verification)
+      if (typeof proof.verificationMethod === 'string') {
+        const didKeyMatch = proof.verificationMethod.match(/did:key:(z[1-9A-HJ-NP-Za-km-z]+)/);
+        if (didKeyMatch) {
+          const resolved = decodeDidKey(`did:key:${didKeyMatch[1]}`);
+          if (resolved && resolved.length === 32) {
+            pubKeyBytes = resolved;
+          }
+        }
       }
 
-      // If verificationMethod is did:key:z6M..., extract multicodec key
-      if (!pubKeyBytes && typeof proof.verificationMethod === 'string') {
-        const didKeyMatch = proof.verificationMethod.match(/^did:key:(z[1-9A-HJ-NP-Za-km-z]+)/);
-        if (didKeyMatch) {
-          const multibaseStr = didKeyMatch[1].substring(1); // strip leading 'z'
-          const decoded = this.base58Decode(multibaseStr);
-          // Ed25519 multicodec prefix is 0xed, 0x01 (2 bytes) followed by 32 bytes public key
-          if (decoded.length === 34 && decoded[0] === 0xed && decoded[1] === 0x01) {
-            pubKeyBytes = decoded.slice(2);
-          } else if (decoded.length === 32) {
-            pubKeyBytes = decoded;
-          }
+      // 2. Fallback to cached or local issuer key if verificationMethod is a local alias or self-signed
+      if (!pubKeyBytes) {
+        pubKeyBytes = this.cachedPublicKeyBytes;
+        if (!pubKeyBytes && this.privateKeyBytes) {
+          pubKeyBytes = await this.getPublicKeyBytes();
         }
       }
 
@@ -205,18 +182,5 @@ export class LocalIssuerSigner implements ICredentialSigner {
     } catch {
       return false;
     }
-  }
-
-  private sortKeys(obj: any): any {
-    if (typeof obj !== 'object' || obj === null) return obj;
-    if (Array.isArray(obj)) return obj.map((i) => this.sortKeys(i));
-
-    const sorted: any = {};
-    Object.keys(obj)
-      .sort()
-      .forEach((key) => {
-        sorted[key] = this.sortKeys(obj[key]);
-      });
-    return sorted;
   }
 }

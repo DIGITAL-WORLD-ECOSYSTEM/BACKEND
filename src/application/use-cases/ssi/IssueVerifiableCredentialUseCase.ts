@@ -3,6 +3,7 @@ import { Result } from '../../../shared/kernel/Result';
 import { ISsiRepository, VerifiableCredentialRecord } from '../../ports/output/ISsiRepository';
 import { ICredentialSigner } from '../../ports/security/ICredentialSigner';
 import { ICryptoVaultPort } from '../../ports/security/ICryptoVaultPort';
+import { canonicalizeJson } from '../../../shared/kernel/ssi_crypto';
 
 export interface IssueVerifiableCredentialDTO {
   holderUserId: number;
@@ -76,9 +77,10 @@ export class IssueVerifiableCredentialUseCase {
       const secretKey = dto.encryptionKey || this.defaultSecretKey;
       const encryptedClaims = await this.encryptSecret(claimsStr, secretKey);
 
-      // CredentialHash is a SHA-256 hash of the signed document
+      // CredentialHash is a canonical SHA-256 hash of the signed document
       const encoder = new TextEncoder();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify(signedDocument)));
+      const canonicalDoc = canonicalizeJson(signedDocument);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify(canonicalDoc)));
       const credentialHash = Array.from(new Uint8Array(hashBuffer))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
