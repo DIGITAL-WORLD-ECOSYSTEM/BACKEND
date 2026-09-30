@@ -130,6 +130,54 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
     });
   });
 
+  describe('Web3WalletController - getUserWallets & getActiveWallet', () => {
+    it('should return 200 with sanitized wallet list for authenticated user', async () => {
+      const mockGetWallets = {
+        execute: vi.fn().mockResolvedValue(
+          Result.ok([
+            { id: 1, address: '0x1', networkId: 56, provenance: 'internal', isPrimary: true },
+            { id: 2, address: '0x2', networkId: 56, provenance: 'internal', isPrimary: false },
+          ])
+        ),
+      };
+
+      const controller = new Web3WalletController(mockUseCase as any, mockGetWallets as any);
+      const c = {
+        get: vi.fn((key) => (key === 'userId' ? 42 : undefined)),
+        json: vi.fn((body, status) => ({ body, status })),
+      } as any;
+
+      const res = (await controller.getUserWallets(c)) as any;
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toHaveLength(2);
+      expect(mockGetWallets.execute).toHaveBeenCalledWith({ userId: 42 });
+    });
+
+    it('should return 200 with active wallet or 404 if user has no active wallet', async () => {
+      const mockGetActive = {
+        execute: vi
+          .fn()
+          .mockResolvedValueOnce(Result.ok({ id: 1, address: '0x1', isPrimary: true }))
+          .mockResolvedValueOnce(Result.ok(null)),
+      };
+
+      const controller = new Web3WalletController(mockUseCase as any, undefined, mockGetActive as any);
+      const c = {
+        get: vi.fn((key) => (key === 'userId' ? 42 : undefined)),
+        json: vi.fn((body, status) => ({ body, status })),
+      } as any;
+
+      const res1 = (await controller.getActiveWallet(c)) as any;
+      expect(res1.status).toBe(200);
+      expect(res1.body.data.address).toBe('0x1');
+
+      const res2 = (await controller.getActiveWallet(c)) as any;
+      expect(res2.status).toBe(404);
+      expect(res2.body.success).toBe(false);
+    });
+  });
+
   describe('Web3 Route Protection with sessionGuard and RBAC', () => {
     it('should reject unauthenticated request to /wallets/create (missing Bearer token)', async () => {
       const controller = createController();
@@ -148,6 +196,30 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
       const data = await res.json() as any;
       expect(data.success).toBe(false);
       expect(data.message).toContain('Authentication required (Bearer token missing).');
+    });
+
+    it('should reject unauthenticated request to /wallets (missing Bearer token)', async () => {
+      const controller = createController();
+      const router = createWeb3Router(controller);
+
+      const res = await router.fetch(
+        new Request('http://localhost/wallets', { method: 'GET' }),
+        { JWT_SECRET: 'secret' } as any
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it('should reject unauthenticated request to /wallets/active (missing Bearer token)', async () => {
+      const controller = createController();
+      const router = createWeb3Router(controller);
+
+      const res = await router.fetch(
+        new Request('http://localhost/wallets/active', { method: 'GET' }),
+        { JWT_SECRET: 'secret' } as any
+      );
+
+      expect(res.status).toBe(401);
     });
 
     it('should reject unauthenticated request to /admin/wallets/batch (missing Bearer token)', async () => {

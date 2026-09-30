@@ -1,8 +1,14 @@
 import { Context } from 'hono';
 import { CreateInternalWalletUseCase } from '../../../../application/use-cases/web3/CreateInternalWalletUseCase';
+import { GetUserWalletsUseCase } from '../../../../application/use-cases/web3/GetUserWalletsUseCase';
+import { GetActiveWalletUseCase } from '../../../../application/use-cases/web3/GetActiveWalletUseCase';
 
 export class Web3WalletController {
-  constructor(private readonly createWalletUseCase: CreateInternalWalletUseCase) {}
+  constructor(
+    private readonly createWalletUseCase: CreateInternalWalletUseCase,
+    private readonly getUserWalletsUseCase?: GetUserWalletsUseCase,
+    private readonly getActiveWalletUseCase?: GetActiveWalletUseCase
+  ) {}
 
   /**
    * [Rota de Usuário]
@@ -105,6 +111,79 @@ export class Web3WalletController {
     } catch (err: any) {
       console.error('[Web3WalletController] Erro crítico no lote:', err);
       return c.json({ success: false, message: 'Erro crítico interno ao processar o lote.' }, 500);
+    }
+  }
+
+  /**
+   * [Rota de Usuário]
+   * Lista todas as carteiras associadas ao usuário autenticado.
+   */
+  async getUserWallets(c: Context) {
+    try {
+      const user = c.get('user');
+      const rawUserId = c.get('userId') ?? user?.userId ?? user?.id;
+
+      if (!rawUserId) {
+        return c.json({ success: false, message: 'Acesso negado: Usuário não autenticado.' }, 401);
+      }
+
+      const userId = Number(rawUserId);
+      if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+        return c.json({ success: false, message: 'Identificador de usuário inválido.' }, 400);
+      }
+
+      if (!this.getUserWalletsUseCase) {
+        return c.json({ success: false, message: 'Funcionalidade não configurada no servidor.' }, 501);
+      }
+
+      const result = await this.getUserWalletsUseCase.execute({ userId });
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, data: result.getValue() }, 200);
+    } catch (err: any) {
+      console.error('[Web3WalletController] Erro ao listar carteiras:', err);
+      return c.json({ success: false, message: 'Erro interno no servidor.' }, 500);
+    }
+  }
+
+  /**
+   * [Rota de Usuário]
+   * Retorna a carteira ativa/principal do usuário autenticado.
+   */
+  async getActiveWallet(c: Context) {
+    try {
+      const user = c.get('user');
+      const rawUserId = c.get('userId') ?? user?.userId ?? user?.id;
+
+      if (!rawUserId) {
+        return c.json({ success: false, message: 'Acesso negado: Usuário não autenticado.' }, 401);
+      }
+
+      const userId = Number(rawUserId);
+      if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+        return c.json({ success: false, message: 'Identificador de usuário inválido.' }, 400);
+      }
+
+      if (!this.getActiveWalletUseCase) {
+        return c.json({ success: false, message: 'Funcionalidade não configurada no servidor.' }, 501);
+      }
+
+      const result = await this.getActiveWalletUseCase.execute({ userId });
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      const data = result.getValue();
+      if (!data) {
+        return c.json({ success: false, message: 'Nenhuma carteira ativa encontrada para este usuário.' }, 404);
+      }
+
+      return c.json({ success: true, data }, 200);
+    } catch (err: any) {
+      console.error('[Web3WalletController] Erro ao buscar carteira ativa:', err);
+      return c.json({ success: false, message: 'Erro interno no servidor.' }, 500);
     }
   }
 }

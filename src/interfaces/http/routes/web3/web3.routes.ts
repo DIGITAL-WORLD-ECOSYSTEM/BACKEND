@@ -7,6 +7,8 @@ import { DrizzleWeb3RepositoryAdapter } from '../../../../infrastructure/reposit
 import { ViemWalletGenerator } from '../../../../infrastructure/security/crypto/ViemWalletGenerator';
 import { WebCryptoVaultAdapter } from '../../../../infrastructure/security/crypto/WebCryptoVaultAdapter';
 import { CreateInternalWalletUseCase } from '../../../../application/use-cases/web3/CreateInternalWalletUseCase';
+import { GetUserWalletsUseCase } from '../../../../application/use-cases/web3/GetUserWalletsUseCase';
+import { GetActiveWalletUseCase } from '../../../../application/use-cases/web3/GetActiveWalletUseCase';
 
 type AppType = {
   Bindings: Bindings;
@@ -19,8 +21,10 @@ type AppType = {
 export function createWeb3Router(controller: Web3WalletController) {
   const router = new Hono<AppType>();
 
-  // 1. Rota de Usuário Final: Requer sessão ativa e autenticada
+  // 1. Rotas de Usuário Final: Requer sessão ativa e autenticada
   router.post('/wallets/create', sessionGuard, (c) => controller.createUserWallet(c));
+  router.get('/wallets', sessionGuard, (c) => controller.getUserWallets(c));
+  router.get('/wallets/active', sessionGuard, (c) => controller.getActiveWallet(c));
 
   // 2. Rota Administrativa: Requer sessão ativa e papel administrativo (Role: ADMIN)
   router.post(
@@ -48,8 +52,11 @@ function buildWeb3Controller(c: any): Web3WalletController {
     throw new Error('Configuração crítica ausente: WALLET_ENCRYPTION_KEY não configurada no ambiente.');
   }
 
-  const useCase = new CreateInternalWalletUseCase(web3Repo, walletGenerator, cryptoVault, masterEncryptionKey);
-  return new Web3WalletController(useCase);
+  const createUseCase = new CreateInternalWalletUseCase(web3Repo, walletGenerator, cryptoVault, masterEncryptionKey);
+  const getUserWalletsUseCase = new GetUserWalletsUseCase(web3Repo);
+  const getActiveWalletUseCase = new GetActiveWalletUseCase(web3Repo);
+
+  return new Web3WalletController(createUseCase, getUserWalletsUseCase, getActiveWalletUseCase);
 }
 
 /**
@@ -63,6 +70,26 @@ web3Router.post('/wallets/create', sessionGuard, async (c) => {
     return await controller.createUserWallet(c);
   } catch (err: any) {
     console.error('🚨 [Web3Router] Falha ao inicializar controller:', err);
+    return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
+  }
+});
+
+web3Router.get('/wallets', sessionGuard, async (c) => {
+  try {
+    const controller = buildWeb3Controller(c);
+    return await controller.getUserWallets(c);
+  } catch (err: any) {
+    console.error('🚨 [Web3Router] Falha ao listar carteiras:', err);
+    return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
+  }
+});
+
+web3Router.get('/wallets/active', sessionGuard, async (c) => {
+  try {
+    const controller = buildWeb3Controller(c);
+    return await controller.getActiveWallet(c);
+  } catch (err: any) {
+    console.error('🚨 [Web3Router] Falha ao buscar carteira ativa:', err);
     return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
   }
 });
