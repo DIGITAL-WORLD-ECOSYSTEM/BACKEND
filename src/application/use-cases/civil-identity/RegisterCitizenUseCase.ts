@@ -1,6 +1,6 @@
 import { IUnitOfWork } from '../../ports/output/IUnitOfWork';
 import { Result } from '../../../shared/kernel/Result';
-import { CitizenRecord } from '../../ports/output/ICivilIdentityRepository';
+import { CitizenRecord, ICivilIdentityRepository } from '../../ports/output/ICivilIdentityRepository';
 
 export interface RegisterCitizenDTO {
   userId: number;
@@ -12,15 +12,14 @@ export interface RegisterCitizenDTO {
 }
 
 export class RegisterCitizenUseCase {
-  constructor(private readonly uow: IUnitOfWork) {}
+  constructor(private readonly repoOrUow: ICivilIdentityRepository | IUnitOfWork) {}
 
   async execute(dto: RegisterCitizenDTO): Promise<Result<CitizenRecord>> {
     if (!dto.userId || !dto.legalFirstName || !dto.legalLastName) {
       return Result.fail<CitizenRecord>('ID do usuário, nome e sobrenome legal são obrigatórios.');
     }
 
-    return await this.uow.execute(async (factory) => {
-      const civilRepo = factory.getCivilIdentityRepository();
+    const run = async (civilRepo: ICivilIdentityRepository): Promise<Result<CitizenRecord>> => {
       const existing = await civilRepo.findCitizenByUserId(dto.userId);
 
       if (existing) {
@@ -42,6 +41,15 @@ export class RegisterCitizenUseCase {
       }
 
       return Result.ok<CitizenRecord>(createdRes.getValue());
-    });
+    };
+
+    if ('execute' in this.repoOrUow && typeof this.repoOrUow.execute === 'function') {
+      return await this.repoOrUow.execute(async (factory) => {
+        return run(factory.getCivilIdentityRepository());
+      });
+    }
+
+    return await run(this.repoOrUow as ICivilIdentityRepository);
   }
 }
+
