@@ -26,4 +26,10 @@ export interface ISecureVaultRepository {
    * @param vaultId O ID do cofre.
    */
   getVaultById(vaultId: number): Promise<SecureVaultRecord | null>;
+
+  /**
+   * Recupera um cofre seguro pelo seu identificador único de referência (UUID).
+   * @param keyReference A chave de referência única vinculada à carteira.
+   */
+  findByKeyReference(keyReference: string): Promise<SecureVaultRecord | null>;
 }

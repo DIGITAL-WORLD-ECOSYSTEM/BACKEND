@@ -10,7 +10,10 @@ import { CreateInternalWalletUseCase } from '../../../../application/use-cases/w
 import { GetUserWalletsUseCase } from '../../../../application/use-cases/web3/GetUserWalletsUseCase';
 import { GetActiveWalletUseCase } from '../../../../application/use-cases/web3/GetActiveWalletUseCase';
 import { GetWalletBalanceUseCase } from '../../../../application/use-cases/web3/GetWalletBalanceUseCase';
+import { SendCustodialTransactionUseCase } from '../../../../application/use-cases/web3/SendCustodialTransactionUseCase';
 import { ViemBscPublicClientAdapter } from '../../../../infrastructure/blockchain/ViemBscPublicClientAdapter';
+import { ViemBscWalletClientAdapter } from '../../../../infrastructure/blockchain/ViemBscWalletClientAdapter';
+import { DrizzleSecureVaultRepositoryAdapter } from '../../../../infrastructure/repositories/DrizzleSecureVaultRepositoryAdapter';
 
 type AppType = {
   Bindings: Bindings;
@@ -28,6 +31,7 @@ export function createWeb3Router(controller: Web3WalletController) {
   router.get('/wallets', sessionGuard, (c) => controller.getUserWallets(c));
   router.get('/wallets/active', sessionGuard, (c) => controller.getActiveWallet(c));
   router.get('/wallets/:address/balance', sessionGuard, (c) => controller.getWalletBalance(c));
+  router.post('/transactions/send', sessionGuard, (c) => controller.sendTransaction(c));
 
   // 2. Rota Administrativa: Requer sessão ativa e papel administrativo (Role: ADMIN)
   router.post(
@@ -46,9 +50,11 @@ export function createWeb3Router(controller: Web3WalletController) {
 function buildWeb3Controller(c: any): Web3WalletController {
   const db = c.get('db');
   const web3Repo = new DrizzleWeb3RepositoryAdapter(db);
+  const secureVaultRepo = new DrizzleSecureVaultRepositoryAdapter(db);
   const walletGenerator = new ViemWalletGenerator();
   const cryptoVault = new WebCryptoVaultAdapter();
   const bscClient = new ViemBscPublicClientAdapter({ rpcUrl: c.env.BSC_RPC_URL });
+  const bscWalletClient = new ViemBscWalletClientAdapter({ rpcUrl: c.env.BSC_RPC_URL });
   
   // Fail-Closed: Não herda segredos de JWT. Exige chave de criptografia de cofre dedicada.
   const masterEncryptionKey = c.env.WALLET_ENCRYPTION_KEY || c.env.TOTP_ENCRYPTION_KEY;
@@ -60,8 +66,21 @@ function buildWeb3Controller(c: any): Web3WalletController {
   const getUserWalletsUseCase = new GetUserWalletsUseCase(web3Repo);
   const getActiveWalletUseCase = new GetActiveWalletUseCase(web3Repo);
   const getWalletBalanceUseCase = new GetWalletBalanceUseCase(bscClient);
+  const sendCustodialTransactionUseCase = new SendCustodialTransactionUseCase(
+    web3Repo,
+    secureVaultRepo,
+    cryptoVault,
+    bscWalletClient,
+    masterEncryptionKey
+  );
 
-  return new Web3WalletController(createUseCase, getUserWalletsUseCase, getActiveWalletUseCase, getWalletBalanceUseCase);
+  return new Web3WalletController(
+    createUseCase,
+    getUserWalletsUseCase,
+    getActiveWalletUseCase,
+    getWalletBalanceUseCase,
+    sendCustodialTransactionUseCase
+  );
 }
 
 /**
@@ -105,6 +124,16 @@ web3Router.get('/wallets/:address/balance', sessionGuard, async (c) => {
     return await controller.getWalletBalance(c);
   } catch (err: any) {
     console.error('🚨 [Web3Router] Falha ao consultar saldo on-chain:', err);
+    return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
+  }
+});
+
+web3Router.post('/transactions/send', sessionGuard, async (c) => {
+  try {
+    const controller = buildWeb3Controller(c);
+    return await controller.sendTransaction(c);
+  } catch (err: any) {
+    console.error('🚨 [Web3Router] Falha na transferência custodial:', err);
     return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
   }
 });

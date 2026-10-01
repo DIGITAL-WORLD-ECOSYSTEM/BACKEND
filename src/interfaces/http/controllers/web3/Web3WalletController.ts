@@ -3,13 +3,15 @@ import { CreateInternalWalletUseCase } from '../../../../application/use-cases/w
 import { GetUserWalletsUseCase } from '../../../../application/use-cases/web3/GetUserWalletsUseCase';
 import { GetActiveWalletUseCase } from '../../../../application/use-cases/web3/GetActiveWalletUseCase';
 import { GetWalletBalanceUseCase } from '../../../../application/use-cases/web3/GetWalletBalanceUseCase';
+import { SendCustodialTransactionUseCase } from '../../../../application/use-cases/web3/SendCustodialTransactionUseCase';
 
 export class Web3WalletController {
   constructor(
     private readonly createWalletUseCase: CreateInternalWalletUseCase,
     private readonly getUserWalletsUseCase?: GetUserWalletsUseCase,
     private readonly getActiveWalletUseCase?: GetActiveWalletUseCase,
-    private readonly getWalletBalanceUseCase?: GetWalletBalanceUseCase
+    private readonly getWalletBalanceUseCase?: GetWalletBalanceUseCase,
+    private readonly sendCustodialTransactionUseCase?: SendCustodialTransactionUseCase
   ) {}
 
   /**
@@ -219,6 +221,61 @@ export class Web3WalletController {
       return c.json({ success: true, data: result.getValue() }, 200);
     } catch (err: any) {
       console.error('[Web3WalletController] Erro ao consultar saldo on-chain:', err);
+      return c.json({ success: false, message: 'Erro interno no servidor.' }, 500);
+    }
+  }
+
+  /**
+   * [Rota de Usuário]
+   * Executa a transferência de fundos (BNB ou USDT) assinada pelo cofre custodial na BSC.
+   */
+  async sendTransaction(c: Context) {
+    try {
+      const user = c.get('user');
+      const rawUserId = c.get('userId') ?? user?.userId ?? user?.id;
+
+      if (!rawUserId) {
+        return c.json({ success: false, message: 'Acesso negado: Usuário não autenticado.' }, 401);
+      }
+
+      const userId = Number(rawUserId);
+      if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+        return c.json({ success: false, message: 'Identificador de usuário inválido.' }, 400);
+      }
+
+      const body = await c.req.json().catch(() => ({}));
+
+      if (!body.fromAddress || !body.toAddress || !body.amount) {
+        return c.json({
+          success: false,
+          message: 'fromAddress, toAddress e amount são campos obrigatórios.',
+        }, 400);
+      }
+
+      if (!this.sendCustodialTransactionUseCase) {
+        return c.json({ success: false, message: 'Funcionalidade de transferência não configurada no servidor.' }, 501);
+      }
+
+      const result = await this.sendCustodialTransactionUseCase.execute({
+        userId,
+        fromAddress: body.fromAddress,
+        toAddress: body.toAddress,
+        amount: String(body.amount),
+        assetType: (body.assetType?.toUpperCase() === 'USDT' ? 'USDT' : 'BNB') as 'BNB' | 'USDT',
+      });
+
+      if (result.isFailure) {
+        console.error('[Web3WalletController] Falha na transferência custodial:', result.error);
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({
+        success: true,
+        message: 'Transação transmitida com sucesso para a rede Binance Smart Chain.',
+        data: result.getValue(),
+      }, 200);
+    } catch (err: any) {
+      console.error('[Web3WalletController] Erro crítico na transferência custodial:', err);
       return c.json({ success: false, message: 'Erro interno no servidor.' }, 500);
     }
   }

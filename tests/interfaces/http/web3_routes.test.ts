@@ -201,6 +201,55 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
       expect(res.body.data.native.balanceFormatted).toBe('1.5');
       expect(res.body.data.tokens[0].symbol).toBe('USDT');
     });
+
+    it('should return 200 with txHash when sendTransaction succeeds', async () => {
+      const mockSend = {
+        execute: vi.fn().mockResolvedValue(
+          Result.ok({
+            txHash: '0xhash123',
+            from: '0x1',
+            to: '0x2',
+            amount: '0.1',
+            asset: 'BNB',
+            chainId: 56,
+            explorerUrl: 'https://bscscan.com/tx/0xhash123',
+          })
+        ),
+      };
+
+      const controller = new Web3WalletController(
+        mockUseCase as any,
+        undefined,
+        undefined,
+        undefined,
+        mockSend as any
+      );
+
+      const c = {
+        get: vi.fn((key) => (key === 'userId' ? 42 : undefined)),
+        req: {
+          json: vi.fn().mockResolvedValue({
+            fromAddress: '0x1',
+            toAddress: '0x2',
+            amount: '0.1',
+            assetType: 'BNB',
+          }),
+        },
+        json: vi.fn((body, status) => ({ body, status })),
+      } as any;
+
+      const res = (await controller.sendTransaction(c)) as any;
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.txHash).toBe('0xhash123');
+      expect(mockSend.execute).toHaveBeenCalledWith({
+        userId: 42,
+        fromAddress: '0x1',
+        toAddress: '0x2',
+        amount: '0.1',
+        assetType: 'BNB',
+      });
+    });
   });
 
   describe('Web3 Route Protection with sessionGuard and RBAC', () => {
@@ -253,6 +302,26 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
 
       const res = await router.fetch(
         new Request('http://localhost/wallets/0x1111222233334444555566667777888899990000/balance', { method: 'GET' }),
+        { JWT_SECRET: 'secret' } as any
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it('should reject unauthenticated request to /transactions/send (missing Bearer token)', async () => {
+      const controller = createController();
+      const router = createWeb3Router(controller);
+
+      const res = await router.fetch(
+        new Request('http://localhost/transactions/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fromAddress: '0x1',
+            toAddress: '0x2',
+            amount: '0.1',
+          }),
+        }),
         { JWT_SECRET: 'secret' } as any
       );
 

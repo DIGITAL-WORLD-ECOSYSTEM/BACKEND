@@ -48,4 +48,29 @@ export class DrizzleSecureVaultRepositoryAdapter implements ISecureVaultReposito
       createdAt: row.createdAt,
     };
   }
+
+  async findByKeyReference(keyReference: string): Promise<SecureVaultRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(secureVaults)
+      .where(eq(secureVaults.keyReference, keyReference))
+      .limit(1);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      userId: row.userId,
+      purpose: row.purpose as any,
+      ciphertext: row.ciphertext,
+      nonce: row.nonce,
+      authTag: row.authTag,
+      encryptionAlgorithm: row.encryptionAlgorithm as any,
+      keyVersion: row.keyVersion,
+      keyReference: row.keyReference,
+      rotatedAt: row.rotatedAt,
+      revokedAt: row.revokedAt,
+      createdAt: row.createdAt,
+    };
+  }
 }
