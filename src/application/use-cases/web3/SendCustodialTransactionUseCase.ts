@@ -91,9 +91,11 @@ export class SendCustodialTransactionUseCase {
       let decryptedSecret: string;
       if (typeof this.cryptoVault.decryptEnvelope === 'function' && vaultRecord.nonce && vaultRecord.authTag) {
         decryptedSecret = await this.cryptoVault.decryptEnvelope(
-          vaultRecord.ciphertext,
-          vaultRecord.nonce,
-          vaultRecord.authTag,
+          {
+            ciphertext: vaultRecord.ciphertext,
+            nonce: vaultRecord.nonce,
+            authTag: vaultRecord.authTag,
+          },
           this.masterEncryptionKey
         );
       } else {
@@ -102,6 +104,7 @@ export class SendCustodialTransactionUseCase {
           this.masterEncryptionKey
         );
       }
+
 
       let privateKey: `0x${string}`;
       try {

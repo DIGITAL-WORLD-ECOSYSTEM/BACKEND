@@ -3,17 +3,25 @@ import { Bindings, Variables } from '../../../../types/bindings';
 import { Web3WalletController } from '../../controllers/web3/Web3WalletController';
 import { sessionGuard } from '../../middlewares/session_guard';
 import { verifyRole } from '../../middlewares/rbac';
+import { rateLimit } from '../../middlewares/rate_limit';
 import { DrizzleWeb3RepositoryAdapter } from '../../../../infrastructure/repositories/DrizzleWeb3RepositoryAdapter';
+import { DrizzleSecureVaultRepositoryAdapter } from '../../../../infrastructure/repositories/DrizzleSecureVaultRepositoryAdapter';
+import { DrizzleAuthTransactionRepository } from '../../../../infrastructure/repositories/DrizzleAuthTransactionRepository';
+import { DrizzleAuthenticationRepositoryAdapter } from '../../../../infrastructure/repositories/DrizzleAuthenticationRepositoryAdapter';
 import { ViemWalletGenerator } from '../../../../infrastructure/security/crypto/ViemWalletGenerator';
 import { WebCryptoVaultAdapter } from '../../../../infrastructure/security/crypto/WebCryptoVaultAdapter';
+import { ViemSiweVerifierAdapter } from '../../../../infrastructure/security/crypto/ViemSiweVerifierAdapter';
 import { CreateInternalWalletUseCase } from '../../../../application/use-cases/web3/CreateInternalWalletUseCase';
 import { GetUserWalletsUseCase } from '../../../../application/use-cases/web3/GetUserWalletsUseCase';
 import { GetActiveWalletUseCase } from '../../../../application/use-cases/web3/GetActiveWalletUseCase';
 import { GetWalletBalanceUseCase } from '../../../../application/use-cases/web3/GetWalletBalanceUseCase';
 import { SendCustodialTransactionUseCase } from '../../../../application/use-cases/web3/SendCustodialTransactionUseCase';
+import { GenerateWeb3ChallengeUseCase } from '../../../../application/use-cases/web3/GenerateWeb3ChallengeUseCase';
+import { LinkExternalWalletUseCase } from '../../../../application/use-cases/web3/LinkExternalWalletUseCase';
+import { UnlinkExternalWalletUseCase } from '../../../../application/use-cases/web3/UnlinkExternalWalletUseCase';
+import { SetPrimaryWalletUseCase } from '../../../../application/use-cases/web3/SetPrimaryWalletUseCase';
 import { ViemBscPublicClientAdapter } from '../../../../infrastructure/blockchain/ViemBscPublicClientAdapter';
 import { ViemBscWalletClientAdapter } from '../../../../infrastructure/blockchain/ViemBscWalletClientAdapter';
-import { DrizzleSecureVaultRepositoryAdapter } from '../../../../infrastructure/repositories/DrizzleSecureVaultRepositoryAdapter';
 
 type AppType = {
   Bindings: Bindings;
@@ -26,14 +34,22 @@ type AppType = {
 export function createWeb3Router(controller: Web3WalletController) {
   const router = new Hono<AppType>();
 
-  // 1. Rotas de Usuário Final: Requer sessão ativa e autenticada
+  // 1. Desafio SIWE EIP-4361 (Rate-limited: 20 req/min)
+  router.post('/challenge', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), (c) => controller.generateChallenge(c));
+
+  // 2. Rotas de Usuário Final: Requer sessão ativa e autenticada
   router.post('/wallets/create', sessionGuard, (c) => controller.createUserWallet(c));
   router.get('/wallets', sessionGuard, (c) => controller.getUserWallets(c));
   router.get('/wallets/active', sessionGuard, (c) => controller.getActiveWallet(c));
   router.get('/wallets/:address/balance', sessionGuard, (c) => controller.getWalletBalance(c));
   router.post('/transactions/send', sessionGuard, (c) => controller.sendTransaction(c));
 
-  // 2. Rota Administrativa: Requer sessão ativa e papel administrativo (Role: ADMIN)
+  // 3. Gestão de Carteiras Externas (SIWE / Auto-Custódia)
+  router.post('/wallets/link', sessionGuard, (c) => controller.linkExternalWallet(c));
+  router.delete('/wallets/:address', sessionGuard, (c) => controller.unlinkWallet(c));
+  router.patch('/wallets/:address/primary', sessionGuard, (c) => controller.setPrimaryWallet(c));
+
+  // 4. Rota Administrativa: Requer sessão ativa e papel administrativo (Role: ADMIN)
   router.post(
     '/admin/wallets/batch',
     sessionGuard,
@@ -51,6 +67,10 @@ function buildWeb3Controller(c: any): Web3WalletController {
   const db = c.get('db');
   const web3Repo = new DrizzleWeb3RepositoryAdapter(db);
   const secureVaultRepo = new DrizzleSecureVaultRepositoryAdapter(db);
+  const authTxRepo = new DrizzleAuthTransactionRepository(db);
+  const authRepo = new DrizzleAuthenticationRepositoryAdapter(db);
+  const siweVerifier = new ViemSiweVerifierAdapter();
+
   const walletGenerator = new ViemWalletGenerator();
   const cryptoVault = new WebCryptoVaultAdapter();
   const bscClient = new ViemBscPublicClientAdapter({ rpcUrl: c.env.BSC_RPC_URL });
@@ -74,12 +94,21 @@ function buildWeb3Controller(c: any): Web3WalletController {
     masterEncryptionKey
   );
 
+  const generateWeb3ChallengeUseCase = new GenerateWeb3ChallengeUseCase(authTxRepo);
+  const linkExternalWalletUseCase = new LinkExternalWalletUseCase(web3Repo, authTxRepo, siweVerifier);
+  const unlinkExternalWalletUseCase = new UnlinkExternalWalletUseCase(web3Repo, authRepo);
+  const setPrimaryWalletUseCase = new SetPrimaryWalletUseCase(web3Repo);
+
   return new Web3WalletController(
     createUseCase,
     getUserWalletsUseCase,
     getActiveWalletUseCase,
     getWalletBalanceUseCase,
-    sendCustodialTransactionUseCase
+    sendCustodialTransactionUseCase,
+    generateWeb3ChallengeUseCase,
+    linkExternalWalletUseCase,
+    unlinkExternalWalletUseCase,
+    setPrimaryWalletUseCase
   );
 }
 
@@ -87,6 +116,16 @@ function buildWeb3Controller(c: any): Web3WalletController {
  * Roteador canônico do módulo Web3 para montagem na aplicação principal.
  */
 export const web3Router = new Hono<AppType>();
+
+web3Router.post('/challenge', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), async (c) => {
+  try {
+    const controller = buildWeb3Controller(c);
+    return await controller.generateChallenge(c);
+  } catch (err: any) {
+    console.error('🚨 [Web3Router] Falha ao emitir desafio SIWE:', err);
+    return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
+  }
+});
 
 web3Router.post('/wallets/create', sessionGuard, async (c) => {
   try {
@@ -138,6 +177,36 @@ web3Router.post('/transactions/send', sessionGuard, async (c) => {
   }
 });
 
+web3Router.post('/wallets/link', sessionGuard, async (c) => {
+  try {
+    const controller = buildWeb3Controller(c);
+    return await controller.linkExternalWallet(c);
+  } catch (err: any) {
+    console.error('🚨 [Web3Router] Falha ao vincular carteira externa:', err);
+    return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
+  }
+});
+
+web3Router.delete('/wallets/:address', sessionGuard, async (c) => {
+  try {
+    const controller = buildWeb3Controller(c);
+    return await controller.unlinkWallet(c);
+  } catch (err: any) {
+    console.error('🚨 [Web3Router] Falha ao desvincular carteira:', err);
+    return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
+  }
+});
+
+web3Router.patch('/wallets/:address/primary', sessionGuard, async (c) => {
+  try {
+    const controller = buildWeb3Controller(c);
+    return await controller.setPrimaryWallet(c);
+  } catch (err: any) {
+    console.error('🚨 [Web3Router] Falha ao definir carteira primária:', err);
+    return c.json({ success: false, message: 'Serviço temporariamente indisponível.' }, 500);
+  }
+});
+
 web3Router.post(
   '/admin/wallets/batch',
   sessionGuard,
@@ -152,5 +221,3 @@ web3Router.post(
     }
   }
 );
-
-

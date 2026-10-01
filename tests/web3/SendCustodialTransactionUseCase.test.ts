@@ -131,12 +131,15 @@ describe('SendCustodialTransactionUseCase (Custodial On-Chain Transfer)', () => 
 
     // Valida que o cofre foi desencriptado com os parâmetros corretos
     expect(mockCryptoVault.decryptEnvelope).toHaveBeenCalledWith(
-      'b64ciphertext==',
-      'b64nonce12b==',
-      'b64authtag16b==',
+      {
+        ciphertext: 'b64ciphertext==',
+        nonce: 'b64nonce12b==',
+        authTag: 'b64authtag16b==',
+      },
       masterKey
     );
   });
+
 
   it('decrypts envelope and executes BEP-20 USDT transfer', async () => {
     mockWeb3Repo.findByAddress.mockResolvedValueOnce({

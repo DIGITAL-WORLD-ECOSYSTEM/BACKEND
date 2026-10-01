@@ -27,7 +27,9 @@ export interface LinkWalletData {
   networkId?: number;
   walletType?: 'eoa' | 'smart_contract';
   controlMode?: 'platform_key' | 'external_user' | 'contract_controller';
+  verificationMethod?: 'signature' | 'siwe' | 'micro_deposit' | 'system' | 'admin';
   label?: string;
+  isPrimary?: boolean;
 }
 
 export interface CreateInternalWalletWithVaultParams {
@@ -70,6 +72,9 @@ export interface IWeb3Repository {
   createInternalWalletWithVault(params: CreateInternalWalletWithVaultParams): Promise<{ wallet: WalletRecord; vaultId: number }>;
   updateWallet(wallet: WalletRecord): Promise<WalletRecord>;
   revokeWallet(userId: number, address: string): Promise<boolean>;
+  unlinkWallet(userId: number, address: string): Promise<boolean>;
+  setPrimaryWallet(userId: number, address: string): Promise<boolean>;
 }
+
 
 

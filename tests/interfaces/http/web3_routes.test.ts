@@ -345,5 +345,93 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
       const data = await res.json() as any;
       expect(data.success).toBe(false);
     });
+
+    it('should reject unauthenticated request to /wallets/link (missing Bearer token)', async () => {
+      const controller = createController();
+      const router = createWeb3Router(controller);
+
+      const res = await router.fetch(
+        new Request('http://localhost/wallets/link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            challengeId: 'ch-1',
+            message: 'msg',
+            signature: '0x123',
+          }),
+        }),
+        { JWT_SECRET: 'secret' } as any
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it('should reject unauthenticated request to /wallets/:address DELETE (missing Bearer token)', async () => {
+      const controller = createController();
+      const router = createWeb3Router(controller);
+
+      const res = await router.fetch(
+        new Request('http://localhost/wallets/0x1111222233334444555566667777888899990000', {
+          method: 'DELETE',
+        }),
+        { JWT_SECRET: 'secret' } as any
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it('should reject unauthenticated request to /wallets/:address/primary PATCH (missing Bearer token)', async () => {
+      const controller = createController();
+      const router = createWeb3Router(controller);
+
+      const res = await router.fetch(
+        new Request('http://localhost/wallets/0x1111222233334444555566667777888899990000/primary', {
+          method: 'PATCH',
+        }),
+        { JWT_SECRET: 'secret' } as any
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it('should allow accessing /challenge without Bearer token (rate-limited public endpoint)', async () => {
+      const mockChallengeUseCase = {
+        execute: vi.fn().mockResolvedValue({
+          challengeId: 'ch-test',
+          nonce: '1234567890abcdef',
+          domain: 'w3.app',
+          statement: 'Sign to verify',
+          uri: 'https://w3.app',
+          chainId: 56,
+          issuedAt: new Date().toISOString(),
+          expiresAt: new Date().toISOString(),
+        }),
+      };
+
+      const controller = new Web3WalletController(
+        mockUseCase as any,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        mockChallengeUseCase as any
+      );
+      const router = createWeb3Router(controller);
+
+      const res = await router.fetch(
+        new Request('http://localhost/challenge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }),
+        { JWT_SECRET: 'secret' } as any
+      );
+
+      expect(res.status).toBe(200);
+      const data = await res.json() as any;
+      expect(data.success).toBe(true);
+      expect(data.data.challengeId).toBe('ch-test');
+    });
   });
 });
+

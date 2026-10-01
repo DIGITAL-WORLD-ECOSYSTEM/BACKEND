@@ -7,6 +7,8 @@ import {
   LinkWalletData,
   CreateInternalWalletWithVaultParams,
 } from '../../application/ports/output/IWeb3Repository';
+import { WalletAlreadyLinkedError } from '../../domains/web3/errors/Web3Errors';
+
 
 export type { WalletRecord, LinkWalletData, CreateInternalWalletWithVaultParams };
 
@@ -48,7 +50,35 @@ export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
   async linkExternalWallet(data: LinkWalletData): Promise<WalletRecord> {
     const addressNormalized = data.address.toLowerCase().trim();
     const existing = await this.findByAddress(addressNormalized);
-    if (existing) return existing;
+
+    if (existing) {
+      if (existing.userId !== data.userId) {
+        throw new WalletAlreadyLinkedError(data.address);
+      }
+
+      // Se a carteira já pertence ao mesmo usuário e estava unlinked/revoked, reativa
+      if (existing.status !== 'active') {
+        const [reactivated] = await this.db
+          .update(wallets)
+          .set({
+            status: 'active',
+            verificationStatus: 'verified',
+            verificationMethod: data.verificationMethod || 'siwe',
+            verifiedAt: new Date(),
+            lastOwnershipVerifiedAt: new Date(),
+            label: data.label || existing.label,
+            isPrimary: data.isPrimary ?? existing.isPrimary,
+            updatedAt: new Date(),
+            version: sql`${wallets.version} + 1`,
+          })
+          .where(eq(wallets.id, existing.id))
+          .returning();
+
+        return this.mapToRecord(reactivated);
+      }
+
+      return existing;
+    }
 
     const [newWallet] = await this.db
       .insert(wallets)
@@ -63,13 +93,17 @@ export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
         label: data.label || 'Web3 Wallet',
         status: 'active',
         verificationStatus: 'verified',
-        isPrimary: false,
+        verificationMethod: data.verificationMethod || 'siwe',
+        verifiedAt: new Date(),
+        lastOwnershipVerifiedAt: new Date(),
+        isPrimary: Boolean(data.isPrimary),
         version: 1,
       })
       .returning();
 
     return this.mapToRecord(newWallet);
   }
+
 
   async createInternalWallet(walletData: any): Promise<WalletRecord> {
     const [newWallet] = await this.db
@@ -209,6 +243,96 @@ export class DrizzleWeb3RepositoryAdapter implements IWeb3Repository {
       
     return result.length > 0;
   }
+
+  async unlinkWallet(userId: number, address: string): Promise<boolean> {
+    const addressNormalized = address.toLowerCase().trim();
+
+    const result = await this.db
+      .update(wallets)
+      .set({
+        status: 'unlinked',
+        isPrimary: false,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(wallets.userId, userId),
+          eq(wallets.addressNormalized, addressNormalized),
+          eq(wallets.status, 'active')
+        )
+      )
+      .returning();
+
+    return result.length > 0;
+  }
+
+  async setPrimaryWallet(userId: number, address: string): Promise<boolean> {
+    const addressNormalized = address.toLowerCase().trim();
+
+    // 1. Verifica se a carteira alvo existe, pertence ao usuário e está ativa
+    const targetWallet = await this.db
+      .select()
+      .from(wallets)
+      .where(
+        and(
+          eq(wallets.userId, userId),
+          eq(wallets.addressNormalized, addressNormalized),
+          eq(wallets.status, 'active')
+        )
+      )
+      .limit(1);
+
+    if (!targetWallet || targetWallet.length === 0) {
+      return false;
+    }
+
+    // 2. Operação atômica D1 batch ou SQLite transaction
+    if (typeof (this.db as any).batch === 'function') {
+      const resetQuery = this.db
+        .update(wallets)
+        .set({ isPrimary: false, updatedAt: new Date() })
+        .where(eq(wallets.userId, userId));
+
+      const setQuery = this.db
+        .update(wallets)
+        .set({ isPrimary: true, updatedAt: new Date() })
+        .where(
+          and(
+            eq(wallets.userId, userId),
+            eq(wallets.addressNormalized, addressNormalized)
+          )
+        );
+
+      await (this.db as any).batch([resetQuery, setQuery]);
+      return true;
+    }
+
+    const executeTx = async (txDb: any) => {
+      await txDb
+        .update(wallets)
+        .set({ isPrimary: false, updatedAt: new Date() })
+        .where(eq(wallets.userId, userId));
+
+      await txDb
+        .update(wallets)
+        .set({ isPrimary: true, updatedAt: new Date() })
+        .where(
+          and(
+            eq(wallets.userId, userId),
+            eq(wallets.addressNormalized, addressNormalized)
+          )
+        );
+
+      return true;
+    };
+
+    if (typeof (this.db as any).transaction === 'function') {
+      return (this.db as any).transaction(executeTx);
+    }
+
+    return executeTx(this.db);
+  }
+
 
   private mapToRecord(raw: any): WalletRecord {
     return {

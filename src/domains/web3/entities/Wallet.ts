@@ -128,6 +128,11 @@ export class Wallet {
     this.props.status = 'revoked';
   }
 
+  public unlink(): void {
+    this.props.status = 'unlinked';
+    this.props.isPrimary = false;
+  }
+
   public setPrimary(isPrimary: boolean): void {
     this.props.isPrimary = isPrimary;
   }
@@ -135,4 +140,40 @@ export class Wallet {
   public setLabel(label: string): void {
     this.props.label = label;
   }
+
+  /**
+   * Factory method para instanciar carteiras externas validadas via SIWE / auto-custódia.
+   */
+  public static createExternal(params: {
+    id: number;
+    userId: number;
+    address: EvmAddress;
+    networkId?: number;
+    label?: string | null;
+    isPrimary?: boolean;
+    linkedAt?: Date;
+    version?: number;
+  }): Wallet {
+    return new Wallet({
+      id: params.id,
+      userId: params.userId,
+      provenance: 'external',
+      networkId: params.networkId ?? 1,
+      walletType: 'eoa',
+      controlMode: 'external_user',
+      address: params.address,
+      label: params.label ?? 'External Web3 Wallet',
+      status: 'active',
+      verificationStatus: 'verified',
+      verificationMethod: 'siwe',
+      verifiedAt: new Date(),
+      lastOwnershipVerifiedAt: new Date(),
+      keyProvider: null,
+      keyReference: null,
+      isPrimary: Boolean(params.isPrimary),
+      linkedAt: params.linkedAt ?? new Date(),
+      version: params.version ?? 1,
+    });
+  }
 }
+
