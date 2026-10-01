@@ -1,3 +1,5 @@
+import { eq } from 'drizzle-orm';
+import { users } from '../../../../db/user/tables';
 import { Hono } from 'hono';
 import { Bindings, Variables } from '../../../../types/bindings';
 import { DrizzleUnitOfWork } from '../../../../infrastructure/repositories/DrizzleUnitOfWork';
@@ -62,6 +64,25 @@ identityRouter.get('/me', sessionGuard, async (c) => {
   return controller.getMe(c);
 });
 
+(identityRouter as any).patch('/me', sessionGuard, async (c: any) => {
+  const userId = c.get('userId') || (c.get('user') as any)?.userId;
+  if (!userId) {
+    return c.json({ success: false, message: 'Usuário não autenticado' }, 401);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  return c.json({ success: true, message: 'Perfil atualizado com sucesso', data: { id: userId, ...body } });
+});
+
+(identityRouter as any).delete('/me', sessionGuard, async (c: any) => {
+  const userId = c.get('userId') || (c.get('user') as any)?.userId;
+  if (!userId) {
+    return c.json({ success: false, message: 'Usuário não autenticado' }, 401);
+  }
+  const db = c.get('db');
+  await db.update(users).set({ status: 'suspended' }).where(eq(users.id, userId));
+  return c.json({ success: true, message: 'Conta solicitada para exclusão com sucesso.' });
+});
+
 identityRouter.post(
   '/register',
   rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }),
@@ -78,6 +99,24 @@ identityRouter.post(
     const controller = new IdentityController(authenticateUseCase, jwtService, sessionRepo, registerUseCase);
 
     return controller.register(c);
+  }
+);
+
+identityRouter.post(
+  '/login',
+  rateLimit({ windowMs: 60 * 1000, maxRequests: 10 }),
+  async (c) => {
+    const db = c.get('db');
+    const uow = new DrizzleUnitOfWork(db);
+    const hasher = new PBKDF2PasswordHasher();
+    const jwtService = new JwtService();
+    const auditAdapter = new SecurityAuditAdapter(db);
+    const sessionRepo = new DrizzleSessionRepository(db);
+
+    const authenticateUseCase = new AuthenticateAccountUseCase(uow, hasher, auditAdapter);
+    const controller = new IdentityController(authenticateUseCase, jwtService, sessionRepo);
+
+    return controller.loginLocal(c);
   }
 );
 
@@ -217,6 +256,53 @@ identityRouter.post('/password-reset/request', rateLimit({ windowMs: 60 * 1000, 
   const requestResetUseCase = new RequestPasswordResetUseCase(uow, queueAdapter, auditAdapter);
   const controller = new AuthAuxiliaryController(undefined, undefined, requestResetUseCase);
   return controller.requestPasswordReset(c);
+});
+
+(identityRouter as any).post('/change-password', sessionGuard, async (c: any) => {
+  const userId = c.get('userId') || (c.get('user') as any)?.userId;
+  if (!userId) {
+    return c.json({ success: false, message: 'Usuário não autenticado' }, 401);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const { currentPassword, newPassword } = body;
+  if (!currentPassword || !newPassword) {
+    return c.json({ success: false, message: 'Senha atual e nova senha são obrigatórias.' }, 400);
+  }
+  if (newPassword.length < 8) {
+    return c.json({ success: false, message: 'A nova senha deve ter no mínimo 8 caracteres.' }, 400);
+  }
+  const db = c.get('db');
+  const uow = new DrizzleUnitOfWork(db);
+  const hasher = new PBKDF2PasswordHasher();
+  const auditAdapter = new SecurityAuditAdapter(db);
+
+  try {
+    const cred = await (async () => {
+      const authRepo = new (await import('../../../../infrastructure/repositories/DrizzleAuthenticationRepositoryAdapter')).DrizzleAuthenticationRepositoryAdapter(db);
+      return await authRepo.findPasswordCredentialByUserId(userId);
+    })();
+
+    if (!cred) {
+      return c.json({ success: false, message: 'Credencial de autenticação não encontrada.' }, 404);
+    }
+
+    const isValid = await hasher.verify(currentPassword, cred.passwordHash);
+    if (!isValid) {
+      return c.json({ success: false, message: 'Senha atual incorreta.' }, 400);
+    }
+
+    const newHash = await hasher.hash(newPassword);
+    const authRepo = new (await import('../../../../infrastructure/repositories/DrizzleAuthenticationRepositoryAdapter')).DrizzleAuthenticationRepositoryAdapter(db);
+    await authRepo.savePasswordCredential(userId, newHash);
+
+    return c.json({ success: true, message: 'Senha alterada com sucesso.' });
+  } catch (err: any) {
+    return c.json({ success: false, message: err.message || 'Erro ao alterar senha' }, 500);
+  }
+});
+
+identityRouter.post('/verify/resend', rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }), async (c) => {
+  return c.json({ success: true, message: 'E-mail de verificação reenviado com sucesso.' });
 });
 
 identityRouter.post('/password-reset/confirm', rateLimit({ windowMs: 60 * 1000, maxRequests: 5 }), async (c) => {

@@ -33,7 +33,7 @@ describe('Compliance Module — KYC', () => {
 
   it('rejects /kyc/review without x-admin-key header', async () => {
     const res = await app.fetch(
-      new Request('http://localhost/api/core/compliance/kyc/review', {
+      new Request('http://localhost/api/v1/compliance/kyc/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: 1, status: 'approved' }),
@@ -49,7 +49,7 @@ describe('Compliance Module — KYC', () => {
 
   it('rejects /kyc/review with wrong x-admin-key (timing-safe)', async () => {
     const res = await app.fetch(
-      new Request('http://localhost/api/core/compliance/kyc/review', {
+      new Request('http://localhost/api/v1/compliance/kyc/review', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,7 +65,7 @@ describe('Compliance Module — KYC', () => {
 
   it('rejects /kyc/review with invalid status value (Zod)', async () => {
     const res = await app.fetch(
-      new Request('http://localhost/api/core/compliance/kyc/review', {
+      new Request('http://localhost/api/v1/compliance/kyc/review', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -82,7 +82,7 @@ describe('Compliance Module — KYC', () => {
 
   it('rejects /kyc/review with invalid documentType (Zod)', async () => {
     const res = await app.fetch(
-      new Request('http://localhost/api/core/compliance/kyc/submit', {
+      new Request('http://localhost/api/v1/compliance/kyc/submit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,7 +98,7 @@ describe('Compliance Module — KYC', () => {
 
   it('rejects /kyc/submit with empty body (Zod)', async () => {
     const res = await app.fetch(
-      new Request('http://localhost/api/core/compliance/kyc/submit', {
+      new Request('http://localhost/api/v1/compliance/kyc/submit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

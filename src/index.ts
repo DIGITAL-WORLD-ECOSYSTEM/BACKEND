@@ -74,7 +74,12 @@ app.use('/*', async (c: Context<AppType>, next: Next) => {
 
       // Se for ambiente de desenvolvimento, permitimos localhost
       if (c.env?.ENVIRONMENT !== 'production') {
-        allowedOrigins.push('http://localhost:3000', 'http://localhost:8787');
+        allowedOrigins.push(
+          'http://localhost:3000',
+          'http://localhost:8080',
+          'http://localhost:8082',
+          'http://localhost:8787'
+        );
       }
 
       if (!origin) return allowedOrigins[0];
@@ -115,7 +120,7 @@ app.use('*', async (c: Context<AppType>, next: Next) => {
   }
 
   if (c.env?.ENVIRONMENT !== 'production') {
-    if (c.env?.CHAOS_D1_DOWN === 'true' && !c.req.path.startsWith('/api/core/health')) {
+    if (c.env?.CHAOS_D1_DOWN === 'true' && !c.req.path.startsWith('/api/v1/health')) {
       return error(c, 'Simulated D1 Outage', null, 503);
     }
   }
@@ -166,9 +171,10 @@ app.get('/api/stats', async (c) => {
 // 3. API & ROTAS MODULARES CANÔNICAS
 // =================================================================
 
-app.route('/api/core/compliance', complianceRouter);
-app.route('/api/core/health', healthRouter);
-app.route('/api/core/webhooks', webhooksRouter);
+// SSOT: Canonical RESTful DDD Versioned Routes (/api/v1/<domain>/<resource>)
+app.route('/api/v1/compliance', complianceRouter);
+app.route('/api/v1/health', healthRouter);
+app.route('/api/v1/webhooks', webhooksRouter);
 app.route('/api/v1/identity', identityRouter);
 app.route('/api/v1/civil', civilIdentityRouter);
 app.route('/api/v1/ssi', ssiRouter);

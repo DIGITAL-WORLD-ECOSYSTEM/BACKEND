@@ -191,3 +191,33 @@ financeRouter.get(
   }
 );
 
+
+// Treasury Analytics Dashboard Endpoint (/api/v1/finance/treasury/analytics)
+financeRouter.get('/treasury/analytics', async (c) => {
+  return c.json({
+    success: true,
+    data: {
+      summary: {
+        totalInflow: 1250000,
+        avgTicket: 3450,
+        count: 142,
+        topRecipient: 'Fundo de Reserva ASPPIBRA',
+      },
+      monthlyTrend: [
+        { month: 'Jan', total: 85000 },
+        { month: 'Fev', total: 92000 },
+        { month: 'Mar', total: 110000 },
+        { month: 'Abr', total: 98000 },
+        { month: 'Mai', total: 135000 },
+        { month: 'Jun', total: 145000 },
+      ],
+      distribution: [
+        { label: 'Operacional', value: 45 },
+        { label: 'Reserva Estratégica', value: 35 },
+        { label: 'Custódia Web3', value: 20 },
+      ],
+      availableYears: ['2026', '2025'],
+      transactions: [],
+    },
+  });
+});

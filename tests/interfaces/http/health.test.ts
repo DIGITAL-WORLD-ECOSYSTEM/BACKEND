@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { app } from '@/index';
 
 describe('Backend Health Check', () => {
-  it('should return 200 OK on /api/core/health/health', async () => {
+  it('should return 200 OK on /api/v1/health/health', async () => {
     // Mocking Cloudflare Bindings for Hono
     const res = await app.fetch(
-      new Request('http://localhost/api/core/health/health'),
+      new Request('http://localhost/api/v1/health/health'),
       {
         DB: {
           prepare: () => ({

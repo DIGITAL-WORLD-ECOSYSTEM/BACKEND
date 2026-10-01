@@ -32,7 +32,7 @@ describe('Zero-Trust Middleware (auth_signature)', () => {
   const validTimestamp = Date.now().toString();
 
   const makeRequest = (headers: Record<string, string> = {}) =>
-    new Request('http://localhost/api/core/compliance/kyc/submit', {
+    new Request('http://localhost/api/v1/compliance/kyc/submit', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
