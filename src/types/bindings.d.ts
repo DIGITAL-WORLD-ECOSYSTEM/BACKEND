@@ -26,6 +26,7 @@ export type Bindings = {
   JWT_SECRET: string;
   TOTP_ENCRYPTION_KEY?: string;
   WALLET_ENCRYPTION_KEY?: string;
+  BSC_RPC_URL?: string;
   SSI_ISSUER_PRIVATE_KEY?: string;
   SSI_ISSUER_SEED?: string;
   ADMIN_PASSWORD: string;
