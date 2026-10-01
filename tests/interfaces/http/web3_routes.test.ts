@@ -176,6 +176,31 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
       expect(res2.status).toBe(404);
       expect(res2.body.success).toBe(false);
     });
+
+    it('should return 200 with on-chain balance when getWalletBalance succeeds', async () => {
+      const mockGetBalance = {
+        execute: vi.fn().mockResolvedValue(
+          Result.ok({
+            address: '0x1',
+            native: { symbol: 'BNB', balanceFormatted: '1.5' },
+            tokens: [{ symbol: 'USDT', balanceFormatted: '100' }],
+          })
+        ),
+      };
+
+      const controller = new Web3WalletController(mockUseCase as any, undefined, undefined, mockGetBalance as any);
+      const c = {
+        get: vi.fn((key) => (key === 'userId' ? 42 : undefined)),
+        req: { param: vi.fn().mockReturnValue('0x1111222233334444555566667777888899990000') },
+        json: vi.fn((body, status) => ({ body, status })),
+      } as any;
+
+      const res = (await controller.getWalletBalance(c)) as any;
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.native.balanceFormatted).toBe('1.5');
+      expect(res.body.data.tokens[0].symbol).toBe('USDT');
+    });
   });
 
   describe('Web3 Route Protection with sessionGuard and RBAC', () => {
@@ -216,6 +241,18 @@ describe('Web3WalletController & Web3 Routes (P1 Shielding)', () => {
 
       const res = await router.fetch(
         new Request('http://localhost/wallets/active', { method: 'GET' }),
+        { JWT_SECRET: 'secret' } as any
+      );
+
+      expect(res.status).toBe(401);
+    });
+
+    it('should reject unauthenticated request to /wallets/:address/balance (missing Bearer token)', async () => {
+      const controller = createController();
+      const router = createWeb3Router(controller);
+
+      const res = await router.fetch(
+        new Request('http://localhost/wallets/0x1111222233334444555566667777888899990000/balance', { method: 'GET' }),
         { JWT_SECRET: 'secret' } as any
       );
 

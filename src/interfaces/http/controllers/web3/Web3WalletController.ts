@@ -2,12 +2,14 @@ import { Context } from 'hono';
 import { CreateInternalWalletUseCase } from '../../../../application/use-cases/web3/CreateInternalWalletUseCase';
 import { GetUserWalletsUseCase } from '../../../../application/use-cases/web3/GetUserWalletsUseCase';
 import { GetActiveWalletUseCase } from '../../../../application/use-cases/web3/GetActiveWalletUseCase';
+import { GetWalletBalanceUseCase } from '../../../../application/use-cases/web3/GetWalletBalanceUseCase';
 
 export class Web3WalletController {
   constructor(
     private readonly createWalletUseCase: CreateInternalWalletUseCase,
     private readonly getUserWalletsUseCase?: GetUserWalletsUseCase,
-    private readonly getActiveWalletUseCase?: GetActiveWalletUseCase
+    private readonly getActiveWalletUseCase?: GetActiveWalletUseCase,
+    private readonly getWalletBalanceUseCase?: GetWalletBalanceUseCase
   ) {}
 
   /**
@@ -183,6 +185,40 @@ export class Web3WalletController {
       return c.json({ success: true, data }, 200);
     } catch (err: any) {
       console.error('[Web3WalletController] Erro ao buscar carteira ativa:', err);
+      return c.json({ success: false, message: 'Erro interno no servidor.' }, 500);
+    }
+  }
+
+  /**
+   * [Rota de Usuário]
+   * Consulta o saldo on-chain da carteira em BNB e tokens BEP-20 (USDT).
+   */
+  async getWalletBalance(c: Context) {
+    try {
+      const user = c.get('user');
+      const rawUserId = c.get('userId') ?? user?.userId ?? user?.id;
+
+      if (!rawUserId) {
+        return c.json({ success: false, message: 'Acesso negado: Usuário não autenticado.' }, 401);
+      }
+
+      const address = c.req.param('address');
+      if (!address) {
+        return c.json({ success: false, message: 'Parâmetro address é obrigatório.' }, 400);
+      }
+
+      if (!this.getWalletBalanceUseCase) {
+        return c.json({ success: false, message: 'Funcionalidade de saldo não configurada no servidor.' }, 501);
+      }
+
+      const result = await this.getWalletBalanceUseCase.execute({ address });
+      if (result.isFailure) {
+        return c.json({ success: false, message: result.error }, 400);
+      }
+
+      return c.json({ success: true, data: result.getValue() }, 200);
+    } catch (err: any) {
+      console.error('[Web3WalletController] Erro ao consultar saldo on-chain:', err);
       return c.json({ success: false, message: 'Erro interno no servidor.' }, 500);
     }
   }
