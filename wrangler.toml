@@ -7,6 +7,7 @@ compatibility_flags = [ "nodejs_compat" ]
 FRONTEND_URL = "https://app.w3.com"
 JWT_EXPIRE_IN = "24h"
 SENDER_EMAIL = "suporte@w3.com"
+SIWE_ALLOWED_DOMAIN = "w3-api.asppibra.workers.dev"
 
 [observability]
 enabled = true

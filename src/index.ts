@@ -86,7 +86,12 @@ app.use('/*', async (c: Context<AppType>, next: Next) => {
 
       const cleanOrigin = origin.replace(/\/$/, '');
 
-      if (allowedOrigins.includes(cleanOrigin)) {
+      if (
+        allowedOrigins.includes(cleanOrigin) ||
+        cleanOrigin.endsWith('.pages.dev') ||
+        cleanOrigin.endsWith('.asppibra.com') ||
+        cleanOrigin === 'https://asppibra.com'
+      ) {
         return cleanOrigin;
       }
       

@@ -35,7 +35,7 @@ export function createWeb3Router(controller: Web3WalletController) {
   const router = new Hono<AppType>();
 
   // 1. Desafio SIWE EIP-4361 (Rate-limited: 20 req/min)
-  router.post('/challenge', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), (c) => controller.generateChallenge(c));
+  router.all('/challenge', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), (c) => controller.generateChallenge(c));
 
   // 2. Rotas de Usuário Final: Requer sessão ativa e autenticada
   router.post('/wallets/create', sessionGuard, (c) => controller.createUserWallet(c));
@@ -117,7 +117,7 @@ function buildWeb3Controller(c: any): Web3WalletController {
  */
 export const web3Router = new Hono<AppType>();
 
-web3Router.post('/challenge', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), async (c) => {
+web3Router.all('/challenge', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), async (c) => {
   try {
     const controller = buildWeb3Controller(c);
     return await controller.generateChallenge(c);

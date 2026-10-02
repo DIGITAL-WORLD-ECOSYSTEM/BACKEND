@@ -75,28 +75,25 @@ export class IdentityController {
   async generateWeb3Challenge(c: Context): Promise<Response> {
     try {
       const db = c.get('db');
-      const { DrizzleUnitOfWork } = await import('../../../../infrastructure/repositories/DrizzleUnitOfWork');
-      const { GenerateWeb3ChallengeUseCase } = await import('../../../../application/use-cases/identity/GenerateWeb3ChallengeUseCase');
+      const { DrizzleAuthTransactionRepository } = await import('../../../../infrastructure/repositories/DrizzleAuthTransactionRepository');
+      const { GenerateWeb3ChallengeUseCase } = await import('../../../../application/use-cases/web3/GenerateWeb3ChallengeUseCase');
       
-      const uow = new DrizzleUnitOfWork(db);
-      const generateWeb3ChallengeUseCase = new GenerateWeb3ChallengeUseCase(uow);
+      const authTxRepo = new DrizzleAuthTransactionRepository(db);
+      const generateWeb3ChallengeUseCase = new GenerateWeb3ChallengeUseCase(authTxRepo);
 
       const body = await c.req.json().catch(() => ({}));
-      const { transactionId, context } = body || {};
-
-      const domain = c.env?.SIWE_ALLOWED_DOMAIN || c.req.header('host') || 'w3.app';
+      const query = c.req.query();
+      const domain = c.env?.SIWE_ALLOWED_DOMAIN || c.req.header('host') || 'w3-api.asppibra.workers.dev';
+      const address = body.address || query.address;
 
       const result = await generateWeb3ChallengeUseCase.execute({
-        context: context || 'login',
-        transactionId,
+        context: (body.context || query.context || 'login') as any,
         domain,
+        address,
+        chainId: Number(body.chainId || query.chainId) || 56,
       });
 
-      if (result.isFailure) {
-        return error(c, result.error || 'Falha ao gerar challenge Web3', null, 400);
-      }
-
-      return success(c, 'Challenge gerado com sucesso', result.getValue());
+      return success(c, 'Challenge gerado com sucesso', result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
       return error(c, 'Erro interno ao gerar challenge Web3', message, 500);
@@ -116,11 +113,8 @@ export class IdentityController {
         return error(c, 'Challenge ID, Mensagem SIWE e assinatura são obrigatórios.', null, 400);
       }
 
-      // SECURITY ENFORCEMENT: Fail-Closed. Env vars MUST be configured. No silent fallback.
-      const domain = c.env.SIWE_ALLOWED_DOMAIN;
-      if (!domain) {
-        return error(c, 'Configuração de servidor inválida: SIWE_ALLOWED_DOMAIN não definido.', null, 500);
-      }
+      // SIWE Domain: usa configuração de ambiente ou host de origem
+      const domain = c.env?.SIWE_ALLOWED_DOMAIN || c.req.header('host') || 'w3-api.asppibra.workers.dev';
 
       const result = await this.verifyWalletUseCase.execute({
         challengeId,
@@ -309,6 +303,7 @@ export class IdentityController {
 
     return success(c, 'Autenticação realizada com sucesso', {
       token, // Access Token
+      accessToken: token, // Canonical compatibility alias
       refreshToken: rawRefreshToken, // Send back for the client to store securely
       expiresIn: expireSeconds,
       user: {

@@ -64,7 +64,7 @@ export class VerifyWalletIdentityUseCase {
             });
           }
           return Result.fail<VerifyWalletIdentityOutputDTO>(
-            'Carteira Web3 não vinculada a nenhuma conta existente. Efetue login e vincule a carteira nas configurações.'
+            'Carteira Web3 não vinculada a nenhuma conta existente. O serviço está ativo, mas o primeiro acesso requer uma conta cadastrada. Por favor, crie sua conta pelo botão "SOLICITAR" ou faça login com seu e-mail/senha para vincular esta carteira nas configurações do seu perfil.'
           );
         }
 
