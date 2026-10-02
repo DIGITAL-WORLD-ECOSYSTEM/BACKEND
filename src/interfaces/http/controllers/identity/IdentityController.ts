@@ -453,5 +453,292 @@ export class IdentityController {
       return error(c, 'Erro interno ao verificar registro de passkey', message, 500);
     }
   }
-}
 
+  async oauthLogin(c: Context): Promise<Response> {
+    const provider = c.req.param("provider");
+    const frontendUrl = c.env?.FRONTEND_URL || "https://app.asppibra.com";
+    const callbackUrl = `https://api.asppibra.com/api/v1/identity/oauth/${provider}/callback`;
+
+    if (provider === "google") {
+      const clientId = c.env?.GOOGLE_CLIENT_ID;
+      if (!clientId || clientId === "REDACTED") {
+        return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=OAUTH_NOT_CONFIGURED&provider=Google`);
+      }
+      const state = crypto.randomUUID();
+      if (c.env?.KV_AUTH) {
+        await c.env.KV_AUTH.put(`oauth_state:${state}`, "google", { expirationTtl: 600 });
+      }
+      const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
+        clientId
+      )}&redirect_uri=${encodeURIComponent(
+        callbackUrl
+      )}&response_type=code&scope=openid%20email%20profile&access_type=online&state=${state}&prompt=select_account`;
+
+      return c.redirect(googleAuthUrl);
+    }
+
+    if (provider === "github") {
+      const clientId = c.env?.GITHUB_CLIENT_ID;
+      if (!clientId || clientId === "REDACTED") {
+        return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=OAUTH_NOT_CONFIGURED&provider=GitHub`);
+      }
+      const state = crypto.randomUUID();
+      if (c.env?.KV_AUTH) {
+        await c.env.KV_AUTH.put(`oauth_state:${state}`, "github", { expirationTtl: 600 });
+      }
+      const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(
+        clientId
+      )}&redirect_uri=${encodeURIComponent(callbackUrl)}&scope=read:user%20user:email&state=${state}`;
+
+      return c.redirect(githubAuthUrl);
+    }
+
+    return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=UNSUPPORTED_PROVIDER`);
+  }
+
+  async oauthCallback(c: Context): Promise<Response> {
+    const provider = c.req.param("provider");
+    const frontendUrl = c.env?.FRONTEND_URL || "https://app.asppibra.com";
+    const callbackUrl = `https://api.asppibra.com/api/v1/identity/oauth/${provider}/callback`;
+    const providerName = provider === "google" ? "Google" : provider === "github" ? "GitHub" : provider;
+
+    const code = c.req.query("code");
+    const state = c.req.query("state");
+    const errorParam = c.req.query("error");
+
+    if (errorParam || !code) {
+      return c.redirect(
+        `${frontendUrl}/auth/jwt/sign-in?error=${encodeURIComponent(errorParam || "OAUTH_CANCELLED")}&provider=${providerName}`
+      );
+    }
+
+    try {
+      let providerUserId = "";
+      let email = "";
+      let displayName = "";
+
+      if (provider === "google") {
+        const clientId = c.env?.GOOGLE_CLIENT_ID;
+        const clientSecret = c.env?.GOOGLE_CLIENT_SECRET;
+        if (!clientId || !clientSecret || clientId === "REDACTED") {
+          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=OAUTH_NOT_CONFIGURED&provider=Google`);
+        }
+
+        const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            code,
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: callbackUrl,
+            grant_type: "authorization_code",
+          }),
+        });
+
+        if (!tokenRes.ok) {
+          const errBody = await tokenRes.text();
+          console.error("Google token exchange error:", errBody);
+          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=TOKEN_EXCHANGE_FAILED&provider=Google`);
+        }
+
+        const tokenData: any = await tokenRes.json();
+        const accessToken = tokenData.access_token;
+
+        const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+
+        if (!userRes.ok) {
+          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=PROFILE_FETCH_FAILED&provider=Google`);
+        }
+
+        const profile: any = await userRes.json();
+        providerUserId = profile.id;
+        email = profile.email ? profile.email.toLowerCase() : "";
+        displayName = profile.name || "";
+      } else if (provider === "github") {
+        const clientId = c.env?.GITHUB_CLIENT_ID;
+        const clientSecret = c.env?.GITHUB_CLIENT_SECRET;
+        if (!clientId || !clientSecret || clientId === "REDACTED") {
+          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=OAUTH_NOT_CONFIGURED&provider=GitHub`);
+        }
+
+        const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "User-Agent": "ASPPIBRA-DAO",
+          },
+          body: JSON.stringify({
+            client_id: clientId,
+            client_secret: clientSecret,
+            code,
+            redirect_uri: callbackUrl,
+          }),
+        });
+
+        if (!tokenRes.ok) {
+          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=TOKEN_EXCHANGE_FAILED&provider=GitHub`);
+        }
+
+        const tokenData: any = await tokenRes.json();
+        const accessToken = tokenData.access_token;
+        if (!accessToken) {
+          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=TOKEN_EXCHANGE_FAILED&provider=GitHub`);
+        }
+
+        const userRes = await fetch("https://api.github.com/user", {
+          headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "ASPPIBRA-DAO" },
+        });
+
+        if (!userRes.ok) {
+          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=PROFILE_FETCH_FAILED&provider=GitHub`);
+        }
+
+        const profile: any = await userRes.json();
+        providerUserId = String(profile.id);
+        displayName = profile.name || profile.login;
+        email = profile.email ? profile.email.toLowerCase() : "";
+
+        if (!email) {
+          const emailsRes = await fetch("https://api.github.com/user/emails", {
+            headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "ASPPIBRA-DAO" },
+          });
+          if (emailsRes.ok) {
+            const emails: any = await emailsRes.json();
+            const primary = emails.find((e: any) => e.primary && e.verified);
+            if (primary) email = primary.email.toLowerCase();
+          }
+        }
+      } else {
+        return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=UNSUPPORTED_PROVIDER`);
+      }
+
+      // ----------------------------------------------------------------------
+      // ANTI-SHADOW ACCOUNT VERIFICATION
+      // ----------------------------------------------------------------------
+      const db = c.get("db");
+      const { oauthIdentities } = await import("../../../../db/authentication/tables");
+      const { users } = await import("../../../../db/user/tables");
+      const { eq, and } = await import("drizzle-orm");
+
+      const existingLink = await db
+        .select()
+        .from(oauthIdentities)
+        .where(
+          and(
+            eq(oauthIdentities.provider, provider),
+            eq(oauthIdentities.subjectId, providerUserId),
+            eq(oauthIdentities.status, "active")
+          )
+        )
+        .limit(1);
+
+      let targetUserId: number | null = null;
+      let targetUserEmail = email;
+
+      if (existingLink.length > 0) {
+        targetUserId = existingLink[0].userId;
+        const u = await db.select().from(users).where(eq(users.id, targetUserId)).limit(1);
+        if (u.length > 0 && u[0].status === "active") {
+          targetUserEmail = u[0].email;
+        } else {
+          targetUserId = null;
+        }
+      } else if (email) {
+        const existingUser = await db
+          .select()
+          .from(users)
+          .where(and(eq(users.email, email), eq(users.status, "active")))
+          .limit(1);
+
+        if (existingUser.length > 0) {
+          targetUserId = existingUser[0].id;
+          targetUserEmail = existingUser[0].email;
+
+          await db.insert(oauthIdentities).values({
+            id: crypto.randomUUID(),
+            userId: targetUserId,
+            provider,
+            subjectId: providerUserId,
+            status: "active",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }
+      }
+
+      // Anti-Shadow Account: If user does not exist in platform, reject cleanly!
+      if (!targetUserId) {
+        return c.redirect(
+          `${frontendUrl}/auth/jwt/sign-in?error=IDENTITY_NOT_LINKED&provider=${providerName}&email=${encodeURIComponent(
+            email
+          )}`
+        );
+      }
+
+      // ----------------------------------------------------------------------
+      // ISSUE SESSION & TOKEN
+      // ----------------------------------------------------------------------
+      const familyId = crypto.randomUUID();
+      const jti = crypto.randomUUID();
+      const sessionId = crypto.randomUUID();
+      const now = new Date();
+      const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
+      const jwtExpiresAt = new Date(now.getTime() + 24 * 3600 * 1000);
+
+      const rawRefreshToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+      const refreshTokenHashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawRefreshToken));
+      const refreshTokenHash = Array.from(new Uint8Array(refreshTokenHashBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      const ip = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "unknown";
+      const userAgent = c.req.header("user-agent") || "unknown";
+
+      if (this.sessionRepo?.createRefreshTokenFamily) {
+        await this.sessionRepo.createRefreshTokenFamily({
+          id: familyId,
+          userId: targetUserId,
+          createdAt: now,
+        });
+      }
+
+      await this.sessionRepo.createSession({
+        id: sessionId,
+        userId: targetUserId,
+        jti,
+        ip,
+        userAgent,
+        familyId,
+        refreshTokenHash,
+        aal: 1,
+        authEpoch: 1,
+        createdAt: now,
+        expiresAt: sessionExpiresAt,
+        lastAuthenticatedAt: now,
+      } as any);
+
+      const token = await this.jwtService.sign(
+        {
+          sub: String(targetUserId),
+          userId: targetUserId,
+          email: targetUserEmail,
+          sid: sessionId,
+          jti,
+          aal: 1,
+          auth_time: Math.floor(now.getTime() / 1000),
+          exp: Math.floor(jwtExpiresAt.getTime() / 1000),
+        },
+        c.env.JWT_SECRET
+      );
+
+      return c.redirect(`${frontendUrl}/auth/oauth/callback?token=${token}`);
+    } catch (err: unknown) {
+      console.error("OAuth Callback Error:", err);
+      return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=OAUTH_INTERNAL_ERROR&provider=${providerName}`);
+    }
+  }
+}

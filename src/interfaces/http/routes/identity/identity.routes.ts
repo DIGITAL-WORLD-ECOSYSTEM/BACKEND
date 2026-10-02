@@ -177,29 +177,19 @@ identityRouter.post(
 // OAUTH IDENTITY ROUTES (GOOGLE, GITHUB - ANTI-SHADOW ACCOUNT CANONICAL)
 // ----------------------------------------------------------------------------
 identityRouter.get('/oauth/:provider/login', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), async (c) => {
-  const provider = c.req.param('provider');
-  const providerName = provider === 'google' ? 'Google' : provider === 'github' ? 'GitHub' : provider;
-  return c.json(
-    {
-      success: false,
-      code: 'IDENTITY_NOT_LINKED',
-      message: `Conta do ${providerName} não vinculada a nenhuma conta existente. O serviço está ativo, mas o primeiro acesso requer uma conta cadastrada. Por favor, crie sua conta pelo botão "SOLICITAR" ou faça login com seu e-mail/senha para vincular sua conta do ${providerName} nas configurações do seu perfil.`,
-    },
-    401
-  );
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined, jwtService, sessionRepo);
+  return controller.oauthLogin(c);
 });
 
 identityRouter.get('/oauth/:provider/callback', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), async (c) => {
-  const provider = c.req.param('provider');
-  const providerName = provider === 'google' ? 'Google' : provider === 'github' ? 'GitHub' : provider;
-  return c.json(
-    {
-      success: false,
-      code: 'IDENTITY_NOT_LINKED',
-      message: `Conta do ${providerName} não vinculada a nenhuma conta existente. O serviço está ativo, mas o primeiro acesso requer uma conta cadastrada. Por favor, crie sua conta pelo botão "SOLICITAR" ou faça login com seu e-mail/senha para vincular sua conta do ${providerName} nas configurações do seu perfil.`,
-    },
-    401
-  );
+  const db = c.get('db');
+  const jwtService = new JwtService();
+  const sessionRepo = new DrizzleSessionRepository(db);
+  const controller = new IdentityController(undefined, jwtService, sessionRepo);
+  return controller.oauthCallback(c);
 });
 
 identityRouter.post('/login/passkey/challenge', rateLimit({ windowMs: 60 * 1000, maxRequests: 20 }), async (c) => {
