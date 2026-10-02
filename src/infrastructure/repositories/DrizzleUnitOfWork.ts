@@ -164,6 +164,22 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
   constructor(private readonly db: FinanceDatabase) {}
 
   async execute<T>(work: (factory: IRepositoryFactory) => Promise<Result<T>>): Promise<Result<T>> {
+    // 1. Cloudflare D1 Guard: O D1 não suporta transações interativas (BEGIN IMMEDIATE).
+    // Deve ser checado ANTES de db.transaction pois o Drizzle D1 pode expor o método mas o engine D1 rejeita 'BEGIN IMMEDIATE'.
+    if (isD1Database(this.db)) {
+      try {
+        const factory = new DrizzleRepositoryFactory(null as any, this.db);
+        const res = await work(factory);
+        return res;
+      } catch (err: any) {
+        if (err instanceof FinancialError) {
+          return Result.fail(err);
+        }
+        return Result.fail(`Falha na execução no Cloudflare D1: ${err?.message || String(err)}`);
+      }
+    }
+
+    // 2. Drivers tradicionais com suporte a transações interativas (SQLite local / BetterSQLite3)
     if (typeof this.db?.transaction === 'function') {
       let result: Result<T> | null = null;
       try {
@@ -198,23 +214,6 @@ export class DrizzleUnitOfWork implements IUnitOfWork {
         const errorMessage = err?.message || String(err);
         // Se a callback retornou Result.ok(), mas o COMMIT/banco falhou, DEVE RETORNAR FALHA! (DOD-05)
         return Result.fail(`Falha na transação do banco de dados (Commit/Execution): ${errorMessage}`);
-      }
-    }
-
-    if (isD1Database(this.db)) {
-      // No Cloudflare D1, transações interativas multi-roundtrip (BEGIN IMMEDIATE) não são suportadas pela engine Edge.
-      // Executa o workflow sequencialmente sobre a conexão D1 preservando a fábrica de repositórios.
-      // Para transações contábeis que exigem garantia física atômica all-or-nothing no D1,
-      // deve-se utilizar o D1AtomicPostingExecutor nativo via lote D1.
-      try {
-        const factory = new DrizzleRepositoryFactory(null as any, this.db);
-        const res = await work(factory);
-        return res;
-      } catch (err: any) {
-        if (err instanceof FinancialError) {
-          return Result.fail(err);
-        }
-        return Result.fail(`Falha na execução no Cloudflare D1: ${err?.message || String(err)}`);
       }
     }
 
