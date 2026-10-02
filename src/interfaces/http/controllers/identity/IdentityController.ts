@@ -462,7 +462,7 @@ export class IdentityController {
     if (provider === "google") {
       const clientId = c.env?.GOOGLE_CLIENT_ID;
       if (!clientId || clientId === "REDACTED") {
-        return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=OAUTH_NOT_CONFIGURED&provider=Google`);
+        return c.redirect(`${frontendUrl}/login?error=OAUTH_NOT_CONFIGURED&provider=Google`);
       }
       const state = crypto.randomUUID();
       if (c.env?.KV_AUTH) {
@@ -480,7 +480,7 @@ export class IdentityController {
     if (provider === "github") {
       const clientId = c.env?.GITHUB_CLIENT_ID;
       if (!clientId || clientId === "REDACTED") {
-        return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=OAUTH_NOT_CONFIGURED&provider=GitHub`);
+        return c.redirect(`${frontendUrl}/login?error=OAUTH_NOT_CONFIGURED&provider=GitHub`);
       }
       const state = crypto.randomUUID();
       if (c.env?.KV_AUTH) {
@@ -493,7 +493,7 @@ export class IdentityController {
       return c.redirect(githubAuthUrl);
     }
 
-    return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=UNSUPPORTED_PROVIDER`);
+    return c.redirect(`${frontendUrl}/login?error=UNSUPPORTED_PROVIDER`);
   }
 
   async oauthCallback(c: Context): Promise<Response> {
@@ -508,7 +508,7 @@ export class IdentityController {
 
     if (errorParam || !code) {
       return c.redirect(
-        `${frontendUrl}/auth/jwt/sign-in?error=${encodeURIComponent(errorParam || "OAUTH_CANCELLED")}&provider=${providerName}`
+        `${frontendUrl}/login?error=${encodeURIComponent(errorParam || "OAUTH_CANCELLED")}&provider=${providerName}`
       );
     }
 
@@ -521,7 +521,7 @@ export class IdentityController {
         const clientId = c.env?.GOOGLE_CLIENT_ID;
         const clientSecret = c.env?.GOOGLE_CLIENT_SECRET;
         if (!clientId || !clientSecret || clientId === "REDACTED") {
-          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=OAUTH_NOT_CONFIGURED&provider=Google`);
+          return c.redirect(`${frontendUrl}/login?error=OAUTH_NOT_CONFIGURED&provider=Google`);
         }
 
         const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -539,7 +539,7 @@ export class IdentityController {
         if (!tokenRes.ok) {
           const errBody = await tokenRes.text();
           console.error("Google token exchange error:", errBody);
-          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=TOKEN_EXCHANGE_FAILED&provider=Google`);
+          return c.redirect(`${frontendUrl}/login?error=TOKEN_EXCHANGE_FAILED&provider=Google`);
         }
 
         const tokenData: any = await tokenRes.json();
@@ -550,7 +550,7 @@ export class IdentityController {
         });
 
         if (!userRes.ok) {
-          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=PROFILE_FETCH_FAILED&provider=Google`);
+          return c.redirect(`${frontendUrl}/login?error=PROFILE_FETCH_FAILED&provider=Google`);
         }
 
         const profile: any = await userRes.json();
@@ -561,7 +561,7 @@ export class IdentityController {
         const clientId = c.env?.GITHUB_CLIENT_ID;
         const clientSecret = c.env?.GITHUB_CLIENT_SECRET;
         if (!clientId || !clientSecret || clientId === "REDACTED") {
-          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=OAUTH_NOT_CONFIGURED&provider=GitHub`);
+          return c.redirect(`${frontendUrl}/login?error=OAUTH_NOT_CONFIGURED&provider=GitHub`);
         }
 
         const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
@@ -580,13 +580,13 @@ export class IdentityController {
         });
 
         if (!tokenRes.ok) {
-          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=TOKEN_EXCHANGE_FAILED&provider=GitHub`);
+          return c.redirect(`${frontendUrl}/login?error=TOKEN_EXCHANGE_FAILED&provider=GitHub`);
         }
 
         const tokenData: any = await tokenRes.json();
         const accessToken = tokenData.access_token;
         if (!accessToken) {
-          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=TOKEN_EXCHANGE_FAILED&provider=GitHub`);
+          return c.redirect(`${frontendUrl}/login?error=TOKEN_EXCHANGE_FAILED&provider=GitHub`);
         }
 
         const userRes = await fetch("https://api.github.com/user", {
@@ -594,7 +594,7 @@ export class IdentityController {
         });
 
         if (!userRes.ok) {
-          return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=PROFILE_FETCH_FAILED&provider=GitHub`);
+          return c.redirect(`${frontendUrl}/login?error=PROFILE_FETCH_FAILED&provider=GitHub`);
         }
 
         const profile: any = await userRes.json();
@@ -613,7 +613,7 @@ export class IdentityController {
           }
         }
       } else {
-        return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=UNSUPPORTED_PROVIDER`);
+        return c.redirect(`${frontendUrl}/login?error=UNSUPPORTED_PROVIDER`);
       }
 
       // ----------------------------------------------------------------------
@@ -673,7 +673,7 @@ export class IdentityController {
       // Anti-Shadow Account: If user does not exist in platform, reject cleanly!
       if (!targetUserId) {
         return c.redirect(
-          `${frontendUrl}/auth/jwt/sign-in?error=IDENTITY_NOT_LINKED&provider=${providerName}&email=${encodeURIComponent(
+          `${frontendUrl}/login?error=IDENTITY_NOT_LINKED&provider=${providerName}&email=${encodeURIComponent(
             email
           )}`
         );
@@ -738,7 +738,7 @@ export class IdentityController {
       return c.redirect(`${frontendUrl}/auth/oauth/callback?token=${token}`);
     } catch (err: unknown) {
       console.error("OAuth Callback Error:", err);
-      return c.redirect(`${frontendUrl}/auth/jwt/sign-in?error=OAUTH_INTERNAL_ERROR&provider=${providerName}`);
+      return c.redirect(`${frontendUrl}/login?error=OAUTH_INTERNAL_ERROR&provider=${providerName}`);
     }
   }
 }
