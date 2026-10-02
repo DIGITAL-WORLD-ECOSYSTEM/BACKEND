@@ -83,7 +83,7 @@ export class IdentityController {
 
       const body = await c.req.json().catch(() => ({}));
       const query = c.req.query();
-      const domain = c.env?.SIWE_ALLOWED_DOMAIN || c.req.header('host') || 'w3-api.asppibra.workers.dev';
+      const domain = c.env?.SIWE_ALLOWED_DOMAIN || c.req.header('host') || 'api.asppibra.com';
       const address = body.address || query.address;
 
       const result = await generateWeb3ChallengeUseCase.execute({
@@ -114,7 +114,7 @@ export class IdentityController {
       }
 
       // SIWE Domain: usa configuração de ambiente ou host de origem
-      const domain = c.env?.SIWE_ALLOWED_DOMAIN || c.req.header('host') || 'w3-api.asppibra.workers.dev';
+      const domain = c.env?.SIWE_ALLOWED_DOMAIN || c.req.header('host') || 'api.asppibra.com';
 
       const result = await this.verifyWalletUseCase.execute({
         challengeId,

@@ -22,6 +22,14 @@ import { Bindings } from '../../../../types/bindings';
 const app = new Hono<{ Bindings: Bindings }>();
 
 // 1. Health Check Simples (Ping / Root & Subpath)
+app.get('', (c) => {
+  return c.json({
+    status: 'ok',
+    system: 'CENTRAL-SYSTEM-API',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.get('/', (c) => {
   return c.json({
     status: 'ok',

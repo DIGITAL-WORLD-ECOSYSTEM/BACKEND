@@ -1,13 +1,17 @@
-name = "w3-api"
+name = "asppibra-api"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
 compatibility_flags = [ "nodejs_compat" ]
 
+routes = [
+  { pattern = "api.asppibra.com", custom_domain = true }
+]
+
 [vars]
-FRONTEND_URL = "https://app.w3.com"
+FRONTEND_URL = "https://app.asppibra.com"
 JWT_EXPIRE_IN = "24h"
-SENDER_EMAIL = "suporte@w3.com"
-SIWE_ALLOWED_DOMAIN = "w3-api.asppibra.workers.dev"
+SENDER_EMAIL = "suporte@asppibra.com"
+SIWE_ALLOWED_DOMAIN = "api.asppibra.com"
 
 [observability]
 enabled = true
@@ -24,7 +28,7 @@ enabled = true
 persist = true
 head_sampling_rate = 1
 
-# Servir arquivos estáticos do Dashboard Frontend nativo
+# Servir arquivos estáticos da API / Status
 [assets]
 directory = "public"
 
