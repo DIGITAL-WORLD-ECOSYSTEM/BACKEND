@@ -4,7 +4,8 @@ compatibility_date = "2025-06-01"
 compatibility_flags = [ "nodejs_compat" ]
 
 routes = [
-  { pattern = "api.asppibra.com", custom_domain = true }
+  { pattern = "api.asppibra.com", custom_domain = true },
+  { pattern = "api.asppibra.com.br", custom_domain = true }
 ]
 
 [vars]
