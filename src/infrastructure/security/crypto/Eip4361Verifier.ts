@@ -1,10 +1,20 @@
 import { SiweMessage } from 'siwe';
+import { getAddress } from 'viem';
 import { ISiweVerifierPort, SiweVerificationInput, SiweVerificationOutput } from '../../../application/ports/security/ISiweVerifierPort';
 
 export class Eip4361Verifier implements ISiweVerifierPort {
   async verify(input: SiweVerificationInput): Promise<SiweVerificationOutput> {
     try {
-      const siweMessage = new SiweMessage(input.message);
+      let canonicalMessage = input.message;
+      const lines = input.message.split('\n');
+      if (lines.length >= 2 && lines[1].trim().startsWith('0x') && lines[1].trim().length === 42) {
+        try {
+          lines[1] = getAddress(lines[1].trim());
+          canonicalMessage = lines.join('\n');
+        } catch {}
+      }
+
+      const siweMessage = new SiweMessage(canonicalMessage);
       const result = await siweMessage.verify({
         signature: input.signature,
         nonce: input.expectedNonce,
