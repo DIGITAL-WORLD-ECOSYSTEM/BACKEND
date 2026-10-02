@@ -131,10 +131,10 @@ const SIGNED_UINT256_MAX_DECIMAL_DIGITS =
 function uint256UpperBoundSql(column: AnySQLiteColumn): SQL {
   return sql`
     (
-      length(${column}) < ${MAX_UINT256_DECIMAL_DIGITS}
+      length(${column}) < ${sql.raw(String(MAX_UINT256_DECIMAL_DIGITS))}
       OR (
-        length(${column}) = ${MAX_UINT256_DECIMAL_DIGITS}
-        AND ${column} <= ${MAX_UINT256_BASE_UNITS_TEXT}
+        length(${column}) = ${sql.raw(String(MAX_UINT256_DECIMAL_DIGITS))}
+        AND ${column} <= ${sql.raw("'" + MAX_UINT256_BASE_UNITS_TEXT + "'")}
       )
     )
   `;
@@ -221,10 +221,10 @@ function canonicalSignedAmountSql(
         AND substr(${column}, 2) GLOB '[1-9]*'
         AND substr(${column}, 2) NOT GLOB '*[^0-9]*'
         AND (
-          length(${column}) < ${SIGNED_UINT256_MAX_DECIMAL_DIGITS}
+          length(${column}) < ${sql.raw(String(SIGNED_UINT256_MAX_DECIMAL_DIGITS))}
           OR (
-            length(${column}) = ${SIGNED_UINT256_MAX_DECIMAL_DIGITS}
-            AND substr(${column}, 2) <= ${MAX_UINT256_BASE_UNITS_TEXT}
+            length(${column}) = ${sql.raw(String(SIGNED_UINT256_MAX_DECIMAL_DIGITS))}
+            AND substr(${column}, 2) <= ${sql.raw("'" + MAX_UINT256_BASE_UNITS_TEXT + "'")}
           )
         )
       )

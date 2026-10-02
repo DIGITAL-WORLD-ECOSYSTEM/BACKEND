@@ -146,6 +146,8 @@ CREATE TABLE `users` (
 	`email_changed_at` integer,
 	`auth_epoch` integer DEFAULT 1 NOT NULL,
 	`status` text DEFAULT 'pending_setup' NOT NULL,
+	`failed_login_attempts` integer DEFAULT 0 NOT NULL,
+	`last_failed_login_at` integer,
 	`status_changed_at` integer,
 	`locked_at` integer,
 	`disabled_at` integer,
@@ -170,19 +172,66 @@ CREATE INDEX `idx_users_active_actor` ON `users` (`status`,`deleted_at`);--> sta
 CREATE UNIQUE INDEX `uq_users_active_email_normalized` ON `users` (`email_normalized`) WHERE "users"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE TABLE `auth_challenges` (
 	`id` text PRIMARY KEY NOT NULL,
+	`transaction_id` text,
 	`user_id` integer,
 	`challenge_hash` text NOT NULL,
 	`challenge_type` text NOT NULL,
+	`context` text NOT NULL,
 	`used_at` integer,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
 	`expires_at` integer NOT NULL,
+	FOREIGN KEY (`transaction_id`) REFERENCES `auth_transactions`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "auth_challenges_type_check" CHECK("auth_challenges"."challenge_type" IN ('ssh', 'totp', 'webauthn', 'siwe')),
+	CONSTRAINT "auth_challenges_context_check" CHECK("auth_challenges"."context" IN ('login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery')),
 	CONSTRAINT "auth_challenges_expiration_check" CHECK("auth_challenges"."created_at" < "auth_challenges"."expires_at"),
 	CONSTRAINT "auth_challenges_used_state_check" CHECK("auth_challenges"."used_at" IS NULL OR "auth_challenges"."used_at" >= "auth_challenges"."created_at")
 );
 --> statement-breakpoint
+CREATE INDEX `idx_auth_challenges_transaction` ON `auth_challenges` (`transaction_id`);--> statement-breakpoint
 CREATE INDEX `idx_auth_challenges_expires` ON `auth_challenges` (`expires_at`);--> statement-breakpoint
+CREATE TABLE `auth_transactions` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` integer NOT NULL,
+	`status` text DEFAULT 'created' NOT NULL,
+	`initial_aal` integer DEFAULT 1 NOT NULL,
+	`current_aal` integer DEFAULT 1 NOT NULL,
+	`target_aal` integer DEFAULT 2 NOT NULL,
+	`method` text NOT NULL,
+	`challenge_hash` text,
+	`context` text NOT NULL,
+	`ip` text,
+	`user_agent` text,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	`expires_at` integer NOT NULL,
+	`completed_at` integer,
+	`consumed_at` integer,
+	`failure_count` integer DEFAULT 0 NOT NULL,
+	`auth_epoch_at_start` integer NOT NULL,
+	`last_authenticated_at` integer,
+	`assurance_method` text,
+	`risk_level` text DEFAULT 'low' NOT NULL,
+	`version` integer DEFAULT 1 NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "auth_transactions_status_check" CHECK("auth_transactions"."status" IN ('created', 'awaiting_factor', 'verified', 'completed', 'expired', 'cancelled', 'failed', 'replayed', 'locked')),
+	CONSTRAINT "auth_transactions_context_check" CHECK("auth_transactions"."context" IN ('login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery')),
+	CONSTRAINT "auth_transactions_expiration_check" CHECK("auth_transactions"."created_at" < "auth_transactions"."expires_at")
+);
+--> statement-breakpoint
+CREATE INDEX `idx_auth_transactions_user` ON `auth_transactions` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_auth_transactions_expires` ON `auth_transactions` (`expires_at`);--> statement-breakpoint
+CREATE TABLE `oauth_identities` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` integer NOT NULL,
+	`provider` text NOT NULL,
+	`subject_id` text NOT NULL,
+	`status` text DEFAULT 'active' NOT NULL,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch()) NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_oauth_identities_provider_subject` ON `oauth_identities` (`provider`,`subject_id`);--> statement-breakpoint
 CREATE TABLE `password_credentials` (
 	`authenticator_id` text PRIMARY KEY NOT NULL,
 	`password_hash` text NOT NULL,
@@ -222,6 +271,17 @@ CREATE TABLE `recovery_sets` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `recovery_sets_authenticator_id_unique` ON `recovery_sets` (`authenticator_id`);--> statement-breakpoint
+CREATE TABLE `refresh_token_families` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` integer NOT NULL,
+	`revoked_at` integer,
+	`revocation_reason` text,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "refresh_families_revoked_state_check" CHECK("refresh_token_families"."revoked_at" IS NOT NULL OR "refresh_token_families"."revocation_reason" IS NULL)
+);
+--> statement-breakpoint
+CREATE INDEX `idx_refresh_families_user` ON `refresh_token_families` (`user_id`);--> statement-breakpoint
 CREATE TABLE `totp_credentials` (
 	`authenticator_id` text PRIMARY KEY NOT NULL,
 	`encrypted_totp_secret` text NOT NULL,
@@ -254,21 +314,26 @@ CREATE TABLE `user_authenticators` (
 );
 --> statement-breakpoint
 CREATE INDEX `idx_authenticators_user_type_revoked` ON `user_authenticators` (`user_id`,`type`,`revoked_at`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_password_user_active` ON `user_authenticators` (`user_id`,`type`) WHERE "user_authenticators"."type" = 'password' AND "user_authenticators"."revoked_at" IS NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_totp_user_active` ON `user_authenticators` (`user_id`,`type`) WHERE "user_authenticators"."type" = 'totp' AND "user_authenticators"."revoked_at" IS NULL;--> statement-breakpoint
 CREATE TABLE `user_sessions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` integer NOT NULL,
 	`jti` text NOT NULL,
 	`ip` text,
 	`user_agent` text,
+	`family_id` text,
 	`refresh_token_hash` text NOT NULL,
 	`aal` integer DEFAULT 1 NOT NULL,
 	`auth_epoch` integer DEFAULT 1 NOT NULL,
 	`last_activity_at` integer,
+	`last_authenticated_at` integer,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
 	`expires_at` integer NOT NULL,
 	`revoked_at` integer,
 	`revocation_reason` text,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`family_id`) REFERENCES `refresh_token_families`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "user_sessions_aal_check" CHECK("user_sessions"."aal" IN (1, 2, 3)),
 	CONSTRAINT "user_sessions_expiration_check" CHECK("user_sessions"."created_at" < "user_sessions"."expires_at"),
 	CONSTRAINT "user_sessions_revoked_state_check" CHECK("user_sessions"."revoked_at" IS NOT NULL OR "user_sessions"."revocation_reason" IS NULL)
@@ -276,6 +341,7 @@ CREATE TABLE `user_sessions` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `user_sessions_jti_unique` ON `user_sessions` (`jti`);--> statement-breakpoint
 CREATE INDEX `idx_sessions_user` ON `user_sessions` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_sessions_family` ON `user_sessions` (`family_id`);--> statement-breakpoint
 CREATE INDEX `idx_sessions_expires` ON `user_sessions` (`expires_at`);--> statement-breakpoint
 CREATE TABLE `wallet_authenticators` (
 	`authenticator_id` text PRIMARY KEY NOT NULL,
@@ -309,6 +375,26 @@ CREATE TABLE `webauthn_credentials` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `webauthn_credentials_credential_id_unique` ON `webauthn_credentials` (`credential_id`);--> statement-breakpoint
+CREATE TABLE `permissions` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`key` text NOT NULL,
+	`display_name` text NOT NULL,
+	`description` text,
+	`module` text NOT NULL,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `permissions_key_unique` ON `permissions` (`key`);--> statement-breakpoint
+CREATE INDEX `idx_permissions_module` ON `permissions` (`module`);--> statement-breakpoint
+CREATE TABLE `role_permissions` (
+	`role_id` integer NOT NULL,
+	`permission_id` integer NOT NULL,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	PRIMARY KEY(`role_id`, `permission_id`),
+	FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`permission_id`) REFERENCES `permissions`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
 CREATE TABLE `roles` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`key` text NOT NULL,
@@ -386,6 +472,7 @@ CREATE TABLE `citizens` (
 	CONSTRAINT "ck_citizens_version" CHECK("citizens"."version" > 0)
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `uq_citizens_username` ON `citizens` (`username`);--> statement-breakpoint
 CREATE TABLE `identity_documents` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` integer NOT NULL,
@@ -482,6 +569,7 @@ CREATE TABLE `did_identities` (
 	`did` text NOT NULL,
 	`method` text NOT NULL,
 	`controller` text NOT NULL,
+	`is_primary` integer DEFAULT false NOT NULL,
 	`status` text DEFAULT 'active' NOT NULL,
 	`version` integer DEFAULT 1 NOT NULL,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
@@ -499,6 +587,7 @@ CREATE UNIQUE INDEX `did_identities_did_unique` ON `did_identities` (`did`);--> 
 CREATE INDEX `idx_did_identities_user` ON `did_identities` (`user_id`);--> statement-breakpoint
 CREATE INDEX `idx_did_identities_did` ON `did_identities` (`did`);--> statement-breakpoint
 CREATE INDEX `idx_did_identities_status` ON `did_identities` (`status`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_did_user_active_primary` ON `did_identities` (`user_id`) WHERE "did_identities"."is_primary" = 1 AND "did_identities"."status" = 'active';--> statement-breakpoint
 CREATE TABLE `did_verification_methods` (
 	`id` text PRIMARY KEY NOT NULL,
 	`did_id` text NOT NULL,
@@ -545,8 +634,9 @@ CREATE TABLE `secure_vaults` (
 );
 --> statement-breakpoint
 CREATE INDEX `idx_secure_vaults_user` ON `secure_vaults` (`user_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `uq_secure_vaults_user_purpose_version` ON `secure_vaults` (`user_id`,`purpose`,`key_version`);--> statement-breakpoint
-CREATE UNIQUE INDEX `uq_secure_vaults_active_purpose` ON `secure_vaults` (`user_id`,`purpose`) WHERE "secure_vaults"."revoked_at" IS NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_secure_vaults_user_purpose_version` ON `secure_vaults` (`user_id`,`purpose`,`key_version`) WHERE "secure_vaults"."purpose" != 'private_key';--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_secure_vaults_active_purpose` ON `secure_vaults` (`user_id`,`purpose`) WHERE "secure_vaults"."revoked_at" IS NULL AND "secure_vaults"."purpose" != 'private_key';--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_secure_vaults_key_reference` ON `secure_vaults` (`key_reference`);--> statement-breakpoint
 CREATE TABLE `verifiable_credentials` (
 	`id` text PRIMARY KEY NOT NULL,
 	`holder_user_id` integer NOT NULL,
@@ -1138,8 +1228,42 @@ CREATE TABLE `account_balances` (
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`account_id`) REFERENCES `financial_accounts`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_account_balances_available_canonical" CHECK(("account_balances"."available_base_units" = '0' OR ("account_balances"."available_base_units" GLOB '[1-9]*' AND "account_balances"."available_base_units" NOT GLOB '*[^0-9]*')) AND (length("account_balances"."available_base_units") < 78 OR (length("account_balances"."available_base_units") = 78 AND "account_balances"."available_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))),
-	CONSTRAINT "ck_account_balances_locked_canonical" CHECK(("account_balances"."locked_base_units" = '0' OR ("account_balances"."locked_base_units" GLOB '[1-9]*' AND "account_balances"."locked_base_units" NOT GLOB '*[^0-9]*')) AND (length("account_balances"."locked_base_units") < 78 OR (length("account_balances"."locked_base_units") = 78 AND "account_balances"."locked_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))),
+	CONSTRAINT "ck_account_balances_available_canonical" CHECK(
+    (
+      "account_balances"."available_base_units" = '0'
+      OR (
+        "account_balances"."available_base_units" GLOB '[1-9]*'
+        AND "account_balances"."available_base_units" NOT GLOB '*[^0-9]*'
+      )
+    )
+    AND 
+    (
+      length("account_balances"."available_base_units") < 78
+      OR (
+        length("account_balances"."available_base_units") = 78
+        AND "account_balances"."available_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_account_balances_locked_canonical" CHECK(
+    (
+      "account_balances"."locked_base_units" = '0'
+      OR (
+        "account_balances"."locked_base_units" GLOB '[1-9]*'
+        AND "account_balances"."locked_base_units" NOT GLOB '*[^0-9]*'
+      )
+    )
+    AND 
+    (
+      length("account_balances"."locked_base_units") < 78
+      OR (
+        length("account_balances"."locked_base_units") = 78
+        AND "account_balances"."locked_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
 	CONSTRAINT "ck_account_balances_version" CHECK("account_balances"."version" > 0)
 );
 --> statement-breakpoint
@@ -1153,27 +1277,137 @@ CREATE TABLE `asset_conversions` (
 	`to_asset_id` integer NOT NULL,
 	`from_amount_base_units` text NOT NULL,
 	`to_amount_base_units` text NOT NULL,
-	`rate` text NOT NULL,
+	`rate_numerator` text NOT NULL,
+	`rate_denominator` text NOT NULL,
 	`rate_source` text,
+	`source_exchange_rate_id` integer,
 	`quoted_at` integer,
+	`fee_asset_id` integer,
 	`fee_amount_base_units` text DEFAULT '0' NOT NULL,
 	`status` text DEFAULT 'pending' NOT NULL,
+	`version` integer DEFAULT 1 NOT NULL,
 	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
 	`completed_at` integer,
 	FOREIGN KEY (`financial_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`from_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`to_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_asset_conversions_status" CHECK("asset_conversions"."status" IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
-	CONSTRAINT "ck_asset_conversions_from_amount_positive" CHECK("asset_conversions"."from_amount_base_units" <> '' AND ltrim("asset_conversions"."from_amount_base_units", '0123456789') = '' AND "asset_conversions"."from_amount_base_units" <> '0' AND ltrim("asset_conversions"."from_amount_base_units", '0') = "asset_conversions"."from_amount_base_units"),
-	CONSTRAINT "ck_asset_conversions_to_amount_positive" CHECK("asset_conversions"."to_amount_base_units" <> '' AND ltrim("asset_conversions"."to_amount_base_units", '0123456789') = '' AND "asset_conversions"."to_amount_base_units" <> '0' AND ltrim("asset_conversions"."to_amount_base_units", '0') = "asset_conversions"."to_amount_base_units"),
-	CONSTRAINT "ck_asset_conversions_fee_nonnegative" CHECK("asset_conversions"."fee_amount_base_units" <> '' AND ltrim("asset_conversions"."fee_amount_base_units", '0123456789') = '' AND ("asset_conversions"."fee_amount_base_units" = '0' OR ltrim("asset_conversions"."fee_amount_base_units", '0') = "asset_conversions"."fee_amount_base_units")),
+	FOREIGN KEY (`source_exchange_rate_id`) REFERENCES `exchange_rates`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`fee_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "ck_asset_conversions_status" CHECK("asset_conversions"."status" IN (
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled'
+      )),
+	CONSTRAINT "ck_asset_conversions_from_amount_canonical" CHECK(
+    "asset_conversions"."from_amount_base_units" GLOB '[1-9]*'
+    AND "asset_conversions"."from_amount_base_units" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("asset_conversions"."from_amount_base_units") < 78
+      OR (
+        length("asset_conversions"."from_amount_base_units") = 78
+        AND "asset_conversions"."from_amount_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_asset_conversions_to_amount_canonical" CHECK(
+    "asset_conversions"."to_amount_base_units" GLOB '[1-9]*'
+    AND "asset_conversions"."to_amount_base_units" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("asset_conversions"."to_amount_base_units") < 78
+      OR (
+        length("asset_conversions"."to_amount_base_units") = 78
+        AND "asset_conversions"."to_amount_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_asset_conversions_fee_canonical" CHECK(
+    (
+      "asset_conversions"."fee_amount_base_units" = '0'
+      OR (
+        "asset_conversions"."fee_amount_base_units" GLOB '[1-9]*'
+        AND "asset_conversions"."fee_amount_base_units" NOT GLOB '*[^0-9]*'
+      )
+    )
+    AND 
+    (
+      length("asset_conversions"."fee_amount_base_units") < 78
+      OR (
+        length("asset_conversions"."fee_amount_base_units") = 78
+        AND "asset_conversions"."fee_amount_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_asset_conversions_fee_asset_coherence" CHECK((
+        "asset_conversions"."fee_amount_base_units" = '0'
+        AND "asset_conversions"."fee_asset_id" IS NULL
+      )
+      OR
+      (
+        "asset_conversions"."fee_amount_base_units" != '0'
+        AND "asset_conversions"."fee_asset_id" IS NOT NULL
+      )),
 	CONSTRAINT "ck_asset_conversions_different_assets" CHECK("asset_conversions"."from_asset_id" <> "asset_conversions"."to_asset_id"),
-	CONSTRAINT "ck_asset_conversions_rate_positive" CHECK(CAST("asset_conversions"."rate" AS REAL) > 0)
+	CONSTRAINT "ck_asset_conversions_numerator_canonical" CHECK(
+    "asset_conversions"."rate_numerator" GLOB '[1-9]*'
+    AND "asset_conversions"."rate_numerator" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("asset_conversions"."rate_numerator") < 78
+      OR (
+        length("asset_conversions"."rate_numerator") = 78
+        AND "asset_conversions"."rate_numerator" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_asset_conversions_denominator_canonical" CHECK(
+    "asset_conversions"."rate_denominator" GLOB '[1-9]*'
+    AND "asset_conversions"."rate_denominator" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("asset_conversions"."rate_denominator") < 78
+      OR (
+        length("asset_conversions"."rate_denominator") = 78
+        AND "asset_conversions"."rate_denominator" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_asset_conversions_rate_source" CHECK("asset_conversions"."rate_source" IS NULL
+        OR length(trim("asset_conversions"."rate_source")) > 0),
+	CONSTRAINT "ck_asset_conversions_quoted_at" CHECK((
+        "asset_conversions"."quoted_at" IS NULL
+        OR "asset_conversions"."quoted_at" >= "asset_conversions"."created_at"
+      )),
+	CONSTRAINT "ck_asset_conversions_completed_state" CHECK((
+        "asset_conversions"."status" = 'completed'
+        AND "asset_conversions"."completed_at" IS NOT NULL
+      )
+      OR
+      (
+        "asset_conversions"."status" != 'completed'
+        AND "asset_conversions"."completed_at" IS NULL
+      )),
+	CONSTRAINT "ck_asset_conversions_completed_temporal" CHECK("asset_conversions"."completed_at" IS NULL
+        OR "asset_conversions"."completed_at" >= "asset_conversions"."created_at"),
+	CONSTRAINT "ck_asset_conversions_version" CHECK("asset_conversions"."version" > 0)
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_asset_conversions_transaction` ON `asset_conversions` (`financial_transaction_id`);--> statement-breakpoint
 CREATE INDEX `idx_asset_conversions_from_asset` ON `asset_conversions` (`from_asset_id`);--> statement-breakpoint
 CREATE INDEX `idx_asset_conversions_to_asset` ON `asset_conversions` (`to_asset_id`);--> statement-breakpoint
+CREATE INDEX `idx_asset_conversions_status` ON `asset_conversions` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_asset_conversions_created` ON `asset_conversions` (`created_at`);--> statement-breakpoint
+CREATE INDEX `idx_asset_conversions_source_exchange_rate` ON `asset_conversions` (`source_exchange_rate_id`);--> statement-breakpoint
+CREATE INDEX `idx_asset_conversions_fee_asset` ON `asset_conversions` (`fee_asset_id`);--> statement-breakpoint
 CREATE TABLE `balance_holds` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`account_id` integer NOT NULL,
@@ -1188,12 +1422,100 @@ CREATE TABLE `balance_holds` (
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	`released_at` integer,
+	`released_by_transaction_id` integer,
+	`consumed_at` integer,
+	`consumed_by_transaction_id` integer,
 	FOREIGN KEY (`account_id`) REFERENCES `financial_accounts`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_balance_holds_status" CHECK("balance_holds"."status" IN ('active', 'released', 'expired', 'consumed')),
-	CONSTRAINT "ck_balance_holds_amount_positive" CHECK("balance_holds"."amount_base_units" <> '' AND ltrim("balance_holds"."amount_base_units", '0123456789') = '' AND "balance_holds"."amount_base_units" <> '0' AND ltrim("balance_holds"."amount_base_units", '0') = "balance_holds"."amount_base_units"),
-	CONSTRAINT "ck_balance_holds_released_state" CHECK("balance_holds"."status" != 'released' OR "balance_holds"."released_at" IS NOT NULL),
-	CONSTRAINT "ck_balance_holds_expired_state" CHECK("balance_holds"."status" != 'expired' OR "balance_holds"."expires_at" IS NOT NULL),
+	FOREIGN KEY (`released_by_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`consumed_by_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "ck_balance_holds_status" CHECK("balance_holds"."status" IN (
+        'active',
+        'released',
+        'expired',
+        'consumed'
+      )),
+	CONSTRAINT "ck_balance_holds_reason_nonempty" CHECK(length(trim("balance_holds"."reason")) > 0),
+	CONSTRAINT "ck_balance_holds_reference_coherence" CHECK((
+        "balance_holds"."reference_type" IS NULL
+        AND "balance_holds"."reference_id" IS NULL
+      )
+      OR
+      (
+        "balance_holds"."reference_type" IS NOT NULL
+        AND "balance_holds"."reference_id" IS NOT NULL
+        AND length(trim("balance_holds"."reference_type")) > 0
+        AND length(trim("balance_holds"."reference_id")) > 0
+      )),
+	CONSTRAINT "ck_balance_holds_amount_canonical" CHECK(
+    "balance_holds"."amount_base_units" GLOB '[1-9]*'
+    AND "balance_holds"."amount_base_units" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("balance_holds"."amount_base_units") < 78
+      OR (
+        length("balance_holds"."amount_base_units") = 78
+        AND "balance_holds"."amount_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_balance_holds_released_state" CHECK((
+        "balance_holds"."status" = 'released'
+        AND "balance_holds"."released_at" IS NOT NULL
+        AND "balance_holds"."released_by_transaction_id" IS NOT NULL
+        AND "balance_holds"."consumed_at" IS NULL
+        AND "balance_holds"."consumed_by_transaction_id" IS NULL
+      )
+      OR
+      (
+        "balance_holds"."status" != 'released'
+        AND "balance_holds"."released_at" IS NULL
+        AND "balance_holds"."released_by_transaction_id" IS NULL
+      )),
+	CONSTRAINT "ck_balance_holds_expired_state" CHECK((
+        "balance_holds"."status" = 'expired'
+        AND "balance_holds"."expires_at" IS NOT NULL
+        AND "balance_holds"."consumed_at" IS NULL
+        AND "balance_holds"."released_at" IS NULL
+      )
+      OR
+      "balance_holds"."status" != 'expired'),
+	CONSTRAINT "ck_balance_holds_consumed_state" CHECK((
+        "balance_holds"."status" = 'consumed'
+        AND "balance_holds"."consumed_at" IS NOT NULL
+        AND "balance_holds"."consumed_by_transaction_id" IS NOT NULL
+        AND "balance_holds"."released_at" IS NULL
+        AND "balance_holds"."released_by_transaction_id" IS NULL
+      )
+      OR
+      (
+        "balance_holds"."status" != 'consumed'
+        AND "balance_holds"."consumed_at" IS NULL
+        AND "balance_holds"."consumed_by_transaction_id" IS NULL
+      )),
+	CONSTRAINT "ck_balance_holds_active_state" CHECK((
+        "balance_holds"."status" = 'active'
+        AND "balance_holds"."released_at" IS NULL
+        AND "balance_holds"."released_by_transaction_id" IS NULL
+        AND "balance_holds"."consumed_at" IS NULL
+        AND "balance_holds"."consumed_by_transaction_id" IS NULL
+      )
+      OR
+      "balance_holds"."status" != 'active'),
+	CONSTRAINT "ck_balance_holds_expiration_temporal" CHECK("balance_holds"."expires_at" IS NULL
+        OR "balance_holds"."expires_at" > "balance_holds"."created_at"),
+	CONSTRAINT "ck_balance_holds_lifecycle_temporal" CHECK((
+        (
+          "balance_holds"."released_at" IS NULL
+          OR "balance_holds"."released_at" >= "balance_holds"."created_at"
+        )
+        AND
+        (
+          "balance_holds"."consumed_at" IS NULL
+          OR "balance_holds"."consumed_at" >= "balance_holds"."created_at"
+        )
+      )),
 	CONSTRAINT "ck_balance_holds_version" CHECK("balance_holds"."version" > 0)
 );
 --> statement-breakpoint
@@ -1201,52 +1523,192 @@ CREATE INDEX `idx_balance_holds_account` ON `balance_holds` (`account_id`);--> s
 CREATE INDEX `idx_balance_holds_asset` ON `balance_holds` (`asset_id`);--> statement-breakpoint
 CREATE INDEX `idx_balance_holds_status` ON `balance_holds` (`status`);--> statement-breakpoint
 CREATE INDEX `idx_balance_holds_reference` ON `balance_holds` (`reference_type`,`reference_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_balance_holds_active_reference` ON `balance_holds` (`reference_type`,`reference_id`) WHERE "balance_holds"."reference_type" IS NOT NULL
+          AND "balance_holds"."reference_id" IS NOT NULL
+          AND "balance_holds"."status" = 'active';--> statement-breakpoint
+CREATE INDEX `idx_balance_holds_release_transaction` ON `balance_holds` (`released_by_transaction_id`);--> statement-breakpoint
+CREATE INDEX `idx_balance_holds_consumed_transaction` ON `balance_holds` (`consumed_by_transaction_id`);--> statement-breakpoint
 CREATE TABLE `crypto_transactions` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`financial_transaction_id` integer NOT NULL,
 	`asset_id` integer NOT NULL,
 	`web3_transaction_id` text,
+	`network` text,
+	`block_number` integer,
+	`confirmations` integer DEFAULT 0 NOT NULL,
 	`direction` text NOT NULL,
 	`amount_base_units` text NOT NULL,
+	`from_address` text,
+	`to_address` text,
+	`transaction_index` integer,
+	`nonce` integer,
 	`fee_asset_id` integer,
 	`fee_base_units` text DEFAULT '0' NOT NULL,
 	`status` text DEFAULT 'pending' NOT NULL,
 	`version` integer DEFAULT 1 NOT NULL,
 	`requested_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
 	`settled_at` integer,
 	FOREIGN KEY (`financial_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`fee_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_crypto_tx_direction" CHECK("crypto_transactions"."direction" IN ('inbound', 'outbound')),
-	CONSTRAINT "ck_crypto_tx_status" CHECK("crypto_transactions"."status" IN ('pending', 'processing', 'confirmed', 'failed', 'reversed')),
-	CONSTRAINT "ck_crypto_transactions_amount_positive" CHECK("crypto_transactions"."amount_base_units" <> '' AND ltrim("crypto_transactions"."amount_base_units", '0123456789') = '' AND "crypto_transactions"."amount_base_units" <> '0' AND ltrim("crypto_transactions"."amount_base_units", '0') = "crypto_transactions"."amount_base_units"),
-	CONSTRAINT "ck_crypto_transactions_fee_nonnegative" CHECK("crypto_transactions"."fee_base_units" <> '' AND ltrim("crypto_transactions"."fee_base_units", '0123456789') = '' AND ("crypto_transactions"."fee_base_units" = '0' OR ltrim("crypto_transactions"."fee_base_units", '0') = "crypto_transactions"."fee_base_units")),
-	CONSTRAINT "ck_crypto_transactions_fee_asset" CHECK("crypto_transactions"."fee_base_units" = '0' OR "crypto_transactions"."fee_asset_id" IS NOT NULL),
-	CONSTRAINT "ck_crypto_tx_dates" CHECK("crypto_transactions"."settled_at" IS NULL OR "crypto_transactions"."settled_at" >= "crypto_transactions"."requested_at"),
+	CONSTRAINT "ck_crypto_tx_direction" CHECK("crypto_transactions"."direction" IN (
+        'inbound',
+        'outbound'
+      )),
+	CONSTRAINT "ck_crypto_tx_status" CHECK("crypto_transactions"."status" IN (
+        'pending',
+        'processing',
+        'confirmed',
+        'failed',
+        'reversed'
+      )),
+	CONSTRAINT "ck_crypto_transactions_amount_canonical" CHECK(
+    "crypto_transactions"."amount_base_units" GLOB '[1-9]*'
+    AND "crypto_transactions"."amount_base_units" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("crypto_transactions"."amount_base_units") < 78
+      OR (
+        length("crypto_transactions"."amount_base_units") = 78
+        AND "crypto_transactions"."amount_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_crypto_transactions_fee_canonical" CHECK(
+    (
+      "crypto_transactions"."fee_base_units" = '0'
+      OR (
+        "crypto_transactions"."fee_base_units" GLOB '[1-9]*'
+        AND "crypto_transactions"."fee_base_units" NOT GLOB '*[^0-9]*'
+      )
+    )
+    AND 
+    (
+      length("crypto_transactions"."fee_base_units") < 78
+      OR (
+        length("crypto_transactions"."fee_base_units") = 78
+        AND "crypto_transactions"."fee_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_crypto_transactions_fee_asset" CHECK((
+        "crypto_transactions"."fee_base_units" = '0'
+        AND "crypto_transactions"."fee_asset_id" IS NULL
+      )
+      OR
+      (
+        "crypto_transactions"."fee_base_units" != '0'
+        AND "crypto_transactions"."fee_asset_id" IS NOT NULL
+      )),
+	CONSTRAINT "ck_crypto_tx_web3_network_coherence" CHECK((
+        "crypto_transactions"."web3_transaction_id" IS NULL
+        AND "crypto_transactions"."network" IS NULL
+      )
+      OR
+      (
+        "crypto_transactions"."web3_transaction_id" IS NOT NULL
+        AND "crypto_transactions"."network" IS NOT NULL
+      )),
+	CONSTRAINT "ck_crypto_transactions_confirmations" CHECK("crypto_transactions"."confirmations" >= 0),
+	CONSTRAINT "ck_crypto_transactions_block_number" CHECK("crypto_transactions"."block_number" IS NULL
+        OR "crypto_transactions"."block_number" >= 0),
+	CONSTRAINT "ck_crypto_transactions_network" CHECK("crypto_transactions"."network" IS NULL
+        OR length(trim("crypto_transactions"."network")) > 0),
+	CONSTRAINT "ck_crypto_transactions_web3_id" CHECK("crypto_transactions"."web3_transaction_id" IS NULL
+        OR length(trim("crypto_transactions"."web3_transaction_id")) > 0),
+	CONSTRAINT "ck_crypto_transactions_from_address" CHECK("crypto_transactions"."from_address" IS NULL
+        OR length(trim("crypto_transactions"."from_address")) > 0),
+	CONSTRAINT "ck_crypto_transactions_to_address" CHECK("crypto_transactions"."to_address" IS NULL
+        OR length(trim("crypto_transactions"."to_address")) > 0),
+	CONSTRAINT "ck_crypto_transactions_transaction_index" CHECK("crypto_transactions"."transaction_index" IS NULL
+        OR "crypto_transactions"."transaction_index" >= 0),
+	CONSTRAINT "ck_crypto_transactions_nonce" CHECK("crypto_transactions"."nonce" IS NULL
+        OR "crypto_transactions"."nonce" >= 0),
+	CONSTRAINT "ck_crypto_transactions_confirmed_evidence" CHECK((
+        "crypto_transactions"."status" != 'confirmed'
+      )
+      OR
+      (
+        "crypto_transactions"."status" = 'confirmed'
+        AND "crypto_transactions"."web3_transaction_id" IS NOT NULL
+        AND "crypto_transactions"."network" IS NOT NULL
+        AND "crypto_transactions"."block_number" IS NOT NULL
+        AND "crypto_transactions"."confirmations" > 0
+        AND "crypto_transactions"."from_address" IS NOT NULL
+        AND "crypto_transactions"."to_address" IS NOT NULL
+        AND "crypto_transactions"."settled_at" IS NOT NULL
+      )),
+	CONSTRAINT "ck_crypto_tx_settled_state" CHECK((
+        "crypto_transactions"."status" IN ('confirmed', 'reversed')
+        AND "crypto_transactions"."settled_at" IS NOT NULL
+      )
+      OR
+      (
+        "crypto_transactions"."status" NOT IN ('confirmed', 'reversed')
+        AND "crypto_transactions"."settled_at" IS NULL
+      )),
+	CONSTRAINT "ck_crypto_tx_dates" CHECK("crypto_transactions"."settled_at" IS NULL
+        OR "crypto_transactions"."settled_at" >= "crypto_transactions"."requested_at"),
 	CONSTRAINT "ck_crypto_tx_version" CHECK("crypto_transactions"."version" > 0)
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_crypto_transactions_financial_transaction` ON `crypto_transactions` (`financial_transaction_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `uq_crypto_transactions_web3_transaction` ON `crypto_transactions` (`web3_transaction_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_crypto_transactions_network_web3_transaction` ON `crypto_transactions` (`network`,`web3_transaction_id`);--> statement-breakpoint
 CREATE INDEX `idx_crypto_transactions_asset` ON `crypto_transactions` (`asset_id`);--> statement-breakpoint
+CREATE INDEX `idx_crypto_transactions_fee_asset` ON `crypto_transactions` (`fee_asset_id`);--> statement-breakpoint
 CREATE INDEX `idx_crypto_transactions_status` ON `crypto_transactions` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_crypto_transactions_network` ON `crypto_transactions` (`network`);--> statement-breakpoint
+CREATE INDEX `idx_crypto_transactions_requested` ON `crypto_transactions` (`requested_at`);--> statement-breakpoint
 CREATE TABLE `exchange_rates` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`base_asset_id` integer NOT NULL,
 	`quote_asset_id` integer NOT NULL,
-	`rate` text NOT NULL,
+	`rate_numerator` text NOT NULL,
+	`rate_denominator` text NOT NULL,
 	`source` text NOT NULL,
 	`quoted_at` integer NOT NULL,
 	`expires_at` integer,
 	FOREIGN KEY (`base_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`quote_asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "ck_exchange_rates_different_assets" CHECK("exchange_rates"."base_asset_id" <> "exchange_rates"."quote_asset_id"),
-	CONSTRAINT "ck_exchange_rates_rate_positive" CHECK(CAST("exchange_rates"."rate" AS REAL) > 0),
-	CONSTRAINT "ck_exchange_rates_expires_after_quoted" CHECK("exchange_rates"."expires_at" IS NULL OR "exchange_rates"."expires_at" >= "exchange_rates"."quoted_at")
+	CONSTRAINT "ck_exchange_rates_numerator_canonical" CHECK(
+    "exchange_rates"."rate_numerator" GLOB '[1-9]*'
+    AND "exchange_rates"."rate_numerator" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("exchange_rates"."rate_numerator") < 78
+      OR (
+        length("exchange_rates"."rate_numerator") = 78
+        AND "exchange_rates"."rate_numerator" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_exchange_rates_denominator_canonical" CHECK(
+    "exchange_rates"."rate_denominator" GLOB '[1-9]*'
+    AND "exchange_rates"."rate_denominator" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("exchange_rates"."rate_denominator") < 78
+      OR (
+        length("exchange_rates"."rate_denominator") = 78
+        AND "exchange_rates"."rate_denominator" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_exchange_rates_source_nonempty" CHECK(length(trim("exchange_rates"."source")) > 0),
+	CONSTRAINT "ck_exchange_rates_expires_after_quoted" CHECK("exchange_rates"."expires_at" IS NULL
+        OR "exchange_rates"."expires_at" >= "exchange_rates"."quoted_at")
 );
 --> statement-breakpoint
+CREATE INDEX `idx_exchange_rates_pair_quoted` ON `exchange_rates` (`base_asset_id`,`quote_asset_id`,`quoted_at`);--> statement-breakpoint
 CREATE INDEX `idx_exchange_rates_pair` ON `exchange_rates` (`base_asset_id`,`quote_asset_id`);--> statement-breakpoint
 CREATE INDEX `idx_exchange_rates_quoted` ON `exchange_rates` (`quoted_at`);--> statement-breakpoint
+CREATE INDEX `idx_exchange_rates_expires` ON `exchange_rates` (`expires_at`);--> statement-breakpoint
 CREATE TABLE `fiat_accounts` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` integer NOT NULL,
@@ -1263,37 +1725,97 @@ CREATE TABLE `fiat_accounts` (
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`provider_id`) REFERENCES `fiat_providers`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_fiat_accounts_type" CHECK("fiat_accounts"."type" IN ('bank_account', 'payment_account', 'pix_account')),
-	CONSTRAINT "ck_fiat_accounts_status" CHECK("fiat_accounts"."status" IN ('active', 'inactive', 'blocked')),
-	CONSTRAINT "ck_fiat_accounts_blocked_state" CHECK("fiat_accounts"."status" != 'blocked' OR "fiat_accounts"."blocked_at" IS NOT NULL)
+	CONSTRAINT "ck_fiat_accounts_type" CHECK("fiat_accounts"."type" IN (
+        'bank_account',
+        'payment_account',
+        'pix_account'
+      )),
+	CONSTRAINT "ck_fiat_accounts_status" CHECK("fiat_accounts"."status" IN (
+        'active',
+        'inactive',
+        'blocked'
+      )),
+	CONSTRAINT "ck_fiat_accounts_external_provider_coherence" CHECK((
+        "fiat_accounts"."provider_id" IS NULL
+        AND "fiat_accounts"."external_account_id" IS NULL
+      )
+      OR
+      (
+        "fiat_accounts"."provider_id" IS NOT NULL
+        AND "fiat_accounts"."external_account_id" IS NOT NULL
+        AND length(trim("fiat_accounts"."external_account_id")) > 0
+      )),
+	CONSTRAINT "ck_fiat_accounts_display_name_nonempty" CHECK("fiat_accounts"."display_name" IS NULL
+        OR length(trim("fiat_accounts"."display_name")) > 0),
+	CONSTRAINT "ck_fiat_accounts_last4" CHECK("fiat_accounts"."last4" IS NULL
+        OR (
+          length("fiat_accounts"."last4") BETWEEN 2 AND 4
+          AND "fiat_accounts"."last4" NOT GLOB '*[^0-9]*'
+        )),
+	CONSTRAINT "ck_fiat_accounts_blocked_state" CHECK((
+        "fiat_accounts"."status" = 'blocked'
+        AND "fiat_accounts"."blocked_at" IS NOT NULL
+      )
+      OR
+      (
+        "fiat_accounts"."status" != 'blocked'
+        AND "fiat_accounts"."blocked_at" IS NULL
+      )),
+	CONSTRAINT "ck_fiat_accounts_blocked_temporal" CHECK("fiat_accounts"."blocked_at" IS NULL
+        OR "fiat_accounts"."blocked_at" >= "fiat_accounts"."created_at")
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `uq_fiat_accounts_user_id_id` ON `fiat_accounts` (`user_id`,`id`);--> statement-breakpoint
 CREATE INDEX `idx_fiat_accounts_user` ON `fiat_accounts` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_fiat_accounts_asset` ON `fiat_accounts` (`asset_id`);--> statement-breakpoint
 CREATE INDEX `idx_fiat_accounts_provider` ON `fiat_accounts` (`provider_id`);--> statement-breakpoint
 CREATE INDEX `idx_fiat_accounts_status` ON `fiat_accounts` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_fiat_accounts_type` ON `fiat_accounts` (`type`);--> statement-breakpoint
 CREATE UNIQUE INDEX `uq_fiat_accounts_provider_external` ON `fiat_accounts` (`provider_id`,`external_account_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `uq_fiat_accounts_user_account` ON `fiat_accounts` (`user_id`,`id`);--> statement-breakpoint
 CREATE TABLE `fiat_external_transactions` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`financial_transaction_id` integer NOT NULL,
-	`provider_id` integer,
+	`provider_id` integer NOT NULL,
+	`fiat_account_id` integer,
 	`external_transaction_id` text NOT NULL,
-	`type` text NOT NULL,
-	`status` text NOT NULL,
+	`raw_amount` text NOT NULL,
+	`amount_base_units` text,
+	`direction` text NOT NULL,
+	`asset_id` integer,
+	`raw_description` text,
+	`bank_timestamp` integer,
+	`document_number` text,
+	`running_balance_base_units` text,
+	`source_file` text,
+	`source_file_hash` text,
+	`row_fingerprint` text,
+	`raw_payload` text,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`reconciliation_status` text DEFAULT 'unmatched' NOT NULL,
+	`financial_transaction_id` integer,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
+	`settled_at` integer,
+	FOREIGN KEY (`provider_id`) REFERENCES `fiat_providers`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`fiat_account_id`) REFERENCES `fiat_accounts`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`financial_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
-	FOREIGN KEY (`provider_id`) REFERENCES `fiat_providers`(`id`) ON UPDATE no action ON DELETE restrict
+	CONSTRAINT "ck_fiat_external_transaction_id_nonempty" CHECK(length(trim("fiat_external_transactions"."external_transaction_id")) > 0),
+	CONSTRAINT "ck_fiat_external_tx_direction" CHECK("fiat_external_transactions"."direction" IN ('credit', 'debit')),
+	CONSTRAINT "ck_fiat_external_tx_reconciliation_status" CHECK("fiat_external_transactions"."reconciliation_status" IN ('unmatched', 'matched', 'ignored', 'discrepancy')),
+	CONSTRAINT "ck_fiat_external_tx_status" CHECK("fiat_external_transactions"."status" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'unknown'))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_fiat_external_transactions_provider_external` ON `fiat_external_transactions` (`provider_id`,`external_transaction_id`);--> statement-breakpoint
 CREATE INDEX `idx_fiat_external_transactions_transaction` ON `fiat_external_transactions` (`financial_transaction_id`);--> statement-breakpoint
 CREATE INDEX `idx_fiat_external_transactions_provider` ON `fiat_external_transactions` (`provider_id`);--> statement-breakpoint
+CREATE INDEX `idx_fiat_external_transactions_fiat_account` ON `fiat_external_transactions` (`fiat_account_id`);--> statement-breakpoint
 CREATE INDEX `idx_fiat_external_transactions_status` ON `fiat_external_transactions` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_fiat_external_transactions_recon_status` ON `fiat_external_transactions` (`reconciliation_status`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_fiat_external_transactions_fingerprint` ON `fiat_external_transactions` (`row_fingerprint`);--> statement-breakpoint
 CREATE TABLE `fiat_payment_methods` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` integer NOT NULL,
-	`fiat_account_id` integer,
+	`fiat_account_id` integer NOT NULL,
 	`type` text NOT NULL,
 	`label` text NOT NULL,
 	`status` text DEFAULT 'active' NOT NULL,
@@ -1302,9 +1824,29 @@ CREATE TABLE `fiat_payment_methods` (
 	`blocked_at` integer,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`user_id`,`fiat_account_id`) REFERENCES `fiat_accounts`(`user_id`,`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_fiat_pm_type" CHECK("fiat_payment_methods"."type" IN ('pix', 'bank_transfer', 'boleto', 'card')),
-	CONSTRAINT "ck_fiat_pm_status" CHECK("fiat_payment_methods"."status" IN ('active', 'inactive', 'blocked')),
-	CONSTRAINT "ck_fiat_pm_blocked_state" CHECK("fiat_payment_methods"."status" != 'blocked' OR "fiat_payment_methods"."blocked_at" IS NOT NULL)
+	CONSTRAINT "ck_fiat_pm_type" CHECK("fiat_payment_methods"."type" IN (
+        'pix',
+        'bank_transfer',
+        'boleto',
+        'card'
+      )),
+	CONSTRAINT "ck_fiat_pm_label_nonempty" CHECK(length(trim("fiat_payment_methods"."label")) > 0),
+	CONSTRAINT "ck_fiat_pm_status" CHECK("fiat_payment_methods"."status" IN (
+        'active',
+        'inactive',
+        'blocked'
+      )),
+	CONSTRAINT "ck_fiat_pm_blocked_state" CHECK((
+        "fiat_payment_methods"."status" = 'blocked'
+        AND "fiat_payment_methods"."blocked_at" IS NOT NULL
+      )
+      OR
+      (
+        "fiat_payment_methods"."status" != 'blocked'
+        AND "fiat_payment_methods"."blocked_at" IS NULL
+      )),
+	CONSTRAINT "ck_fiat_pm_blocked_temporal" CHECK("fiat_payment_methods"."blocked_at" IS NULL
+        OR "fiat_payment_methods"."blocked_at" >= "fiat_payment_methods"."created_at")
 );
 --> statement-breakpoint
 CREATE INDEX `idx_fiat_payment_methods_user` ON `fiat_payment_methods` (`user_id`);--> statement-breakpoint
@@ -1319,8 +1861,19 @@ CREATE TABLE `fiat_providers` (
 	`status` text DEFAULT 'active' NOT NULL,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
-	CONSTRAINT "ck_fiat_providers_type" CHECK("fiat_providers"."type" IN ('bank', 'payment_provider', 'pix_provider', 'gateway')),
-	CONSTRAINT "ck_fiat_providers_status" CHECK("fiat_providers"."status" IN ('active', 'inactive', 'suspended'))
+	CONSTRAINT "ck_fiat_providers_name_nonempty" CHECK(length(trim("fiat_providers"."name")) > 0),
+	CONSTRAINT "ck_fiat_providers_code_canonical" CHECK("fiat_providers"."code" = upper(trim("fiat_providers"."code")) AND length("fiat_providers"."code") > 0),
+	CONSTRAINT "ck_fiat_providers_type" CHECK("fiat_providers"."type" IN (
+        'bank',
+        'payment_provider',
+        'pix_provider',
+        'gateway'
+      )),
+	CONSTRAINT "ck_fiat_providers_status" CHECK("fiat_providers"."status" IN (
+        'active',
+        'inactive',
+        'suspended'
+      ))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_fiat_providers_code` ON `fiat_providers` (`code`);--> statement-breakpoint
@@ -1329,7 +1882,7 @@ CREATE INDEX `idx_fiat_providers_status` ON `fiat_providers` (`status`);--> stat
 CREATE TABLE `fiat_transactions` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`financial_transaction_id` integer NOT NULL,
-	`provider_id` integer,
+	`provider_id` integer NOT NULL,
 	`payment_method_id` integer,
 	`asset_id` integer NOT NULL,
 	`direction` text NOT NULL,
@@ -1337,16 +1890,54 @@ CREATE TABLE `fiat_transactions` (
 	`status` text DEFAULT 'pending' NOT NULL,
 	`version` integer DEFAULT 1 NOT NULL,
 	`requested_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
 	`processed_at` integer,
 	`settled_at` integer,
 	FOREIGN KEY (`financial_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`provider_id`) REFERENCES `fiat_providers`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`payment_method_id`) REFERENCES `fiat_payment_methods`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_fiat_tx_direction" CHECK("fiat_transactions"."direction" IN ('inbound', 'outbound')),
-	CONSTRAINT "ck_fiat_tx_status" CHECK("fiat_transactions"."status" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed')),
-	CONSTRAINT "ck_fiat_transactions_amount_positive" CHECK("fiat_transactions"."amount_base_units" <> '' AND ltrim("fiat_transactions"."amount_base_units", '0123456789') = '' AND "fiat_transactions"."amount_base_units" <> '0' AND ltrim("fiat_transactions"."amount_base_units", '0') = "fiat_transactions"."amount_base_units"),
-	CONSTRAINT "ck_fiat_tx_dates" CHECK("fiat_transactions"."settled_at" IS NULL OR "fiat_transactions"."settled_at" >= "fiat_transactions"."requested_at"),
+	CONSTRAINT "ck_fiat_tx_direction" CHECK("fiat_transactions"."direction" IN (
+        'inbound',
+        'outbound'
+      )),
+	CONSTRAINT "ck_fiat_tx_status" CHECK("fiat_transactions"."status" IN (
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled',
+        'reversed'
+      )),
+	CONSTRAINT "ck_fiat_transactions_amount_canonical" CHECK(
+    "fiat_transactions"."amount_base_units" GLOB '[1-9]*'
+    AND "fiat_transactions"."amount_base_units" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("fiat_transactions"."amount_base_units") < 78
+      OR (
+        length("fiat_transactions"."amount_base_units") = 78
+        AND "fiat_transactions"."amount_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_fiat_tx_processed_at" CHECK("fiat_transactions"."processed_at" IS NULL
+        OR "fiat_transactions"."processed_at" >= "fiat_transactions"."requested_at"),
+	CONSTRAINT "ck_fiat_tx_settled_at" CHECK("fiat_transactions"."settled_at" IS NULL
+        OR "fiat_transactions"."settled_at" >= "fiat_transactions"."requested_at"),
+	CONSTRAINT "ck_fiat_tx_settlement_order" CHECK("fiat_transactions"."settled_at" IS NULL
+        OR "fiat_transactions"."processed_at" IS NULL
+        OR "fiat_transactions"."settled_at" >= "fiat_transactions"."processed_at"),
+	CONSTRAINT "ck_fiat_tx_settled_state" CHECK((
+        "fiat_transactions"."status" IN ('completed', 'reversed')
+        AND "fiat_transactions"."settled_at" IS NOT NULL
+      )
+      OR
+      (
+        "fiat_transactions"."status" NOT IN ('completed', 'reversed')
+        AND "fiat_transactions"."settled_at" IS NULL
+      )),
 	CONSTRAINT "ck_fiat_tx_version" CHECK("fiat_transactions"."version" > 0)
 );
 --> statement-breakpoint
@@ -1355,26 +1946,140 @@ CREATE INDEX `idx_fiat_transactions_provider` ON `fiat_transactions` (`provider_
 CREATE INDEX `idx_fiat_transactions_payment_method` ON `fiat_transactions` (`payment_method_id`);--> statement-breakpoint
 CREATE INDEX `idx_fiat_transactions_asset` ON `fiat_transactions` (`asset_id`);--> statement-breakpoint
 CREATE INDEX `idx_fiat_transactions_status` ON `fiat_transactions` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_fiat_transactions_requested` ON `fiat_transactions` (`requested_at`);--> statement-breakpoint
 CREATE TABLE `financial_accounts` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` integer,
 	`account_type` text NOT NULL,
+	`account_class` text DEFAULT 'liability' NOT NULL,
 	`status` text DEFAULT 'active' NOT NULL,
 	`name` text NOT NULL,
 	`version` integer DEFAULT 1 NOT NULL,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_financial_accounts_type" CHECK("financial_accounts"."account_type" IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow', 'reward_expense', 'yield_expense', 'clearing', 'opening_balance_equity', 'payment_revenue', 'refund_expense')),
-	CONSTRAINT "ck_financial_accounts_status" CHECK("financial_accounts"."status" IN ('active', 'inactive', 'suspended')),
-	CONSTRAINT "ck_financial_accounts_owner_rule" CHECK(("financial_accounts"."account_type" = 'user_available' AND "financial_accounts"."user_id" IS NOT NULL) OR ("financial_accounts"."account_type" != 'user_available' AND "financial_accounts"."user_id" IS NULL)),
+	CONSTRAINT "ck_financial_accounts_name_nonempty" CHECK(length(trim("financial_accounts"."name")) > 0),
+	CONSTRAINT "ck_financial_accounts_type" CHECK("financial_accounts"."account_type" IN (
+        'user_available',
+        'treasury',
+        'operating',
+        'reserve',
+        'fees',
+        'escrow',
+        'reward_expense',
+        'yield_expense',
+        'clearing',
+        'opening_balance_equity',
+        'payment_revenue',
+        'refund_expense'
+      )),
+	CONSTRAINT "ck_financial_accounts_class" CHECK("financial_accounts"."account_class" IN (
+        'asset',
+        'liability',
+        'equity',
+        'revenue',
+        'expense'
+      )),
+	CONSTRAINT "ck_financial_accounts_status" CHECK("financial_accounts"."status" IN (
+        'active',
+        'inactive',
+        'suspended'
+      )),
+	CONSTRAINT "ck_financial_accounts_type_class_matrix" CHECK((
+        (
+          "financial_accounts"."account_type" = 'user_available'
+          AND "financial_accounts"."account_class" = 'liability'
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'treasury'
+          AND "financial_accounts"."account_class" = 'asset'
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'operating'
+          AND "financial_accounts"."account_class" = 'asset'
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'reserve'
+          AND "financial_accounts"."account_class" IN (
+            'asset',
+            'liability'
+          )
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'fees'
+          AND "financial_accounts"."account_class" = 'revenue'
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'escrow'
+          AND "financial_accounts"."account_class" = 'liability'
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'reward_expense'
+          AND "financial_accounts"."account_class" = 'expense'
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'yield_expense'
+          AND "financial_accounts"."account_class" = 'expense'
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'clearing'
+          AND "financial_accounts"."account_class" IN (
+            'asset',
+            'liability'
+          )
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'opening_balance_equity'
+          AND "financial_accounts"."account_class" IN (
+            'equity',
+            'liability'
+          )
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'payment_revenue'
+          AND "financial_accounts"."account_class" = 'revenue'
+        )
+        OR
+        (
+          "financial_accounts"."account_type" = 'refund_expense'
+          AND "financial_accounts"."account_class" = 'expense'
+        )
+      )),
+	CONSTRAINT "ck_financial_accounts_owner_rule" CHECK((
+        "financial_accounts"."account_type" = 'user_available'
+        AND "financial_accounts"."user_id" IS NOT NULL
+      )
+      OR
+      (
+        "financial_accounts"."account_type" != 'user_available'
+        AND "financial_accounts"."user_id" IS NULL
+      )),
 	CONSTRAINT "ck_financial_accounts_version" CHECK("financial_accounts"."version" > 0)
 );
 --> statement-breakpoint
 CREATE INDEX `idx_financial_accounts_user` ON `financial_accounts` (`user_id`);--> statement-breakpoint
 CREATE INDEX `idx_financial_accounts_type` ON `financial_accounts` (`account_type`);--> statement-breakpoint
+CREATE INDEX `idx_financial_accounts_class` ON `financial_accounts` (`account_class`);--> statement-breakpoint
 CREATE INDEX `idx_financial_accounts_status` ON `financial_accounts` (`status`);--> statement-breakpoint
 CREATE UNIQUE INDEX `uq_financial_accounts_user_type_name` ON `financial_accounts` (`user_id`,`account_type`,`name`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_financial_accounts_system_type_name` ON `financial_accounts` (`account_type`,`name`) WHERE "financial_accounts"."user_id" IS NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_treasury_active_singleton` ON `financial_accounts` (`account_type`) WHERE "financial_accounts"."account_type" = 'treasury'
+          AND "financial_accounts"."status" = 'active';--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_operating_active_singleton` ON `financial_accounts` (`account_type`) WHERE "financial_accounts"."account_type" = 'operating'
+          AND "financial_accounts"."status" = 'active';--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_fees_active_singleton` ON `financial_accounts` (`account_type`) WHERE "financial_accounts"."account_type" = 'fees'
+          AND "financial_accounts"."status" = 'active';--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_user_available_singleton` ON `financial_accounts` (`user_id`) WHERE "financial_accounts"."account_type" = 'user_available';--> statement-breakpoint
 CREATE TABLE `financial_assets` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`code` text NOT NULL,
@@ -1385,9 +2090,21 @@ CREATE TABLE `financial_assets` (
 	`status` text DEFAULT 'active' NOT NULL,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
+	CONSTRAINT "ck_financial_assets_code_canonical" CHECK("financial_assets"."code" = upper(trim("financial_assets"."code")) AND length("financial_assets"."code") > 0),
+	CONSTRAINT "ck_financial_assets_symbol_canonical" CHECK("financial_assets"."symbol" = upper(trim("financial_assets"."symbol")) AND length("financial_assets"."symbol") > 0),
+	CONSTRAINT "ck_financial_assets_name_nonempty" CHECK(length(trim("financial_assets"."name")) > 0),
 	CONSTRAINT "ck_financial_assets_type" CHECK("financial_assets"."type" IN ('fiat', 'crypto')),
 	CONSTRAINT "ck_financial_assets_status" CHECK("financial_assets"."status" IN ('active', 'inactive')),
-	CONSTRAINT "ck_financial_assets_decimals" CHECK("financial_assets"."decimals" >= 0 AND "financial_assets"."decimals" <= 18)
+	CONSTRAINT "ck_financial_assets_decimals" CHECK("financial_assets"."decimals" >= 0 AND "financial_assets"."decimals" <= 18),
+	CONSTRAINT "ck_financial_assets_decimals_by_type" CHECK((
+        "financial_assets"."type" = 'fiat'
+        AND "financial_assets"."decimals" BETWEEN 0 AND 6
+      )
+      OR
+      (
+        "financial_assets"."type" = 'crypto'
+        AND "financial_assets"."decimals" BETWEEN 0 AND 18
+      ))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_financial_assets_code` ON `financial_assets` (`code`);--> statement-breakpoint
@@ -1397,20 +2114,40 @@ CREATE TABLE `financial_fees` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`transaction_id` integer NOT NULL,
 	`asset_id` integer NOT NULL,
-	`recipient_account_id` integer,
+	`recipient_account_id` integer NOT NULL,
 	`fee_type` text NOT NULL,
 	`amount_base_units` text NOT NULL,
 	`created_at` integer NOT NULL,
 	FOREIGN KEY (`transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`recipient_account_id`) REFERENCES `financial_accounts`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_financial_fees_type" CHECK("financial_fees"."fee_type" IN ('platform', 'withdrawal', 'payment', 'conversion', 'network', 'other')),
-	CONSTRAINT "ck_financial_fees_amount_positive" CHECK("financial_fees"."amount_base_units" <> '' AND ltrim("financial_fees"."amount_base_units", '0123456789') = '' AND "financial_fees"."amount_base_units" <> '0' AND ltrim("financial_fees"."amount_base_units", '0') = "financial_fees"."amount_base_units")
+	CONSTRAINT "ck_financial_fees_type" CHECK("financial_fees"."fee_type" IN (
+        'platform',
+        'withdrawal',
+        'payment',
+        'conversion',
+        'network',
+        'other'
+      )),
+	CONSTRAINT "ck_financial_fees_amount_canonical" CHECK(
+    "financial_fees"."amount_base_units" GLOB '[1-9]*'
+    AND "financial_fees"."amount_base_units" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("financial_fees"."amount_base_units") < 78
+      OR (
+        length("financial_fees"."amount_base_units") = 78
+        AND "financial_fees"."amount_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  )
 );
 --> statement-breakpoint
 CREATE INDEX `idx_financial_fees_transaction` ON `financial_fees` (`transaction_id`);--> statement-breakpoint
 CREATE INDEX `idx_financial_fees_asset` ON `financial_fees` (`asset_id`);--> statement-breakpoint
 CREATE INDEX `idx_financial_fees_recipient_account` ON `financial_fees` (`recipient_account_id`);--> statement-breakpoint
+CREATE INDEX `idx_financial_fees_type` ON `financial_fees` (`fee_type`);--> statement-breakpoint
 CREATE TABLE `financial_ledger_entries` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`transaction_id` integer NOT NULL,
@@ -1418,21 +2155,43 @@ CREATE TABLE `financial_ledger_entries` (
 	`asset_id` integer NOT NULL,
 	`direction` text NOT NULL,
 	`amount_base_units` text NOT NULL,
+	`entry_ordinal` integer DEFAULT 0 NOT NULL,
 	`created_at` integer NOT NULL,
 	FOREIGN KEY (`transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`account_id`) REFERENCES `financial_accounts`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_financial_ledger_direction" CHECK("financial_ledger_entries"."direction" IN ('debit', 'credit')),
-	CONSTRAINT "ck_financial_ledger_entries_amount_positive" CHECK("financial_ledger_entries"."amount_base_units" <> '' AND ltrim("financial_ledger_entries"."amount_base_units", '0123456789') = '' AND "financial_ledger_entries"."amount_base_units" <> '0' AND ltrim("financial_ledger_entries"."amount_base_units", '0') = "financial_ledger_entries"."amount_base_units")
+	CONSTRAINT "ck_financial_ledger_direction" CHECK("financial_ledger_entries"."direction" IN (
+        'debit',
+        'credit'
+      )),
+	CONSTRAINT "ck_financial_ledger_entries_amount_canonical" CHECK(
+    "financial_ledger_entries"."amount_base_units" GLOB '[1-9]*'
+    AND "financial_ledger_entries"."amount_base_units" NOT GLOB '*[^0-9]*'
+    AND 
+    (
+      length("financial_ledger_entries"."amount_base_units") < 78
+      OR (
+        length("financial_ledger_entries"."amount_base_units") = 78
+        AND "financial_ledger_entries"."amount_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  )
 );
 --> statement-breakpoint
+CREATE INDEX `idx_financial_ledger_entries_account_asset_id` ON `financial_ledger_entries` (`account_id`,`asset_id`,`id`);--> statement-breakpoint
 CREATE INDEX `idx_financial_ledger_entries_transaction` ON `financial_ledger_entries` (`transaction_id`);--> statement-breakpoint
 CREATE INDEX `idx_financial_ledger_entries_account` ON `financial_ledger_entries` (`account_id`);--> statement-breakpoint
 CREATE INDEX `idx_financial_ledger_entries_asset` ON `financial_ledger_entries` (`asset_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_ledger_entry_ordinal` ON `financial_ledger_entries` (`transaction_id`,`entry_ordinal`);--> statement-breakpoint
 CREATE INDEX `idx_financial_ledger_entries_created` ON `financial_ledger_entries` (`created_at`);--> statement-breakpoint
 CREATE TABLE `financial_transactions` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` integer,
+	`actor_user_id` integer,
+	`authorized_by_user_id` integer,
+	`reversal_of_transaction_id` integer,
+	`refund_of_transaction_id` integer,
 	`type` text NOT NULL,
 	`category` text DEFAULT 'other' NOT NULL,
 	`status` text DEFAULT 'pending' NOT NULL,
@@ -1444,13 +2203,127 @@ CREATE TABLE `financial_transactions` (
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	`completed_at` integer,
+	`reversed_at` integer,
+	`refunded_at` integer,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_financial_tx_type" CHECK("financial_transactions"."type" IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment', 'reversal', 'inbound', 'outbound')),
-	CONSTRAINT "ck_financial_tx_category" CHECK("financial_transactions"."category" IN ('membership', 'rwa_yield', 'grant', 'operational', 'payment', 'trading', 'withdrawal', 'deposit', 'fee', 'other')),
-	CONSTRAINT "ck_financial_tx_status" CHECK("financial_transactions"."status" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'refunded')),
-	CONSTRAINT "ck_financial_tx_source_type" CHECK("financial_transactions"."source_type" IS NULL OR "financial_transactions"."source_type" IN ('contribution', 'grant', 'membership', 'payroll', 'withdrawal', 'payment', 'conversion', 'system', 'other')),
-	CONSTRAINT "ck_financial_tx_completed_state" CHECK("financial_transactions"."status" != 'completed' OR "financial_transactions"."completed_at" IS NOT NULL),
-	CONSTRAINT "ck_financial_tx_dates" CHECK("financial_transactions"."completed_at" IS NULL OR "financial_transactions"."completed_at" >= "financial_transactions"."created_at"),
+	FOREIGN KEY (`actor_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`authorized_by_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`reversal_of_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`refund_of_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
+	CONSTRAINT "ck_financial_tx_type" CHECK("financial_transactions"."type" IN (
+        'deposit',
+        'withdrawal',
+        'transfer',
+        'payment',
+        'refund',
+        'fee',
+        'reward',
+        'yield',
+        'conversion',
+        'adjustment',
+        'reversal'
+      )),
+	CONSTRAINT "ck_financial_tx_category" CHECK("financial_transactions"."category" IN (
+        'membership',
+        'rwa_yield',
+        'grant',
+        'operational',
+        'payment',
+        'trading',
+        'withdrawal',
+        'deposit',
+        'fee',
+        'other'
+      )),
+	CONSTRAINT "ck_financial_tx_status" CHECK("financial_transactions"."status" IN (
+        'pending',
+        'processing',
+        'completed',
+        'failed',
+        'cancelled',
+        'reversed',
+        'refunded'
+      )),
+	CONSTRAINT "ck_financial_tx_source_type" CHECK("financial_transactions"."source_type" IS NULL
+        OR "financial_transactions"."source_type" IN (
+          'contribution',
+          'grant',
+          'membership',
+          'payroll',
+          'withdrawal',
+          'payment',
+          'conversion',
+          'system',
+          'other'
+        )),
+	CONSTRAINT "ck_financial_tx_description_nonempty" CHECK(length(trim("financial_transactions"."description")) > 0),
+	CONSTRAINT "ck_financial_tx_source_coherence" CHECK((
+        "financial_transactions"."source_type" IS NULL
+        AND "financial_transactions"."source_id" IS NULL
+      )
+      OR
+      (
+        "financial_transactions"."source_type" IS NOT NULL
+        AND "financial_transactions"."source_id" IS NOT NULL
+        AND length(trim("financial_transactions"."source_id")) > 0
+      )),
+	CONSTRAINT "ck_financial_tx_correlation_nonempty" CHECK("financial_transactions"."correlation_id" IS NULL
+        OR length(trim("financial_transactions"."correlation_id")) > 0),
+	CONSTRAINT "ck_financial_tx_reversal_coherence" CHECK((
+        "financial_transactions"."reversal_of_transaction_id" IS NULL
+        OR (
+          "financial_transactions"."type" = 'reversal'
+          AND "financial_transactions"."reversal_of_transaction_id" != "financial_transactions"."id"
+        )
+      )),
+	CONSTRAINT "ck_financial_tx_refund_coherence" CHECK((
+        "financial_transactions"."refund_of_transaction_id" IS NULL
+        OR (
+          "financial_transactions"."type" = 'refund'
+          AND "financial_transactions"."refund_of_transaction_id" != "financial_transactions"."id"
+        )
+      )),
+	CONSTRAINT "ck_financial_tx_reversal_refund_exclusive" CHECK(NOT (
+        "financial_transactions"."reversal_of_transaction_id" IS NOT NULL
+        AND "financial_transactions"."refund_of_transaction_id" IS NOT NULL
+      )),
+	CONSTRAINT "ck_financial_tx_typed_reference_required" CHECK((
+        (
+          "financial_transactions"."type" = 'reversal'
+          AND "financial_transactions"."reversal_of_transaction_id" IS NOT NULL
+        )
+        OR
+        (
+          "financial_transactions"."type" = 'refund'
+          AND "financial_transactions"."refund_of_transaction_id" IS NOT NULL
+        )
+        OR
+        (
+          "financial_transactions"."type" NOT IN (
+            'reversal',
+            'refund'
+          )
+        )
+      )),
+	CONSTRAINT "ck_financial_tx_completed_state" CHECK((
+        "financial_transactions"."status" IN (
+          'completed',
+          'reversed',
+          'refunded'
+        )
+        AND "financial_transactions"."completed_at" IS NOT NULL
+      )
+      OR
+      (
+        "financial_transactions"."status" NOT IN (
+          'completed',
+          'reversed',
+          'refunded'
+        )
+        AND "financial_transactions"."completed_at" IS NULL
+      )),
+	CONSTRAINT "ck_financial_tx_dates" CHECK("financial_transactions"."completed_at" IS NULL
+        OR "financial_transactions"."completed_at" >= "financial_transactions"."created_at"),
 	CONSTRAINT "ck_financial_tx_version" CHECK("financial_transactions"."version" > 0)
 );
 --> statement-breakpoint
@@ -1459,26 +2332,31 @@ CREATE INDEX `idx_financial_transactions_type` ON `financial_transactions` (`typ
 CREATE INDEX `idx_financial_transactions_status` ON `financial_transactions` (`status`);--> statement-breakpoint
 CREATE INDEX `idx_financial_transactions_created` ON `financial_transactions` (`created_at`);--> statement-breakpoint
 CREATE INDEX `idx_financial_transactions_correlation` ON `financial_transactions` (`correlation_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_financial_tx_active_reversal` ON `financial_transactions` (`reversal_of_transaction_id`) WHERE "financial_transactions"."reversal_of_transaction_id" IS NOT NULL
+          AND "financial_transactions"."status" NOT IN ('failed', 'cancelled');--> statement-breakpoint
+CREATE INDEX `idx_financial_transactions_refund_of` ON `financial_transactions` (`refund_of_transaction_id`);--> statement-breakpoint
 CREATE TABLE `idempotency_keys` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`user_id` integer,
-	`scope` text NOT NULL,
+	`scope` text DEFAULT 'default' NOT NULL,
 	`key` text NOT NULL,
 	`request_hash` text NOT NULL,
 	`financial_transaction_id` integer,
 	`status` text DEFAULT 'processing' NOT NULL,
-	`created_at` integer NOT NULL,
+	`lease_owner` text,
+	`lease_generation` integer DEFAULT 0 NOT NULL,
+	`response_status` integer,
+	`response_payload` text,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch()) NOT NULL,
 	`expires_at` integer,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
-	FOREIGN KEY (`financial_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "ck_idempotency_keys_status" CHECK("idempotency_keys"."status" IN ('processing', 'completed', 'failed')),
-	CONSTRAINT "ck_idempotency_keys_expires" CHECK("idempotency_keys"."expires_at" IS NULL OR "idempotency_keys"."created_at" < "idempotency_keys"."expires_at")
+	FOREIGN KEY (`financial_transaction_id`) REFERENCES `financial_transactions`(`id`) ON UPDATE no action ON DELETE restrict
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_idempotency_scope_key` ON `idempotency_keys` (`scope`,`key`);--> statement-breakpoint
-CREATE INDEX `idx_idempotency_keys_user` ON `idempotency_keys` (`user_id`);--> statement-breakpoint
-CREATE INDEX `idx_idempotency_keys_transaction` ON `idempotency_keys` (`financial_transaction_id`);--> statement-breakpoint
 CREATE INDEX `idx_idempotency_keys_status` ON `idempotency_keys` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_idempotency_keys_lease` ON `idempotency_keys` (`lease_owner`,`lease_generation`);--> statement-breakpoint
 CREATE TABLE `reconciliation_records` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`provider_id` integer,
@@ -1500,24 +2378,158 @@ CREATE TABLE `reconciliation_records` (
 	FOREIGN KEY (`asset_id`) REFERENCES `financial_assets`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`resolved_by_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "ck_reconciliation_run_id_nonempty" CHECK(length(trim("reconciliation_records"."reconciliation_run_id")) > 0),
-	CONSTRAINT "ck_reconciliation_status" CHECK("reconciliation_records"."status" IN ('pending', 'matched', 'mismatch', 'resolved')),
-	CONSTRAINT "ck_reconciliation_expected_canonical" CHECK(("reconciliation_records"."expected_balance_base_units" = '0' OR ("reconciliation_records"."expected_balance_base_units" GLOB '[1-9]*' AND "reconciliation_records"."expected_balance_base_units" NOT GLOB '*[^0-9]*')) AND (length("reconciliation_records"."expected_balance_base_units") < 78 OR (length("reconciliation_records"."expected_balance_base_units") = 78 AND "reconciliation_records"."expected_balance_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))),
-	CONSTRAINT "ck_reconciliation_actual_canonical" CHECK(("reconciliation_records"."actual_balance_base_units" = '0' OR ("reconciliation_records"."actual_balance_base_units" GLOB '[1-9]*' AND "reconciliation_records"."actual_balance_base_units" NOT GLOB '*[^0-9]*')) AND (length("reconciliation_records"."actual_balance_base_units") < 78 OR (length("reconciliation_records"."actual_balance_base_units") = 78 AND "reconciliation_records"."actual_balance_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))),
-	CONSTRAINT "ck_reconciliation_difference_canonical" CHECK(("reconciliation_records"."difference_base_units" = '0' OR ("reconciliation_records"."difference_base_units" GLOB '[1-9]*' AND "reconciliation_records"."difference_base_units" NOT GLOB '*[^0-9]*') OR (substr("reconciliation_records"."difference_base_units", 1, 1) = '-' AND substr("reconciliation_records"."difference_base_units", 2) GLOB '[1-9]*' AND substr("reconciliation_records"."difference_base_units", 2) NOT GLOB '*[^0-9]*')) AND ("reconciliation_records"."difference_base_units" = '0' OR (substr("reconciliation_records"."difference_base_units", 1, 1) != '-' AND (length("reconciliation_records"."difference_base_units") < 78 OR (length("reconciliation_records"."difference_base_units") = 78 AND "reconciliation_records"."difference_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))) OR (substr("reconciliation_records"."difference_base_units", 1, 1) = '-' AND (length("reconciliation_records"."difference_base_units") < 79 OR (length("reconciliation_records"."difference_base_units") = 79 AND substr("reconciliation_records"."difference_base_units", 2) <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'))))),
-	CONSTRAINT "ck_reconciliation_status_difference" CHECK("reconciliation_records"."status" = 'pending' OR ("reconciliation_records"."status" = 'matched' AND "reconciliation_records"."expected_balance_base_units" = "reconciliation_records"."actual_balance_base_units" AND "reconciliation_records"."difference_base_units" = '0') OR ("reconciliation_records"."status" = 'mismatch' AND "reconciliation_records"."expected_balance_base_units" != "reconciliation_records"."actual_balance_base_units" AND "reconciliation_records"."difference_base_units" != '0') OR ("reconciliation_records"."status" = 'resolved' AND "reconciliation_records"."expected_balance_base_units" != "reconciliation_records"."actual_balance_base_units" AND "reconciliation_records"."difference_base_units" != '0' AND "reconciliation_records"."resolution_reason" IS NOT NULL AND "reconciliation_records"."resolution_reference" IS NOT NULL)),
-	CONSTRAINT "ck_reconciliation_resolved_state" CHECK(("reconciliation_records"."status" = 'resolved' AND "reconciliation_records"."resolved_at" IS NOT NULL AND "reconciliation_records"."resolved_by_user_id" IS NOT NULL AND "reconciliation_records"."resolution_reason" IS NOT NULL AND "reconciliation_records"."resolution_reference" IS NOT NULL) OR ("reconciliation_records"."status" != 'resolved' AND "reconciliation_records"."resolved_at" IS NULL AND "reconciliation_records"."resolved_by_user_id" IS NULL AND "reconciliation_records"."resolution_reason" IS NULL AND "reconciliation_records"."resolution_reference" IS NULL)),
-	CONSTRAINT "ck_reconciliation_resolution_reason" CHECK("reconciliation_records"."resolution_reason" IS NULL OR length(trim("reconciliation_records"."resolution_reason")) > 0),
-	CONSTRAINT "ck_reconciliation_resolution_reference" CHECK("reconciliation_records"."resolution_reference" IS NULL OR length(trim("reconciliation_records"."resolution_reference")) > 0),
-	CONSTRAINT "ck_reconciliation_resolved_temporal" CHECK("reconciliation_records"."resolved_at" IS NULL OR "reconciliation_records"."resolved_at" >= "reconciliation_records"."reconciliation_date"),
+	CONSTRAINT "ck_reconciliation_status" CHECK("reconciliation_records"."status" IN (
+        'pending',
+        'matched',
+        'mismatch',
+        'resolved'
+      )),
+	CONSTRAINT "ck_reconciliation_expected_canonical" CHECK(
+    (
+      "reconciliation_records"."expected_balance_base_units" = '0'
+      OR (
+        "reconciliation_records"."expected_balance_base_units" GLOB '[1-9]*'
+        AND "reconciliation_records"."expected_balance_base_units" NOT GLOB '*[^0-9]*'
+      )
+    )
+    AND 
+    (
+      length("reconciliation_records"."expected_balance_base_units") < 78
+      OR (
+        length("reconciliation_records"."expected_balance_base_units") = 78
+        AND "reconciliation_records"."expected_balance_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_reconciliation_actual_canonical" CHECK(
+    (
+      "reconciliation_records"."actual_balance_base_units" = '0'
+      OR (
+        "reconciliation_records"."actual_balance_base_units" GLOB '[1-9]*'
+        AND "reconciliation_records"."actual_balance_base_units" NOT GLOB '*[^0-9]*'
+      )
+    )
+    AND 
+    (
+      length("reconciliation_records"."actual_balance_base_units") < 78
+      OR (
+        length("reconciliation_records"."actual_balance_base_units") = 78
+        AND "reconciliation_records"."actual_balance_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+  ),
+	CONSTRAINT "ck_reconciliation_difference_canonical" CHECK(
+    (
+      "reconciliation_records"."difference_base_units" = '0'
+
+      OR
+
+      (
+        "reconciliation_records"."difference_base_units" GLOB '[1-9]*'
+        AND "reconciliation_records"."difference_base_units" NOT GLOB '*[^0-9]*'
+        AND 
+    (
+      length("reconciliation_records"."difference_base_units") < 78
+      OR (
+        length("reconciliation_records"."difference_base_units") = 78
+        AND "reconciliation_records"."difference_base_units" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+      )
+    )
+  
+      )
+
+      OR
+
+      (
+        substr("reconciliation_records"."difference_base_units", 1, 1) = '-'
+        AND substr("reconciliation_records"."difference_base_units", 2) GLOB '[1-9]*'
+        AND substr("reconciliation_records"."difference_base_units", 2) NOT GLOB '*[^0-9]*'
+        AND (
+          length("reconciliation_records"."difference_base_units") < 79
+          OR (
+            length("reconciliation_records"."difference_base_units") = 79
+            AND substr("reconciliation_records"."difference_base_units", 2) <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+          )
+        )
+      )
+    )
+  ),
+	CONSTRAINT "ck_reconciliation_status_difference" CHECK((
+        (
+          "reconciliation_records"."status" IN ('pending', 'matched')
+          AND "reconciliation_records"."expected_balance_base_units" = "reconciliation_records"."actual_balance_base_units"
+          AND "reconciliation_records"."difference_base_units" = '0'
+        )
+        OR
+        (
+          "reconciliation_records"."status" IN ('pending', 'mismatch')
+          AND "reconciliation_records"."expected_balance_base_units" != "reconciliation_records"."actual_balance_base_units"
+          AND "reconciliation_records"."difference_base_units" != '0'
+        )
+        OR
+        (
+          "reconciliation_records"."status" = 'resolved'
+          AND "reconciliation_records"."expected_balance_base_units" != "reconciliation_records"."actual_balance_base_units"
+          AND "reconciliation_records"."difference_base_units" != '0'
+          AND "reconciliation_records"."resolution_reason" IS NOT NULL
+          AND "reconciliation_records"."resolution_reference" IS NOT NULL
+        )
+      )),
+	CONSTRAINT "ck_reconciliation_resolved_state" CHECK((
+        "reconciliation_records"."status" = 'resolved'
+        AND "reconciliation_records"."resolved_at" IS NOT NULL
+        AND "reconciliation_records"."resolved_by_user_id" IS NOT NULL
+        AND "reconciliation_records"."resolution_reason" IS NOT NULL
+        AND "reconciliation_records"."resolution_reference" IS NOT NULL
+      )
+      OR
+      (
+        "reconciliation_records"."status" != 'resolved'
+        AND "reconciliation_records"."resolved_at" IS NULL
+        AND "reconciliation_records"."resolved_by_user_id" IS NULL
+        AND "reconciliation_records"."resolution_reason" IS NULL
+        AND "reconciliation_records"."resolution_reference" IS NULL
+      )),
+	CONSTRAINT "ck_reconciliation_resolution_reason" CHECK("reconciliation_records"."resolution_reason" IS NULL
+        OR length(trim("reconciliation_records"."resolution_reason")) > 0),
+	CONSTRAINT "ck_reconciliation_resolution_reference" CHECK("reconciliation_records"."resolution_reference" IS NULL
+        OR length(trim("reconciliation_records"."resolution_reference")) > 0),
+	CONSTRAINT "ck_reconciliation_resolved_temporal" CHECK("reconciliation_records"."resolved_at" IS NULL
+        OR "reconciliation_records"."resolved_at" >= "reconciliation_records"."reconciliation_date"),
 	CONSTRAINT "ck_reconciliation_records_version" CHECK("reconciliation_records"."version" > 0)
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `uq_reconciliation_run_scope_provider` ON `reconciliation_records` (`reconciliation_run_id`,`provider_id`,`account_id`,`asset_id`) WHERE `provider_id` IS NOT NULL;--> statement-breakpoint
-CREATE UNIQUE INDEX `uq_reconciliation_run_scope_no_provider` ON `reconciliation_records` (`reconciliation_run_id`,`account_id`,`asset_id`) WHERE `provider_id` IS NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_reconciliation_run_scope_provider` ON `reconciliation_records` (`reconciliation_run_id`,`provider_id`,`account_id`,`asset_id`) WHERE "reconciliation_records"."provider_id" IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_reconciliation_run_scope_no_provider` ON `reconciliation_records` (`reconciliation_run_id`,`account_id`,`asset_id`) WHERE "reconciliation_records"."provider_id" IS NULL;--> statement-breakpoint
 CREATE INDEX `idx_reconciliation_records_account` ON `reconciliation_records` (`account_id`);--> statement-breakpoint
 CREATE INDEX `idx_reconciliation_records_asset` ON `reconciliation_records` (`asset_id`);--> statement-breakpoint
 CREATE INDEX `idx_reconciliation_records_provider` ON `reconciliation_records` (`provider_id`);--> statement-breakpoint
+CREATE INDEX `idx_reconciliation_records_run` ON `reconciliation_records` (`reconciliation_run_id`);--> statement-breakpoint
 CREATE INDEX `idx_reconciliation_records_status` ON `reconciliation_records` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_reconciliation_records_date` ON `reconciliation_records` (`reconciliation_date`);--> statement-breakpoint
+CREATE INDEX `idx_reconciliation_records_resolver` ON `reconciliation_records` (`resolved_by_user_id`);--> statement-breakpoint
+CREATE TABLE `_sql_assertions` (
+	`id` integer PRIMARY KEY NOT NULL,
+	`guard` integer NOT NULL,
+	CONSTRAINT "ck_sql_assertions_guard" CHECK("_sql_assertions"."guard" = 1),
+	CONSTRAINT "ck_sql_assertions_id" CHECK("_sql_assertions"."id" = 1)
+);
+--> statement-breakpoint
+CREATE TABLE `system_account_routes` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`account_type` text NOT NULL,
+	`provider_id` integer,
+	`account_id` integer NOT NULL,
+	`status` text DEFAULT 'active' NOT NULL,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	FOREIGN KEY (`provider_id`) REFERENCES `fiat_providers`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`account_id`) REFERENCES `financial_accounts`(`id`) ON UPDATE no action ON DELETE restrict
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_system_route_provider` ON `system_account_routes` (`account_type`,`provider_id`) WHERE "system_account_routes"."status" = 'active' AND "system_account_routes"."provider_id" IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_system_route_global` ON `system_account_routes` (`account_type`) WHERE "system_account_routes"."status" = 'active' AND "system_account_routes"."provider_id" IS NULL;--> statement-breakpoint
 CREATE TABLE `integration_configs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`provider` text NOT NULL,
@@ -1639,17 +2651,56 @@ CREATE TABLE `security_events` (
 CREATE INDEX `idx_security_events_user_created` ON `security_events` (`user_id`,`created_at`);--> statement-breakpoint
 CREATE INDEX `idx_security_events_wallet_created` ON `security_events` (`wallet_id`,`created_at`);--> statement-breakpoint
 CREATE INDEX `idx_security_events_auth` ON `security_events` (`authenticator_id`);--> statement-breakpoint
+CREATE TABLE `event_consumer_receipts` (
+	`id` text PRIMARY KEY NOT NULL,
+	`consumer_id` text NOT NULL,
+	`event_id` text NOT NULL,
+	`processed_at` integer DEFAULT (unixepoch()) NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_consumer_event` ON `event_consumer_receipts` (`consumer_id`,`event_id`);--> statement-breakpoint
+CREATE INDEX `idx_receipts_event` ON `event_consumer_receipts` (`event_id`);--> statement-breakpoint
+CREATE TABLE `event_inbox` (
+	`id` text PRIMARY KEY NOT NULL,
+	`provider_id` integer NOT NULL,
+	`event_type` text,
+	`external_event_id` text NOT NULL,
+	`payload` text NOT NULL,
+	`payload_hash` text NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`lease_owner` text,
+	`lease_generation` integer DEFAULT 0 NOT NULL,
+	`lease_expires_at` integer,
+	`attempts` integer DEFAULT 0 NOT NULL,
+	`last_error` text,
+	`processing_started_at` integer,
+	`processed_at` integer,
+	`created_at` integer NOT NULL,
+	CONSTRAINT "ck_event_inbox_status" CHECK("event_inbox"."status" IN ('pending', 'processing', 'processed', 'failed'))
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_event_inbox_provider_event` ON `event_inbox` (`provider_id`,`external_event_id`);--> statement-breakpoint
+CREATE INDEX `idx_event_inbox_status` ON `event_inbox` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_event_inbox_lease` ON `event_inbox` (`lease_expires_at`);--> statement-breakpoint
 CREATE TABLE `outbox_events` (
 	`id` text PRIMARY KEY NOT NULL,
-	`aggregate_id` integer NOT NULL,
+	`aggregate_id` text NOT NULL,
 	`aggregate_type` text NOT NULL,
 	`aggregate_version` integer NOT NULL,
 	`event_name` text NOT NULL,
 	`payload` text NOT NULL,
 	`metadata` text,
 	`attempts` integer DEFAULT 0 NOT NULL,
-	`published` integer DEFAULT false NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
 	`published_at` integer,
+	`lease_owner` text,
+	`lease_generation` integer DEFAULT 0 NOT NULL,
+	`lease_expires_at` integer,
 	`error` text,
-	`created_at` integer DEFAULT (strftime('%s', 'now')) NOT NULL
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	CONSTRAINT "ck_outbox_events_status" CHECK("outbox_events"."status" IN ('pending', 'processing', 'published', 'failed', 'dead_letter'))
 );
+--> statement-breakpoint
+CREATE INDEX `idx_outbox_events_status` ON `outbox_events` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_outbox_events_lease` ON `outbox_events` (`lease_expires_at`);--> statement-breakpoint
+CREATE INDEX `idx_outbox_events_created` ON `outbox_events` (`created_at`);

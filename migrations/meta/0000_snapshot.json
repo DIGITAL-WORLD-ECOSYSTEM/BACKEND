@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d02aacb2-472d-44af-81d1-31120421c9e2",
+  "id": "0a4b0c18-8030-4903-9633-9fd4577fec7e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "membership_cards": {
@@ -1012,6 +1012,21 @@
           "autoincrement": false,
           "default": "'pending_setup'"
         },
+        "failed_login_attempts": {
+          "name": "failed_login_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "last_failed_login_at": {
+          "name": "last_failed_login_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "status_changed_at": {
           "name": "status_changed_at",
           "type": "integer",
@@ -1129,6 +1144,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "transaction_id": {
+          "name": "transaction_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "user_id": {
           "name": "user_id",
           "type": "integer",
@@ -1145,6 +1167,13 @@
         },
         "challenge_type": {
           "name": "challenge_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "context": {
+          "name": "context",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -1174,6 +1203,13 @@
         }
       },
       "indexes": {
+        "idx_auth_challenges_transaction": {
+          "name": "idx_auth_challenges_transaction",
+          "columns": [
+            "transaction_id"
+          ],
+          "isUnique": false
+        },
         "idx_auth_challenges_expires": {
           "name": "idx_auth_challenges_expires",
           "columns": [
@@ -1183,6 +1219,19 @@
         }
       },
       "foreignKeys": {
+        "auth_challenges_transaction_id_auth_transactions_id_fk": {
+          "name": "auth_challenges_transaction_id_auth_transactions_id_fk",
+          "tableFrom": "auth_challenges",
+          "tableTo": "auth_transactions",
+          "columnsFrom": [
+            "transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "auth_challenges_user_id_users_id_fk": {
           "name": "auth_challenges_user_id_users_id_fk",
           "tableFrom": "auth_challenges",
@@ -1204,6 +1253,10 @@
           "name": "auth_challenges_type_check",
           "value": "\"auth_challenges\".\"challenge_type\" IN ('ssh', 'totp', 'webauthn', 'siwe')"
         },
+        "auth_challenges_context_check": {
+          "name": "auth_challenges_context_check",
+          "value": "\"auth_challenges\".\"context\" IN ('login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery')"
+        },
         "auth_challenges_expiration_check": {
           "name": "auth_challenges_expiration_check",
           "value": "\"auth_challenges\".\"created_at\" < \"auth_challenges\".\"expires_at\""
@@ -1213,6 +1266,298 @@
           "value": "\"auth_challenges\".\"used_at\" IS NULL OR \"auth_challenges\".\"used_at\" >= \"auth_challenges\".\"created_at\""
         }
       }
+    },
+    "auth_transactions": {
+      "name": "auth_transactions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'created'"
+        },
+        "initial_aal": {
+          "name": "initial_aal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "current_aal": {
+          "name": "current_aal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "target_aal": {
+          "name": "target_aal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 2
+        },
+        "method": {
+          "name": "method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "challenge_hash": {
+          "name": "challenge_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "context": {
+          "name": "context",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ip": {
+          "name": "ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "failure_count": {
+          "name": "failure_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "auth_epoch_at_start": {
+          "name": "auth_epoch_at_start",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_authenticated_at": {
+          "name": "last_authenticated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "assurance_method": {
+          "name": "assurance_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "risk_level": {
+          "name": "risk_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'low'"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "idx_auth_transactions_user": {
+          "name": "idx_auth_transactions_user",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        },
+        "idx_auth_transactions_expires": {
+          "name": "idx_auth_transactions_expires",
+          "columns": [
+            "expires_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "auth_transactions_user_id_users_id_fk": {
+          "name": "auth_transactions_user_id_users_id_fk",
+          "tableFrom": "auth_transactions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "auth_transactions_status_check": {
+          "name": "auth_transactions_status_check",
+          "value": "\"auth_transactions\".\"status\" IN ('created', 'awaiting_factor', 'verified', 'completed', 'expired', 'cancelled', 'failed', 'replayed', 'locked')"
+        },
+        "auth_transactions_context_check": {
+          "name": "auth_transactions_context_check",
+          "value": "\"auth_transactions\".\"context\" IN ('login', 'mfa_setup', 'mfa_change', 'credential_link', 'credential_unlink', 'sensitive_operation', 'password_change', 'recovery')"
+        },
+        "auth_transactions_expiration_check": {
+          "name": "auth_transactions_expiration_check",
+          "value": "\"auth_transactions\".\"created_at\" < \"auth_transactions\".\"expires_at\""
+        }
+      }
+    },
+    "oauth_identities": {
+      "name": "oauth_identities",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "uq_oauth_identities_provider_subject": {
+          "name": "uq_oauth_identities_provider_subject",
+          "columns": [
+            "provider",
+            "subject_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "oauth_identities_user_id_users_id_fk": {
+          "name": "oauth_identities_user_id_users_id_fk",
+          "tableFrom": "oauth_identities",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "password_credentials": {
       "name": "password_credentials",
@@ -1475,6 +1820,79 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "refresh_token_families": {
+      "name": "refresh_token_families",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revocation_reason": {
+          "name": "revocation_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_refresh_families_user": {
+          "name": "idx_refresh_families_user",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "refresh_token_families_user_id_users_id_fk": {
+          "name": "refresh_token_families_user_id_users_id_fk",
+          "tableFrom": "refresh_token_families",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "refresh_families_revoked_state_check": {
+          "name": "refresh_families_revoked_state_check",
+          "value": "\"refresh_token_families\".\"revoked_at\" IS NOT NULL OR \"refresh_token_families\".\"revocation_reason\" IS NULL"
+        }
+      }
+    },
     "totp_credentials": {
       "name": "totp_credentials",
       "columns": {
@@ -1649,6 +2067,24 @@
             "revoked_at"
           ],
           "isUnique": false
+        },
+        "uq_password_user_active": {
+          "name": "uq_password_user_active",
+          "columns": [
+            "user_id",
+            "type"
+          ],
+          "isUnique": true,
+          "where": "\"user_authenticators\".\"type\" = 'password' AND \"user_authenticators\".\"revoked_at\" IS NULL"
+        },
+        "uq_totp_user_active": {
+          "name": "uq_totp_user_active",
+          "columns": [
+            "user_id",
+            "type"
+          ],
+          "isUnique": true,
+          "where": "\"user_authenticators\".\"type\" = 'totp' AND \"user_authenticators\".\"revoked_at\" IS NULL"
         }
       },
       "foreignKeys": {
@@ -1730,6 +2166,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "family_id": {
+          "name": "family_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "refresh_token_hash": {
           "name": "refresh_token_hash",
           "type": "text",
@@ -1755,6 +2198,13 @@
         },
         "last_activity_at": {
           "name": "last_activity_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_authenticated_at": {
+          "name": "last_authenticated_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -1805,6 +2255,13 @@
           ],
           "isUnique": false
         },
+        "idx_sessions_family": {
+          "name": "idx_sessions_family",
+          "columns": [
+            "family_id"
+          ],
+          "isUnique": false
+        },
         "idx_sessions_expires": {
           "name": "idx_sessions_expires",
           "columns": [
@@ -1820,6 +2277,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "user_sessions_family_id_refresh_token_families_id_fk": {
+          "name": "user_sessions_family_id_refresh_token_families_id_fk",
+          "tableFrom": "user_sessions",
+          "tableTo": "refresh_token_families",
+          "columnsFrom": [
+            "family_id"
           ],
           "columnsTo": [
             "id"
@@ -2056,6 +2526,141 @@
           "value": "\"webauthn_credentials\".\"backup_state\" = 0 OR \"webauthn_credentials\".\"backup_eligible\" = 1"
         }
       }
+    },
+    "permissions": {
+      "name": "permissions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "module": {
+          "name": "module",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "permissions_key_unique": {
+          "name": "permissions_key_unique",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "idx_permissions_module": {
+          "name": "idx_permissions_module",
+          "columns": [
+            "module"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "role_permissions": {
+      "name": "role_permissions",
+      "columns": {
+        "role_id": {
+          "name": "role_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "permission_id": {
+          "name": "permission_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "role_permissions_role_id_roles_id_fk": {
+          "name": "role_permissions_role_id_roles_id_fk",
+          "tableFrom": "role_permissions",
+          "tableTo": "roles",
+          "columnsFrom": [
+            "role_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "role_permissions_permission_id_permissions_id_fk": {
+          "name": "role_permissions_permission_id_permissions_id_fk",
+          "tableFrom": "role_permissions",
+          "tableTo": "permissions",
+          "columnsFrom": [
+            "permission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "role_permissions_role_id_permission_id_pk": {
+          "columns": [
+            "role_id",
+            "permission_id"
+          ],
+          "name": "role_permissions_role_id_permission_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "roles": {
       "name": "roles",
@@ -2507,7 +3112,15 @@
           "default": "(unixepoch())"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "uq_citizens_username": {
+          "name": "uq_citizens_username",
+          "columns": [
+            "username"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {
         "citizens_user_id_users_id_fk": {
           "name": "citizens_user_id_users_id_fk",
@@ -3031,6 +3644,14 @@
           "notNull": true,
           "autoincrement": false
         },
+        "is_primary": {
+          "name": "is_primary",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -3099,6 +3720,14 @@
             "status"
           ],
           "isUnique": false
+        },
+        "uq_did_user_active_primary": {
+          "name": "uq_did_user_active_primary",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": true,
+          "where": "\"did_identities\".\"is_primary\" = 1 AND \"did_identities\".\"status\" = 'active'"
         }
       },
       "foreignKeys": {
@@ -3398,7 +4027,8 @@
             "purpose",
             "key_version"
           ],
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"secure_vaults\".\"purpose\" != 'private_key'"
         },
         "uq_secure_vaults_active_purpose": {
           "name": "uq_secure_vaults_active_purpose",
@@ -3407,7 +4037,14 @@
             "purpose"
           ],
           "isUnique": true,
-          "where": "\"secure_vaults\".\"revoked_at\" IS NULL"
+          "where": "\"secure_vaults\".\"revoked_at\" IS NULL AND \"secure_vaults\".\"purpose\" != 'private_key'"
+        },
+        "uq_secure_vaults_key_reference": {
+          "name": "uq_secure_vaults_key_reference",
+          "columns": [
+            "key_reference"
+          ],
+          "isUnique": true
         }
       },
       "foreignKeys": {
@@ -5085,13 +5722,13 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "ck_account_balances_available_nonnegative": {
-          "name": "ck_account_balances_available_nonnegative",
-          "value": "\"account_balances\".\"available_base_units\" <> '' AND ltrim(\"account_balances\".\"available_base_units\", '0123456789') = '' AND (\"account_balances\".\"available_base_units\" = '0' OR ltrim(\"account_balances\".\"available_base_units\", '0') = \"account_balances\".\"available_base_units\")"
+        "ck_account_balances_available_canonical": {
+          "name": "ck_account_balances_available_canonical",
+          "value": "\n    (\n      \"account_balances\".\"available_base_units\" = '0'\n      OR (\n        \"account_balances\".\"available_base_units\" GLOB '[1-9]*'\n        AND \"account_balances\".\"available_base_units\" NOT GLOB '*[^0-9]*'\n      )\n    )\n    AND \n    (\n      length(\"account_balances\".\"available_base_units\") < 78\n      OR (\n        length(\"account_balances\".\"available_base_units\") = 78\n        AND \"account_balances\".\"available_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
         },
-        "ck_account_balances_locked_nonnegative": {
-          "name": "ck_account_balances_locked_nonnegative",
-          "value": "\"account_balances\".\"locked_base_units\" <> '' AND ltrim(\"account_balances\".\"locked_base_units\", '0123456789') = '' AND (\"account_balances\".\"locked_base_units\" = '0' OR ltrim(\"account_balances\".\"locked_base_units\", '0') = \"account_balances\".\"locked_base_units\")"
+        "ck_account_balances_locked_canonical": {
+          "name": "ck_account_balances_locked_canonical",
+          "value": "\n    (\n      \"account_balances\".\"locked_base_units\" = '0'\n      OR (\n        \"account_balances\".\"locked_base_units\" GLOB '[1-9]*'\n        AND \"account_balances\".\"locked_base_units\" NOT GLOB '*[^0-9]*'\n      )\n    )\n    AND \n    (\n      length(\"account_balances\".\"locked_base_units\") < 78\n      OR (\n        length(\"account_balances\".\"locked_base_units\") = 78\n        AND \"account_balances\".\"locked_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
         },
         "ck_account_balances_version": {
           "name": "ck_account_balances_version",
@@ -5144,8 +5781,15 @@
           "notNull": true,
           "autoincrement": false
         },
-        "rate": {
-          "name": "rate",
+        "rate_numerator": {
+          "name": "rate_numerator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rate_denominator": {
+          "name": "rate_denominator",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -5158,8 +5802,22 @@
           "notNull": false,
           "autoincrement": false
         },
+        "source_exchange_rate_id": {
+          "name": "source_exchange_rate_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "quoted_at": {
           "name": "quoted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fee_asset_id": {
+          "name": "fee_asset_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -5181,8 +5839,23 @@
           "autoincrement": false,
           "default": "'pending'"
         },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
         "created_at": {
           "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -5215,6 +5888,34 @@
           "name": "idx_asset_conversions_to_asset",
           "columns": [
             "to_asset_id"
+          ],
+          "isUnique": false
+        },
+        "idx_asset_conversions_status": {
+          "name": "idx_asset_conversions_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_asset_conversions_created": {
+          "name": "idx_asset_conversions_created",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "idx_asset_conversions_source_exchange_rate": {
+          "name": "idx_asset_conversions_source_exchange_rate",
+          "columns": [
+            "source_exchange_rate_id"
+          ],
+          "isUnique": false
+        },
+        "idx_asset_conversions_fee_asset": {
+          "name": "idx_asset_conversions_fee_asset",
+          "columns": [
+            "fee_asset_id"
           ],
           "isUnique": false
         }
@@ -5258,6 +5959,32 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
+        },
+        "asset_conversions_source_exchange_rate_id_exchange_rates_id_fk": {
+          "name": "asset_conversions_source_exchange_rate_id_exchange_rates_id_fk",
+          "tableFrom": "asset_conversions",
+          "tableTo": "exchange_rates",
+          "columnsFrom": [
+            "source_exchange_rate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "asset_conversions_fee_asset_id_financial_assets_id_fk": {
+          "name": "asset_conversions_fee_asset_id_financial_assets_id_fk",
+          "tableFrom": "asset_conversions",
+          "tableTo": "financial_assets",
+          "columnsFrom": [
+            "fee_asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -5265,27 +5992,55 @@
       "checkConstraints": {
         "ck_asset_conversions_status": {
           "name": "ck_asset_conversions_status",
-          "value": "\"asset_conversions\".\"status\" IN ('pending', 'processing', 'completed', 'failed', 'cancelled')"
+          "value": "\"asset_conversions\".\"status\" IN (\n        'pending',\n        'processing',\n        'completed',\n        'failed',\n        'cancelled'\n      )"
         },
-        "ck_asset_conversions_from_amount_positive": {
-          "name": "ck_asset_conversions_from_amount_positive",
-          "value": "\"asset_conversions\".\"from_amount_base_units\" <> '' AND ltrim(\"asset_conversions\".\"from_amount_base_units\", '0123456789') = '' AND \"asset_conversions\".\"from_amount_base_units\" <> '0' AND ltrim(\"asset_conversions\".\"from_amount_base_units\", '0') = \"asset_conversions\".\"from_amount_base_units\""
+        "ck_asset_conversions_from_amount_canonical": {
+          "name": "ck_asset_conversions_from_amount_canonical",
+          "value": "\n    \"asset_conversions\".\"from_amount_base_units\" GLOB '[1-9]*'\n    AND \"asset_conversions\".\"from_amount_base_units\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"asset_conversions\".\"from_amount_base_units\") < 78\n      OR (\n        length(\"asset_conversions\".\"from_amount_base_units\") = 78\n        AND \"asset_conversions\".\"from_amount_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
         },
-        "ck_asset_conversions_to_amount_positive": {
-          "name": "ck_asset_conversions_to_amount_positive",
-          "value": "\"asset_conversions\".\"to_amount_base_units\" <> '' AND ltrim(\"asset_conversions\".\"to_amount_base_units\", '0123456789') = '' AND \"asset_conversions\".\"to_amount_base_units\" <> '0' AND ltrim(\"asset_conversions\".\"to_amount_base_units\", '0') = \"asset_conversions\".\"to_amount_base_units\""
+        "ck_asset_conversions_to_amount_canonical": {
+          "name": "ck_asset_conversions_to_amount_canonical",
+          "value": "\n    \"asset_conversions\".\"to_amount_base_units\" GLOB '[1-9]*'\n    AND \"asset_conversions\".\"to_amount_base_units\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"asset_conversions\".\"to_amount_base_units\") < 78\n      OR (\n        length(\"asset_conversions\".\"to_amount_base_units\") = 78\n        AND \"asset_conversions\".\"to_amount_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
         },
-        "ck_asset_conversions_fee_nonnegative": {
-          "name": "ck_asset_conversions_fee_nonnegative",
-          "value": "\"asset_conversions\".\"fee_amount_base_units\" <> '' AND ltrim(\"asset_conversions\".\"fee_amount_base_units\", '0123456789') = '' AND (\"asset_conversions\".\"fee_amount_base_units\" = '0' OR ltrim(\"asset_conversions\".\"fee_amount_base_units\", '0') = \"asset_conversions\".\"fee_amount_base_units\")"
+        "ck_asset_conversions_fee_canonical": {
+          "name": "ck_asset_conversions_fee_canonical",
+          "value": "\n    (\n      \"asset_conversions\".\"fee_amount_base_units\" = '0'\n      OR (\n        \"asset_conversions\".\"fee_amount_base_units\" GLOB '[1-9]*'\n        AND \"asset_conversions\".\"fee_amount_base_units\" NOT GLOB '*[^0-9]*'\n      )\n    )\n    AND \n    (\n      length(\"asset_conversions\".\"fee_amount_base_units\") < 78\n      OR (\n        length(\"asset_conversions\".\"fee_amount_base_units\") = 78\n        AND \"asset_conversions\".\"fee_amount_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
+        },
+        "ck_asset_conversions_fee_asset_coherence": {
+          "name": "ck_asset_conversions_fee_asset_coherence",
+          "value": "(\n        \"asset_conversions\".\"fee_amount_base_units\" = '0'\n        AND \"asset_conversions\".\"fee_asset_id\" IS NULL\n      )\n      OR\n      (\n        \"asset_conversions\".\"fee_amount_base_units\" != '0'\n        AND \"asset_conversions\".\"fee_asset_id\" IS NOT NULL\n      )"
         },
         "ck_asset_conversions_different_assets": {
           "name": "ck_asset_conversions_different_assets",
           "value": "\"asset_conversions\".\"from_asset_id\" <> \"asset_conversions\".\"to_asset_id\""
         },
-        "ck_asset_conversions_rate_positive": {
-          "name": "ck_asset_conversions_rate_positive",
-          "value": "CAST(\"asset_conversions\".\"rate\" AS REAL) > 0"
+        "ck_asset_conversions_numerator_canonical": {
+          "name": "ck_asset_conversions_numerator_canonical",
+          "value": "\n    \"asset_conversions\".\"rate_numerator\" GLOB '[1-9]*'\n    AND \"asset_conversions\".\"rate_numerator\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"asset_conversions\".\"rate_numerator\") < 78\n      OR (\n        length(\"asset_conversions\".\"rate_numerator\") = 78\n        AND \"asset_conversions\".\"rate_numerator\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
+        },
+        "ck_asset_conversions_denominator_canonical": {
+          "name": "ck_asset_conversions_denominator_canonical",
+          "value": "\n    \"asset_conversions\".\"rate_denominator\" GLOB '[1-9]*'\n    AND \"asset_conversions\".\"rate_denominator\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"asset_conversions\".\"rate_denominator\") < 78\n      OR (\n        length(\"asset_conversions\".\"rate_denominator\") = 78\n        AND \"asset_conversions\".\"rate_denominator\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
+        },
+        "ck_asset_conversions_rate_source": {
+          "name": "ck_asset_conversions_rate_source",
+          "value": "\"asset_conversions\".\"rate_source\" IS NULL\n        OR length(trim(\"asset_conversions\".\"rate_source\")) > 0"
+        },
+        "ck_asset_conversions_quoted_at": {
+          "name": "ck_asset_conversions_quoted_at",
+          "value": "(\n        \"asset_conversions\".\"quoted_at\" IS NULL\n        OR \"asset_conversions\".\"quoted_at\" >= \"asset_conversions\".\"created_at\"\n      )"
+        },
+        "ck_asset_conversions_completed_state": {
+          "name": "ck_asset_conversions_completed_state",
+          "value": "(\n        \"asset_conversions\".\"status\" = 'completed'\n        AND \"asset_conversions\".\"completed_at\" IS NOT NULL\n      )\n      OR\n      (\n        \"asset_conversions\".\"status\" != 'completed'\n        AND \"asset_conversions\".\"completed_at\" IS NULL\n      )"
+        },
+        "ck_asset_conversions_completed_temporal": {
+          "name": "ck_asset_conversions_completed_temporal",
+          "value": "\"asset_conversions\".\"completed_at\" IS NULL\n        OR \"asset_conversions\".\"completed_at\" >= \"asset_conversions\".\"created_at\""
+        },
+        "ck_asset_conversions_version": {
+          "name": "ck_asset_conversions_version",
+          "value": "\"asset_conversions\".\"version\" > 0"
         }
       }
     },
@@ -5384,6 +6139,27 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "released_by_transaction_id": {
+          "name": "released_by_transaction_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "consumed_by_transaction_id": {
+          "name": "consumed_by_transaction_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -5415,6 +6191,29 @@
             "reference_id"
           ],
           "isUnique": false
+        },
+        "uq_balance_holds_active_reference": {
+          "name": "uq_balance_holds_active_reference",
+          "columns": [
+            "reference_type",
+            "reference_id"
+          ],
+          "isUnique": true,
+          "where": "\"balance_holds\".\"reference_type\" IS NOT NULL\n          AND \"balance_holds\".\"reference_id\" IS NOT NULL\n          AND \"balance_holds\".\"status\" = 'active'"
+        },
+        "idx_balance_holds_release_transaction": {
+          "name": "idx_balance_holds_release_transaction",
+          "columns": [
+            "released_by_transaction_id"
+          ],
+          "isUnique": false
+        },
+        "idx_balance_holds_consumed_transaction": {
+          "name": "idx_balance_holds_consumed_transaction",
+          "columns": [
+            "consumed_by_transaction_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -5443,6 +6242,32 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
+        },
+        "balance_holds_released_by_transaction_id_financial_transactions_id_fk": {
+          "name": "balance_holds_released_by_transaction_id_financial_transactions_id_fk",
+          "tableFrom": "balance_holds",
+          "tableTo": "financial_transactions",
+          "columnsFrom": [
+            "released_by_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "balance_holds_consumed_by_transaction_id_financial_transactions_id_fk": {
+          "name": "balance_holds_consumed_by_transaction_id_financial_transactions_id_fk",
+          "tableFrom": "balance_holds",
+          "tableTo": "financial_transactions",
+          "columnsFrom": [
+            "consumed_by_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -5450,19 +6275,43 @@
       "checkConstraints": {
         "ck_balance_holds_status": {
           "name": "ck_balance_holds_status",
-          "value": "\"balance_holds\".\"status\" IN ('active', 'released', 'expired', 'consumed')"
+          "value": "\"balance_holds\".\"status\" IN (\n        'active',\n        'released',\n        'expired',\n        'consumed'\n      )"
         },
-        "ck_balance_holds_amount_positive": {
-          "name": "ck_balance_holds_amount_positive",
-          "value": "\"balance_holds\".\"amount_base_units\" <> '' AND ltrim(\"balance_holds\".\"amount_base_units\", '0123456789') = '' AND \"balance_holds\".\"amount_base_units\" <> '0' AND ltrim(\"balance_holds\".\"amount_base_units\", '0') = \"balance_holds\".\"amount_base_units\""
+        "ck_balance_holds_reason_nonempty": {
+          "name": "ck_balance_holds_reason_nonempty",
+          "value": "length(trim(\"balance_holds\".\"reason\")) > 0"
+        },
+        "ck_balance_holds_reference_coherence": {
+          "name": "ck_balance_holds_reference_coherence",
+          "value": "(\n        \"balance_holds\".\"reference_type\" IS NULL\n        AND \"balance_holds\".\"reference_id\" IS NULL\n      )\n      OR\n      (\n        \"balance_holds\".\"reference_type\" IS NOT NULL\n        AND \"balance_holds\".\"reference_id\" IS NOT NULL\n        AND length(trim(\"balance_holds\".\"reference_type\")) > 0\n        AND length(trim(\"balance_holds\".\"reference_id\")) > 0\n      )"
+        },
+        "ck_balance_holds_amount_canonical": {
+          "name": "ck_balance_holds_amount_canonical",
+          "value": "\n    \"balance_holds\".\"amount_base_units\" GLOB '[1-9]*'\n    AND \"balance_holds\".\"amount_base_units\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"balance_holds\".\"amount_base_units\") < 78\n      OR (\n        length(\"balance_holds\".\"amount_base_units\") = 78\n        AND \"balance_holds\".\"amount_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
         },
         "ck_balance_holds_released_state": {
           "name": "ck_balance_holds_released_state",
-          "value": "\"balance_holds\".\"status\" != 'released' OR \"balance_holds\".\"released_at\" IS NOT NULL"
+          "value": "(\n        \"balance_holds\".\"status\" = 'released'\n        AND \"balance_holds\".\"released_at\" IS NOT NULL\n        AND \"balance_holds\".\"released_by_transaction_id\" IS NOT NULL\n        AND \"balance_holds\".\"consumed_at\" IS NULL\n        AND \"balance_holds\".\"consumed_by_transaction_id\" IS NULL\n      )\n      OR\n      (\n        \"balance_holds\".\"status\" != 'released'\n        AND \"balance_holds\".\"released_at\" IS NULL\n        AND \"balance_holds\".\"released_by_transaction_id\" IS NULL\n      )"
         },
         "ck_balance_holds_expired_state": {
           "name": "ck_balance_holds_expired_state",
-          "value": "\"balance_holds\".\"status\" != 'expired' OR \"balance_holds\".\"expires_at\" IS NOT NULL"
+          "value": "(\n        \"balance_holds\".\"status\" = 'expired'\n        AND \"balance_holds\".\"expires_at\" IS NOT NULL\n        AND \"balance_holds\".\"consumed_at\" IS NULL\n        AND \"balance_holds\".\"released_at\" IS NULL\n      )\n      OR\n      \"balance_holds\".\"status\" != 'expired'"
+        },
+        "ck_balance_holds_consumed_state": {
+          "name": "ck_balance_holds_consumed_state",
+          "value": "(\n        \"balance_holds\".\"status\" = 'consumed'\n        AND \"balance_holds\".\"consumed_at\" IS NOT NULL\n        AND \"balance_holds\".\"consumed_by_transaction_id\" IS NOT NULL\n        AND \"balance_holds\".\"released_at\" IS NULL\n        AND \"balance_holds\".\"released_by_transaction_id\" IS NULL\n      )\n      OR\n      (\n        \"balance_holds\".\"status\" != 'consumed'\n        AND \"balance_holds\".\"consumed_at\" IS NULL\n        AND \"balance_holds\".\"consumed_by_transaction_id\" IS NULL\n      )"
+        },
+        "ck_balance_holds_active_state": {
+          "name": "ck_balance_holds_active_state",
+          "value": "(\n        \"balance_holds\".\"status\" = 'active'\n        AND \"balance_holds\".\"released_at\" IS NULL\n        AND \"balance_holds\".\"released_by_transaction_id\" IS NULL\n        AND \"balance_holds\".\"consumed_at\" IS NULL\n        AND \"balance_holds\".\"consumed_by_transaction_id\" IS NULL\n      )\n      OR\n      \"balance_holds\".\"status\" != 'active'"
+        },
+        "ck_balance_holds_expiration_temporal": {
+          "name": "ck_balance_holds_expiration_temporal",
+          "value": "\"balance_holds\".\"expires_at\" IS NULL\n        OR \"balance_holds\".\"expires_at\" > \"balance_holds\".\"created_at\""
+        },
+        "ck_balance_holds_lifecycle_temporal": {
+          "name": "ck_balance_holds_lifecycle_temporal",
+          "value": "(\n        (\n          \"balance_holds\".\"released_at\" IS NULL\n          OR \"balance_holds\".\"released_at\" >= \"balance_holds\".\"created_at\"\n        )\n        AND\n        (\n          \"balance_holds\".\"consumed_at\" IS NULL\n          OR \"balance_holds\".\"consumed_at\" >= \"balance_holds\".\"created_at\"\n        )\n      )"
         },
         "ck_balance_holds_version": {
           "name": "ck_balance_holds_version",
@@ -5501,6 +6350,28 @@
           "notNull": false,
           "autoincrement": false
         },
+        "network": {
+          "name": "network",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "block_number": {
+          "name": "block_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "confirmations": {
+          "name": "confirmations",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
         "direction": {
           "name": "direction",
           "type": "text",
@@ -5513,6 +6384,34 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "from_address": {
+          "name": "from_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "to_address": {
+          "name": "to_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "transaction_index": {
+          "name": "transaction_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "nonce": {
+          "name": "nonce",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "fee_asset_id": {
@@ -5553,6 +6452,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "settled_at": {
           "name": "settled_at",
           "type": "integer",
@@ -5569,9 +6475,10 @@
           ],
           "isUnique": true
         },
-        "uq_crypto_transactions_web3_transaction": {
-          "name": "uq_crypto_transactions_web3_transaction",
+        "uq_crypto_transactions_network_web3_transaction": {
+          "name": "uq_crypto_transactions_network_web3_transaction",
           "columns": [
+            "network",
             "web3_transaction_id"
           ],
           "isUnique": true
@@ -5583,10 +6490,31 @@
           ],
           "isUnique": false
         },
+        "idx_crypto_transactions_fee_asset": {
+          "name": "idx_crypto_transactions_fee_asset",
+          "columns": [
+            "fee_asset_id"
+          ],
+          "isUnique": false
+        },
         "idx_crypto_transactions_status": {
           "name": "idx_crypto_transactions_status",
           "columns": [
             "status"
+          ],
+          "isUnique": false
+        },
+        "idx_crypto_transactions_network": {
+          "name": "idx_crypto_transactions_network",
+          "columns": [
+            "network"
+          ],
+          "isUnique": false
+        },
+        "idx_crypto_transactions_requested": {
+          "name": "idx_crypto_transactions_requested",
+          "columns": [
+            "requested_at"
           ],
           "isUnique": false
         }
@@ -5637,27 +6565,71 @@
       "checkConstraints": {
         "ck_crypto_tx_direction": {
           "name": "ck_crypto_tx_direction",
-          "value": "\"crypto_transactions\".\"direction\" IN ('inbound', 'outbound')"
+          "value": "\"crypto_transactions\".\"direction\" IN (\n        'inbound',\n        'outbound'\n      )"
         },
         "ck_crypto_tx_status": {
           "name": "ck_crypto_tx_status",
-          "value": "\"crypto_transactions\".\"status\" IN ('pending', 'processing', 'confirmed', 'failed', 'reversed')"
+          "value": "\"crypto_transactions\".\"status\" IN (\n        'pending',\n        'processing',\n        'confirmed',\n        'failed',\n        'reversed'\n      )"
         },
-        "ck_crypto_transactions_amount_positive": {
-          "name": "ck_crypto_transactions_amount_positive",
-          "value": "\"crypto_transactions\".\"amount_base_units\" <> '' AND ltrim(\"crypto_transactions\".\"amount_base_units\", '0123456789') = '' AND \"crypto_transactions\".\"amount_base_units\" <> '0' AND ltrim(\"crypto_transactions\".\"amount_base_units\", '0') = \"crypto_transactions\".\"amount_base_units\""
+        "ck_crypto_transactions_amount_canonical": {
+          "name": "ck_crypto_transactions_amount_canonical",
+          "value": "\n    \"crypto_transactions\".\"amount_base_units\" GLOB '[1-9]*'\n    AND \"crypto_transactions\".\"amount_base_units\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"crypto_transactions\".\"amount_base_units\") < 78\n      OR (\n        length(\"crypto_transactions\".\"amount_base_units\") = 78\n        AND \"crypto_transactions\".\"amount_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
         },
-        "ck_crypto_transactions_fee_nonnegative": {
-          "name": "ck_crypto_transactions_fee_nonnegative",
-          "value": "\"crypto_transactions\".\"fee_base_units\" <> '' AND ltrim(\"crypto_transactions\".\"fee_base_units\", '0123456789') = '' AND (\"crypto_transactions\".\"fee_base_units\" = '0' OR ltrim(\"crypto_transactions\".\"fee_base_units\", '0') = \"crypto_transactions\".\"fee_base_units\")"
+        "ck_crypto_transactions_fee_canonical": {
+          "name": "ck_crypto_transactions_fee_canonical",
+          "value": "\n    (\n      \"crypto_transactions\".\"fee_base_units\" = '0'\n      OR (\n        \"crypto_transactions\".\"fee_base_units\" GLOB '[1-9]*'\n        AND \"crypto_transactions\".\"fee_base_units\" NOT GLOB '*[^0-9]*'\n      )\n    )\n    AND \n    (\n      length(\"crypto_transactions\".\"fee_base_units\") < 78\n      OR (\n        length(\"crypto_transactions\".\"fee_base_units\") = 78\n        AND \"crypto_transactions\".\"fee_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
         },
         "ck_crypto_transactions_fee_asset": {
           "name": "ck_crypto_transactions_fee_asset",
-          "value": "\"crypto_transactions\".\"fee_base_units\" = '0' OR \"crypto_transactions\".\"fee_asset_id\" IS NOT NULL"
+          "value": "(\n        \"crypto_transactions\".\"fee_base_units\" = '0'\n        AND \"crypto_transactions\".\"fee_asset_id\" IS NULL\n      )\n      OR\n      (\n        \"crypto_transactions\".\"fee_base_units\" != '0'\n        AND \"crypto_transactions\".\"fee_asset_id\" IS NOT NULL\n      )"
+        },
+        "ck_crypto_tx_web3_network_coherence": {
+          "name": "ck_crypto_tx_web3_network_coherence",
+          "value": "(\n        \"crypto_transactions\".\"web3_transaction_id\" IS NULL\n        AND \"crypto_transactions\".\"network\" IS NULL\n      )\n      OR\n      (\n        \"crypto_transactions\".\"web3_transaction_id\" IS NOT NULL\n        AND \"crypto_transactions\".\"network\" IS NOT NULL\n      )"
+        },
+        "ck_crypto_transactions_confirmations": {
+          "name": "ck_crypto_transactions_confirmations",
+          "value": "\"crypto_transactions\".\"confirmations\" >= 0"
+        },
+        "ck_crypto_transactions_block_number": {
+          "name": "ck_crypto_transactions_block_number",
+          "value": "\"crypto_transactions\".\"block_number\" IS NULL\n        OR \"crypto_transactions\".\"block_number\" >= 0"
+        },
+        "ck_crypto_transactions_network": {
+          "name": "ck_crypto_transactions_network",
+          "value": "\"crypto_transactions\".\"network\" IS NULL\n        OR length(trim(\"crypto_transactions\".\"network\")) > 0"
+        },
+        "ck_crypto_transactions_web3_id": {
+          "name": "ck_crypto_transactions_web3_id",
+          "value": "\"crypto_transactions\".\"web3_transaction_id\" IS NULL\n        OR length(trim(\"crypto_transactions\".\"web3_transaction_id\")) > 0"
+        },
+        "ck_crypto_transactions_from_address": {
+          "name": "ck_crypto_transactions_from_address",
+          "value": "\"crypto_transactions\".\"from_address\" IS NULL\n        OR length(trim(\"crypto_transactions\".\"from_address\")) > 0"
+        },
+        "ck_crypto_transactions_to_address": {
+          "name": "ck_crypto_transactions_to_address",
+          "value": "\"crypto_transactions\".\"to_address\" IS NULL\n        OR length(trim(\"crypto_transactions\".\"to_address\")) > 0"
+        },
+        "ck_crypto_transactions_transaction_index": {
+          "name": "ck_crypto_transactions_transaction_index",
+          "value": "\"crypto_transactions\".\"transaction_index\" IS NULL\n        OR \"crypto_transactions\".\"transaction_index\" >= 0"
+        },
+        "ck_crypto_transactions_nonce": {
+          "name": "ck_crypto_transactions_nonce",
+          "value": "\"crypto_transactions\".\"nonce\" IS NULL\n        OR \"crypto_transactions\".\"nonce\" >= 0"
+        },
+        "ck_crypto_transactions_confirmed_evidence": {
+          "name": "ck_crypto_transactions_confirmed_evidence",
+          "value": "(\n        \"crypto_transactions\".\"status\" != 'confirmed'\n      )\n      OR\n      (\n        \"crypto_transactions\".\"status\" = 'confirmed'\n        AND \"crypto_transactions\".\"web3_transaction_id\" IS NOT NULL\n        AND \"crypto_transactions\".\"network\" IS NOT NULL\n        AND \"crypto_transactions\".\"block_number\" IS NOT NULL\n        AND \"crypto_transactions\".\"confirmations\" > 0\n        AND \"crypto_transactions\".\"from_address\" IS NOT NULL\n        AND \"crypto_transactions\".\"to_address\" IS NOT NULL\n        AND \"crypto_transactions\".\"settled_at\" IS NOT NULL\n      )"
+        },
+        "ck_crypto_tx_settled_state": {
+          "name": "ck_crypto_tx_settled_state",
+          "value": "(\n        \"crypto_transactions\".\"status\" IN ('confirmed', 'reversed')\n        AND \"crypto_transactions\".\"settled_at\" IS NOT NULL\n      )\n      OR\n      (\n        \"crypto_transactions\".\"status\" NOT IN ('confirmed', 'reversed')\n        AND \"crypto_transactions\".\"settled_at\" IS NULL\n      )"
         },
         "ck_crypto_tx_dates": {
           "name": "ck_crypto_tx_dates",
-          "value": "\"crypto_transactions\".\"settled_at\" IS NULL OR \"crypto_transactions\".\"settled_at\" >= \"crypto_transactions\".\"requested_at\""
+          "value": "\"crypto_transactions\".\"settled_at\" IS NULL\n        OR \"crypto_transactions\".\"settled_at\" >= \"crypto_transactions\".\"requested_at\""
         },
         "ck_crypto_tx_version": {
           "name": "ck_crypto_tx_version",
@@ -5689,8 +6661,15 @@
           "notNull": true,
           "autoincrement": false
         },
-        "rate": {
-          "name": "rate",
+        "rate_numerator": {
+          "name": "rate_numerator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rate_denominator": {
+          "name": "rate_denominator",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -5719,6 +6698,15 @@
         }
       },
       "indexes": {
+        "idx_exchange_rates_pair_quoted": {
+          "name": "idx_exchange_rates_pair_quoted",
+          "columns": [
+            "base_asset_id",
+            "quote_asset_id",
+            "quoted_at"
+          ],
+          "isUnique": false
+        },
         "idx_exchange_rates_pair": {
           "name": "idx_exchange_rates_pair",
           "columns": [
@@ -5731,6 +6719,13 @@
           "name": "idx_exchange_rates_quoted",
           "columns": [
             "quoted_at"
+          ],
+          "isUnique": false
+        },
+        "idx_exchange_rates_expires": {
+          "name": "idx_exchange_rates_expires",
+          "columns": [
+            "expires_at"
           ],
           "isUnique": false
         }
@@ -5770,13 +6765,21 @@
           "name": "ck_exchange_rates_different_assets",
           "value": "\"exchange_rates\".\"base_asset_id\" <> \"exchange_rates\".\"quote_asset_id\""
         },
-        "ck_exchange_rates_rate_positive": {
-          "name": "ck_exchange_rates_rate_positive",
-          "value": "CAST(\"exchange_rates\".\"rate\" AS REAL) > 0"
+        "ck_exchange_rates_numerator_canonical": {
+          "name": "ck_exchange_rates_numerator_canonical",
+          "value": "\n    \"exchange_rates\".\"rate_numerator\" GLOB '[1-9]*'\n    AND \"exchange_rates\".\"rate_numerator\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"exchange_rates\".\"rate_numerator\") < 78\n      OR (\n        length(\"exchange_rates\".\"rate_numerator\") = 78\n        AND \"exchange_rates\".\"rate_numerator\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
+        },
+        "ck_exchange_rates_denominator_canonical": {
+          "name": "ck_exchange_rates_denominator_canonical",
+          "value": "\n    \"exchange_rates\".\"rate_denominator\" GLOB '[1-9]*'\n    AND \"exchange_rates\".\"rate_denominator\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"exchange_rates\".\"rate_denominator\") < 78\n      OR (\n        length(\"exchange_rates\".\"rate_denominator\") = 78\n        AND \"exchange_rates\".\"rate_denominator\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
+        },
+        "ck_exchange_rates_source_nonempty": {
+          "name": "ck_exchange_rates_source_nonempty",
+          "value": "length(trim(\"exchange_rates\".\"source\")) > 0"
         },
         "ck_exchange_rates_expires_after_quoted": {
           "name": "ck_exchange_rates_expires_after_quoted",
-          "value": "\"exchange_rates\".\"expires_at\" IS NULL OR \"exchange_rates\".\"expires_at\" >= \"exchange_rates\".\"quoted_at\""
+          "value": "\"exchange_rates\".\"expires_at\" IS NULL\n        OR \"exchange_rates\".\"expires_at\" >= \"exchange_rates\".\"quoted_at\""
         }
       }
     },
@@ -5870,10 +6873,25 @@
         }
       },
       "indexes": {
+        "uq_fiat_accounts_user_id_id": {
+          "name": "uq_fiat_accounts_user_id_id",
+          "columns": [
+            "user_id",
+            "id"
+          ],
+          "isUnique": true
+        },
         "idx_fiat_accounts_user": {
           "name": "idx_fiat_accounts_user",
           "columns": [
             "user_id"
+          ],
+          "isUnique": false
+        },
+        "idx_fiat_accounts_asset": {
+          "name": "idx_fiat_accounts_asset",
+          "columns": [
+            "asset_id"
           ],
           "isUnique": false
         },
@@ -5891,19 +6909,18 @@
           ],
           "isUnique": false
         },
+        "idx_fiat_accounts_type": {
+          "name": "idx_fiat_accounts_type",
+          "columns": [
+            "type"
+          ],
+          "isUnique": false
+        },
         "uq_fiat_accounts_provider_external": {
           "name": "uq_fiat_accounts_provider_external",
           "columns": [
             "provider_id",
             "external_account_id"
-          ],
-          "isUnique": true
-        },
-        "uq_fiat_accounts_user_account": {
-          "name": "uq_fiat_accounts_user_account",
-          "columns": [
-            "user_id",
-            "id"
           ],
           "isUnique": true
         }
@@ -5954,15 +6971,31 @@
       "checkConstraints": {
         "ck_fiat_accounts_type": {
           "name": "ck_fiat_accounts_type",
-          "value": "\"fiat_accounts\".\"type\" IN ('bank_account', 'payment_account', 'pix_account')"
+          "value": "\"fiat_accounts\".\"type\" IN (\n        'bank_account',\n        'payment_account',\n        'pix_account'\n      )"
         },
         "ck_fiat_accounts_status": {
           "name": "ck_fiat_accounts_status",
-          "value": "\"fiat_accounts\".\"status\" IN ('active', 'inactive', 'blocked')"
+          "value": "\"fiat_accounts\".\"status\" IN (\n        'active',\n        'inactive',\n        'blocked'\n      )"
+        },
+        "ck_fiat_accounts_external_provider_coherence": {
+          "name": "ck_fiat_accounts_external_provider_coherence",
+          "value": "(\n        \"fiat_accounts\".\"provider_id\" IS NULL\n        AND \"fiat_accounts\".\"external_account_id\" IS NULL\n      )\n      OR\n      (\n        \"fiat_accounts\".\"provider_id\" IS NOT NULL\n        AND \"fiat_accounts\".\"external_account_id\" IS NOT NULL\n        AND length(trim(\"fiat_accounts\".\"external_account_id\")) > 0\n      )"
+        },
+        "ck_fiat_accounts_display_name_nonempty": {
+          "name": "ck_fiat_accounts_display_name_nonempty",
+          "value": "\"fiat_accounts\".\"display_name\" IS NULL\n        OR length(trim(\"fiat_accounts\".\"display_name\")) > 0"
+        },
+        "ck_fiat_accounts_last4": {
+          "name": "ck_fiat_accounts_last4",
+          "value": "\"fiat_accounts\".\"last4\" IS NULL\n        OR (\n          length(\"fiat_accounts\".\"last4\") BETWEEN 2 AND 4\n          AND \"fiat_accounts\".\"last4\" NOT GLOB '*[^0-9]*'\n        )"
         },
         "ck_fiat_accounts_blocked_state": {
           "name": "ck_fiat_accounts_blocked_state",
-          "value": "\"fiat_accounts\".\"status\" != 'blocked' OR \"fiat_accounts\".\"blocked_at\" IS NOT NULL"
+          "value": "(\n        \"fiat_accounts\".\"status\" = 'blocked'\n        AND \"fiat_accounts\".\"blocked_at\" IS NOT NULL\n      )\n      OR\n      (\n        \"fiat_accounts\".\"status\" != 'blocked'\n        AND \"fiat_accounts\".\"blocked_at\" IS NULL\n      )"
+        },
+        "ck_fiat_accounts_blocked_temporal": {
+          "name": "ck_fiat_accounts_blocked_temporal",
+          "value": "\"fiat_accounts\".\"blocked_at\" IS NULL\n        OR \"fiat_accounts\".\"blocked_at\" >= \"fiat_accounts\".\"created_at\""
         }
       }
     },
@@ -5976,15 +7009,15 @@
           "notNull": true,
           "autoincrement": true
         },
-        "financial_transaction_id": {
-          "name": "financial_transaction_id",
+        "provider_id": {
+          "name": "provider_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "provider_id": {
-          "name": "provider_id",
+        "fiat_account_id": {
+          "name": "fiat_account_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -5997,11 +7030,88 @@
           "notNull": true,
           "autoincrement": false
         },
-        "type": {
-          "name": "type",
+        "raw_amount": {
+          "name": "raw_amount",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "amount_base_units": {
+          "name": "amount_base_units",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "raw_description": {
+          "name": "raw_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "bank_timestamp": {
+          "name": "bank_timestamp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "document_number": {
+          "name": "document_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "running_balance_base_units": {
+          "name": "running_balance_base_units",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_file_hash": {
+          "name": "source_file_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "row_fingerprint": {
+          "name": "row_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "raw_payload": {
+          "name": "raw_payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "status": {
@@ -6009,6 +7119,22 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "reconciliation_status": {
+          "name": "reconciliation_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'unmatched'"
+        },
+        "financial_transaction_id": {
+          "name": "financial_transaction_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "created_at": {
@@ -6023,6 +7149,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -6049,28 +7182,36 @@
           ],
           "isUnique": false
         },
+        "idx_fiat_external_transactions_fiat_account": {
+          "name": "idx_fiat_external_transactions_fiat_account",
+          "columns": [
+            "fiat_account_id"
+          ],
+          "isUnique": false
+        },
         "idx_fiat_external_transactions_status": {
           "name": "idx_fiat_external_transactions_status",
           "columns": [
             "status"
           ],
           "isUnique": false
+        },
+        "idx_fiat_external_transactions_recon_status": {
+          "name": "idx_fiat_external_transactions_recon_status",
+          "columns": [
+            "reconciliation_status"
+          ],
+          "isUnique": false
+        },
+        "uq_fiat_external_transactions_fingerprint": {
+          "name": "uq_fiat_external_transactions_fingerprint",
+          "columns": [
+            "row_fingerprint"
+          ],
+          "isUnique": true
         }
       },
       "foreignKeys": {
-        "fiat_external_transactions_financial_transaction_id_financial_transactions_id_fk": {
-          "name": "fiat_external_transactions_financial_transaction_id_financial_transactions_id_fk",
-          "tableFrom": "fiat_external_transactions",
-          "tableTo": "financial_transactions",
-          "columnsFrom": [
-            "financial_transaction_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
         "fiat_external_transactions_provider_id_fiat_providers_id_fk": {
           "name": "fiat_external_transactions_provider_id_fiat_providers_id_fk",
           "tableFrom": "fiat_external_transactions",
@@ -6083,11 +7224,67 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
+        },
+        "fiat_external_transactions_fiat_account_id_fiat_accounts_id_fk": {
+          "name": "fiat_external_transactions_fiat_account_id_fiat_accounts_id_fk",
+          "tableFrom": "fiat_external_transactions",
+          "tableTo": "fiat_accounts",
+          "columnsFrom": [
+            "fiat_account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "fiat_external_transactions_asset_id_financial_assets_id_fk": {
+          "name": "fiat_external_transactions_asset_id_financial_assets_id_fk",
+          "tableFrom": "fiat_external_transactions",
+          "tableTo": "financial_assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "fiat_external_transactions_financial_transaction_id_financial_transactions_id_fk": {
+          "name": "fiat_external_transactions_financial_transaction_id_financial_transactions_id_fk",
+          "tableFrom": "fiat_external_transactions",
+          "tableTo": "financial_transactions",
+          "columnsFrom": [
+            "financial_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "ck_fiat_external_transaction_id_nonempty": {
+          "name": "ck_fiat_external_transaction_id_nonempty",
+          "value": "length(trim(\"fiat_external_transactions\".\"external_transaction_id\")) > 0"
+        },
+        "ck_fiat_external_tx_direction": {
+          "name": "ck_fiat_external_tx_direction",
+          "value": "\"fiat_external_transactions\".\"direction\" IN ('credit', 'debit')"
+        },
+        "ck_fiat_external_tx_reconciliation_status": {
+          "name": "ck_fiat_external_tx_reconciliation_status",
+          "value": "\"fiat_external_transactions\".\"reconciliation_status\" IN ('unmatched', 'matched', 'ignored', 'discrepancy')"
+        },
+        "ck_fiat_external_tx_status": {
+          "name": "ck_fiat_external_tx_status",
+          "value": "\"fiat_external_transactions\".\"status\" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'unknown')"
+        }
+      }
     },
     "fiat_payment_methods": {
       "name": "fiat_payment_methods",
@@ -6110,7 +7307,7 @@
           "name": "fiat_account_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "type": {
@@ -6222,15 +7419,23 @@
       "checkConstraints": {
         "ck_fiat_pm_type": {
           "name": "ck_fiat_pm_type",
-          "value": "\"fiat_payment_methods\".\"type\" IN ('pix', 'bank_transfer', 'boleto', 'card')"
+          "value": "\"fiat_payment_methods\".\"type\" IN (\n        'pix',\n        'bank_transfer',\n        'boleto',\n        'card'\n      )"
+        },
+        "ck_fiat_pm_label_nonempty": {
+          "name": "ck_fiat_pm_label_nonempty",
+          "value": "length(trim(\"fiat_payment_methods\".\"label\")) > 0"
         },
         "ck_fiat_pm_status": {
           "name": "ck_fiat_pm_status",
-          "value": "\"fiat_payment_methods\".\"status\" IN ('active', 'inactive', 'blocked')"
+          "value": "\"fiat_payment_methods\".\"status\" IN (\n        'active',\n        'inactive',\n        'blocked'\n      )"
         },
         "ck_fiat_pm_blocked_state": {
           "name": "ck_fiat_pm_blocked_state",
-          "value": "\"fiat_payment_methods\".\"status\" != 'blocked' OR \"fiat_payment_methods\".\"blocked_at\" IS NOT NULL"
+          "value": "(\n        \"fiat_payment_methods\".\"status\" = 'blocked'\n        AND \"fiat_payment_methods\".\"blocked_at\" IS NOT NULL\n      )\n      OR\n      (\n        \"fiat_payment_methods\".\"status\" != 'blocked'\n        AND \"fiat_payment_methods\".\"blocked_at\" IS NULL\n      )"
+        },
+        "ck_fiat_pm_blocked_temporal": {
+          "name": "ck_fiat_pm_blocked_temporal",
+          "value": "\"fiat_payment_methods\".\"blocked_at\" IS NULL\n        OR \"fiat_payment_methods\".\"blocked_at\" >= \"fiat_payment_methods\".\"created_at\""
         }
       }
     },
@@ -6315,13 +7520,21 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "ck_fiat_providers_name_nonempty": {
+          "name": "ck_fiat_providers_name_nonempty",
+          "value": "length(trim(\"fiat_providers\".\"name\")) > 0"
+        },
+        "ck_fiat_providers_code_canonical": {
+          "name": "ck_fiat_providers_code_canonical",
+          "value": "\"fiat_providers\".\"code\" = upper(trim(\"fiat_providers\".\"code\")) AND length(\"fiat_providers\".\"code\") > 0"
+        },
         "ck_fiat_providers_type": {
           "name": "ck_fiat_providers_type",
-          "value": "\"fiat_providers\".\"type\" IN ('bank', 'payment_provider', 'pix_provider', 'gateway')"
+          "value": "\"fiat_providers\".\"type\" IN (\n        'bank',\n        'payment_provider',\n        'pix_provider',\n        'gateway'\n      )"
         },
         "ck_fiat_providers_status": {
           "name": "ck_fiat_providers_status",
-          "value": "\"fiat_providers\".\"status\" IN ('active', 'inactive', 'suspended')"
+          "value": "\"fiat_providers\".\"status\" IN (\n        'active',\n        'inactive',\n        'suspended'\n      )"
         }
       }
     },
@@ -6346,7 +7559,7 @@
           "name": "provider_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "payment_method_id": {
@@ -6400,6 +7613,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "processed_at": {
           "name": "processed_at",
           "type": "integer",
@@ -6448,6 +7668,13 @@
           "name": "idx_fiat_transactions_status",
           "columns": [
             "status"
+          ],
+          "isUnique": false
+        },
+        "idx_fiat_transactions_requested": {
+          "name": "idx_fiat_transactions_requested",
+          "columns": [
+            "requested_at"
           ],
           "isUnique": false
         }
@@ -6511,19 +7738,31 @@
       "checkConstraints": {
         "ck_fiat_tx_direction": {
           "name": "ck_fiat_tx_direction",
-          "value": "\"fiat_transactions\".\"direction\" IN ('inbound', 'outbound')"
+          "value": "\"fiat_transactions\".\"direction\" IN (\n        'inbound',\n        'outbound'\n      )"
         },
         "ck_fiat_tx_status": {
           "name": "ck_fiat_tx_status",
-          "value": "\"fiat_transactions\".\"status\" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed')"
+          "value": "\"fiat_transactions\".\"status\" IN (\n        'pending',\n        'processing',\n        'completed',\n        'failed',\n        'cancelled',\n        'reversed'\n      )"
         },
-        "ck_fiat_transactions_amount_positive": {
-          "name": "ck_fiat_transactions_amount_positive",
-          "value": "\"fiat_transactions\".\"amount_base_units\" <> '' AND ltrim(\"fiat_transactions\".\"amount_base_units\", '0123456789') = '' AND \"fiat_transactions\".\"amount_base_units\" <> '0' AND ltrim(\"fiat_transactions\".\"amount_base_units\", '0') = \"fiat_transactions\".\"amount_base_units\""
+        "ck_fiat_transactions_amount_canonical": {
+          "name": "ck_fiat_transactions_amount_canonical",
+          "value": "\n    \"fiat_transactions\".\"amount_base_units\" GLOB '[1-9]*'\n    AND \"fiat_transactions\".\"amount_base_units\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"fiat_transactions\".\"amount_base_units\") < 78\n      OR (\n        length(\"fiat_transactions\".\"amount_base_units\") = 78\n        AND \"fiat_transactions\".\"amount_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
         },
-        "ck_fiat_tx_dates": {
-          "name": "ck_fiat_tx_dates",
-          "value": "\"fiat_transactions\".\"settled_at\" IS NULL OR \"fiat_transactions\".\"settled_at\" >= \"fiat_transactions\".\"requested_at\""
+        "ck_fiat_tx_processed_at": {
+          "name": "ck_fiat_tx_processed_at",
+          "value": "\"fiat_transactions\".\"processed_at\" IS NULL\n        OR \"fiat_transactions\".\"processed_at\" >= \"fiat_transactions\".\"requested_at\""
+        },
+        "ck_fiat_tx_settled_at": {
+          "name": "ck_fiat_tx_settled_at",
+          "value": "\"fiat_transactions\".\"settled_at\" IS NULL\n        OR \"fiat_transactions\".\"settled_at\" >= \"fiat_transactions\".\"requested_at\""
+        },
+        "ck_fiat_tx_settlement_order": {
+          "name": "ck_fiat_tx_settlement_order",
+          "value": "\"fiat_transactions\".\"settled_at\" IS NULL\n        OR \"fiat_transactions\".\"processed_at\" IS NULL\n        OR \"fiat_transactions\".\"settled_at\" >= \"fiat_transactions\".\"processed_at\""
+        },
+        "ck_fiat_tx_settled_state": {
+          "name": "ck_fiat_tx_settled_state",
+          "value": "(\n        \"fiat_transactions\".\"status\" IN ('completed', 'reversed')\n        AND \"fiat_transactions\".\"settled_at\" IS NOT NULL\n      )\n      OR\n      (\n        \"fiat_transactions\".\"status\" NOT IN ('completed', 'reversed')\n        AND \"fiat_transactions\".\"settled_at\" IS NULL\n      )"
         },
         "ck_fiat_tx_version": {
           "name": "ck_fiat_tx_version",
@@ -6554,6 +7793,14 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "account_class": {
+          "name": "account_class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'liability'"
         },
         "status": {
           "name": "status",
@@ -6608,6 +7855,13 @@
           ],
           "isUnique": false
         },
+        "idx_financial_accounts_class": {
+          "name": "idx_financial_accounts_class",
+          "columns": [
+            "account_class"
+          ],
+          "isUnique": false
+        },
         "idx_financial_accounts_status": {
           "name": "idx_financial_accounts_status",
           "columns": [
@@ -6623,6 +7877,47 @@
             "name"
           ],
           "isUnique": true
+        },
+        "uq_financial_accounts_system_type_name": {
+          "name": "uq_financial_accounts_system_type_name",
+          "columns": [
+            "account_type",
+            "name"
+          ],
+          "isUnique": true,
+          "where": "\"financial_accounts\".\"user_id\" IS NULL"
+        },
+        "uq_treasury_active_singleton": {
+          "name": "uq_treasury_active_singleton",
+          "columns": [
+            "account_type"
+          ],
+          "isUnique": true,
+          "where": "\"financial_accounts\".\"account_type\" = 'treasury'\n          AND \"financial_accounts\".\"status\" = 'active'"
+        },
+        "uq_operating_active_singleton": {
+          "name": "uq_operating_active_singleton",
+          "columns": [
+            "account_type"
+          ],
+          "isUnique": true,
+          "where": "\"financial_accounts\".\"account_type\" = 'operating'\n          AND \"financial_accounts\".\"status\" = 'active'"
+        },
+        "uq_fees_active_singleton": {
+          "name": "uq_fees_active_singleton",
+          "columns": [
+            "account_type"
+          ],
+          "isUnique": true,
+          "where": "\"financial_accounts\".\"account_type\" = 'fees'\n          AND \"financial_accounts\".\"status\" = 'active'"
+        },
+        "uq_user_available_singleton": {
+          "name": "uq_user_available_singleton",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": true,
+          "where": "\"financial_accounts\".\"account_type\" = 'user_available'"
         }
       },
       "foreignKeys": {
@@ -6643,17 +7938,29 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "ck_financial_accounts_name_nonempty": {
+          "name": "ck_financial_accounts_name_nonempty",
+          "value": "length(trim(\"financial_accounts\".\"name\")) > 0"
+        },
         "ck_financial_accounts_type": {
           "name": "ck_financial_accounts_type",
-          "value": "\"financial_accounts\".\"account_type\" IN ('user_available', 'treasury', 'operating', 'reserve', 'fees', 'escrow')"
+          "value": "\"financial_accounts\".\"account_type\" IN (\n        'user_available',\n        'treasury',\n        'operating',\n        'reserve',\n        'fees',\n        'escrow',\n        'reward_expense',\n        'yield_expense',\n        'clearing',\n        'opening_balance_equity',\n        'payment_revenue',\n        'refund_expense'\n      )"
+        },
+        "ck_financial_accounts_class": {
+          "name": "ck_financial_accounts_class",
+          "value": "\"financial_accounts\".\"account_class\" IN (\n        'asset',\n        'liability',\n        'equity',\n        'revenue',\n        'expense'\n      )"
         },
         "ck_financial_accounts_status": {
           "name": "ck_financial_accounts_status",
-          "value": "\"financial_accounts\".\"status\" IN ('active', 'inactive', 'suspended')"
+          "value": "\"financial_accounts\".\"status\" IN (\n        'active',\n        'inactive',\n        'suspended'\n      )"
+        },
+        "ck_financial_accounts_type_class_matrix": {
+          "name": "ck_financial_accounts_type_class_matrix",
+          "value": "(\n        (\n          \"financial_accounts\".\"account_type\" = 'user_available'\n          AND \"financial_accounts\".\"account_class\" = 'liability'\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'treasury'\n          AND \"financial_accounts\".\"account_class\" = 'asset'\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'operating'\n          AND \"financial_accounts\".\"account_class\" = 'asset'\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'reserve'\n          AND \"financial_accounts\".\"account_class\" IN (\n            'asset',\n            'liability'\n          )\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'fees'\n          AND \"financial_accounts\".\"account_class\" = 'revenue'\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'escrow'\n          AND \"financial_accounts\".\"account_class\" = 'liability'\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'reward_expense'\n          AND \"financial_accounts\".\"account_class\" = 'expense'\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'yield_expense'\n          AND \"financial_accounts\".\"account_class\" = 'expense'\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'clearing'\n          AND \"financial_accounts\".\"account_class\" IN (\n            'asset',\n            'liability'\n          )\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'opening_balance_equity'\n          AND \"financial_accounts\".\"account_class\" IN (\n            'equity',\n            'liability'\n          )\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'payment_revenue'\n          AND \"financial_accounts\".\"account_class\" = 'revenue'\n        )\n        OR\n        (\n          \"financial_accounts\".\"account_type\" = 'refund_expense'\n          AND \"financial_accounts\".\"account_class\" = 'expense'\n        )\n      )"
         },
         "ck_financial_accounts_owner_rule": {
           "name": "ck_financial_accounts_owner_rule",
-          "value": "(\"financial_accounts\".\"account_type\" = 'user_available' AND \"financial_accounts\".\"user_id\" IS NOT NULL) OR (\"financial_accounts\".\"account_type\" != 'user_available' AND \"financial_accounts\".\"user_id\" IS NULL)"
+          "value": "(\n        \"financial_accounts\".\"account_type\" = 'user_available'\n        AND \"financial_accounts\".\"user_id\" IS NOT NULL\n      )\n      OR\n      (\n        \"financial_accounts\".\"account_type\" != 'user_available'\n        AND \"financial_accounts\".\"user_id\" IS NULL\n      )"
         },
         "ck_financial_accounts_version": {
           "name": "ck_financial_accounts_version",
@@ -6756,6 +8063,18 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "ck_financial_assets_code_canonical": {
+          "name": "ck_financial_assets_code_canonical",
+          "value": "\"financial_assets\".\"code\" = upper(trim(\"financial_assets\".\"code\")) AND length(\"financial_assets\".\"code\") > 0"
+        },
+        "ck_financial_assets_symbol_canonical": {
+          "name": "ck_financial_assets_symbol_canonical",
+          "value": "\"financial_assets\".\"symbol\" = upper(trim(\"financial_assets\".\"symbol\")) AND length(\"financial_assets\".\"symbol\") > 0"
+        },
+        "ck_financial_assets_name_nonempty": {
+          "name": "ck_financial_assets_name_nonempty",
+          "value": "length(trim(\"financial_assets\".\"name\")) > 0"
+        },
         "ck_financial_assets_type": {
           "name": "ck_financial_assets_type",
           "value": "\"financial_assets\".\"type\" IN ('fiat', 'crypto')"
@@ -6767,6 +8086,10 @@
         "ck_financial_assets_decimals": {
           "name": "ck_financial_assets_decimals",
           "value": "\"financial_assets\".\"decimals\" >= 0 AND \"financial_assets\".\"decimals\" <= 18"
+        },
+        "ck_financial_assets_decimals_by_type": {
+          "name": "ck_financial_assets_decimals_by_type",
+          "value": "(\n        \"financial_assets\".\"type\" = 'fiat'\n        AND \"financial_assets\".\"decimals\" BETWEEN 0 AND 6\n      )\n      OR\n      (\n        \"financial_assets\".\"type\" = 'crypto'\n        AND \"financial_assets\".\"decimals\" BETWEEN 0 AND 18\n      )"
         }
       }
     },
@@ -6798,7 +8121,7 @@
           "name": "recipient_account_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "fee_type": {
@@ -6842,6 +8165,13 @@
           "name": "idx_financial_fees_recipient_account",
           "columns": [
             "recipient_account_id"
+          ],
+          "isUnique": false
+        },
+        "idx_financial_fees_type": {
+          "name": "idx_financial_fees_type",
+          "columns": [
+            "fee_type"
           ],
           "isUnique": false
         }
@@ -6892,11 +8222,11 @@
       "checkConstraints": {
         "ck_financial_fees_type": {
           "name": "ck_financial_fees_type",
-          "value": "\"financial_fees\".\"fee_type\" IN ('platform', 'withdrawal', 'payment', 'conversion', 'network', 'other')"
+          "value": "\"financial_fees\".\"fee_type\" IN (\n        'platform',\n        'withdrawal',\n        'payment',\n        'conversion',\n        'network',\n        'other'\n      )"
         },
-        "ck_financial_fees_amount_positive": {
-          "name": "ck_financial_fees_amount_positive",
-          "value": "\"financial_fees\".\"amount_base_units\" <> '' AND ltrim(\"financial_fees\".\"amount_base_units\", '0123456789') = '' AND \"financial_fees\".\"amount_base_units\" <> '0' AND ltrim(\"financial_fees\".\"amount_base_units\", '0') = \"financial_fees\".\"amount_base_units\""
+        "ck_financial_fees_amount_canonical": {
+          "name": "ck_financial_fees_amount_canonical",
+          "value": "\n    \"financial_fees\".\"amount_base_units\" GLOB '[1-9]*'\n    AND \"financial_fees\".\"amount_base_units\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"financial_fees\".\"amount_base_units\") < 78\n      OR (\n        length(\"financial_fees\".\"amount_base_units\") = 78\n        AND \"financial_fees\".\"amount_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
         }
       }
     },
@@ -6945,6 +8275,14 @@
           "notNull": true,
           "autoincrement": false
         },
+        "entry_ordinal": {
+          "name": "entry_ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -6954,6 +8292,15 @@
         }
       },
       "indexes": {
+        "idx_financial_ledger_entries_account_asset_id": {
+          "name": "idx_financial_ledger_entries_account_asset_id",
+          "columns": [
+            "account_id",
+            "asset_id",
+            "id"
+          ],
+          "isUnique": false
+        },
         "idx_financial_ledger_entries_transaction": {
           "name": "idx_financial_ledger_entries_transaction",
           "columns": [
@@ -6974,6 +8321,14 @@
             "asset_id"
           ],
           "isUnique": false
+        },
+        "uq_ledger_entry_ordinal": {
+          "name": "uq_ledger_entry_ordinal",
+          "columns": [
+            "transaction_id",
+            "entry_ordinal"
+          ],
+          "isUnique": true
         },
         "idx_financial_ledger_entries_created": {
           "name": "idx_financial_ledger_entries_created",
@@ -7029,11 +8384,11 @@
       "checkConstraints": {
         "ck_financial_ledger_direction": {
           "name": "ck_financial_ledger_direction",
-          "value": "\"financial_ledger_entries\".\"direction\" IN ('debit', 'credit')"
+          "value": "\"financial_ledger_entries\".\"direction\" IN (\n        'debit',\n        'credit'\n      )"
         },
-        "ck_financial_ledger_entries_amount_positive": {
-          "name": "ck_financial_ledger_entries_amount_positive",
-          "value": "\"financial_ledger_entries\".\"amount_base_units\" <> '' AND ltrim(\"financial_ledger_entries\".\"amount_base_units\", '0123456789') = '' AND \"financial_ledger_entries\".\"amount_base_units\" <> '0' AND ltrim(\"financial_ledger_entries\".\"amount_base_units\", '0') = \"financial_ledger_entries\".\"amount_base_units\""
+        "ck_financial_ledger_entries_amount_canonical": {
+          "name": "ck_financial_ledger_entries_amount_canonical",
+          "value": "\n    \"financial_ledger_entries\".\"amount_base_units\" GLOB '[1-9]*'\n    AND \"financial_ledger_entries\".\"amount_base_units\" NOT GLOB '*[^0-9]*'\n    AND \n    (\n      length(\"financial_ledger_entries\".\"amount_base_units\") < 78\n      OR (\n        length(\"financial_ledger_entries\".\"amount_base_units\") = 78\n        AND \"financial_ledger_entries\".\"amount_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
         }
       }
     },
@@ -7049,6 +8404,34 @@
         },
         "user_id": {
           "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "authorized_by_user_id": {
+          "name": "authorized_by_user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reversal_of_transaction_id": {
+          "name": "reversal_of_transaction_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "refund_of_transaction_id": {
+          "name": "refund_of_transaction_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -7133,6 +8516,20 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "reversed_at": {
+          "name": "reversed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "refunded_at": {
+          "name": "refunded_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -7170,6 +8567,21 @@
             "correlation_id"
           ],
           "isUnique": false
+        },
+        "uq_financial_tx_active_reversal": {
+          "name": "uq_financial_tx_active_reversal",
+          "columns": [
+            "reversal_of_transaction_id"
+          ],
+          "isUnique": true,
+          "where": "\"financial_transactions\".\"reversal_of_transaction_id\" IS NOT NULL\n          AND \"financial_transactions\".\"status\" NOT IN ('failed', 'cancelled')"
+        },
+        "idx_financial_transactions_refund_of": {
+          "name": "idx_financial_transactions_refund_of",
+          "columns": [
+            "refund_of_transaction_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -7185,6 +8597,58 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
+        },
+        "financial_transactions_actor_user_id_users_id_fk": {
+          "name": "financial_transactions_actor_user_id_users_id_fk",
+          "tableFrom": "financial_transactions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "financial_transactions_authorized_by_user_id_users_id_fk": {
+          "name": "financial_transactions_authorized_by_user_id_users_id_fk",
+          "tableFrom": "financial_transactions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "authorized_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "financial_transactions_reversal_of_transaction_id_financial_transactions_id_fk": {
+          "name": "financial_transactions_reversal_of_transaction_id_financial_transactions_id_fk",
+          "tableFrom": "financial_transactions",
+          "tableTo": "financial_transactions",
+          "columnsFrom": [
+            "reversal_of_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "financial_transactions_refund_of_transaction_id_financial_transactions_id_fk": {
+          "name": "financial_transactions_refund_of_transaction_id_financial_transactions_id_fk",
+          "tableFrom": "financial_transactions",
+          "tableTo": "financial_transactions",
+          "columnsFrom": [
+            "refund_of_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -7192,27 +8656,55 @@
       "checkConstraints": {
         "ck_financial_tx_type": {
           "name": "ck_financial_tx_type",
-          "value": "\"financial_transactions\".\"type\" IN ('deposit', 'withdrawal', 'transfer', 'payment', 'refund', 'fee', 'reward', 'yield', 'conversion', 'adjustment')"
+          "value": "\"financial_transactions\".\"type\" IN (\n        'deposit',\n        'withdrawal',\n        'transfer',\n        'payment',\n        'refund',\n        'fee',\n        'reward',\n        'yield',\n        'conversion',\n        'adjustment',\n        'reversal'\n      )"
         },
         "ck_financial_tx_category": {
           "name": "ck_financial_tx_category",
-          "value": "\"financial_transactions\".\"category\" IN ('membership', 'rwa_yield', 'grant', 'operational', 'payment', 'trading', 'withdrawal', 'deposit', 'fee', 'other')"
+          "value": "\"financial_transactions\".\"category\" IN (\n        'membership',\n        'rwa_yield',\n        'grant',\n        'operational',\n        'payment',\n        'trading',\n        'withdrawal',\n        'deposit',\n        'fee',\n        'other'\n      )"
         },
         "ck_financial_tx_status": {
           "name": "ck_financial_tx_status",
-          "value": "\"financial_transactions\".\"status\" IN ('pending', 'processing', 'completed', 'failed', 'cancelled', 'reversed', 'refunded')"
+          "value": "\"financial_transactions\".\"status\" IN (\n        'pending',\n        'processing',\n        'completed',\n        'failed',\n        'cancelled',\n        'reversed',\n        'refunded'\n      )"
         },
         "ck_financial_tx_source_type": {
           "name": "ck_financial_tx_source_type",
-          "value": "\"financial_transactions\".\"source_type\" IS NULL OR \"financial_transactions\".\"source_type\" IN ('contribution', 'grant', 'membership', 'payroll', 'withdrawal', 'payment', 'conversion', 'system', 'other')"
+          "value": "\"financial_transactions\".\"source_type\" IS NULL\n        OR \"financial_transactions\".\"source_type\" IN (\n          'contribution',\n          'grant',\n          'membership',\n          'payroll',\n          'withdrawal',\n          'payment',\n          'conversion',\n          'system',\n          'other'\n        )"
+        },
+        "ck_financial_tx_description_nonempty": {
+          "name": "ck_financial_tx_description_nonempty",
+          "value": "length(trim(\"financial_transactions\".\"description\")) > 0"
+        },
+        "ck_financial_tx_source_coherence": {
+          "name": "ck_financial_tx_source_coherence",
+          "value": "(\n        \"financial_transactions\".\"source_type\" IS NULL\n        AND \"financial_transactions\".\"source_id\" IS NULL\n      )\n      OR\n      (\n        \"financial_transactions\".\"source_type\" IS NOT NULL\n        AND \"financial_transactions\".\"source_id\" IS NOT NULL\n        AND length(trim(\"financial_transactions\".\"source_id\")) > 0\n      )"
+        },
+        "ck_financial_tx_correlation_nonempty": {
+          "name": "ck_financial_tx_correlation_nonempty",
+          "value": "\"financial_transactions\".\"correlation_id\" IS NULL\n        OR length(trim(\"financial_transactions\".\"correlation_id\")) > 0"
+        },
+        "ck_financial_tx_reversal_coherence": {
+          "name": "ck_financial_tx_reversal_coherence",
+          "value": "(\n        \"financial_transactions\".\"reversal_of_transaction_id\" IS NULL\n        OR (\n          \"financial_transactions\".\"type\" = 'reversal'\n          AND \"financial_transactions\".\"reversal_of_transaction_id\" != \"financial_transactions\".\"id\"\n        )\n      )"
+        },
+        "ck_financial_tx_refund_coherence": {
+          "name": "ck_financial_tx_refund_coherence",
+          "value": "(\n        \"financial_transactions\".\"refund_of_transaction_id\" IS NULL\n        OR (\n          \"financial_transactions\".\"type\" = 'refund'\n          AND \"financial_transactions\".\"refund_of_transaction_id\" != \"financial_transactions\".\"id\"\n        )\n      )"
+        },
+        "ck_financial_tx_reversal_refund_exclusive": {
+          "name": "ck_financial_tx_reversal_refund_exclusive",
+          "value": "NOT (\n        \"financial_transactions\".\"reversal_of_transaction_id\" IS NOT NULL\n        AND \"financial_transactions\".\"refund_of_transaction_id\" IS NOT NULL\n      )"
+        },
+        "ck_financial_tx_typed_reference_required": {
+          "name": "ck_financial_tx_typed_reference_required",
+          "value": "(\n        (\n          \"financial_transactions\".\"type\" = 'reversal'\n          AND \"financial_transactions\".\"reversal_of_transaction_id\" IS NOT NULL\n        )\n        OR\n        (\n          \"financial_transactions\".\"type\" = 'refund'\n          AND \"financial_transactions\".\"refund_of_transaction_id\" IS NOT NULL\n        )\n        OR\n        (\n          \"financial_transactions\".\"type\" NOT IN (\n            'reversal',\n            'refund'\n          )\n        )\n      )"
         },
         "ck_financial_tx_completed_state": {
           "name": "ck_financial_tx_completed_state",
-          "value": "\"financial_transactions\".\"status\" != 'completed' OR \"financial_transactions\".\"completed_at\" IS NOT NULL"
+          "value": "(\n        \"financial_transactions\".\"status\" IN (\n          'completed',\n          'reversed',\n          'refunded'\n        )\n        AND \"financial_transactions\".\"completed_at\" IS NOT NULL\n      )\n      OR\n      (\n        \"financial_transactions\".\"status\" NOT IN (\n          'completed',\n          'reversed',\n          'refunded'\n        )\n        AND \"financial_transactions\".\"completed_at\" IS NULL\n      )"
         },
         "ck_financial_tx_dates": {
           "name": "ck_financial_tx_dates",
-          "value": "\"financial_transactions\".\"completed_at\" IS NULL OR \"financial_transactions\".\"completed_at\" >= \"financial_transactions\".\"created_at\""
+          "value": "\"financial_transactions\".\"completed_at\" IS NULL\n        OR \"financial_transactions\".\"completed_at\" >= \"financial_transactions\".\"created_at\""
         },
         "ck_financial_tx_version": {
           "name": "ck_financial_tx_version",
@@ -7242,7 +8734,8 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "'default'"
         },
         "key": {
           "name": "key",
@@ -7273,12 +8766,50 @@
           "autoincrement": false,
           "default": "'processing'"
         },
+        "lease_owner": {
+          "name": "lease_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_generation": {
+          "name": "lease_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "response_status": {
+          "name": "response_status",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "response_payload": {
+          "name": "response_payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
         },
         "expires_at": {
           "name": "expires_at",
@@ -7297,24 +8828,18 @@
           ],
           "isUnique": true
         },
-        "idx_idempotency_keys_user": {
-          "name": "idx_idempotency_keys_user",
-          "columns": [
-            "user_id"
-          ],
-          "isUnique": false
-        },
-        "idx_idempotency_keys_transaction": {
-          "name": "idx_idempotency_keys_transaction",
-          "columns": [
-            "financial_transaction_id"
-          ],
-          "isUnique": false
-        },
         "idx_idempotency_keys_status": {
           "name": "idx_idempotency_keys_status",
           "columns": [
             "status"
+          ],
+          "isUnique": false
+        },
+        "idx_idempotency_keys_lease": {
+          "name": "idx_idempotency_keys_lease",
+          "columns": [
+            "lease_owner",
+            "lease_generation"
           ],
           "isUnique": false
         }
@@ -7349,16 +8874,7 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {
-        "ck_idempotency_keys_status": {
-          "name": "ck_idempotency_keys_status",
-          "value": "\"idempotency_keys\".\"status\" IN ('processing', 'completed', 'failed')"
-        },
-        "ck_idempotency_keys_expires": {
-          "name": "ck_idempotency_keys_expires",
-          "value": "\"idempotency_keys\".\"expires_at\" IS NULL OR \"idempotency_keys\".\"created_at\" < \"idempotency_keys\".\"expires_at\""
-        }
-      }
+      "checkConstraints": {}
     },
     "reconciliation_records": {
       "name": "reconciliation_records",
@@ -7418,7 +8934,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'matched'"
+          "default": "'pending'"
         },
         "reconciliation_run_id": {
           "name": "reconciliation_run_id",
@@ -7448,9 +8964,51 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "resolved_by_user_id": {
+          "name": "resolved_by_user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "resolution_reason": {
+          "name": "resolution_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "resolution_reference": {
+          "name": "resolution_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
+        "uq_reconciliation_run_scope_provider": {
+          "name": "uq_reconciliation_run_scope_provider",
+          "columns": [
+            "reconciliation_run_id",
+            "provider_id",
+            "account_id",
+            "asset_id"
+          ],
+          "isUnique": true,
+          "where": "\"reconciliation_records\".\"provider_id\" IS NOT NULL"
+        },
+        "uq_reconciliation_run_scope_no_provider": {
+          "name": "uq_reconciliation_run_scope_no_provider",
+          "columns": [
+            "reconciliation_run_id",
+            "account_id",
+            "asset_id"
+          ],
+          "isUnique": true,
+          "where": "\"reconciliation_records\".\"provider_id\" IS NULL"
+        },
         "idx_reconciliation_records_account": {
           "name": "idx_reconciliation_records_account",
           "columns": [
@@ -7472,10 +9030,31 @@
           ],
           "isUnique": false
         },
+        "idx_reconciliation_records_run": {
+          "name": "idx_reconciliation_records_run",
+          "columns": [
+            "reconciliation_run_id"
+          ],
+          "isUnique": false
+        },
         "idx_reconciliation_records_status": {
           "name": "idx_reconciliation_records_status",
           "columns": [
             "status"
+          ],
+          "isUnique": false
+        },
+        "idx_reconciliation_records_date": {
+          "name": "idx_reconciliation_records_date",
+          "columns": [
+            "reconciliation_date"
+          ],
+          "isUnique": false
+        },
+        "idx_reconciliation_records_resolver": {
+          "name": "idx_reconciliation_records_resolver",
+          "columns": [
+            "resolved_by_user_id"
           ],
           "isUnique": false
         }
@@ -7519,32 +9098,201 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
+        },
+        "reconciliation_records_resolved_by_user_id_users_id_fk": {
+          "name": "reconciliation_records_resolved_by_user_id_users_id_fk",
+          "tableFrom": "reconciliation_records",
+          "tableTo": "users",
+          "columnsFrom": [
+            "resolved_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "ck_reconciliation_run_id_nonempty": {
+          "name": "ck_reconciliation_run_id_nonempty",
+          "value": "length(trim(\"reconciliation_records\".\"reconciliation_run_id\")) > 0"
+        },
         "ck_reconciliation_status": {
           "name": "ck_reconciliation_status",
-          "value": "\"reconciliation_records\".\"status\" IN ('matched', 'mismatch', 'resolved')"
+          "value": "\"reconciliation_records\".\"status\" IN (\n        'pending',\n        'matched',\n        'mismatch',\n        'resolved'\n      )"
+        },
+        "ck_reconciliation_expected_canonical": {
+          "name": "ck_reconciliation_expected_canonical",
+          "value": "\n    (\n      \"reconciliation_records\".\"expected_balance_base_units\" = '0'\n      OR (\n        \"reconciliation_records\".\"expected_balance_base_units\" GLOB '[1-9]*'\n        AND \"reconciliation_records\".\"expected_balance_base_units\" NOT GLOB '*[^0-9]*'\n      )\n    )\n    AND \n    (\n      length(\"reconciliation_records\".\"expected_balance_base_units\") < 78\n      OR (\n        length(\"reconciliation_records\".\"expected_balance_base_units\") = 78\n        AND \"reconciliation_records\".\"expected_balance_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
+        },
+        "ck_reconciliation_actual_canonical": {
+          "name": "ck_reconciliation_actual_canonical",
+          "value": "\n    (\n      \"reconciliation_records\".\"actual_balance_base_units\" = '0'\n      OR (\n        \"reconciliation_records\".\"actual_balance_base_units\" GLOB '[1-9]*'\n        AND \"reconciliation_records\".\"actual_balance_base_units\" NOT GLOB '*[^0-9]*'\n      )\n    )\n    AND \n    (\n      length(\"reconciliation_records\".\"actual_balance_base_units\") < 78\n      OR (\n        length(\"reconciliation_records\".\"actual_balance_base_units\") = 78\n        AND \"reconciliation_records\".\"actual_balance_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n  "
+        },
+        "ck_reconciliation_difference_canonical": {
+          "name": "ck_reconciliation_difference_canonical",
+          "value": "\n    (\n      \"reconciliation_records\".\"difference_base_units\" = '0'\n\n      OR\n\n      (\n        \"reconciliation_records\".\"difference_base_units\" GLOB '[1-9]*'\n        AND \"reconciliation_records\".\"difference_base_units\" NOT GLOB '*[^0-9]*'\n        AND \n    (\n      length(\"reconciliation_records\".\"difference_base_units\") < 78\n      OR (\n        length(\"reconciliation_records\".\"difference_base_units\") = 78\n        AND \"reconciliation_records\".\"difference_base_units\" <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n      )\n    )\n  \n      )\n\n      OR\n\n      (\n        substr(\"reconciliation_records\".\"difference_base_units\", 1, 1) = '-'\n        AND substr(\"reconciliation_records\".\"difference_base_units\", 2) GLOB '[1-9]*'\n        AND substr(\"reconciliation_records\".\"difference_base_units\", 2) NOT GLOB '*[^0-9]*'\n        AND (\n          length(\"reconciliation_records\".\"difference_base_units\") < 79\n          OR (\n            length(\"reconciliation_records\".\"difference_base_units\") = 79\n            AND substr(\"reconciliation_records\".\"difference_base_units\", 2) <= '115792089237316195423570985008687907853269984665640564039457584007913129639935'\n          )\n        )\n      )\n    )\n  "
+        },
+        "ck_reconciliation_status_difference": {
+          "name": "ck_reconciliation_status_difference",
+          "value": "(\n        (\n          \"reconciliation_records\".\"status\" IN ('pending', 'matched')\n          AND \"reconciliation_records\".\"expected_balance_base_units\" = \"reconciliation_records\".\"actual_balance_base_units\"\n          AND \"reconciliation_records\".\"difference_base_units\" = '0'\n        )\n        OR\n        (\n          \"reconciliation_records\".\"status\" IN ('pending', 'mismatch')\n          AND \"reconciliation_records\".\"expected_balance_base_units\" != \"reconciliation_records\".\"actual_balance_base_units\"\n          AND \"reconciliation_records\".\"difference_base_units\" != '0'\n        )\n        OR\n        (\n          \"reconciliation_records\".\"status\" = 'resolved'\n          AND \"reconciliation_records\".\"expected_balance_base_units\" != \"reconciliation_records\".\"actual_balance_base_units\"\n          AND \"reconciliation_records\".\"difference_base_units\" != '0'\n          AND \"reconciliation_records\".\"resolution_reason\" IS NOT NULL\n          AND \"reconciliation_records\".\"resolution_reference\" IS NOT NULL\n        )\n      )"
         },
         "ck_reconciliation_resolved_state": {
           "name": "ck_reconciliation_resolved_state",
-          "value": "\"reconciliation_records\".\"status\" != 'resolved' OR \"reconciliation_records\".\"resolved_at\" IS NOT NULL"
+          "value": "(\n        \"reconciliation_records\".\"status\" = 'resolved'\n        AND \"reconciliation_records\".\"resolved_at\" IS NOT NULL\n        AND \"reconciliation_records\".\"resolved_by_user_id\" IS NOT NULL\n        AND \"reconciliation_records\".\"resolution_reason\" IS NOT NULL\n        AND \"reconciliation_records\".\"resolution_reference\" IS NOT NULL\n      )\n      OR\n      (\n        \"reconciliation_records\".\"status\" != 'resolved'\n        AND \"reconciliation_records\".\"resolved_at\" IS NULL\n        AND \"reconciliation_records\".\"resolved_by_user_id\" IS NULL\n        AND \"reconciliation_records\".\"resolution_reason\" IS NULL\n        AND \"reconciliation_records\".\"resolution_reference\" IS NULL\n      )"
+        },
+        "ck_reconciliation_resolution_reason": {
+          "name": "ck_reconciliation_resolution_reason",
+          "value": "\"reconciliation_records\".\"resolution_reason\" IS NULL\n        OR length(trim(\"reconciliation_records\".\"resolution_reason\")) > 0"
+        },
+        "ck_reconciliation_resolution_reference": {
+          "name": "ck_reconciliation_resolution_reference",
+          "value": "\"reconciliation_records\".\"resolution_reference\" IS NULL\n        OR length(trim(\"reconciliation_records\".\"resolution_reference\")) > 0"
+        },
+        "ck_reconciliation_resolved_temporal": {
+          "name": "ck_reconciliation_resolved_temporal",
+          "value": "\"reconciliation_records\".\"resolved_at\" IS NULL\n        OR \"reconciliation_records\".\"resolved_at\" >= \"reconciliation_records\".\"reconciliation_date\""
         },
         "ck_reconciliation_records_version": {
           "name": "ck_reconciliation_records_version",
           "value": "\"reconciliation_records\".\"version\" > 0"
-        },
-        "ck_reconciliation_expected_nonnegative": {
-          "name": "ck_reconciliation_expected_nonnegative",
-          "value": "\"reconciliation_records\".\"expected_balance_base_units\" <> '' AND ltrim(\"reconciliation_records\".\"expected_balance_base_units\", '0123456789') = '' AND (\"reconciliation_records\".\"expected_balance_base_units\" = '0' OR ltrim(\"reconciliation_records\".\"expected_balance_base_units\", '0') = \"reconciliation_records\".\"expected_balance_base_units\")"
-        },
-        "ck_reconciliation_actual_nonnegative": {
-          "name": "ck_reconciliation_actual_nonnegative",
-          "value": "\"reconciliation_records\".\"actual_balance_base_units\" <> '' AND ltrim(\"reconciliation_records\".\"actual_balance_base_units\", '0123456789') = '' AND (\"reconciliation_records\".\"actual_balance_base_units\" = '0' OR ltrim(\"reconciliation_records\".\"actual_balance_base_units\", '0') = \"reconciliation_records\".\"actual_balance_base_units\")"
         }
       }
+    },
+    "_sql_assertions": {
+      "name": "_sql_assertions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "guard": {
+          "name": "guard",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "ck_sql_assertions_guard": {
+          "name": "ck_sql_assertions_guard",
+          "value": "\"_sql_assertions\".\"guard\" = 1"
+        },
+        "ck_sql_assertions_id": {
+          "name": "ck_sql_assertions_id",
+          "value": "\"_sql_assertions\".\"id\" = 1"
+        }
+      }
+    },
+    "system_account_routes": {
+      "name": "system_account_routes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "account_type": {
+          "name": "account_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "uq_system_route_provider": {
+          "name": "uq_system_route_provider",
+          "columns": [
+            "account_type",
+            "provider_id"
+          ],
+          "isUnique": true,
+          "where": "\"system_account_routes\".\"status\" = 'active' AND \"system_account_routes\".\"provider_id\" IS NOT NULL"
+        },
+        "uq_system_route_global": {
+          "name": "uq_system_route_global",
+          "columns": [
+            "account_type"
+          ],
+          "isUnique": true,
+          "where": "\"system_account_routes\".\"status\" = 'active' AND \"system_account_routes\".\"provider_id\" IS NULL"
+        }
+      },
+      "foreignKeys": {
+        "system_account_routes_provider_id_fiat_providers_id_fk": {
+          "name": "system_account_routes_provider_id_fiat_providers_id_fk",
+          "tableFrom": "system_account_routes",
+          "tableTo": "fiat_providers",
+          "columnsFrom": [
+            "provider_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "system_account_routes_account_id_financial_accounts_id_fk": {
+          "name": "system_account_routes_account_id_financial_accounts_id_fk",
+          "tableFrom": "system_account_routes",
+          "tableTo": "financial_accounts",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "integration_configs": {
       "name": "integration_configs",
@@ -8422,6 +10170,207 @@
         }
       }
     },
+    "event_consumer_receipts": {
+      "name": "event_consumer_receipts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "consumer_id": {
+          "name": "consumer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "processed_at": {
+          "name": "processed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "uq_consumer_event": {
+          "name": "uq_consumer_event",
+          "columns": [
+            "consumer_id",
+            "event_id"
+          ],
+          "isUnique": true
+        },
+        "idx_receipts_event": {
+          "name": "idx_receipts_event",
+          "columns": [
+            "event_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "event_inbox": {
+      "name": "event_inbox",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "external_event_id": {
+          "name": "external_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "lease_owner": {
+          "name": "lease_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_generation": {
+          "name": "lease_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "processing_started_at": {
+          "name": "processing_started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "processed_at": {
+          "name": "processed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "uq_event_inbox_provider_event": {
+          "name": "uq_event_inbox_provider_event",
+          "columns": [
+            "provider_id",
+            "external_event_id"
+          ],
+          "isUnique": true
+        },
+        "idx_event_inbox_status": {
+          "name": "idx_event_inbox_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_event_inbox_lease": {
+          "name": "idx_event_inbox_lease",
+          "columns": [
+            "lease_expires_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "ck_event_inbox_status": {
+          "name": "ck_event_inbox_status",
+          "value": "\"event_inbox\".\"status\" IN ('pending', 'processing', 'processed', 'failed')"
+        }
+      }
+    },
     "outbox_events": {
       "name": "outbox_events",
       "columns": {
@@ -8434,7 +10383,7 @@
         },
         "aggregate_id": {
           "name": "aggregate_id",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -8482,16 +10431,38 @@
           "autoincrement": false,
           "default": 0
         },
-        "published": {
-          "name": "published",
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_owner": {
+          "name": "lease_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_generation": {
+          "name": "lease_generation",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": false
+          "default": 0
         },
-        "published_at": {
-          "name": "published_at",
+        "lease_expires_at": {
+          "name": "lease_expires_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -8510,14 +10481,41 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "(strftime('%s', 'now'))"
+          "default": "(unixepoch())"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_outbox_events_status": {
+          "name": "idx_outbox_events_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_outbox_events_lease": {
+          "name": "idx_outbox_events_lease",
+          "columns": [
+            "lease_expires_at"
+          ],
+          "isUnique": false
+        },
+        "idx_outbox_events_created": {
+          "name": "idx_outbox_events_created",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "ck_outbox_events_status": {
+          "name": "ck_outbox_events_status",
+          "value": "\"outbox_events\".\"status\" IN ('pending', 'processing', 'published', 'failed', 'dead_letter')"
+        }
+      }
     }
   },
   "views": {},
